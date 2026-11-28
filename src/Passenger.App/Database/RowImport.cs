@@ -153,12 +153,12 @@ public static class RowImport
         ImportColumn[] mapped = [.. places.Select(i => choice.Columns[i])];
         if (mapped.Length == 0)
         {
-            throw new InvalidOperationException(Refusals.NoColumnImported);
+            throw new InvalidOperationException(Refusals.NoColumnImported.English);
         }
         string make = $"CREATE TABLE {table} ({string.Join(", ", mapped.Select(c => $"{SqlText.QuotedName(kind, c.Into!)} {c.Type}"))})";
         if (!DatabaseKinds.HasTransactions(kind))
         {
-            throw new InvalidOperationException(Refusals.NoImport(DatabaseKinds.Title(kind)));
+            throw new InvalidOperationException(Refusals.NoImport(DatabaseKinds.Title(kind)).English);
         }
         await using DbConnection connection = await DatabaseClient.OpenAsync(source, cancel);
         using CancellationTokenRegistration interrupt = DatabaseClient.Interrupt(connection, cancel);
@@ -204,7 +204,7 @@ public static class RowImport
                     {
                         // A row the batch before it holds may be refused first.
                         await FlushAsync();
-                        throw new ImportRefused(row, Refusals.NotAValue(text!, ImportTypes.Kind(Wanted(types[i])), mapped[i].Into!));
+                        throw new ImportRefused(row, Refusals.NotAValue(text!, ImportTypes.Kind(Wanted(types[i])), mapped[i].Into!).Shown);
                     }
                     values[i] = value;
                 }

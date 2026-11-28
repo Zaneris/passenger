@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Migrations;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -68,7 +69,7 @@ public partial class MainWindow
         };
         controller.Changed += (_, _) => ListMigrationsIfShown();
         // dotnet ef builds the project and runs its code.
-        Func<ActionContext, string?> none = _ => Folder is null ? Refusals.NoFolder : Untrusted() ?? (controller.Projects.Count == 0 ? Refusals.NoEfCore : null);
+        Func<ActionContext, Words?> none = _ => Folder is null ? Refusals.NoFolder : Untrusted() ?? (controller.Projects.Count == 0 ? Refusals.NoEfCore : null);
         actions!.Add(new IdeAction(A.MigrationsRefresh, "Refresh Migrations", "Migrations", c => IdeErrors.Observe(controller.ListAsync(A.MigrationsRefresh)))
         {
             WhyNot = none,
@@ -163,7 +164,7 @@ public partial class MainWindow
         if (Passenger.App.Database.DatabaseDiscovery.Source(connection.Name, connection.Used, connection.Value, connection.Folder, connection.Packages) is not { } wanted)
         {
             Refuse(Refusals.NoDatabaseOf(connection.Name));
-            return new EfDone(false, Refusals.NoDatabaseOf(connection.Name));
+            return new EfDone(false, Refusals.NoDatabaseOf(connection.Name).Shown);
         }
         (Passenger.App.Database.DatabaseSource? used, string? why) = await ShowDatabaseOfAsync(wanted, lasting: !connection.Running);
         return used is null ? new EfDone(false, why!)
@@ -326,7 +327,7 @@ public partial class MainWindow
         MigrationsController controller = migrations!;
         if (actions![A.MigrationsRefresh]!.WhyNot(actions.Context()) is { } why)
         {
-            throw new InvalidOperationException($"{action} did not run: {why}");
+            throw new InvalidOperationException($"{action} did not run: {why.English}");
         }
         string? given = input?.Trim() is { Length: > 0 } words ? words : null;
         Mcp.AgentCall.Follow(actions.Work, action);
@@ -385,7 +386,7 @@ public partial class MainWindow
                 done = await controller.FixAsync(fix) is { } unfixed ? new EfDone(false, unfixed) : new EfDone(true, $"{fix.Title}: done");
                 break;
             default:
-                return actions.Run(action) is { } refused ? throw new InvalidOperationException($"{action} did not run: {refused}") : $"Ran {action}";
+                return actions.Run(action) is { } refused ? throw new InvalidOperationException($"{action} did not run: {refused.English}") : $"Ran {action}";
         }
         // The folders holding the context's migrations as the command left them, which its build has read again.
         await session.EfProjects.WholeAsync(() => session.Projects);

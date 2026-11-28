@@ -161,7 +161,7 @@ public sealed class CommandHistory
         {
             writing = Work?.Begin(WritingFiles, stage, stoppable: false);
         }
-        else if (writing.Stage != stage)
+        else if (writing.Stage.Shown != stage)
         {
             writing.Say(stage);
         }
@@ -1316,7 +1316,7 @@ public sealed class CommandHistory
             // None is written where one is read-only by where it lies (a package's), whatever queued it.
             if (files.Select(f => f.At).FirstOrDefault(ReadOnlyFiles.Holds) is { } kept)
             {
-                return (kept, new IOException(ReadOnlyFiles.Refused(kept, Path.GetFileName(kept))));
+                return (kept, new IOException(ReadOnlyFiles.Refused(kept, Path.GetFileName(kept))?.English));
             }
             (List<ChangeMade> made, (string Path, Exception Refused)? refused) = await history.InTurnAsync(name, [.. files.Select(f => f.At).Distinct(PathNames.Comparer)], wrote =>
             {

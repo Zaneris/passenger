@@ -393,7 +393,7 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is null || IsBuilding || session.IsEnded)
         {
-            BuildOutcome refused = new(BuildStatus.Refused, session.Folder is null || session.IsEnded ? Refusals.NoFolderTo("build") : Refusals.Building);
+            BuildOutcome refused = new(BuildStatus.Refused, (session.Folder is null || session.IsEnded ? Refusals.NoFolderTo("build") : Refusals.Building).Shown);
             work?.Dispose();
             parts.Say(refused.Message);
             then?.Invoke(refused);
@@ -421,7 +421,7 @@ public sealed partial class BuildRunController
         }
         if (buildQueue.Count == 0)
         {
-            BuildOutcome nothing = new(BuildStatus.Refused, whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : "Nothing to build: every project is unloaded");
+            BuildOutcome nothing = new(BuildStatus.Refused, (whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : "Nothing to build: every project is unloaded").Shown);
             publishing = null;
             together = null;
             work?.Tell(false, nothing.Message);
@@ -470,7 +470,7 @@ public sealed partial class BuildRunController
     {
         Working? work = buildWork;
         CancellationToken stopping = work?.Stopping ?? CancellationToken.None;
-        string stage = work?.Stage ?? string.Empty;
+        string stage = (work?.Stage ?? string.Empty).Shown;
         if (FileText.Landings().Count > 0 && await EditorArea.LandedAsync(work, stopping) is { } unsaved)
         {
             FinishBuild(work is { IsStopped: true } ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved));
@@ -494,7 +494,7 @@ public sealed partial class BuildRunController
         }
         else if (session.IsEnded)
         {
-            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, Refusals.NoFolderTo("build")));
+            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, Refusals.NoFolderTo("build").Shown));
         }
         else
         {
@@ -786,7 +786,7 @@ public sealed partial class BuildRunController
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList());
         if (uncompiled.Count > 0 && !session.IsEnded)
         {
-            ended = new BuildOutcome(BuildStatus.Failed, Refusals.XamlUncompiled(uncompiled));
+            ended = new BuildOutcome(BuildStatus.Failed, Refusals.XamlUncompiled(uncompiled).Shown);
             parts.OfferRebuild?.Invoke(ended.Message);
         }
         Keep(ended);
@@ -914,7 +914,7 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Why Run Current Scene cannot run now: the file open is in no Godot project of the folder's.</summary>
-    public string? WhyNotRunScene() => parts.Editors.Active?.Path is { } path && session.RunProjects.Any(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder))
+    public Words? WhyNotRunScene() => parts.Editors.Active?.Path is { } path && session.RunProjects.Any(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder))
         ? null : Refusals.NoGodotScene;
 
     /// <summary>Run Current Scene: the Godot game of the project the open scene (or script) is in, run from that scene (or the
@@ -927,7 +927,7 @@ public sealed partial class BuildRunController
         ProjectModel? project = path is null ? null : session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } folder && PathNames.IsUnder(path, folder));
         if (project is null)
         {
-            return Said(Refusals.NoGodotScene);
+            return Said(Refusals.NoGodotScene.Shown);
         }
         RunConfiguration? configuration = session.Configurations.Chosen is { GodotEditor: false, IsContainer: false } chosen && PathNames.Same(chosen.Project, project.Path)
             && chosen.NamesNoOtherProgram(session.Projects) ? chosen
@@ -979,7 +979,7 @@ public sealed partial class BuildRunController
             ProjectSession listing = session;
             TargetPlatform platform = plan.Device.Target.Platform;
             (LaunchPlan? installed, string? uninstalled) = await DeviceLaunches.ReadyAsync(plan, Workspace.ProjectModels.Properties(plan.Workspace, device), parts.Unseen,
-                work.Say, targets => UiThread.Post(() =>
+                said => work.Say(said), targets => UiThread.Post(() =>
                 {
                     if (!listing.IsEnded)
                     {
@@ -1120,12 +1120,12 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>Why a start goes no further now, or null to go on: its folder has ended, or Stop has ended the start.</summary>
-    private string? Checkpoint(Working work, string name) => session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? StoppedStarting(name) : null;
+    private string? Checkpoint(Working work, string name) => (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? StoppedStarting(name) : null)?.Shown;
 
     /// <summary>What a start ended by a cancel says: its folder's end, else Stop's.</summary>
     private string Canceled(Working work, string name) => Canceled(name);
 
-    private string Canceled(string name) => session.IsEnded ? Refusals.SolutionClosed : StoppedStarting(name);
+    private string Canceled(string name) => (session.IsEnded ? Refusals.SolutionClosed : StoppedStarting(name)).Shown;
 
     /// <summary>A start's build of what it starts, in the Build window, which comes forward only as Settings says for a build
     /// Run, Debug or Profile begins: stopped as the start is (<paramref name="stopping"/>), as Stop stops a build. What is
@@ -1163,7 +1163,7 @@ public sealed partial class BuildRunController
             if (building is { } under)
             {
                 // Begun before this start or while it checked, a build may change what the check reads.
-                string? stage = work?.Stage;
+                string? stage = (work?.Stage)?.Shown;
                 work?.Say("Waiting for the build under way to end…");
                 try
                 {
@@ -1287,7 +1287,7 @@ public sealed partial class BuildRunController
         // The Run console is one program's: Profile's writes there too, from its start to its end.
         if (parts.Work.Of(AppActions.Profile) is { } profiling)
         {
-            return Said(ActionWork.Busy(profiling));
+            return Said(ActionWork.Busy(profiling).Shown);
         }
         if (session.Profiled is { Run.HasExited: false, Terminal: null } profiled)
         {
@@ -1296,7 +1296,7 @@ public sealed partial class BuildRunController
         // Begun before what runs of it ends, so an agent's Run hears this start through to its hand-over.
         if (parts.Work.Begin(AppActions.RunProgram, $"Working out how to run {chosen.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
+            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!).Shown);
         }
         using (work)
         {
@@ -1799,7 +1799,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.RunProgram, $"Working out how to run another copy of {chosen.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
+            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!).Shown);
         }
         using (work)
         using (cancellation.Register(work.Cancel))
@@ -2056,7 +2056,7 @@ public sealed partial class BuildRunController
         RunAgain answer = runs && parts.AskRunAgain is { } ask ? await ask(chosen.Name, doing, work.Stopping) : RunAgain.StopAndRerun;
         if (answer == RunAgain.Cancel || session.IsEnded)
         {
-            return session.IsEnded ? Refusals.SolutionClosed : $"{chosen.Name} runs on: nothing was stopped or started";
+            return (session.IsEnded ? Refusals.SolutionClosed : $"{chosen.Name} runs on: nothing was stopped or started").Shown;
         }
         if (under.Length > 0)
         {
@@ -2068,7 +2068,7 @@ public sealed partial class BuildRunController
             await Task.WhenAll(under.Select(other => other.Ended));
             if (session.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
         }
         if (copies)
@@ -2077,7 +2077,7 @@ public sealed partial class BuildRunController
             await Task.WhenAll(EndCopyRunsAsync(chosen.Name), EndPartRunsAsync(chosen.Name));
             if (session.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
         }
         if (RunsOwnProgram(chosen.Name))
@@ -2092,7 +2092,7 @@ public sealed partial class BuildRunController
             await ended;
             if (session.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
         }
         List<DebugTab> debugging = [.. session.Debug.CopiesOf(chosen.Name).Select(c => c.Tab).Where(t => debugged.ContainsKey(t.Name))];
@@ -2105,7 +2105,7 @@ public sealed partial class BuildRunController
             }
             if (session.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
         }
         return answer == RunAgain.Stop ? $"{chosen.Name} stopped, not started again" : null;
@@ -2397,7 +2397,7 @@ public sealed partial class BuildRunController
         string action = mode switch { RunStart.Debug => AppActions.Debug, RunStart.Profile => AppActions.Profile, _ => AppActions.RunProgram };
         if (parts.Work.Begin(action, $"Starting {chosen.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(action)!));
+            return Said(ActionWork.Busy(parts.Work.Of(action)!).Shown);
         }
         using (work)
         using (BackgroundWork.Scope())
@@ -2543,7 +2543,7 @@ public sealed partial class BuildRunController
                 await EndInConsoleAsync();
                 if (session.IsEnded)
                 {
-                    return Refusals.SolutionClosed;
+                    return Refusals.SolutionClosed.Shown;
                 }
             }
             return await RunAsync(scene: SceneOf(chosen));
@@ -2566,7 +2566,7 @@ public sealed partial class BuildRunController
     {
         if (parts.Work.Begin(AppActions.RunProgram, $"Looking at what changed in {chosen.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
+            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!).Shown);
         }
         using (work)
         using (BackgroundWork.Scope())
@@ -2619,7 +2619,7 @@ public sealed partial class BuildRunController
         RunStart mode = main.Mode;
         parts.Say($"{chosen.Name}'s AppHost changed: stopping it to build and run it again…");
         await session.Aspire.StopGroupAsync(main.Group);
-        return session.IsEnded ? Refusals.SolutionClosed : await RunAspireAsync(again, null, mode);
+        return (session.IsEnded ? Refusals.SolutionClosed : await RunAspireAsync(again, null, mode))?.Shown;
     }
 
     /// <summary>Whether Hot Reload reaches the program a configuration runs: one program, the folder's own (not a script's,
@@ -2670,7 +2670,7 @@ public sealed partial class BuildRunController
     {
         if (parts.Work.Begin(AppActions.Debug, $"Restarting {tab.Name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!).Shown;
         }
         using (work)
         using (BackgroundWork.Scope())
@@ -2702,7 +2702,7 @@ public sealed partial class BuildRunController
     {
         if (chosen.IsScript)
         {
-            return Said(Refusals.ScriptOnlyRuns(chosen.Name));
+            return Said(Refusals.ScriptOnlyRuns(chosen.Name).Shown);
         }
         if (chosen.IsMultiple)
         {
@@ -2718,7 +2718,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.Debug, $"Working out how to debug {chosen.Name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!).Shown;
         }
         using (work)
         {
@@ -2819,7 +2819,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.Debug, $"Working out how to debug another copy of {chosen.Name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!).Shown;
         }
         using (work)
         using (cancellation.Register(work.Cancel))
@@ -3000,7 +3000,7 @@ public sealed partial class BuildRunController
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private async Task<string?> DebugPackageAsync(LaunchPlan plan, WindowsPackageLaunch launch, Working work, BuiltEdits? edits)
     {
-        (WindowsPackage? package, string? unregistered) = await WindowsPackages.RegisterAsync(plan.Name, launch, plan.Unseen, work.Say, work.Stopping);
+        (WindowsPackage? package, string? unregistered) = await WindowsPackages.RegisterAsync(plan.Name, launch, plan.Unseen, said => work.Say(said), work.Stopping);
         if (package is null)
         {
             return unregistered;

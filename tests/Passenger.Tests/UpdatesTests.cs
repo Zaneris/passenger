@@ -666,11 +666,11 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#UpdateButton" }));
             Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
             CallToolResult clicked = Await(clicking, "the agent's click on the status bar's Restart to Update");
-            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.RestartIsThePersons, StringComparison.Ordinal),
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.RestartIsThePersons.Shown, StringComparison.Ordinal),
                 $"The agent's click on the status bar's Restart to Update was answered: {Text(clicked)}");
             Ui.Settle();
             Assert.True(window.IsVisible, "The agent's click on Restart to Update closed the person's window");
-            Assert.Equal(Refusals.RestartIsThePersons, window.Status);
+            Assert.Equal(Refusals.RestartIsThePersons.Shown, window.Status);
             Assert.True(Notice(window) == $"Restart to update to Passenger {newer}" && window.UpdateReady?.Version == newer,
                 $"After the agent's click the update no longer waits for the person: {UpdatesSaid(window)}");
             Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version, $"The agent's click installed the update, as {copy.InstalledVersion}");
@@ -750,7 +750,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(window.UpdateReady?.Version == newer, $"The window offers Restart to Update with {window.UpdateReady?.Version ?? "nothing"} ready, not {newer}");
         Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version,
             $"The update was installed at once, as {copy.InstalledVersion}, before Passenger restarted");
-        Assert.True(window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()) is null, "Restart to Update cannot run with the update ready");
+        Assert.True(window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown is null, "Restart to Update cannot run with the update ready");
         Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} downloaded to ", StringComparison.Ordinal));
 
         foreach (string name in update.Keys)
@@ -808,7 +808,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Ui.WaitFor(() => Notice(front) == $"Restart to update to Passenger {newer}",
                 () => $"the window in front to offer Restart to Update once v{newer} had downloaded, where {UpdatesSaid(front)}");
             Assert.True(Notice(window) == Notice(front), $"The window watching says '{Notice(window)}', the one in front '{Notice(front)}'");
-            Assert.True(front.Actions.WhyNot(AppActions.RestartToUpdate, front.Actions.Context()) is null,
+            Assert.True(front.Actions.WhyNot(AppActions.RestartToUpdate, front.Actions.Context())?.Shown is null,
                 "The window in front shows the update ready, but its Restart to Update cannot run");
             Assert.True(front.UpdateReady?.Version == newer, $"The window in front has {front.UpdateReady?.Version ?? "nothing"} ready, not {newer}");
 
@@ -817,7 +817,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             MainWindow later = laterWindow = Assert.Single(PassengerApp.Windows, w => w != window && w != front);
             Assert.True(Notice(later) == $"Restart to update to Passenger {newer}",
                 $"A window opened after v{newer} was made ready does not offer Restart to Update: {UpdatesSaid(later)}");
-            Assert.True(later.Actions.WhyNot(AppActions.RestartToUpdate, later.Actions.Context()) is null,
+            Assert.True(later.Actions.WhyNot(AppActions.RestartToUpdate, later.Actions.Context())?.Shown is null,
                 "A window opened after the update was made ready cannot run Restart to Update");
             Assert.True(github.Requests.Count == update.Count + 1,
                 $"Three windows made {github.Requests.Count} requests, not one for the release and one for each of the {update.Count} files of this system's update");
@@ -866,7 +866,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.Null(window.UpdateReady);
         Assert.False(copy.Holds(newer), $"The refused v{newer} is still there to install");
         Assert.True(copy.Downloaded().Count == 0, $"The refused download left {string.Join(", ", copy.Downloaded())} behind");
-        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
         window.Close();
         Ended(window);
         window.InstallUpdate();
@@ -1163,7 +1163,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         CheckForUpdates(window);
         Assert.True(github.Requests.Count == 2 && files.Keys.All(name => github.RequestsFor(name).Length == 0),
             "Check for Updates had a copy that cannot update itself download the release");
-        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
         window.Close();
 
         // A portable copy, as App makes the person's window of one: it never replaces itself, and says what to put in its place.
@@ -1839,7 +1839,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
             Assert.True(tip.Contains($"this user cannot write {copy.Install}", StringComparison.Ordinal) && tip.Contains(command, StringComparison.Ordinal),
                 $"The notice does not say why Passenger cannot install v{newer} and the command that does: '{tip}'");
-            Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+            Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
 
             Ui.Click(window.FindControl<Button>("UpdateButton")!);
             Ui.WaitFor(() => window.Status == $"Copied the command that installs Passenger {newer}: paste it into a terminal", "the notice's click to copy the command");
@@ -1933,7 +1933,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         string[] downloaded = [.. update.Keys.Where(name => github.RequestsFor(name).Length > 0)];
         Assert.True(downloaded.Length == 0, $"A package manager's copy downloaded {string.Join(", ", downloaded)}");
         Assert.False(copy.Holds(newer), $"A package manager's copy made v{newer} ready to install");
-        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
         Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
         Assert.True(window.Browsed.LastOrDefault()?.AbsoluteUri == page, $"The notice's click opened [{string.Join(", ", window.Browsed)}], not the release's page");
         window.Close();

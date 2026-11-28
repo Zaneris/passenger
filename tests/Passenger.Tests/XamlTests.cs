@@ -2363,7 +2363,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
         Ui.Run(window, AppActions.Build);
         Ui.Settle();
-        string uncompiled = Refusals.XamlUncompiled(["Gallery"]);
+        string uncompiled = Refusals.XamlUncompiled(["Gallery"]).Shown;
         Assert.True(window.Status == uncompiled, $"The build after it, nothing changed, said '{window.Status}', not that the app's XAML was never compiled");
         Passenger.App.ToolWindows.OutputView console = window.BottomPanel.Build;
         Assert.True(console.Offered == uncompiled && console.OfferLink == "Rebuild Solution",

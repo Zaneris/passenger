@@ -151,10 +151,10 @@ public partial class MainWindow
         });
         Transaction(AppActions.DatabaseCommit, "Commit", commit: true, 2);
         Transaction(AppActions.DatabaseRollback, "Roll Back", commit: false, 3);
-        Table(AppActions.DatabaseSubmit, "Submit Changes", table => IdeErrors.Observe(table.SubmitAsync()), table => table.WhyNotSubmit, 0);
-        Table(AppActions.DatabaseRevert, "Revert Changes", table => table.Revert(), table => table.WhyNotRevert, 1);
-        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow, 2, noun => $"Add {noun}");
-        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows, 3, noun => $"Delete {noun}s");
+        Table(AppActions.DatabaseSubmit, "Submit Changes", table => IdeErrors.Observe(table.SubmitAsync()), table => table.WhyNotSubmit?.Shown, 0);
+        Table(AppActions.DatabaseRevert, "Revert Changes", table => table.Revert(), table => table.WhyNotRevert?.Shown, 1);
+        Table(AppActions.DatabaseAddRow, "Add Row", table => table.AddRow(), table => table.WhyNotAddRow?.Shown, 2, noun => $"Add {noun}");
+        Table(AppActions.DatabaseDeleteRows, "Delete Rows", table => table.DeleteRows(), table => table.WhyNotDeleteRows?.Shown, 3, noun => $"Delete {noun}s");
         actions!.Add(new IdeAction(AppActions.DatabaseExpire, "Set Time to Live…", "Database", _ => IdeErrors.Observe(ExpireKeyAsync()))
         {
             WhyNot = _ => controller.Busy ? Refusals.DatabaseBusy : ChosenKey() is not { } chosen ? Refusals.NoRedisKey
@@ -248,7 +248,7 @@ public partial class MainWindow
             });
         }
 
-        void Add(string id, string title, Func<Task> run, Func<string?> why, MenuPlace? menu = null)
+        void Add(string id, string title, Func<Task> run, Func<Words?> why, MenuPlace? menu = null)
         {
             actions!.Add(new IdeAction(id, title, "Database", _ => IdeErrors.Observe(run()))
             {
@@ -257,16 +257,16 @@ public partial class MainWindow
             });
         }
 
-        string? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject
+        Words? WhyNotObject() => databaseExplorer?.Chosen is not { Target: not null } chosen ? Refusals.NoDatabaseObject
             : !DatabaseKinds.SpeaksSql(chosen.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(chosen.Source.Kind))
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
-        string? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection
+        Words? WhyNotSchema() => databaseExplorer?.Chosen is not { Kind: not DatabaseNodeKind.Note } chosen ? Refusals.NoDatabaseConnection
             : chosen.Source.Kind is DatabaseKind.DuckDb or DatabaseKind.ClickHouse or DatabaseKind.Snowflake or DatabaseKind.Redshift || !DatabaseKinds.SpeaksSql(chosen.Source.Kind)
                 ? Refusals.NoSchemaReads(DatabaseKinds.Title(chosen.Source.Kind))
             : WhyNotOpened(chosen.Source) ?? PersonsOwn();
 
-        string? PersonsOwn() => AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null;
+        string? PersonsOwn() => (AgentsOwn || Mcp.AgentCall.Current is not null ? Refusals.AsksThePerson : null)?.Shown;
     }
 
     /// <summary>The action of a table's data whose keys (<see cref="AppActions.KeysIn"/>) a key the keymap read as
@@ -280,7 +280,7 @@ public partial class MainWindow
         ? (source.Kind, database.CatalogOf(source)) : null;
 
     /// <summary>Why a connection may not be opened: one the folder's own files name waits for the folder to be trusted.</summary>
-    internal string? WhyNotOpened(DatabaseSource source) => source.Found is not null && session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
+    internal Words? WhyNotOpened(DatabaseSource source) => source.Found is not null && session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
 
     /// <summary>Opens the chosen row's connection in the explorer, reading its databases, as its chevron does.</summary>
     private async Task OpenChosenConnectionAsync()
@@ -385,8 +385,8 @@ public partial class MainWindow
         }
         string? asked = await AskNameAsync($"Time to Live of {key} (seconds; none keeps it)",
             now > TimeSpan.Zero ? ((long)Math.Ceiling(now.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
-            text => text.Trim().Length == 0 || long.TryParse(text.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long seconds)
-                && seconds > 0 ? null : Refusals.NoTimeToLive);
+            text => (text.Trim().Length == 0 || long.TryParse(text.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long seconds)
+                && seconds > 0 ? null : Refusals.NoTimeToLive)?.Shown);
         if (asked is null)
         {
             return;
@@ -411,7 +411,7 @@ public partial class MainWindow
             }
             else
             {
-                controller.Refuse(Refusals.KeyGone(key));
+                controller.Refuse(Refusals.KeyGone(key).Shown);
             }
             if (databaseExplorer is { } explorer)
             {
@@ -681,7 +681,7 @@ public partial class MainWindow
         string[] changing = [.. runs.Where(r => SqlText.EffectOf(r, source.Kind) >= SqlEffect.ChangesData)];
         if (changing.Length > 0 && source.Mark == DatabaseMark.ReadOnly)
         {
-            console.Ran(console.Results, Refusals.ReadOnlyConnection(source.Name));
+            console.Ran(console.Results, Refusals.ReadOnlyConnection(source.Name).Shown);
             Refuse(Refusals.ReadOnlyConnection(source.Name));
             return;
         }
@@ -761,8 +761,8 @@ public partial class MainWindow
     /// <summary>Why a file may not run against a connection: MongoDB's shell runs on MongoDB alone, Redis's commands on Redis
     /// alone, and SQL on every other.</summary>
     private static string? WhyNotConsoleOf(string path, DatabaseSource source) =>
-        Languages.Language.ForPath(path) == SqlConsole.LanguageOf(source.Kind) ? null
-            : Refusals.ConsoleOfAnother(Languages.Language.ForPath(path).Name, DatabaseKinds.Title(source.Kind));
+        (Languages.Language.ForPath(path) == SqlConsole.LanguageOf(source.Kind) ? null
+            : Refusals.ConsoleOfAnother(Languages.Language.ForPath(path).Name, DatabaseKinds.Title(source.Kind)))?.Shown;
 
     /// <summary>The SQL file shown as a console and its connection, asking which connection where it has none yet; null
     /// where none is chosen or it may not be opened, said.</summary>
@@ -862,12 +862,12 @@ public partial class MainWindow
 
     private string? WhyNotExport(ActionContext context) => ExportOf(context) switch
     {
-        null => Refusals.NothingToExport,
-        { Table: { } table } => !DatabaseKinds.SpeaksSql(table.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(table.Source.Kind))
-            : table.Exported() is null ? Refusals.DatabaseBusy : null,
-        { Node: { } node } => !DatabaseKinds.SpeaksSql(node.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(node.Source.Kind))
-            : WhyNotOpened(node.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null),
-        { Console.Console.Connection: { } id } => database?.Find(id) is { } source ? WhyNotOpened(source) : Refusals.NoDatabaseConnection,
+        null => Refusals.NothingToExport.Shown,
+        { Table: { } table } => (!DatabaseKinds.SpeaksSql(table.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(table.Source.Kind))
+            : table.Exported() is null ? Refusals.DatabaseBusy : null)?.Shown,
+        { Node: { } node } => (!DatabaseKinds.SpeaksSql(node.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(node.Source.Kind))
+            : WhyNotOpened(node.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null))?.Shown,
+        { Console.Console.Connection: { } id } => (database?.Find(id) is { } source ? WhyNotOpened(source) : Refusals.NoDatabaseConnection)?.Shown,
         _ => null,
     };
 
@@ -960,7 +960,7 @@ public partial class MainWindow
             ? new ImportTo(source, node.Database, node.Schema, node.Kind == DatabaseNodeKind.Table ? node.Table : null) : null;
     }
 
-    private string? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
+    private Words? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
         : DatabaseController.WhyNotImport(to.Source) ?? WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
 
     /// <summary>Import Data: the database's tables read, the file, the table and the columns asked of the person
@@ -1012,20 +1012,20 @@ public partial class MainWindow
         string within = Path.GetDirectoryName(path) ?? path;
         if (!await BackgroundWork.Run(() => Directory.Exists(within)))
         {
-            return Refusals.NoFolderThere(PathNames.Shown(within, Folder));
+            return Refusals.NoFolderThere(PathNames.Shown(within, Folder)).Shown;
         }
         string canonical = PathNames.Canonical(path);
         if (Editors.Find(canonical) is { IsModified: true })
         {
-            return Refusals.UnsavedThere(name);
+            return Refusals.UnsavedThere(name).Shown;
         }
         if (Workspace.ReadOnlyFiles.Holds(canonical))
         {
-            return Workspace.ReadOnlyFiles.Refused(canonical, name);
+            return Workspace.ReadOnlyFiles.Refused(canonical, name)?.Shown;
         }
         if (await BackgroundWork.Run(() => FileText.IsReadOnly(canonical)))
         {
-            return Refusals.ReadOnly(name);
+            return Refusals.ReadOnly(name).Shown;
         }
         return await Editors.ClearAsync([canonical]);
     }
@@ -1222,13 +1222,13 @@ public partial class MainWindow
         await DatabasesFoundAsync();
         if (session != asked)
         {
-            return (null, Refusals.SolutionClosed);
+            return (null, Refusals.SolutionClosed.Shown);
         }
         DatabaseSource used = controller.Use(wanted, lasting);
         if (WhyNotOpened(used) is { } why)
         {
             Refuse(why);
-            return (null, why);
+            return (null, why.Shown);
         }
         if (DatabaseExplorer.Rows.FirstOrDefault(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == used.Id) is { } row)
         {

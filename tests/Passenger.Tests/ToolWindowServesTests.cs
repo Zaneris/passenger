@@ -54,14 +54,14 @@ public sealed class ToolWindowServesTests
     /// <summary>The windows of one kind of project, each with why a plain console solution has none of it.</summary>
     private static readonly (string Id, string Why)[] OfAKind =
     [
-        (ToolWindowIds.Game, Refusals.NoGodotProject),
-        (ToolWindowIds.Aspire, Refusals.NoAppHost),
-        (ToolWindowIds.StepLibrary, Refusals.NoStepDefinitions),
-        (ToolWindowIds.Endpoints, Refusals.NoWebRequests),
-        (ToolWindowIds.Requests, Refusals.NoWebApp),
-        (ToolWindowIds.Migrations, Refusals.NoEfCore),
-        (ToolWindowIds.LiveTree, Refusals.NoInspectedApp),
-        (ToolWindowIds.Toolbox, Refusals.NoFormsProject),
+        (ToolWindowIds.Game, Refusals.NoGodotProject.Shown),
+        (ToolWindowIds.Aspire, Refusals.NoAppHost.Shown),
+        (ToolWindowIds.StepLibrary, Refusals.NoStepDefinitions.Shown),
+        (ToolWindowIds.Endpoints, Refusals.NoWebRequests.Shown),
+        (ToolWindowIds.Requests, Refusals.NoWebApp.Shown),
+        (ToolWindowIds.Migrations, Refusals.NoEfCore.Shown),
+        (ToolWindowIds.LiveTree, Refusals.NoInspectedApp.Shown),
+        (ToolWindowIds.Toolbox, Refusals.NoFormsProject.Shown),
     ];
 
     /// <summary>Each tool window declares what it serves, a console solution shows none it lacks and View greys each
@@ -95,7 +95,7 @@ public sealed class ToolWindowServesTests
             HashSet<string> words = [.. typeof(Refusals).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!)];
             foreach (ToolWindowServes rule in Sweep.Values.Distinct().Where(r => r != ToolWindowServes.EveryFolder))
             {
-                Assert.True(rule.WhyNot(FolderHolds.None) is { } why && words.Contains(why), $"A window serving {rule.Kinds} greys without Refusals' words");
+                Assert.True(rule.WhyNot(FolderHolds.None)?.Shown is { } why && words.Contains(why), $"A window serving {rule.Kinds} greys without Refusals' words");
             }
         }
         finally
@@ -131,7 +131,7 @@ public sealed class ToolWindowServesTests
                 NativeMenuItem item = tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == shown.Title);
                 Assert.False(item.IsEnabled, $"View › Tool Windows offers {shown.Title} in a plain console solution");
                 Assert.Equal(why, item.ToolTip);
-                Assert.Equal(why, window.Actions.WhyNot(shown.Action!, window.Actions.Context()));
+                Assert.Equal(why, window.Actions.WhyNot(shown.Action!, window.Actions.Context())?.Shown);
                 Assert.True(!opened.Contains(id) || dock.Capture().Windows[id].Shown, $"{shown.Title}'s place, open in the layout, was not kept for when it serves");
             }
             Assert.All(dock.Windows.Where(w => !OfAKind.Any(k => k.Id == w.Id)), w =>
@@ -141,9 +141,9 @@ public sealed class ToolWindowServesTests
             Assert.True(within.Length > 10, $"Only {within.Length} actions work in the Aspire and Endpoints windows");
             foreach (IdeAction action in within)
             {
-                string why = action.Group == "Aspire" ? Refusals.NoAppHost : Refusals.NoWebRequests;
-                Assert.True(window.Actions.WhyNot(action.Id, window.Actions.Context()) == why,
-                    $"{action.Title} says \"{window.Actions.WhyNot(action.Id, window.Actions.Context())}\" in a plain console solution, not \"{why}\" as its window does");
+                string why = action.Group == "Aspire" ? Refusals.NoAppHost.Shown : Refusals.NoWebRequests.Shown;
+                Assert.True(window.Actions.WhyNot(action.Id, window.Actions.Context())?.Shown == why,
+                    $"{action.Title} says \"{window.Actions.WhyNot(action.Id, window.Actions.Context())?.Shown}\" in a plain console solution, not \"{why}\" as its window does");
             }
             Assert.True(StripeButton(window, ToolWindowIds.Run) is not null, "Run, every folder's, left its stripe");
         }
@@ -264,7 +264,7 @@ public sealed class ToolWindowServesTests
     {
         Ui.WaitFor(() => StripeButton(window, ToolWindowIds.Game) is null, () => $"the Game window's icon gone with the Godot project, {how}");
         Assert.False(window.DockHost.IsShown(ToolWindowIds.Game), $"The Game window still shows with no Godot project in the folder, {how}");
-        Assert.Equal(Refusals.NoGodotProject, window.DockHost[ToolWindowIds.Game].Unserved);
+        Assert.Equal(Refusals.NoGodotProject.Shown, window.DockHost[ToolWindowIds.Game].Unserved);
     }
 
     /// <summary>A solution of one console app, which no tool window of a kind of project serves.</summary>

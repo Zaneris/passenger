@@ -67,7 +67,7 @@ public sealed class GodotExportTests
         try
         {
             window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([archive!]);
-            Assert.Null(window.Actions.Run(AppActions.Publish));
+            Assert.Null(window.Actions.Run(AppActions.Publish)?.Shown);
             GodotExportDialog dialog = Asked(window);
             Ui.ClickButton(dialog, GodotExportDialog.InstallWords);
             Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "the question before the templates are installed");
@@ -107,7 +107,7 @@ public sealed class GodotExportTests
         try
         {
             window.PickFiles = (_, _, _) => Task.FromResult<IReadOnlyList<string>>([archive!]);
-            Assert.Null(window.Actions.Run(AppActions.Publish));
+            Assert.Null(window.Actions.Run(AppActions.Publish)?.Shown);
             GodotExportDialog dialog = Asked(window);
             Ui.ClickButton(dialog, GodotExportDialog.InstallWords);
             Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(), "the question before the templates are installed");
@@ -154,7 +154,7 @@ public sealed class GodotExportTests
         MainWindow window = Open(folder, godots);
         try
         {
-            Assert.Null(window.Actions.Run(AppActions.Publish));
+            Assert.Null(window.Actions.Run(AppActions.Publish)?.Shown);
             GodotExportDialog dialog = Asked(window);
             Assert.Equal($"{Preset} cannot be exported: {why}", dialog.Problem);
             Assert.False(dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Export").IsEnabled, "Export is enabled for an export Godot would build none of");

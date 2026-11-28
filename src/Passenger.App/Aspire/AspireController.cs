@@ -147,7 +147,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     /// <summary>The run of the AppHost at <paramref name="appHost"/>, which throws, saying so (<see cref="Refusals.AppHostNotOwned"/>),
     /// where the folder's session runs none.</summary>
-    public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new InvalidOperationException(Refusals.AppHostNotOwned);
+    public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new InvalidOperationException(Refusals.AppHostNotOwned.English);
 
     /// <summary>The process its AppHost says a resource's program runs as (executable.pid), the last it gives; null for none.</summary>
     public static int? ProgramOf(AspireResource resource)
@@ -217,7 +217,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         AspireAppRun app = OwnedApp(selection.AppHostPath);
         if (disposed || workspace.IsEnded || lifetime.IsCancellationRequested || app.Stopping || app.Lifetime.IsCancellationRequested)
         {
-            throw new InvalidOperationException(Refusals.AppHostChanged);
+            throw new InvalidOperationException(Refusals.AppHostChanged.English);
         }
         if (FindService(selection) is { } service)
         {
@@ -407,7 +407,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             cancellation.ThrowIfCancellationRequested();
             if (workspace.IsEnded || disposed)
             {
-                throw new LaunchException(Refusals.SolutionClosed);
+                throw new LaunchException(Refusals.SolutionClosed.English);
             }
             if (plan.WhyNot("run") is { } why)
             {
@@ -875,7 +875,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             cancellation);
         if (cli is null)
         {
-            throw new LaunchException(Refusals.NoAspireCli(Path.GetFileName(configuration.Project)));
+            throw new LaunchException(Refusals.NoAspireCli(Path.GetFileName(configuration.Project)).English);
         }
         foreach ((string name, string value) in configuration.Environment)
         {
@@ -1017,7 +1017,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         if (loads is not null)
         {
-            throw new LaunchException(Refusals.LoadsOthersCode(project.Name, loads));
+            throw new LaunchException(Refusals.LoadsOthersCode(project.Name, loads).English);
         }
         if (app.Stopping || workspace.IsEnded || disposed)
         {
@@ -1049,7 +1049,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         // A project not loaded in the folder, whose evaluation has not said it is a Functions app.
         if (request.Functions && !plan.Functions)
         {
-            string func = await BackgroundWork.Run(FunctionsHost.Func, cancellation) ?? throw new LaunchException(Refusals.NoFunc(project.Name));
+            string func = await BackgroundWork.Run(FunctionsHost.Func, cancellation) ?? throw new LaunchException(Refusals.NoFunc(project.Name).English);
             plan = FunctionsHost.Plan(plan, func, [.. plan.Arguments.Skip(plan.Leading)]);
         }
         LaunchPlan stamped = plan;
@@ -1082,7 +1082,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             if (request.Functions)
             {
                 // A Functions app's worker, which func starts, is debugged alone: never recorded, nor attached to quietly.
-                held = held == RunStart.Profile ? throw new LaunchException(Refusals.FunctionsUnprofiled(serviceName)) : held == RunStart.Debug ? held : null;
+                held = held == RunStart.Profile ? throw new LaunchException(Refusals.FunctionsUnprofiled(serviceName).English) : held == RunStart.Debug ? held : null;
             }
             resource.Inspection = request.Functions ? null : LiveApp.For(plan, workspace.Overlays);
             if (resource.Inspection is { } inspection)
@@ -1537,7 +1537,7 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>How a resource the run left unstarted is said, where DCP says the start it refused failed, and why.</summary>
     public const string NotStarted = "Not started";
 
-    public static readonly string NotStartedWhy = $"{Refusals.Sentence(Refusals.DontStart)}; {StartsService}";
+    public static readonly string NotStartedWhy = $"{Refusals.Sentence(Refusals.DontStart.English)}; {StartsService}";
 
     /// <summary>A service an AppHost's run left unstarted is started by its resource's Start, Debug Service or Run Service
     /// without Debugger, each of which has its AppHost start it.</summary>
@@ -1820,7 +1820,7 @@ public sealed class AspireAppRun : ServiceRun
             // The start given, whose program its ended session may have ended with it, else the newest of its name.
             if ((service as AspireResourceRun ?? ServiceNamed(service.Name)) is not AspireResourceRun running)
             {
-                return Refusals.NotRunning(service.Name, Name);
+                return Refusals.NotRunning(service.Name, Name).Shown;
             }
             starts.Add(running);
         }

@@ -43,7 +43,7 @@ public partial class MainWindow
     }
 
     private string? NothingToSwitchTo() =>
-        Editors.Groups.Any(g => g.Tabs.Count > 0) || Dock.Windows.Any(w => w.Unserved is null && w.Action is not null) ? null : Refusals.NothingToSwitchTo;
+        (Editors.Groups.Any(g => g.Tabs.Count > 0) || Dock.Windows.Any(w => w.Unserved is null && w.Action is not null) ? null : Refusals.NothingToSwitchTo)?.Shown;
 
     /// <summary>The Switcher's rows as they stand: the tabs open (a file's or a diff's; a tool window's is among the
     /// windows), the latest used first, those not used since the window opened in Recent Files' order, then the tool

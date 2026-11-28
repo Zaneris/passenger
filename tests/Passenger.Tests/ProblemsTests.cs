@@ -563,7 +563,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
         window.ApplySettings(window.Settings with { SolutionWideAnalysis = false });
-        Assert.Equal(Refusals.SolutionAnalysisOff, window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context()));
+        Assert.Equal(Refusals.SolutionAnalysisOff.Shown, window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context())?.Shown);
 
         AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionErrorsListed.Count == 2,
@@ -1182,7 +1182,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         int title = window.EditorArea.Active!.Text.Snapshot.ToString().IndexOf("Title()", StringComparison.Ordinal);
         Assert.Contains(window.EditorArea.Active!.Markers, m => m.Message == Broken && m.Range.Start == title && m.Range.End == title + "Title".Length);
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Sho");
-        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap));
+        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap)?.Shown);
         DependencyMapView map = window.DependencyMapWindow;
         Ui.WaitFor(() => map.Chosen?.Name == "Shown()" && !map.IsReading, () => $"the map chosen at Order.Shown, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
         Assert.Equal(["Uses Shop.Screens, breaking the layer rules: calls 1"], map.EdgeRows.Select(e => e.Words));

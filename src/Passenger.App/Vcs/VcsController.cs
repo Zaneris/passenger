@@ -118,12 +118,12 @@ public sealed class VcsController : IDisposable
     public bool GitMissing { get; private set; }
 
     /// <summary>What is said where Git is asked for and the window has none: why git cannot read one, where it cannot.</summary>
-    public string NoRepository => Refused ?? Refusals.NoRepository;
+    public string NoRepository => (Refused ?? Refusals.NoRepository).Shown;
 
     /// <summary>Why nothing goes to a remote or comes from one (Push, Fetch, Update Project, a branch's Update and Push…, a
     /// remote's branch deleted): the repository is in a folder not trusted, where git reaches no remote, as it could not
     /// be kept from running what the repository's settings for one name (<see cref="UntrustedGit"/>); null otherwise.</summary>
-    public string? WhyNotRemote => git is { } repository && !WorkspaceTrust.Trusts(repository.Root) ? Refusals.Untrusted : null;
+    public Words? WhyNotRemote => git is { } repository && !WorkspaceTrust.Trusts(repository.Root) ? Refusals.Untrusted : null;
 
     /// <summary>Why Rollback cannot put <paramref name="changes"/> back: in a folder not trusted, git would write out one it
     /// stores through a filter, which runs only once the folder is trusted (<see cref="FileChange.Unfiltered"/>), as the last
@@ -148,7 +148,7 @@ public sealed class VcsController : IDisposable
         }
         if (branch.CheckedOutElsewhere is { } worktree)
         {
-            return Refusals.InWorktree(branch.Name, worktree);
+            return Refusals.InWorktree(branch.Name, worktree).Shown;
         }
         string? local = branch.Kind == RefKind.Local ? branch.Name : branch.Kind == RefKind.Remote ? LocalOf(branch, all) : null;
         return local is not null ? await repository.WhyNotCheckedOutAsync(local) : await repository.WhyNotSwitchedAsync(branch.Ref.FullName);
@@ -437,7 +437,7 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Why Create Git Repository cannot run, or null where it can: no folder is open, the folder is in a working
     /// tree already, or git refuses the one it is in or is not installed.</summary>
-    public string? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;
+    public Words? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;
 
     /// <summary>Create Git Repository: the open folder made a working tree and read as it is when a folder opens, given
     /// first the .gitignore every repository Passenger makes is given where it has none (<see cref="RepositoryFiles.GitIgnoreAsync"/>),
@@ -448,7 +448,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (WhyNotCreate is { } why)
         {
-            return Report(false, why);
+            return Report(false, why.Shown);
         }
         string folder = lookIn!;
         string ignore = Path.Join(folder, ".gitignore");
@@ -981,7 +981,7 @@ public sealed class VcsController : IDisposable
     /// <summary>Why a commit cannot be made of what is chosen (<paramref name="anyChosen"/>) with a message, in the order a
     /// commit refuses: files in conflict, a rebase stopped for them, nothing chosen, a chosen file no commit takes, the
     /// message empty; null when one can be made.</summary>
-    public string? WhyNotCommit(bool anyChosen, string message, bool amend, IReadOnlyList<FileChange>? chosen = null) =>
+    public Words? WhyNotCommit(bool anyChosen, string message, bool amend, IReadOnlyList<FileChange>? chosen = null) =>
         Conflicts.Count > 0 ? Refusals.CommitWithConflicts
         // Stopped for conflicts, a commit of its own would go beside the rebase's; a step that stops it (an edit) asks for one.
         : Merge.Operation is MergeOperation.Rebase && Merge.Stop is null ? $"{Merge.UnderWay}: Continue Rebase commits what is resolved and goes on, or Abort Rebase ends it"
@@ -1006,7 +1006,7 @@ public sealed class VcsController : IDisposable
         }
         if (((push ? WhyNotRemote : null) ?? WhyNotCommit(chosen.Count > 0, message, amend, chosen)) is { } refused)
         {
-            return new CommitResult(Report(false, refused), null, null);
+            return new CommitResult(Report(false, refused.Shown), null, null);
         }
         bool merging = Merge.CommitsWhole && !amend;
         if (!Begin(Committing, $"Committing {Plural.Of(chosen.Count, "file")}…", out Working? work))
@@ -1114,7 +1114,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work, stoppable: true))
         {
@@ -1177,7 +1177,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (Conflicts.Count > 0)
         {
@@ -1196,7 +1196,7 @@ public sealed class VcsController : IDisposable
             }
             if (await repository.UpstreamAsync() is not { } upstream)
             {
-                return Report(false, Refusals.Untracked(branch));
+                return Report(false, Refusals.Untracked(branch).Shown);
             }
             // Stop ends the fetch alone: the merge or rebase after it is the tree's own, never left halfway.
             if (await RemoteAsync(work, repository.FetchUpstreamAsync) is not { } fetched)
@@ -1264,7 +1264,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Fetch, "Fetching…", out Working? work, stoppable: true))
         {
@@ -1287,7 +1287,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Fetch, $"Fetching {remote}…", out Working? work, stoppable: true))
         {
@@ -1516,7 +1516,7 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>What an operation asked for again while it works says.</summary>
-    private string UnderWay(string id) => Work?.Of(id) is { } under ? ActionWork.Busy(under) : "Already under way";
+    private string UnderWay(string id) => (Work?.Of(id) is { } under ? ActionWork.Busy(under) : "Already under way").Shown;
 
     /// <summary>An operation's outcome, told to the status bar in the words it is returned in.</summary>
     private VcsOutcome Report(bool succeeded, string message)
@@ -1845,7 +1845,7 @@ public sealed class VcsController : IDisposable
         }
         if (plan.PushTo is not null && WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         string making = plan.Moving is null ? $"Tagging {plan.Commit.Short} as {plan.Name}…" : $"Moving {plan.Name} to {plan.Commit.Short}…";
         if (!Begin(AppActions.NewTag, making, out Working? work, stoppable: plan.PushTo is not null))
@@ -1897,7 +1897,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Refused(untrusted);
+            return Refused(untrusted.Shown);
         }
         IReadOnlyList<string> remotes = await repository.RemotesAsync();
         return remotes switch
@@ -1926,7 +1926,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return new TagPush(Report(false, untrusted), false);
+            return new TagPush(Report(false, untrusted.Shown), false);
         }
         if (!Begin(AppActions.Push, $"Pushing tag {tag} to {remote}…", out Working? work, stoppable: true))
         {
@@ -1959,7 +1959,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Push, $"Deleting tag {tag} on {remote}…", out Working? work, stoppable: true))
         {
@@ -1978,7 +1978,7 @@ public sealed class VcsController : IDisposable
 
     /// <summary>Why New Worktree… cannot add one: no working tree, or a folder not trusted, where checking a branch out
     /// would run the repository's filters and hooks.</summary>
-    public string? WhyNotNewWorktree => git is null ? NoRepository : WhyNotRemote;
+    public string? WhyNotNewWorktree => (git is null ? NoRepository : WhyNotRemote)?.Shown;
 
     /// <summary>New Worktree…'s plan carried out, held as its action's work: a branch checked out in a folder of its own,
     /// made first where it is new; told in words that say what a worktree is.</summary>
@@ -2045,7 +2045,7 @@ public sealed class VcsController : IDisposable
         }
         if (branch.UpstreamRemote is not { } remote || branch.UpstreamBranch is not { } tracked)
         {
-            return Task.FromResult(Report(false, Refusals.Untracked(branch.Name)));
+            return Task.FromResult(Report(false, Refusals.Untracked(branch.Name).Shown));
         }
         return RemoteSwitchAsync(AppActions.UpdateProject, $"Updating {branch.Name}…", "Update", (repository, stopping, asker) => repository.FetchIntoAsync(remote, tracked, branch.Name, stopping, asker),
             $"Updated {branch.Name}", "Git update");
@@ -2069,7 +2069,7 @@ public sealed class VcsController : IDisposable
         }
         if (plan.Fetch && WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.ManageRemotes, plan.Was is null ? $"Adding the remote {plan.Name}…" : $"Changing the remote {plan.Was}…", out Working? work, stoppable: plan.Fetch))
         {
@@ -2171,7 +2171,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Push, $"{(plan.Force ? "Force pushing" : "Pushing")} {plan.Branch} to {plan.Remote}…", out Working? work, stoppable: true))
         {
@@ -2462,7 +2462,7 @@ public sealed class VcsController : IDisposable
     {
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(id, stage, out Working? work, stoppable: true))
         {

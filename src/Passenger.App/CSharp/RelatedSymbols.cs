@@ -70,7 +70,7 @@ internal static class RelatedSymbols
         while (waiting.Count > 0 && found.Count < MostTypes)
         {
             // Asked of the server running now at each level: the one that answered the last may have been started again.
-            LanguageServer server = csharp()?.Server ?? throw new LanguageServerFailed(Refusals.CSharpNotRunning);
+            LanguageServer server = csharp()?.Server ?? throw new LanguageServerFailed(Refusals.CSharpNotRunning.Shown);
             foreach (HierarchyItem type in (await next(server, waiting.Dequeue())).OrderBy(t => t.Name, StringComparer.Ordinal))
             {
                 if (found.Count < MostTypes && seen.Add((DocumentUris.ToPath(type.Uri), type.SelectionRange.Start)))

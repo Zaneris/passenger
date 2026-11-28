@@ -392,7 +392,7 @@ public sealed class CaretHighlightsTests : IClassFixture<CaretHighlightsTests.Pr
             }
             else
             {
-                Assert.Null(window.Actions.Run(action));
+                Assert.Null(window.Actions.Run(action)?.Shown);
                 Ui.Settle();
             }
         }

@@ -1016,7 +1016,7 @@ public sealed partial class EditorArea : UserControl
             string name = Path.GetFileName(path);
             if (!landing.IsCompleted && work is not null)
             {
-                stage ??= work.Stage;
+                stage ??= work.Stage.Shown;
                 work.Say(Waiting([path]));
             }
             Exception? refused;

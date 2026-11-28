@@ -201,7 +201,7 @@ public sealed class MauiCatalystTests : McpRig
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip($"A Mac Catalyst test project cannot run here: {Refusals.MacCatalystOnMacAlone}");
+            Assert.Skip($"A Mac Catalyst test project cannot run here: {Refusals.MacCatalystOnMacAlone.Shown}");
         }
         string folder = PathNames.Canonical(TestFolders.Create("catalyst-device-tests"));
         try
@@ -520,7 +520,7 @@ public sealed class MauiCatalystTests : McpRig
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip($"It cannot run here: {Refusals.MacCatalystOnMacAlone}");
+            Assert.Skip($"It cannot run here: {Refusals.MacCatalystOnMacAlone.Shown}");
         }
         string runtime = $"maccatalyst-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
         if (!File.Exists(CarriedFiles.Relay(runtime, MacCatalystApp.RelayFile)))

@@ -134,7 +134,7 @@ public sealed class RefactoringDialogsTests
         window.ClonesWindow.Choose(sets[1]);
         Ui.Settle();
         Assert.Equal("The clones name different things: ToShortDateString at Ledger.cs:39, ToLongDateString at Tally.cs:39; one method can't take both",
-            window.Actions.WhyNot(AppActions.ExtractClones, window.Actions.Context()));
+            window.Actions.WhyNot(AppActions.ExtractClones, window.Actions.Context())?.Shown);
 
         window.ClonesWindow.Choose(sets[0]);
         Ui.Settle();

@@ -368,7 +368,7 @@ public sealed partial class DebugController : IDisposable
         {
             return (here, null);
         }
-        string? stage = work?.Stage;
+        string? stage = (work?.Stage)?.Shown;
         bool done = false;
         Action<string> say = UiThread.Marshal<string>(line =>
         {
@@ -392,7 +392,7 @@ public sealed partial class DebugController : IDisposable
         }
         catch (Updates.ReleaseAssetException failed)
         {
-            return (null, Refusals.X86DebuggerMissing(failed.Message));
+            return (null, Refusals.X86DebuggerMissing(failed.Message).Shown);
         }
         finally
         {
@@ -506,7 +506,7 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>Why Apply Changes cannot run: nothing debugged, a session without Hot Reload, or one that stopped taking
     /// changes; none while its app's XAML has edits, which need no Edit and Continue.</summary>
-    public string? WhyNotApply() => NotLive()
+    public Words? WhyNotApply() => NotLive()
         ?? (Reloaded!.Session!.State == DebugState.Starting ? StillStarting
         : Reloaded.App?.Xaml is { Changed: true } ? null
         : Reloaded.Session.Engine == DebugEngine.WebAssembly ? BrowserReload
@@ -623,7 +623,7 @@ public sealed partial class DebugController : IDisposable
         using IDisposable held = BackgroundWork.Scope();
         if (targets.Count == 0)
         {
-            HotReloadOutcome refused = new(HotReloadResult.Failed, WhyNotApply() ?? Refusals.NothingDebugged);
+            HotReloadOutcome refused = new(HotReloadResult.Failed, (WhyNotApply() ?? Refusals.NothingDebugged).Shown);
             Message?.Invoke(this, refused.Said);
             return new Applying(refused, null, null, null);
         }
@@ -891,7 +891,7 @@ public sealed partial class DebugController : IDisposable
             (x86Host, string? missing) = await X86HostAsync(!elsewhere && place is null && plan.RunsAsX86, work, stop);
             if (missing is not null)
             {
-                return Refusals.Undebugged(plan.ProgramName, missing);
+                return Refusals.Undebugged(plan.ProgramName, missing).Shown;
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
@@ -962,7 +962,7 @@ public sealed partial class DebugController : IDisposable
         try
         {
             (x86Host, string? missing) = await X86HostAsync(!elsewhere && place is null && DotnetProcesses.Runs32Bit(processId), work, work?.Stopping ?? default);
-            unattached = missing is null ? null : Refusals.Unattached(name, missing);
+            unattached = (missing is null ? null : Refusals.Unattached(name, missing))?.Shown;
         }
         catch (OperationCanceledException) when (work?.Stopping.IsCancellationRequested == true)
         {
@@ -1195,7 +1195,7 @@ public sealed partial class DebugController : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (ending)
         {
-            throw new InvalidOperationException(Refusals.WorkspaceEnding);
+            throw new InvalidOperationException(Refusals.WorkspaceEnding.English);
         }
         cancellation.ThrowIfCancellationRequested();
         DebugTab tab = Place(name, replace: false);
@@ -1286,7 +1286,7 @@ public sealed partial class DebugController : IDisposable
         }
         if (ending)
         {
-            return Unopened(Refusals.WorkspaceEnding);
+            return Unopened(Refusals.WorkspaceEnding.Shown);
         }
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
@@ -1700,7 +1700,7 @@ public sealed partial class DebugController : IDisposable
         }
         if (disposed || ending)
         {
-            return Refusals.WorkspaceEnding;
+            return Refusals.WorkspaceEnding.Shown;
         }
         running.Remove(reload);
         DebugTab tab = Place(reload.Name);
@@ -2011,7 +2011,7 @@ public sealed partial class DebugController : IDisposable
     public RunDetaching? RunDetach { get; set; }
 
     /// <summary>Why one session's program cannot be let go now, as Detach asks of the chosen one.</summary>
-    public string? WhyNotDetachOf(DebugSession session) => WhyNotDetach(session);
+    public string? WhyNotDetachOf(DebugSession session) => WhyNotDetach(session)?.Shown;
 
     /// <summary>Detach: the debugger lets go of the program it attached to, which runs on. Null once it has, else why it
     /// could not (nothing attached to).</summary>
@@ -2023,7 +2023,7 @@ public sealed partial class DebugController : IDisposable
         UiThread.Check();
         if ((session == Session ? WhyNotDetach() : WhyNotDetach(session)) is { } why)
         {
-            return why;
+            return why.Shown;
         }
         await session!.DetachAsync();
         return null;
@@ -2041,11 +2041,11 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>Why Detach cannot run now: nothing is being debugged, or the debugger started the program, which ends with
     /// its session (its input and output are the adapter's).</summary>
-    private string? WhyNotDetach() => NotLive() ?? WhyNotDetach(Session);
+    private string? WhyNotDetach() => (NotLive() ?? WhyNotDetach(Session))?.Shown;
 
     /// <summary>Why one session's program cannot be let go now: it has ended, the debugger started it, it still starts, or
     /// Hot Reload changed it (<see cref="LetsNoDebuggerGo"/>).</summary>
-    private string? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? Refusals.NothingDebugged
+    private Words? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? Refusals.NothingDebugged
         : !session.Attached ? "The debugger started this program: Stop ends it, and Detach lets go only of a program attached to"
         : TabOf(session) is { FollowedStarts: true } ? "Passenger started this program through the one that starts it, which ends with it: Stop ends both, and Detach lets go only of a program attached to as it ran"
         : session.State == DebugState.Starting ? StillStarting
@@ -2181,7 +2181,7 @@ public sealed partial class DebugController : IDisposable
             IsChecked = _ => current().Breakpoints.Muted,
         });
 
-        void Add(string id, string title, Action<DebugController, ActionContext> run, Func<DebugController, ActionContext, string?> whyNot, MenuPlace? menu) =>
+        void Add(string id, string title, Action<DebugController, ActionContext> run, Func<DebugController, ActionContext, Words?> whyNot, MenuPlace? menu) =>
             actions.Add(new IdeAction(id, title, "Debug", c => run(current(), c)) { WhyNot = c => whyNot(current(), c), Menus = menu is null ? [] : [menu] });
     }
 
@@ -2248,14 +2248,14 @@ public sealed partial class DebugController : IDisposable
     }
 
     /// <summary>Why a step cannot go now: nothing is being debugged, or the program runs.</summary>
-    private string? NotPaused() => view.NotPaused();
+    private Words? NotPaused() => view.NotPaused();
 
     /// <summary>Why no step goes on from the stop now: the program is not paused, or its debugger steps on from no stop of the
     /// kind it is at (a Godot script error's).</summary>
-    private string? NotSteppable() => NotPaused() ?? Session!.NoSteps;
+    private string? NotSteppable() => (NotPaused() ?? Session!.NoSteps)?.Shown;
 
     /// <summary>Why the chosen session takes no action now: nothing is being debugged, or the tab chosen is one that ended.</summary>
-    private string? NotLive() => view.NotLive();
+    private string? NotLive() => view.NotLive()?.Shown;
 
     /// <summary>Sets the paused program going as an action asks, shown running at once; one the debugger refuses shows the
     /// stop again, and the reason in the status bar. Edits made while it was paused are applied first: one that needs a
@@ -2375,7 +2375,7 @@ public sealed partial class DebugController : IDisposable
             }
             else if (!session.MovesNextStatement)
             {
-                problem = Refusals.NoNextStatement;
+                problem = Refusals.NoNextStatement.Shown;
             }
             else if (await session.GotoTargetAsync(path, line) is not { } target)
             {
@@ -3614,7 +3614,7 @@ public sealed partial class DebugController : IDisposable
     {
         if (Session is not { State: DebugState.Paused } session || (within ?? frame) is not { } at)
         {
-            Message?.Invoke(this, Refusals.NothingDebugged);
+            Message?.Invoke(this, Refusals.NothingDebugged.Shown);
             return;
         }
         try
@@ -3646,7 +3646,7 @@ public sealed partial class DebugController : IDisposable
     {
         if (frame?.Source?.Path is not { } source || node.Expression is not { } expression)
         {
-            Message?.Invoke(this, Refusals.FrameUnplaced);
+            Message?.Invoke(this, Refusals.FrameUnplaced.Shown);
             return;
         }
         string path = PathNames.Canonical(source);
@@ -3793,7 +3793,7 @@ public sealed partial class DebugController : IDisposable
         UiThread.Check();
         if (node.Captured)
         {
-            return new DataWatchOffer(DataWatchOffer.Set, Refusals.SnapshotValue);
+            return new DataWatchOffer(DataWatchOffer.Set, Refusals.SnapshotValue.Shown);
         }
         DebugSession? session = Session;
         (DataBreakpointInfoResponse? info, string? whyNot) = await DataInfoAsync(node);
@@ -3829,7 +3829,7 @@ public sealed partial class DebugController : IDisposable
     {
         if (Session is not { State: DebugState.Paused } session)
         {
-            return (null, NotPaused() ?? Refusals.NotPaused);
+            return (null, (NotPaused() ?? Refusals.NotPaused).Shown);
         }
         if (session.DataBreakpointsUnavailable is { } unavailable)
         {
@@ -3838,7 +3838,7 @@ public sealed partial class DebugController : IDisposable
         // The value the row is a member of, by the reference its members were listed by; a frame's own rows have none.
         if (node.Parent is not { Reference: > 0, Role: not VariableRole.Scope } owner)
         {
-            return (null, Refusals.DataBreakpointNotAMember);
+            return (null, Refusals.DataBreakpointNotAMember.Shown);
         }
         try
         {
@@ -3922,7 +3922,7 @@ public sealed partial class DebugController : IDisposable
         }
         else if (view.ShownSnapshot is not null)
         {
-            Message?.Invoke(this, Refusals.SnapshotValue);
+            Message?.Invoke(this, Refusals.SnapshotValue.Shown);
             return;
         }
         else if (Session is { State: DebugState.Paused } session && frame is { } current)

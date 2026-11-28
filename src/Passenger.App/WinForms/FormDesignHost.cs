@@ -92,7 +92,7 @@ internal sealed class FormDesignHost : IDisposable
                 string configured = own ? Program : copy;
                 if (await BackgroundWork.Run(() => X86Programs.Lacking(root, configured, new Dictionary<string, string>())) is { Count: > 0 } lacking)
                 {
-                    return Refusals.X86RuntimeMissing(root, lacking);
+                    return Refusals.X86RuntimeMissing(root, lacking).Shown;
                 }
             }
             arguments.AddRange(["--runtimeconfig", configuration]);

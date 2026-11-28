@@ -60,7 +60,7 @@ public static class AzureSignIn
         {
             0 => throw new AzureSignInNeededException(null),
             1 => accounts[0],
-            _ => throw new IOException(Refusals.AzureAccountUnchosen),
+            _ => throw new IOException(Refusals.AzureAccountUnchosen.English),
         };
     }
 
@@ -75,11 +75,11 @@ public static class AzureSignIn
         }
         catch (MsalException refused) when (refused is not MsalClientException { ErrorCode: MsalError.AuthenticationCanceledError })
         {
-            throw new IOException(Refusals.AzureRefused("the sign-in", refused.Message), refused);
+            throw new IOException(Refusals.AzureRefused("the sign-in", refused.Message).English, refused);
         }
         catch (HttpRequestException unreached)
         {
-            throw new IOException(Refusals.AzureRefused("the sign-in", unreached.Message), unreached);
+            throw new IOException(Refusals.AzureRefused("the sign-in", unreached.Message).English, unreached);
         }
     }
 
@@ -133,11 +133,11 @@ public static class AzureSignIn
         }
         catch (MsalException refused)
         {
-            throw new IOException(Refusals.AzureRefused($"a token for {account}", refused.Message), refused);
+            throw new IOException(Refusals.AzureRefused($"a token for {account}", refused.Message).English, refused);
         }
         catch (HttpRequestException unreached)
         {
-            throw new IOException(Refusals.AzureRefused($"a token for {account}", unreached.Message), unreached);
+            throw new IOException(Refusals.AzureRefused($"a token for {account}", unreached.Message).English, unreached);
         }
     }
 
@@ -232,7 +232,7 @@ public static class AzureSignIn
 }
 
 /// <summary>An Entra ID account with no sign-in that holds, or none signed in: the person signs in.</summary>
-public sealed class AzureSignInNeededException(string? account) : IOException(Refusals.AzureSignInNeeded(account))
+public sealed class AzureSignInNeededException(string? account) : IOException(Refusals.AzureSignInNeeded(account).English)
 {
     public string? Account { get; } = account;
 }

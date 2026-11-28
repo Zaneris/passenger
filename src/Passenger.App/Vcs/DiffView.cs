@@ -88,8 +88,8 @@ public sealed class DiffView : DockPanel, IOwnKeys
             }, AppActions.RollbackLines, band => HeldAt(band.Index), AppActions.Stage) { Width = 36 };
 
         Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
-        Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
-        Right.ReadOnlyWhy = editable ? null : Refusals.ReadOnly(named.Right);
+        Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left).Shown;
+        Right.ReadOnlyWhy = (editable ? null : Refusals.ReadOnly(named.Right))?.Shown;
         sides.Children.Add(DiffLines.Title(named.Left, 0));
         sides.Children.Add(DiffLines.Title(named.Right, 2));
         Grid.SetRow(Left, 1);
@@ -379,7 +379,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         if (opened || Find.IsVisible)
         {
-            Find.Attach(side, side == Left ? Right : Left, null, side == Right && IsEditable ? null : Refusals.ReadOnly(side == Left ? named.Left : named.Right));
+            Find.Attach(side, side == Left ? Right : Left, null, (side == Right && IsEditable ? null : Refusals.ReadOnly(side == Left ? named.Left : named.Right))?.Shown);
         }
     }
 
@@ -463,7 +463,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     public bool RollsBack => IsEditable || putsBackOnDisk is not null;
 
     /// <summary>Why no change of the diff can be put back: its file's side is a version of its own.</summary>
-    public string? WhyNotRollBack => RollsBack ? null : Refusals.ReadOnly(named.Right);
+    public Words? WhyNotRollBack => RollsBack ? null : Refusals.ReadOnly(named.Right);
 
     /// <summary>The copy of a file not open takes its text from disk (<paramref name="text"/>, null where it can't be read)
     /// where that differs, after something wrote it: a change put back, its Undo, another program.</summary>
@@ -536,7 +536,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         if (WhyNotRollBack is { } readOnly)
         {
-            return readOnly;
+            return readOnly.Shown;
         }
         TextSnapshot compared = shown.Text;
         if (!ReferenceEquals(Right.Document.Snapshot, compared) || !Hunks.Contains(hunk))
@@ -584,7 +584,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         if (WhyNotRollBack is { } readOnly)
         {
-            return (false, readOnly);
+            return (false, readOnly.Shown);
         }
         bool head = Left.IsKeyboardFocusWithin;
         // Typed in just before, the differences shown are of an older text, whose changes may stand elsewhere now.

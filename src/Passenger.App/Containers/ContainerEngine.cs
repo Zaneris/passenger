@@ -68,9 +68,9 @@ public sealed record EngineState(EngineStatus Status, string? Cli, string? Probl
     /// <summary>What the engine cannot do that Passenger would otherwise, said where its problems are: Podman has no
     /// BuildKit, whose checks a Dockerfile's are (buildx would start a BuildKit container on it, which Passenger never does),
     /// and WSL Containers' wslc no Buildx.</summary>
-    public string? Limit => IsWslc ? Refusals.WslcNoBuildKit : IsPodman
+    public string? Limit => (IsWslc ? Refusals.WslcNoBuildKit : IsPodman
         ? "Dockerfiles are not checked with BuildKit: Podman has none (it builds with Buildah), and Passenger starts no BuildKit container for its checks"
-        : null;
+        : null)?.Shown;
 
     /// <summary>Whether Docker Desktop is installed where a click can start it (macOS's app, Windows' executable).</summary>
     public static string? DesktopApp => OperatingSystem.IsMacOS() && Directory.Exists("/Applications/Docker.app") ? "/Applications/Docker.app"
@@ -696,7 +696,7 @@ public sealed class ContainerEngine
             Architecture.Arm64 => "arm64",
             _ => null,
         };
-        return new EngineState(EngineStatus.NoCompose, cli, Refusals.WslcNoCompose, version ?? manager, "linux", null, null, null, null)
+        return new EngineState(EngineStatus.NoCompose, cli, Refusals.WslcNoCompose.Shown, version ?? manager, "linux", null, null, null, null)
         {
             IsWslc = true, ServerArch = arch, Amd64 = EngineEmulation.Of(arch, null, null),
         };

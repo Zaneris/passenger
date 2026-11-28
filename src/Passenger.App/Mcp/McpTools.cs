@@ -83,13 +83,13 @@ public static class McpTools
     /// (<see cref="Refusals.UntrustedFeeds"/>).</summary>
     public static IReadOnlyDictionary<string, string> Untrusted { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        [Build] = Refusals.Untrusted,
-        [Run] = Refusals.Untrusted,
-        [DebugStart] = Refusals.Untrusted,
-        [TestsRun] = Refusals.Untrusted,
-        [Profile] = Refusals.Untrusted,
-        [HotReload] = Refusals.Untrusted,
-        [NugetInstall] = Refusals.Untrusted,
-        [NugetSearch] = Refusals.UntrustedFeeds,
+        [Build] = Refusals.Untrusted.English,
+        [Run] = Refusals.Untrusted.English,
+        [DebugStart] = Refusals.Untrusted.English,
+        [TestsRun] = Refusals.Untrusted.English,
+        [Profile] = Refusals.Untrusted.English,
+        [HotReload] = Refusals.Untrusted.English,
+        [NugetInstall] = Refusals.Untrusted.English,
+        [NugetSearch] = Refusals.UntrustedFeeds.English,
     };
 }

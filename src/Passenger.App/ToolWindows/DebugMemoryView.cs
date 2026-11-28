@@ -85,7 +85,7 @@ public sealed class DebugMemoryView : DockPanel
         model.FrameChosen += (_, selected) => FrameShown(selected.Id);
         AttachedToVisualTree += (_, _) => UiThread.Post(UpdateStop);
         empty.ActionRequested += (_, action) => model.Request(action);
-        Say(Refusals.NothingDebugged, offersDebug: true);
+        Say(Refusals.NothingDebugged.Shown, offersDebug: true);
     }
 
     internal void FocusAddress()
@@ -171,10 +171,10 @@ public sealed class DebugMemoryView : DockPanel
 
     /// <summary>Why the chosen program's memory is not read now, as every action of a stop says it, the debugger's kind
     /// known once it has started.</summary>
-    private string? Unavailable => model.NotLive()
+    private string? Unavailable => (model.NotLive()
         ?? (session is { State: not DebugState.Starting, ReadsMemory: false } ? Refusals.MemoryOfDotnet : null)
         ?? model.NotPaused()
-        ?? (model.ShownSnapshot is null ? null : Refusals.PastMemory);
+        ?? (model.ShownSnapshot is null ? null : Refusals.PastMemory))?.Shown;
 
     private bool ShouldResolve() => location is { Input: { Length: > 0 } input } current && !IsLiteral(input) && (current.Follow || current.Page is null);
 
@@ -228,7 +228,7 @@ public sealed class DebugMemoryView : DockPanel
             {
                 if (frame.Stop != stop || frame.Id is not int id || input is null)
                 {
-                    Say(Refusals.NoFrameToResolve);
+                    Say(Refusals.NoFrameToResolve.Shown);
                     return;
                 }
                 input = (await paused.ResolveMemoryAsync(input, id)).Address;
@@ -241,7 +241,7 @@ public sealed class DebugMemoryView : DockPanel
                 : MemoryAddresses.TryParse(input, out ulong parsed) ? parsed : null;
             if (origin is not ulong at)
             {
-                Say(input is { Length: > 0 } written ? Refusals.NotAnAddress(written) : AddressPrompt);
+                Say((input is { Length: > 0 } written ? Refusals.NotAnAddress(written) : AddressPrompt).Shown);
                 return;
             }
             if (current.Origin != at || current.Page is null)
@@ -261,7 +261,7 @@ public sealed class DebugMemoryView : DockPanel
             next.IsEnabled = MemoryAddresses.TryOffset(page, PageSize, out _);
             if (reply.Data.Length == 0)
             {
-                Say(Refusals.MemoryUnread(reference), leavePaging: true);
+                Say(Refusals.MemoryUnread(reference).Shown, leavePaging: true);
                 return;
             }
             shown = reply;

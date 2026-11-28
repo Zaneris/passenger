@@ -114,7 +114,7 @@ public abstract class InProcessAdapter
     /// or as a snapshot point, which only Passenger's .NET debugger takes; null where it is taken.</summary>
     protected static DapBreakpoint? Refused(DapSourceBreakpoint breakpoint) =>
         (breakpoint.Snapshot == true ? Refusals.SnapshotsOfDotnet : BreakpointHits.Unreadable(breakpoint.HitCondition) ?? DisplayFormat.Misread(breakpoint.LogMessage)) is { } problem
-        ? new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line }
+        ? new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem.Shown, Line = breakpoint.Line }
         : null;
 
     /// <summary>What the session's breakpoints have come to between them: those hit, those temporary gone.</summary>

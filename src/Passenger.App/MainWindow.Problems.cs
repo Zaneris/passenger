@@ -50,10 +50,10 @@ public partial class MainWindow
 
     /// <summary>Why Next or Previous Error in Solution has nothing to step through: no C#, the analysis off, or no error listed.</summary>
     private string? WhyNotStepSolutionErrors() =>
-        session.CSharp is null ? session.WhyNoCSharp
+        (session.CSharp is null ? session.WhyNoCSharp
         : !Bottom.Problems.ListsSolution ? Refusals.SolutionAnalysisOff
         : Bottom.Problems.SolutionErrorsListed.Count == 0 ? Refusals.NoSolutionErrors(Bottom.Problems.SolutionErrors)
-        : null;
+        : null)?.Shown;
 
     /// <summary>The Problems window's view, built as it is asked for; what it lists is <see cref="ToolViews.Problems"/>,
     /// kept while it is not.</summary>

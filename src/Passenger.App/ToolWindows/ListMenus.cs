@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
+using Passenger.Core;
 
 namespace Passenger.App.ToolWindows;
 
@@ -67,7 +68,7 @@ public static class ListMenus
 
     /// <summary>An item, greyed while <paramref name="whyNot"/> says why it cannot run, which its tip says; with
     /// <paramref name="icon"/> (a key of <see cref="IconKeys"/>), that icon before its words.</summary>
-    public static MenuItem Item(string header, Action run, string? whyNot = null, string? icon = null)
+    public static MenuItem Item(string header, Action run, Words? whyNot = null, string? icon = null)
     {
         MenuItem item = new() { Header = header };
         if (icon is not null)
@@ -81,21 +82,21 @@ public static class ListMenus
 
     /// <summary>An item that runs an action of the editor's or the window's its place's own way, with the keys the keymap in
     /// force gives that action.</summary>
-    public static MenuItem Keyed(string header, string action, Action run, string? whyNot = null) => KeysOf(Item(header, run, whyNot), action);
+    public static MenuItem Keyed(string header, string action, Action run, Words? whyNot = null) => KeysOf(Item(header, run, whyNot), action);
 
     /// <summary>What Enter and a double click do on a list's row (<see cref="ListActs.Open"/>), in the list's words for it.</summary>
-    public static MenuItem Open(string header, Action run, string? whyNot = null) => Act(header, ListKeys.OpenKey, run, whyNot);
+    public static MenuItem Open(string header, Action run, Words? whyNot = null) => Act(header, ListKeys.OpenKey, run, whyNot);
 
     /// <summary>What F4 does on a list's row (<see cref="ListActs.Source"/>): <see cref="GoToSource"/> in every list.</summary>
-    public static MenuItem Source(Action run, string? whyNot = null) => Act(GoToSource, ListKeys.SourceKey, run, whyNot);
+    public static MenuItem Source(Action run, Words? whyNot = null) => Act(GoToSource, ListKeys.SourceKey, run, whyNot);
 
     /// <summary>What F2 does on a list's row (<see cref="ListActs.Edit"/>), in the list's words for it.</summary>
-    public static MenuItem Edit(string header, Action run, string? whyNot = null) => Act(header, ListKeys.EditKey, run, whyNot);
+    public static MenuItem Edit(string header, Action run, Words? whyNot = null) => Act(header, ListKeys.EditKey, run, whyNot);
 
     /// <summary>What Delete does on a list's row (<see cref="ListActs.Remove"/>), in the list's words for it.</summary>
-    public static MenuItem Remove(string header, Action run, string? whyNot = null) => Act(header, ListKeys.RemoveKey, run, whyNot);
+    public static MenuItem Remove(string header, Action run, Words? whyNot = null) => Act(header, ListKeys.RemoveKey, run, whyNot);
 
-    private static MenuItem Act(string header, Key key, Action run, string? whyNot)
+    private static MenuItem Act(string header, Key key, Action run, Words? whyNot)
     {
         MenuItem item = Item(header, run, whyNot);
         item.InputGesture = new KeyGesture(key);
@@ -105,7 +106,7 @@ public static class ListMenus
     /// <summary>An item turning something on or off, ticked while it is on, greyed as <see cref="Item"/> is; with
     /// <paramref name="icon"/>, that icon before its words; with <paramref name="action"/>, the keys the keymap gives the
     /// action it runs, as <see cref="Keyed"/>'s.</summary>
-    public static MenuItem Toggle(string header, bool on, Action<bool> turn, string? whyNot = null, string? icon = null, string? action = null)
+    public static MenuItem Toggle(string header, bool on, Action<bool> turn, Words? whyNot = null, string? icon = null, string? action = null)
     {
         MenuItem item = Item(header, () => turn(!on), whyNot, icon);
         item.ToggleType = MenuItemToggleType.CheckBox;
@@ -150,10 +151,10 @@ public static class ListMenus
     public static MenuItem Notice(string words) => new() { Header = words, IsEnabled = false, Classes = { StyleClasses.MenuNotice } };
 
     /// <summary>Greys an item while it cannot run, its tip saying why (<paramref name="whyNot"/>); null enables it again.</summary>
-    public static void Grey(MenuItem item, string? whyNot)
+    public static void Grey(MenuItem item, Words? whyNot)
     {
         item.IsEnabled = whyNot is null;
-        ToolTip.SetTip(item, whyNot);
+        ToolTip.SetTip(item, whyNot?.Shown);
     }
 
     public static async Task CopyAsync(Visual from, string text)

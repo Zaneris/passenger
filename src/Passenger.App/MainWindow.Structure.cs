@@ -1,4 +1,5 @@
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Text;
@@ -13,7 +14,7 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     /// <summary>Why a move by C#'s structure has nowhere to go in the file shown.</summary>
-    private string? WhyNoCSharpStructure(ActionContext context) =>
+    private Words? WhyNoCSharpStructure(ActionContext context) =>
         Refusals.NeedsFile(context) ?? (Editors.Active?.Syntax?.Current is null ? Refusals.NotCSharp : null);
 
     private void MoveToMember(bool down)
@@ -110,6 +111,6 @@ public partial class MainWindow
             return;
         }
         IReadOnlyList<(string Name, int Start)> regions = CodeStructure.Regions(csharp);
-        Assist.ShowPlaces(TitleOf(AppActions.GoToRegion), document, [.. regions.Select(r => r.Start)], [.. regions.Select(r => r.Name)], Refusals.NoRegions(document.Name));
+        Assist.ShowPlaces(TitleOf(AppActions.GoToRegion), document, [.. regions.Select(r => r.Start)], [.. regions.Select(r => r.Name)], Refusals.NoRegions(document.Name).Shown);
     }
 }

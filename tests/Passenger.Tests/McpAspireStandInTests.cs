@@ -364,7 +364,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             Assert.True(SessionOf(listed, first) is null, $"workspace named a session on the first replica, which nothing debugs: {string.Join(", ", listed)}");
             // Its runtime answers no session's start while the debugger holds it, so its metrics are refused rather than waited for.
             CallToolResult metrics = await Result(client, McpTools.Telemetry, new() { ["kind"] = "metrics", ["resource"] = $"{host}::apiservice-{second}" });
-            Assert.True(metrics.IsError == true && Text(metrics).Contains(Passenger.App.Refusals.PausedInDebugger("apiservice", "read its metrics"), StringComparison.Ordinal),
+            Assert.True(metrics.IsError == true && Text(metrics).Contains(Passenger.App.Refusals.PausedInDebugger("apiservice", "read its metrics").English, StringComparison.Ordinal),
                 $"telemetry's metrics of the replica paused in the debugger answered: {Text(metrics)}");
             Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
             Assert.Empty(resources.Errors);

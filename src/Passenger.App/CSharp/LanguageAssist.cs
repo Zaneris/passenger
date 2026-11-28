@@ -78,7 +78,7 @@ internal abstract class LanguageAssist
         {
             if (owns is not null)
             {
-                context.Say(Refusals.NoDeclaration);
+                context.Say(Refusals.NoDeclaration.Shown);
             }
             return owns is not null;
         }

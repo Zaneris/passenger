@@ -338,7 +338,7 @@ public partial class MainWindow
     }
 
     /// <summary>Why Apply Hot Reload Changes cannot run, as the action says it, or null.</summary>
-    internal string? WhyNoHotReload() => actions!.WhyNot(AppActions.ApplyHotReloadChanges, actions.Context());
+    internal Words? WhyNoHotReload() => actions!.WhyNot(AppActions.ApplyHotReloadChanges, actions.Context());
 
     /// <summary>What Apply Hot Reload Changes says where Godot reloads a game's GDScript as each file is saved, there being
     /// nothing else to apply: the chosen debugged game's GDScript session (<see cref="DebugController.ReloadedAsSaved"/>), or a

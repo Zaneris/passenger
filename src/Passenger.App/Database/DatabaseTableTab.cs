@@ -97,18 +97,18 @@ public sealed class DatabaseTableTab : IDatabaseTab
     private event EventHandler? Changed;
 
     /// <summary>Why the table takes no change: its connection marked read-only, or no primary key to find a row again by.</summary>
-    public string? WhyNotEdited => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name)
+    public Words? WhyNotEdited => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name)
         : !DatabaseKinds.EditsRows(Now.Kind) ? Refusals.NoRowEdits(DatabaseKinds.Title(Now.Kind))
         : schema is not null && !schema.Columns.Any(c => c.Primary) ? Refusals.NoPrimaryKey(Table.ToString()) : null;
 
-    private string? Busy => operation is not null || !Valid ? Refusals.DatabaseBusy : null;
+    private Words? Busy => operation is not null || !Valid ? Refusals.DatabaseBusy : null;
 
-    public string? WhyNotSubmit => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : WhyNotEdited);
-    public string? WhyNotRevert => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : null);
-    public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : shown is null ? Refusals.DatabaseBusy : null);
-    public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
+    public Words? WhyNotSubmit => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : WhyNotEdited);
+    public Words? WhyNotRevert => Busy ?? (edits.IsEmpty ? Refusals.NoPendingChanges : null);
+    public Words? WhyNotAddRow => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : shown is null ? Refusals.DatabaseBusy : null);
+    public Words? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (schema is { RowsFixed: true } ? Refusals.RowsFixed : ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
     /// <summary>Why a file's rows may not be imported into the table: its connection marked read-only, or its columns not read yet.</summary>
-    public string? WhyNotImport => DatabaseController.WhyNotImport(Now) ?? (schema is null ? Refusals.DatabaseBusy : null);
+    public Words? WhyNotImport => DatabaseController.WhyNotImport(Now) ?? (schema is null ? Refusals.DatabaseBusy : null);
 
     /// <summary>The table's columns as last read, null until they are.</summary>
     public DatabaseSchema? Schema => schema;
@@ -116,7 +116,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     /// <summary>The connection as it stands now, opening the tab's database.</summary>
     public DatabaseSource Source => Now;
 
-    public string? WhyNotStep(bool redo) => Busy ?? ((redo ? undone : done).Count == 0 ? redo ? Refusals.NoPendingRedo : Refusals.NoPendingUndo : null);
+    public Words? WhyNotStep(bool redo) => Busy ?? ((redo ? undone : done).Count == 0 ? redo ? Refusals.NoPendingRedo : Refusals.NoPendingUndo : null);
 
     private void OnOwnerChanged(object? sender, EventArgs e)
     {
@@ -131,14 +131,14 @@ public sealed class DatabaseTableTab : IDatabaseTab
 
     /// <summary>Why another page may not be read now: a document database's changes not written, which stand by the page's
     /// own fields, as another page of its documents may hold others in another order.</summary>
-    private string? WhyNotLeavePage => !edits.IsEmpty && DatabaseKinds.HoldsDocuments(Now.Kind) ? Refusals.DocumentChangesPending : null;
+    private Words? WhyNotLeavePage => !edits.IsEmpty && DatabaseKinds.HoldsDocuments(Now.Kind) ? Refusals.DocumentChangesPending : null;
 
     /// <summary>Reads a page of the table, filtered and sorted as asked; refused where its changes may not leave the page shown.</summary>
     public Task LoadAsync(int offset = 0, DatabaseFilter? next = null)
     {
         if (WhyNotLeavePage is { } why)
         {
-            Say(why);
+            Say(why.Shown);
             return Task.CompletedTask;
         }
         return Read(offset, next);
@@ -193,7 +193,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
         UiThread.Check();
         if (WhyNotSubmit is { } why)
         {
-            Say(why);
+            Say(why.Shown);
             return;
         }
         DatabaseSource source = Now;
@@ -239,7 +239,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     {
         if (WhyNotRevert is { } why)
         {
-            Say(why);
+            Say(why.Shown);
             return;
         }
         Edit(PendingEdits.None);
@@ -261,7 +261,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     {
         if (WhyNotStep(redo) is { } why)
         {
-            Say(why);
+            Say(why.Shown);
             return;
         }
         (redo ? done : undone).Push(edits);
@@ -274,7 +274,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     {
         if (WhyNotAddRow is { } why || grid is null || shown is null)
         {
-            Say(WhyNotAddRow ?? Refusals.DatabaseBusy);
+            Say((WhyNotAddRow ?? Refusals.DatabaseBusy).Shown);
             return;
         }
         int row = shown.RowCount - 1;
@@ -289,7 +289,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     {
         if (WhyNotDeleteRows is { } why)
         {
-            Say(why);
+            Say(why.Shown);
             return;
         }
         Delete(ChosenRows());
@@ -321,7 +321,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     {
         if (WhyNotEdited is { } refused)
         {
-            Say(refused);
+            Say(refused.Shown);
             return;
         }
         if (write.Table is not PendingTable table || !ReferenceEquals(table, shown) || write.Rows is not [int row])
@@ -331,7 +331,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
         // The box held the cell as shown, a secret in it masked: what the masks hid goes back where they still stand.
         if (ContainerSecrets.Unmasked(table.Whole(row, write.Column), write.Text) is not { } unmasked)
         {
-            Say(Refusals.MaskedPartChanged);
+            Say(Refusals.MaskedPartChanged.Shown);
             return;
         }
         string? text = unmasked == "NULL" ? null : unmasked;
@@ -480,12 +480,12 @@ public sealed class DatabaseTableTab : IDatabaseTab
         cancel.Click += (_, _) => operation?.Cancel();
         cells.CellWritten += (_, write) => Write(write);
         cells.RowsDeleted += (_, write) => Delete([.. write.Rows]);
-        cells.WriteRefused += (_, _) => Say(WhyNotEdited ?? Refusals.DatabaseBusy);
+        cells.WriteRefused += (_, _) => Say((WhyNotEdited ?? Refusals.DatabaseBusy).Shown);
         cells.SortRequested += (_, wanted) =>
         {
             if (WhyNotLeavePage is { } why)
             {
-                Say(why);
+                Say(why.Shown);
                 return;
             }
             sort = wanted is { } by && rows is { } read ? (read.Columns[by.Column], by.Descending) : null;
@@ -550,8 +550,8 @@ public sealed class DatabaseTableTab : IDatabaseTab
         // Every part of the bar as an item, so what a narrow bar lets go of is still a click away.
         MenuFlyout MoreMenu()
         {
-            string? idle = operation is null && Valid ? null : Refusals.DatabaseBusy;
-            string? leaving = idle ?? WhyNotLeavePage;
+            Words? idle = operation is null && Valid ? null : Refusals.DatabaseBusy;
+            Words? leaving = idle ?? WhyNotLeavePage;
             MenuFlyout menu = new() { Placement = Avalonia.Controls.PlacementMode.BottomEdgeAlignedRight };
             foreach (Control item in new Control[]
             {
@@ -601,12 +601,12 @@ public sealed class DatabaseTableTab : IDatabaseTab
             ToolButtons.Grey(revert, WhyNotRevert, ActionTips.Of(revert));
             cells.Table = shown;
             DatabaseSource now = Now;
-            marked.Say(now.Mark switch
+            marked.Say((now.Mark switch
             {
                 DatabaseMark.Production => $"{now.Name} is marked production: Submit asks before it writes",
                 DatabaseMark.ReadOnly => Refusals.ReadOnlyConnection(now.Name),
                 _ => null,
-            });
+            })?.Shown);
             status.Text = Said + (edits.IsEmpty || operation is not null ? string.Empty : $" · {EditsSaid}");
             header.Text = Header is { } read ? Containers.ContainerSecrets.InSaid(read) : string.Empty;
             header.IsVisible = Header is not null;

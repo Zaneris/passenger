@@ -199,7 +199,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            return Refusals.NoSolution;
+            return Refusals.NoSolution.Shown;
         }
         // Opened again, the filter would name a project the solution no longer has.
         string? filter = leaving is not null && session.Workspace?.Filter is { } open && leaving.Any(open.Projects.Contains) ? open.Path : null;

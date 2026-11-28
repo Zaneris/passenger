@@ -105,11 +105,11 @@ public partial class MainWindow
         UiThread.Check();
         if (process.WhyNot is { } why)
         {
-            return Refusals.Unattached(process.Program, why);
+            return Refusals.Unattached(process.Program, why).Shown;
         }
         if (work.Begin(AppActions.AttachToProcess, $"Attaching to {process.Program}…") is not { } attaching)
         {
-            return ActionWork.Busy(work.Of(AppActions.AttachToProcess)!);
+            return ActionWork.Busy(work.Of(AppActions.AttachToProcess)!).Shown;
         }
         using Working held = attaching;
         using IDisposable background = BackgroundWork.Scope();
@@ -130,7 +130,7 @@ public partial class MainWindow
             }
             if (target.WhyNot is { } blocked)
             {
-                return Refusals.Unattached(name, blocked);
+                return Refusals.Unattached(name, blocked).Shown;
             }
         }
         attachedTo.RemoveAll(p => Same(p, target));
@@ -157,7 +157,7 @@ public partial class MainWindow
     private async Task<(DotnetProcess Target, AdapterPlace Place)> InContainerAsync(DotnetProcess process, string container, Working held)
     {
         (string? folder, string? indexed, IReadOnlyList<string> files) = (session.Folder, session.Index.Root, session.Index.Files);
-        (DotnetProcess target, ContainerReach reach) = await ProgramInContainerAsync(process, container, UiThread.Marshal<string>(held.Say), held.Stopping);
+        (DotnetProcess target, ContainerReach reach) = await ProgramInContainerAsync(process, container, UiThread.Marshal<string>(said => held.Say(said)), held.Stopping);
         (ContainerPaths paths, WorkspaceSources? sources) = await BackgroundWork.Run(async () =>
             (folder is null ? ContainerPaths.None : await reach.PathsAsync(folder, held.Stopping), indexed is null ? null : new WorkspaceSources(indexed, files)), held.Stopping);
         return (target, reach.Adapter(process.Program, paths) with { Sources = sources });

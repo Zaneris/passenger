@@ -77,7 +77,7 @@ public sealed class AspirePackageAppHostTests(AspirePackageApp project) : IClass
             Assert.True(window.AspireRuntime.IsAspire(window.Configurations.First(c => PathNames.Same(c.Project, project.SingleHost))),
                 "The single-file AppHost's configuration does not run as Aspire's");
             Ui.WaitFor(() => window.DockHost[ToolWindowIds.Aspire].Unserved is null, () => $"the Aspire window served, where it is not: {window.DockHost[ToolWindowIds.Aspire].Unserved}");
-            Assert.Null(window.Actions.WhyNot(AppActions.ShowAspire, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.ShowAspire, window.Actions.Context())?.Shown);
         }
         finally
         {

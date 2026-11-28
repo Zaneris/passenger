@@ -117,7 +117,7 @@ public sealed class AccessibilityTests : IDisposable
             Assert.True(statusWords.GetLiveSetting() == AutomationLiveSetting.Polite,
                 $"The status bar's words read as a {statusWords.GetLiveSetting()} live region, not a polite one");
 
-            string why = window.Actions.WhyNot(AppActions.GoToDeclaration, window.Actions.Context())
+            string why = window.Actions.WhyNot(AppActions.GoToDeclaration, window.Actions.Context())?.Shown
                 ?? throw new Xunit.Sdk.XunitException("Go to Declaration is not refused with no file open");
             Ui.Run(window, AppActions.GoToDeclaration);
             Ui.WaitFor(() => heard.Count > 0, "the refusal heard");
@@ -474,7 +474,7 @@ public sealed class AccessibilityTests : IDisposable
             Assert.True(heard is [(var last, _)] && last == round[2].Said, $"Next Region pressed twice in quick turn was heard as {Said(heard)}, not as the region it came to");
             Assert.True(window.Actions.Find("Next Region").Any(a => a.Id == AppActions.NextRegion) && window.Actions.Find("Previous Region").Any(a => a.Id == AppActions.PreviousRegion),
                 "Find Action finds no Next Region and Previous Region");
-            Assert.True(window.Actions.WhyNot(AppActions.NextRegion, window.Actions.Context().ForAgent()) == Refusals.PersonsKeys,
+            Assert.True(window.Actions.WhyNot(AppActions.NextRegion, window.Actions.Context().ForAgent())?.Shown == Refusals.PersonsKeys.Shown,
                 "An agent's ide_action may move the person's keys to another region");
         }
         finally

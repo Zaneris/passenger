@@ -64,7 +64,7 @@ public partial class MainWindow
     {
         if (await GodotTemplateStyleAsync() is not ({ } folder, { } style) || GodotCSharpProject() is not { } project)
         {
-            return (false, Refusals.NoGodotProject);
+            return (false, Refusals.NoGodotProject.Shown);
         }
         List<CheckBox> boxes = [.. GodotScriptTemplates.Bases.Select(b => new CheckBox { Content = b, IsChecked = true })];
         StackPanel checks = new() { Spacing = Gaps.Tight };

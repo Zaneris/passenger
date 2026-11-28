@@ -546,9 +546,9 @@ public sealed partial class PassengerTools
         {
             return $"What is running is not {Inspectable}, or Hot Reload runs it";
         }
-        return apps.FirstOrDefault() is { } ended
+        return (apps.FirstOrDefault() is { } ended
             ? ended.Tab?.Session is { State: not DebugState.Ended } ? Refusals.InspectorGone(ended.App.Name) : Ended(ended.App)
-            : "No Avalonia, WPF, WinUI, Windows Forms or MAUI app or Godot game is running: run or debug_start one (Avalonia 12, WPF, WinUI or Windows Forms on Windows, MAUI on Android or an iOS simulator, a Godot 4 game in C# or GDScript), or name app ide for Passenger's own windows";
+            : "No Avalonia, WPF, WinUI, Windows Forms or MAUI app or Godot game is running: run or debug_start one (Avalonia 12, WPF, WinUI or Windows Forms on Windows, MAUI on Android or an iOS simulator, a Godot 4 game in C# or GDScript), or name app ide for Passenger's own windows").English;
 
         static string Ended(LiveApp app) => $"{app.Name} has ended: run or debug_start starts it again, or name app ide for Passenger's own windows";
     }

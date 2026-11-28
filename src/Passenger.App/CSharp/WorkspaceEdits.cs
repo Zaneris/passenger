@@ -385,11 +385,11 @@ public static class WorkspaceEdits
             string path = DocumentUris.ToPath(change.Uri);
             if (ReadOnlyFiles.Refused(path, Path.GetFileName(path)) is { } placed)
             {
-                return placed;
+                return placed.Shown;
             }
             if (editors.Find(path) is { } open ? open.IsReadOnly : FileText.IsReadOnly(path))
             {
-                return Refusals.ReadOnly(Path.GetFileName(path));
+                return Refusals.ReadOnly(Path.GetFileName(path)).Shown;
             }
         }
         Dictionary<string, bool> there = [];
@@ -400,7 +400,7 @@ public static class WorkspaceEdits
             {
                 if (ReadOnlyFiles.Refused(place, Path.GetFileName(place)) is { } placed)
                 {
-                    return placed;
+                    return placed.Shown;
                 }
             }
             bool overwrite = resource.Option("overwrite");
@@ -411,7 +411,7 @@ public static class WorkspaceEdits
             {
                 case "create" when overwrite && FileText.IsReadOnly(resource.Path):
                 case "rename" when taken && overwrite && FileText.IsReadOnly(resource.To!):
-                    return Refusals.ReadOnly(Path.GetFileName(resource.To ?? resource.Path));
+                    return Refusals.ReadOnly(Path.GetFileName(resource.To ?? resource.Path)).Shown;
                 case "create" when Exists(resource.Path) && !overwrite && !ignored:
                 case "rename" when taken && !ignored && (!overwrite || Directory.Exists(resource.To)):
                     return $"{Path.GetFileName(resource.To ?? resource.Path)} is already there";

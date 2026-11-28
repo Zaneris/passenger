@@ -269,7 +269,7 @@ public sealed class BranchesPanel : DockPanel
         bool isCurrent = branch.IsCurrent;
         List<Control> items = [];
         void Add(string header, Action run, string? whyNot = null) => items.Add(ListMenus.Item(header, run, whyNot));
-        string? detached = current is null ? Refusals.Detached : null;
+        string? detached = (current is null ? Refusals.Detached : null)?.Shown;
         void Separate()
         {
             if (items.Count > 0 && items[^1] is not Separator)
@@ -312,15 +312,15 @@ public sealed class BranchesPanel : DockPanel
         {
             string? notUpdated = WhyNotUpdate(branch);
             Add("Update", () => IdeErrors.Observe(vcs.UpdateBranchAsync(branch)), notUpdated);
-            Add("Push…", () => PushRequested?.Invoke(this, branch), vcs.WhyNotRemote);
-            Add("Push to…", () => PushToRequested?.Invoke(this, branch), vcs.WhyNotRemote);
+            Add("Push…", () => PushRequested?.Invoke(this, branch), vcs.WhyNotRemote?.Shown);
+            Add("Push to…", () => PushToRequested?.Invoke(this, branch), vcs.WhyNotRemote?.Shown);
             Separate();
             Add("Rename…", () => RenameRequested?.Invoke(this, branch));
         }
         if (branch.Kind == RefKind.Tag)
         {
             Add("Move Tag…", () => MoveTagRequested?.Invoke(this, branch));
-            Add("Push…", () => PushTagRequested?.Invoke(this, branch), vcs.WhyNotRemote);
+            Add("Push…", () => PushTagRequested?.Invoke(this, branch), vcs.WhyNotRemote?.Shown);
             Separate();
         }
         if (WhyNotDelete(branch) is null)
@@ -329,7 +329,7 @@ public sealed class BranchesPanel : DockPanel
         }
         if (branch.Kind == RefKind.Tag)
         {
-            Add("Delete on Remote…", () => DeleteRemoteTagRequested?.Invoke(this, branch), vcs.WhyNotRemote);
+            Add("Delete on Remote…", () => DeleteRemoteTagRequested?.Invoke(this, branch), vcs.WhyNotRemote?.Shown);
         }
         if (items.Count > 0 && items[^1] is Separator)
         {
@@ -644,7 +644,7 @@ public sealed class BranchesPanel : DockPanel
     }
 
     /// <summary>Asks for what a button does to the chosen branch or tag, where <paramref name="whyNot"/> lets it.</summary>
-    private void Request(EventHandler<BranchInfo>? requested, Func<BranchInfo?, string?> whyNot)
+    private void Request(EventHandler<BranchInfo>? requested, Func<BranchInfo?, Words?> whyNot)
     {
         if (Selected?.Branch is { } branch && whyNot(branch) is null)
         {
@@ -664,31 +664,31 @@ public sealed class BranchesPanel : DockPanel
     }
 
     /// <summary>Why New Branch… and Navigate can't act: HEAD, a group or no row is chosen, which names no commit of its own.</summary>
-    private static string? WhyNotFrom(BranchInfo? branch) => branch is null ? Refusals.NoRefChosen : null;
+    private static Words? WhyNotFrom(BranchInfo? branch) => branch is null ? Refusals.NoRefChosen : null;
 
     /// <summary>Why Update Selected can't act: it brings a local branch up to the remote's branch it tracks, as
     /// <see cref="VcsController.UpdateBranchAsync"/> does, and nothing else, where a remote can be reached.</summary>
     private string? WhyNotUpdate(BranchInfo? branch) => branch switch
     {
-        { Kind: RefKind.Local, Upstream: null } => Refusals.Untracked(branch.Name),
-        { Kind: RefKind.Local } => vcs.WhyNotRemote,
-        { Kind: RefKind.Remote } => Refusals.FetchedNotUpdated(branch.Name),
-        _ => Refusals.NoLocalBranchChosen,
+        { Kind: RefKind.Local, Upstream: null } => Refusals.Untracked(branch.Name).Shown,
+        { Kind: RefKind.Local } => vcs.WhyNotRemote?.Shown,
+        { Kind: RefKind.Remote } => Refusals.FetchedNotUpdated(branch.Name).Shown,
+        _ => Refusals.NoLocalBranchChosen.Shown,
     };
 
     /// <summary>Why Delete can't act: git deletes no branch while it is checked out, and a remote's only where the remote
     /// can be reached.</summary>
-    private string? WhyNotDelete(BranchInfo? branch) => branch switch
+    private Words? WhyNotDelete(BranchInfo? branch) => branch switch
     {
-        null => Refusals.NoRefChosen,
-        { IsCurrent: true } => Refusals.CheckedOut(branch.Name),
-        { CheckedOutElsewhere: { } worktree } => Refusals.InWorktree(branch.Name, worktree),
-        { Kind: RefKind.Remote } => vcs.WhyNotRemote,
+        null => Refusals.NoRefChosen.Shown,
+        { IsCurrent: true } => Refusals.CheckedOut(branch.Name).Shown,
+        { CheckedOutElsewhere: { } worktree } => Refusals.InWorktree(branch.Name, worktree).Shown,
+        { Kind: RefKind.Remote } => vcs.WhyNotRemote?.Shown,
         _ => null,
     };
 
     /// <summary>Why Mark/Unmark As Favorite can't act: a tag is never a favourite (<see cref="GitBranchesState.Holds"/>).</summary>
-    private static string? WhyNotFavorite(BranchInfo? branch) => branch is { Kind: not RefKind.Tag } ? null : Refusals.NoBranchChosen;
+    private static Words? WhyNotFavorite(BranchInfo? branch) => branch is { Kind: not RefKind.Tag } ? null : Refusals.NoBranchChosen;
 
     /// <summary>Rider's keys here, beside the tree's (<see cref="TreeKeys"/>): Delete (Backspace too on the Mac) deletes, F2 or
     /// Shift+F6 renames a local branch on the Mac (Rename's Ctrl+R, R elsewhere, which the window routes here), and

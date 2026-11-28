@@ -49,7 +49,7 @@ public sealed class TerminalTab(TerminalSession session, string name, Run.Termin
 public sealed class TerminalPanel : DockPanel, ToolTabs.ITabbed
 {
     private readonly ObservableCollection<TerminalTab> tabs = [];
-    private readonly TerminalView view = new() { NothingSelected = Refusals.NothingSelected };
+    private readonly TerminalView view = new() { NothingSelected = Refusals.NothingSelected.Shown };
     private readonly Func<string> folder;
     private int opened;
     private bool firstComing;

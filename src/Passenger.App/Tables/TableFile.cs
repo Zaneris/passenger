@@ -288,7 +288,7 @@ public sealed class TableFile
     {
         if (document.ReadOnlyWhy is { } readOnly)
         {
-            return readOnly;
+            return readOnly.Shown;
         }
         if (made is null)
         {

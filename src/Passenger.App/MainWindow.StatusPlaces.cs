@@ -18,10 +18,10 @@ public partial class MainWindow
 
     /// <summary>Says something in the status bar, with where a click on it goes; the same words said again keep the place
     /// they had (a failed build's words, said again as the reason Run or a test run did not start).</summary>
-    private void Say(string said, StatusPlace? more = null) => SayAs(said, more, Urgency.Polite);
+    private void Say(Words said, StatusPlace? more = null) => SayAs(said.Shown, more, Urgency.Polite);
 
     /// <summary>Says why something the person asked for was refused, with the way on, heard at once.</summary>
-    private void Refuse(string why, StatusPlace? more = null) => SayAs(why, more, Urgency.Assertive);
+    private void Refuse(Words why, StatusPlace? more = null) => SayAs(why.Shown, more, Urgency.Assertive);
 
     private void SayAs(string said, StatusPlace? more, Urgency urgency)
     {

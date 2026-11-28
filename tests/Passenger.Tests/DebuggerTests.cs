@@ -309,11 +309,11 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         DebugView view = window.DebugWindow;
         Assert.Matches(@"^Recorded moment \d+: Add\(\) returned 5, at \d\d:\d\d:\d\d\.\d{3} on Main Thread\. Its arguments are as they were at its call\.$",
             view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Recorded", StringComparison.Ordinal) == true)!);
-        Assert.Equal(Refusals.SnapshotValue, Row(window, "a")!.NoSetting);
+        Assert.Equal(Refusals.SnapshotValue.Shown, Row(window, "a")!.NoSetting);
         // Memory reads the program at its live stop: a recorded moment kept none of its bytes.
         Assert.True(window.Perform(AppActions.ShowDebugMemory), $"Memory did not show: {Ui.Said(window)}");
         EmptyState memorySaid = view.GetVisualDescendants().OfType<DebugMemoryView>().Single().GetVisualDescendants().OfType<EmptyState>().Single();
-        Ui.WaitFor(() => memorySaid.IsEffectivelyVisible && memorySaid.Text == Refusals.PastMemory,
+        Ui.WaitFor(() => memorySaid.IsEffectivelyVisible && memorySaid.Text == Refusals.PastMemory.Shown,
             () => $"Memory to say a past moment's memory was not kept, where it says {memorySaid.Text}");
         Ui.Click(view.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().Single(tab => Equals(tab.Content, "Debugger")));
 
@@ -348,7 +348,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.True(window.Perform(AppActions.StepForward), $"Step Forward did not run: {Ui.Said(window)}");
         Ui.WaitFor(() => window.Debugger.MomentShown is null && debug.ShownSnapshot is null && debug.Frames.Count > 0 && debug.Frames[0].Line == 2, "the live stop shown again");
         Assert.Equal("5", Value(window, "sum"));
-        Assert.Equal(Refusals.LiveStop, window.Actions.WhyNot(AppActions.StepForward, window.Actions.Context()));
+        Assert.Equal(Refusals.LiveStop.Shown, window.Actions.WhyNot(AppActions.StepForward, window.Actions.Context())?.Shown);
         window.Close();
     }
 
@@ -392,7 +392,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             $"The first turn's snapshot shows total * 10 {Value(window, "total * 10")}, i {Value(window, "i")} and total {Value(window, "total")} at line {debug.Frames[0].Line}, where they were 10, 1 and 1 at line 5");
         Assert.Matches(@"^Snapshot 1 of Program\.cs:5, taken at \d\d:\d\d:\d\d\.\d{3} on Main Thread\. The program was held [\d.,]+ (ms|s)\.$",
             view.GetVisualDescendants().OfType<Banner>().Select(b => b.Said).Single(said => said?.StartsWith("Snapshot", StringComparison.Ordinal) == true)!);
-        Assert.Equal(Refusals.SnapshotValue, Row(window, "total")!.NoSetting);
+        Assert.Equal(Refusals.SnapshotValue.Shown, Row(window, "total")!.NoSetting);
         // A list and a record read from what each stores, shown as a stop shows them.
         VariableNode seen = Row(window, "seen")!;
         VariableNode turn = Row(window, "turn")!;
@@ -481,7 +481,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Assert.Equal(("Sum.Add(int, int)", 10), (add.Name, add.Line));
         Assert.Contains(new LineMark(10, LineMarkKind.Breakpoint, Method: true), editor.LineMarks);
         editor.GoTo(new TextPosition(1, 0));
-        Assert.Equal(Refusals.NoMethodAtCaret, window.Actions.WhyNot(AppActions.ToggleMethodBreakpoint, window.Actions.Context()));
+        Assert.Equal(Refusals.NoMethodAtCaret.Shown, window.Actions.WhyNot(AppActions.ToggleMethodBreakpoint, window.Actions.Context())?.Shown);
         editor.GoTo(new TextPosition(18, 12));
         Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run at the constructor: {Ui.Said(window)}");
         editor.GoTo(new TextPosition(32, 10));
@@ -2471,7 +2471,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         MenuItem[] greyed = [.. menu.Items.OfType<MenuItem>().Where(item => item.Header is "Set Value…" or "Add to Watches" or "Inspect")];
         menu.Close();
         Ui.Settle();
-        Assert.True(greyed.Length == 3 && greyed.All(item => !item.IsEnabled && ToolTip.GetTip(item) is string why && why == raw.NoExpression && why.Length > 0),
+        Assert.True(greyed.Length == 3 && greyed.All(item => !item.IsEnabled && ToolTip.GetTip(item) is string why && why == raw.NoExpression?.Shown && why.Length > 0),
             $"Raw View's Set Value, Add to Watches and Inspect are {string.Join(", ", greyed.Select(item => $"{item.Header} {(item.IsEnabled ? "enabled" : "greyed")} saying {ToolTip.GetTip(item) ?? "nothing"}"))}, where each is to be greyed saying why");
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
@@ -2614,10 +2614,10 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         address.Text = "0x0";
         Ui.Click(read);
-        Ui.WaitFor(() => said.IsVisible && said.Text == Refusals.MemoryUnread(MemoryAddresses.Show(0)), () => $"an unreadable address to be reported, where Memory says {said.Text}");
+        Ui.WaitFor(() => said.IsVisible && said.Text == Refusals.MemoryUnread(MemoryAddresses.Show(0)).Shown, () => $"an unreadable address to be reported, where Memory says {said.Text}");
         address.Text = "0xZZ";
         Ui.Click(read);
-        Ui.WaitFor(() => said.IsVisible && said.Text == Refusals.NotAnAddress("0xZZ"), () => $"what is no address to be refused, where Memory says {said.Text}");
+        Ui.WaitFor(() => said.IsVisible && said.Text == Refusals.NotAnAddress("0xZZ").Shown, () => $"what is no address to be refused, where Memory says {said.Text}");
         address.Text = "pointer + 1";
         Ui.Click(read);
         string offset = MemoryAddresses.Show(pointerAddress + 4);
@@ -2694,11 +2694,11 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
 
         // Waiting for input, the program runs, and Memory says so as a step does; once it ends, that nothing is debugged.
         Assert.True(window.Perform(AppActions.ShowDebugMemory), $"Memory did not show: {Ui.Said(window)}");
-        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text == Refusals.NotPaused && said.Offered is null,
+        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text == Refusals.NotPaused.Shown && said.Offered is null,
             () => $"Memory to say the running program is not paused, where it says {said.Text}, offering {said.Offered ?? "nothing"}");
         Ui.Run(window, AppActions.Stop);
         Ui.WaitFor(() => !window.Debugger.IsDebugging, "the session to end");
-        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text == Refusals.NothingDebugged && said.Offered?.StartsWith("Debug", StringComparison.Ordinal) == true,
+        Ui.WaitFor(() => said.IsEffectivelyVisible && said.Text == Refusals.NothingDebugged.Shown && said.Offered?.StartsWith("Debug", StringComparison.Ordinal) == true,
             () => $"Memory to say nothing is debugged and offer Debug, as the Debugger tab does, where it says {said.Text}, offering {said.Offered ?? "nothing"}");
         window.Close();
     }

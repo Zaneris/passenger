@@ -163,7 +163,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             // Passenger listens for the game as its remote debugger, on loopback.
             Assert.Contains($"{game.Godot.Executable} --path {folder} {Passenger.App.Godot.GodotGame.RemoteDebug} tcp://127.0.0.1:", Run(window), StringComparison.Ordinal);
             Assert.Contains(" --headless\n", Run(window), StringComparison.Ordinal);
-            Assert.StartsWith("This program runs without Hot Reload: Run it with Hot Reload on", window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+            Assert.StartsWith("This program runs without Hot Reload: Run it with Hot Reload on", window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context())?.Shown);
             Stop(window);
 
             RunConfigurationsDialog dialog = window.ShowRunConfigurations();
@@ -193,7 +193,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             Assert.Equal("Running Spinner on Godot with Hot Reload: a save applies its changes", window.Status);
             Assert.False(window.Debugger.IsDebugging, "Run with Hot Reload showed a debug session");
             Assert.DoesNotContain("dotnet watch", Run(window), StringComparison.Ordinal);
-            Assert.Null(window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.ApplyHotReloadChanges, window.Actions.Context())?.Shown);
 
             Typing.Replace(window, "{Greeting} {frames}", "tick {frames}");
             Ui.Run(window, AppActions.ApplyHotReloadChanges);

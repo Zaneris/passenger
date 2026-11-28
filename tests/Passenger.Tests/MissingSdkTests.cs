@@ -64,7 +64,7 @@ public sealed class MissingSdkTests : IDisposable
         Assert.True(app.Tip?.StartsWith(Missing, StringComparison.Ordinal) == true && app.Tip.Contains("Install the [1.0.100] .NET SDK", StringComparison.Ordinal),
             $"App's row, which no SDK evaluates, has the tip: {app.Tip}");
 
-        Assert.Equal(Missing, window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
+        Assert.Equal(Missing, window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context())?.Shown);
         Ui.Run(window, AppActions.RunProgram);
         Assert.True(window.Status == Missing && !window.Session.RunProgram.IsRunning, $"Run without the SDK said: {window.Status}");
 
@@ -73,7 +73,7 @@ public sealed class MissingSdkTests : IDisposable
         Ui.WaitFor(() => window.Session.Models.MissingSdk is null && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail == TestProjects.Framework),
             () => $"App to be evaluated once global.json asks for no SDK it lacks: App's row says {window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Name == "App")?.Detail}", TimeSpan.FromMinutes(1));
         Assert.NotEqual(Missing, window.Status);
-        Assert.Null(window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context())?.Shown);
         window.Close();
     }
 

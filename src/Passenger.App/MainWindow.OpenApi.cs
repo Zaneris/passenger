@@ -20,7 +20,7 @@ public partial class MainWindow
         string name = Path.GetFileNameWithoutExtension(project);
         if (work.Begin(AppActions.GenerateOpenApiRequests, $"Reading {name}'s OpenAPI document…") is not { } working)
         {
-            return Said(ActionWork.Busy(work.Of(AppActions.GenerateOpenApiRequests)!));
+            return Said(ActionWork.Busy(work.Of(AppActions.GenerateOpenApiRequests)!).Shown);
         }
         using (working)
         using (BackgroundWork.Scope())
@@ -50,7 +50,7 @@ public partial class MainWindow
             }
             if (session != current || current.IsEnded || working.IsStopped)
             {
-                return Told(false, current.IsEnded ? Refusals.SolutionClosed : $"Generating requests from {name}'s OpenAPI document was stopped");
+                return Told(false, (current.IsEnded ? Refusals.SolutionClosed : $"Generating requests from {name}'s OpenAPI document was stopped").Shown);
             }
             if (document is null)
             {

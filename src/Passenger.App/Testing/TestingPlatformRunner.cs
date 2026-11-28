@@ -462,7 +462,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             }
             else if (coverage is not null && onDevice is not null)
             {
-                coverage.Missed(Refusals.CoverageOnDevice);
+                coverage.Missed(Refusals.CoverageOnDevice.Shown);
             }
             if (debugger is null)
             {

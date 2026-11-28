@@ -120,7 +120,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            return (Refusals.NoSolution, null);
+            return (Refusals.NoSolution.Shown, null);
         }
         IReadOnlyList<ProjectModel> all = Projects;
         ProjectModel? host = all.FirstOrDefault(p => p.Exists && p.IsAspireHost);

@@ -116,7 +116,7 @@ public sealed class XamlPreview : IDisposable
         if (!WorkspaceTrust.Trusts(document.Document.Path))
         {
             lapsed = true;
-            Say(Refusals.Untrusted);
+            Say(Refusals.Untrusted.Shown);
             return;
         }
         switch (builder.Dialect)
@@ -670,7 +670,7 @@ public sealed class XamlPreview : IDisposable
             IReadOnlyList<string> uncompiled = await BackgroundWork.Run(() => UncompiledXaml.AssembliesIn(folder));
             if (uncompiled.Count > 0)
             {
-                preview.Lapsed(host, Refusals.XamlUncompiled(uncompiled), AppActions.RebuildSolution);
+                preview.Lapsed(host, Refusals.XamlUncompiled(uncompiled).Shown, AppActions.RebuildSolution);
             }
             else
             {

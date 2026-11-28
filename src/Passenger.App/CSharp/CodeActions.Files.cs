@@ -121,7 +121,7 @@ internal sealed partial class CodeActions
         {
             stage?.Invoke("Waiting for the C# language server");
             untaken = await settled(stop);
-            CSharpService service = context.CSharp ?? throw new InvalidOperationException(Refusals.NoCSharp);
+            CSharpService service = context.CSharp ?? throw new InvalidOperationException(Refusals.NoCSharp.English);
             generated = await service.Generated.GeneratedAmongAsync(code, stop);
         }
         bool stopped = false;
@@ -152,7 +152,7 @@ internal sealed partial class CodeActions
                 stage?.Invoke($"{name}: {Numbers.Said(i + 1)} of {Plural.Of(ordered.Count, "file")}, {Path.GetFileName(file)}");
                 if (generated.Contains(file))
                 {
-                    left.Add(new FileLeft(file, PassedOver.Generated, Refusals.GeneratedLeft(relative(file))));
+                    left.Add(new FileLeft(file, PassedOver.Generated, Refusals.GeneratedLeft(relative(file)).Shown));
                     continue;
                 }
                 if (untaken(file) is { } notTaken)
@@ -162,7 +162,7 @@ internal sealed partial class CodeActions
                 }
                 if (ReadOnlyFiles.Holds(file))
                 {
-                    left.Add(new FileLeft(file, PassedOver.ReadOnly, ReadOnlyFiles.Refused(file, relative(file)) ?? Refusals.ReadOnly(relative(file))));
+                    left.Add(new FileLeft(file, PassedOver.ReadOnly, (ReadOnlyFiles.Refused(file, relative(file)) ?? Refusals.ReadOnly(relative(file))).Shown));
                     continue;
                 }
                 recording.Watch(file);
@@ -266,7 +266,7 @@ internal sealed partial class CodeActions
         string name = TitleOf(kind);
         if (context.Work?.Of(ActionOf(kind)) is { } busy)
         {
-            context.Say(ActionWork.Busy(busy));
+            context.Say(ActionWork.Busy(busy).Shown);
             return;
         }
         using Working? working = context.Work?.Begin(ActionOf(kind), $"{name}: finding the files {chosen.Of}…");
@@ -278,7 +278,7 @@ internal sealed partial class CodeActions
             IReadOnlyList<string> files = await BackgroundWork.Run(() => chosen.Files(kind), stop);
             if (files.Count == 0)
             {
-                said = Refusals.NothingToTidy(name, chosen.Of);
+                said = Refusals.NothingToTidy(name, chosen.Of).Shown;
             }
             else
             {
@@ -347,7 +347,7 @@ internal sealed partial class CodeActions
     {
         if (context.DotnetFormat is not { } run)
         {
-            return (Refusals.NoFolder, []);
+            return (Refusals.NoFolder.Shown, []);
         }
         foreach (OpenDocument unsaved in files.Select(context.Editors.Find).OfType<OpenDocument>().Where(d => d.IsModified))
         {

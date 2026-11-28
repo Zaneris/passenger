@@ -123,7 +123,7 @@ internal sealed partial class WebAssist
         RefactorOutcome made = await MakeLintFixAsync(context.Editors, document, fix, fix.Title, context.Say);
         if (made.Left.Count > 0)
         {
-            context.Say(Refusals.NotAppliedEditedMeanwhile(fix.Title, made.Left));
+            context.Say(Refusals.NotAppliedEditedMeanwhile(fix.Title, made.Left).Shown);
         }
         else if ((made.Problem ?? made.Said) is { Length: > 0 } said)
         {

@@ -208,7 +208,7 @@ public sealed partial class PassengerTools
             }, why => enough.TrySetException(new InvalidOperationException($"{selected.Resource.DisplayName}: {why}")));
             if (current.Debug.Debugging(program) is { State: DebugState.Paused })
             {
-                throw new InvalidOperationException(Refusals.PausedInDebugger(selected.Resource.DisplayName, "read its metrics"));
+                throw new InvalidOperationException(Refusals.PausedInDebugger(selected.Resource.DisplayName, "read its metrics").English);
             }
             LiveMetrics live;
             try

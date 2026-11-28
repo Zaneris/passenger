@@ -70,19 +70,19 @@ public partial class MainWindow
         Visual? focused = context.Focused as Visual;
         if (focused?.FindAncestorOfType<Terminal.TerminalView>(includeSelf: true) is { Session: { } session })
         {
-            return new("Terminal: last command and its output", _ => Task.FromResult(session.LastCommandText()), Refusals.NothingToRead);
+            return new("Terminal: last command and its output", _ => Task.FromResult(session.LastCommandText()), Refusals.NothingToRead.Shown);
         }
         if (focused?.FindAncestorOfType<DiffView>(includeSelf: true) is { } diff)
         {
-            return new($"Changes: {diff.Subject}", _ => Task.FromResult(diff.ChangesAsText()), Refusals.NothingToRead);
+            return new($"Changes: {diff.Subject}", _ => Task.FromResult(diff.ChangesAsText()), Refusals.NothingToRead.Shown);
         }
         if (context.ToolWindow?.Id == ToolWindowIds.Tests || (focused is not null && Bottom.Tests.IsVisualAncestorOf(focused)))
         {
-            return Bottom.Tests.ChosenAsText() is { } chosen ? new(chosen.Title, _ => Task.FromResult(chosen.Text), Refusals.NothingToRead) : null;
+            return Bottom.Tests.ChosenAsText() is { } chosen ? new(chosen.Title, _ => Task.FromResult(chosen.Text), Refusals.NothingToRead.Shown) : null;
         }
         if (context.ToolWindow?.Id == ToolWindowIds.Problems)
         {
-            return Bottom.Problems.ChosenRow?.Problem is { } problem ? new($"Problem: {problem.Where}", _ => Task.FromResult(ProblemText(problem)), Refusals.NothingToRead) : null;
+            return Bottom.Problems.ChosenRow?.Problem is { } problem ? new($"Problem: {problem.Where}", _ => Task.FromResult(ProblemText(problem)), Refusals.NothingToRead.Shown) : null;
         }
         Border statusBar = StatusBarFrame;
         if (focused is not null && (focused == statusBar || statusBar.IsVisualAncestorOf(focused)))
@@ -92,7 +92,7 @@ public partial class MainWindow
         if (Editors.Active is { } file && (focused is null || focused == Editors.CodeEditor))
         {
             Passenger.Text.TextPosition caret = Editors.CodeEditor.CaretPosition;
-            return new($"{file.Title}, line {caret.Line + 1}, column {caret.Column + 1}", assist.WordsAtCaretAsync, Refusals.NothingAtCaret);
+            return new($"{file.Title}, line {caret.Line + 1}, column {caret.Column + 1}", assist.WordsAtCaretAsync, Refusals.NothingAtCaret.Shown);
         }
         return LastMessage();
     }
@@ -125,6 +125,6 @@ public partial class MainWindow
             ProblemSeverity.Warning => $"Warning: {text}",
             _ => text,
         };
-        return new("Last message", _ => Task.FromResult(said), Refusals.NothingToRead);
+        return new("Last message", _ => Task.FromResult(said), Refusals.NothingToRead.Shown);
     }
 }

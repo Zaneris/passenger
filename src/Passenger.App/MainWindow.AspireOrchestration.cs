@@ -18,7 +18,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            status.Text = Refusals.NoSolution;
+            status.Text = Refusals.NoSolution.Shown;
             return null;
         }
         AspireOrchestrationDialog dialog = new(solution.Name, session.Workspace?.Projects ?? []);
@@ -53,7 +53,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            return status.Text = Refusals.NoSolution;
+            return status.Text = Refusals.NoSolution.Shown;
         }
         using CancellationTokenSource cancel = new();
         void WindowClosed(object? sender, EventArgs args) => cancel.Cancel();

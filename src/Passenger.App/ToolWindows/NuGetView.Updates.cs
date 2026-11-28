@@ -19,12 +19,12 @@ public sealed partial class NuGetView
 
     public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingMany && !model.IsBusy && ToUpdate.Count > 0;
 
-    public string? UpdateAllWhyNot => CanUpdateAll ? null
-        : UpdatesWhyNot ?? (updateRows.Any(r => r.MovesTo is not null) ? "The filters leave no update" : "No updates available");
+    public string? UpdateAllWhyNot => (CanUpdateAll ? null
+        : UpdatesWhyNot ?? (updateRows.Any(r => r.MovesTo is not null) ? "The filters leave no update" : "No updates available"))?.Shown;
 
     /// <summary>Why the Updates tab's rows can't be updated now: a package change under way, the tab not shown, or its
     /// check still running; null where they can.</summary>
-    private string? UpdatesWhyNot => model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
+    private Words? UpdatesWhyNot => model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
         : checkingUpdates ? "Checking for updates" : !showsUpdates ? Refusals.UpdatesNotShown : null;
 
     /// <summary>The rows whose updates and fixes Update All makes: those the Sort and Filter leave, the search's words
@@ -38,7 +38,7 @@ public sealed partial class NuGetView
     public IReadOnlyList<PackageRow> ChosenUpdates => showsUpdates && list.SelectedItems is { } chosen ? [.. rows.Where(chosen.Contains)] : [];
 
     /// <summary>Why Update Selected can't run: as <see cref="UpdatesWhyNot"/> says, or no update chosen; null where it can.</summary>
-    public string? UpdateSelectedWhyNot => UpdatesWhyNot ?? (ChosenUpdates.Count == 0 ? Refusals.NoUpdateChosen : null);
+    public Words? UpdateSelectedWhyNot => UpdatesWhyNot ?? (ChosenUpdates.Count == 0 ? Refusals.NoUpdateChosen : null);
 
     public void ShowUpdates()
     {
@@ -287,7 +287,7 @@ public sealed partial class NuGetView
     {
         if (UpdateSelectedWhyNot is { } why)
         {
-            Hold(why);
+            Hold(why.Shown);
             return;
         }
         IReadOnlyList<PackageRow> chosen = ChosenUpdates;
@@ -311,7 +311,7 @@ public sealed partial class NuGetView
 
     /// <summary>Why the chosen package can't be moved to the chosen version in every project referencing an older one
     /// (<see cref="UpdateEverywhereAsync"/>); null where it can.</summary>
-    public string? UpdateEverywhereWhyNot =>
+    public Words? UpdateEverywhereWhyNot =>
         model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
         : Selected is not { } row ? Refusals.NoPackageChosen
         : !row.IsInstalled ? Refusals.ReferencedByNoProject(row.Id)
@@ -328,7 +328,7 @@ public sealed partial class NuGetView
     {
         if (UpdateEverywhereWhyNot is { } why)
         {
-            Hold(why);
+            Hold(why.Shown);
             return;
         }
         PackageRow row = Selected!;

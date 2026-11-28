@@ -871,7 +871,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             }
             else
             {
-                Assert.Null(window.Actions.Run(action));
+                Assert.Null(window.Actions.Run(action)?.Shown);
                 Ui.Settle();
             }
         }
@@ -2158,7 +2158,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.Contains("int result  = Helper.Twice(2);", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
-        Assert.Null(window.Actions.Run(AppActions.Reformat));
+        Assert.Null(window.Actions.Run(AppActions.Reformat)?.Shown);
         window.KeyTextInput("s");
         Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted" || window.Status?.Contains("not applied", StringComparison.Ordinal) == true,
             "the reformat's answer");
@@ -2513,7 +2513,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         List<string> greyed = [];
         foreach (string id in MainMenu.Build(window.Actions.All).Where(m => m.Title is "Code" or "Refactor").SelectMany(ActionsIn))
         {
-            string? why = window.Actions.WhyNot(id, context);
+            string? why = window.Actions.WhyNot(id, context)?.Shown;
             if (reading.Contains(id) ? why is not null : otherLanguage.Contains(id) ? why is null : elsewhere.Contains(id) ? why == readOnly : why != readOnly)
             {
                 (reading.Contains(id) ? greyed : offered).Add($"{id} ({why ?? "enabled"})");
@@ -2521,7 +2521,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         }
         foreach (string id in new[] { AppActions.GoToDeclaration, AppActions.FindUsages })
         {
-            if (window.Actions.WhyNot(id, context) is { } why)
+            if (window.Actions.WhyNot(id, context)?.Shown is { } why)
             {
                 greyed.Add($"{id} ({why})");
             }
@@ -3844,7 +3844,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     {
         MainWindow window = project.Open("Gauges.cs");
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Bo");
-        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap));
+        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap)?.Shown);
         DependencyMapView map = window.DependencyMapWindow;
         Ui.WaitFor(() => map.Chosen?.Name == "Both(Dial, IGauge)" && !map.IsReading, () => $"the map chosen at Readings.Both, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
         Assert.True(window.EditorArea.Active?.Tool?.Window.Id == ToolWindowIds.DependencyMap,

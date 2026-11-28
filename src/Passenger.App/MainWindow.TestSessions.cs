@@ -28,7 +28,7 @@ public partial class MainWindow
         Add(A.GoToTest, "Go to Test", "Navigate", c => IdeErrors.Observe(GoToTestAsync(c)), c => TypeAtCaret(c) is null ? Refusals.NoTypeForTest : null,
             ("Navigate", 1, 8), words: ["Go to Tested Type", "Linked Types", "Test Class"]);
 
-        string? NoTestsFor(ActionContext context) => SessionTestsOf(context).Tests.Count == 0 ? Refusals.NoTestsForSession : null;
+        string? NoTestsFor(ActionContext context) => (SessionTestsOf(context).Tests.Count == 0 ? Refusals.NoTestsForSession : null)?.Shown;
     }
 
     /// <summary>The tests a session takes from where it was asked, and a name for a session of them: the Unit Tests window's
@@ -104,7 +104,7 @@ public partial class MainWindow
         Bottom.TestTree.ShowSession(current);
         ProjectSession running = session;
         string workspace = Folder;
-        RunTests(() => running.Tests.RunPickedAsync(workspace, methods => running.Tests.Tree.RunsOf(current, methods), _ => Refusals.SessionHoldsNone(current.Name)));
+        RunTests(() => running.Tests.RunPickedAsync(workspace, methods => running.Tests.Tree.RunsOf(current, methods), _ => Refusals.SessionHoldsNone(current.Name).Shown));
     }
 
     /// <summary>The Unit Tests window on a session's tests (every test for none), its tree given the keys.</summary>
@@ -129,7 +129,7 @@ public partial class MainWindow
         Vcs.Choice[] runnable = [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, "Tests"))
             .Where(id => registry.WhyNot(id, context) is null)
             .Select(id => new Vcs.Choice(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, id))];
-        Vcs.ChoicePopup popup = new(TitleOf(A.TestsQuickList), "Search unit test actions", runnable, Refusals.NoTestOperations);
+        Vcs.ChoicePopup popup = new(TitleOf(A.TestsQuickList), "Search unit test actions", runnable, Refusals.NoTestOperations.Shown);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is string id)
@@ -161,7 +161,7 @@ public partial class MainWindow
         string none;
         if (isTest && TestLinks.Tested(name) is { } tested)
         {
-            none = Refusals.NoTestedType(name, tested);
+            none = Refusals.NoTestedType(name, tested).Shown;
             targets = await TestedTypesAsync(asked, tested, file.Path);
         }
         else if (isTest)
@@ -171,7 +171,7 @@ public partial class MainWindow
         }
         else
         {
-            none = Refusals.NoTestOfType(name);
+            none = Refusals.NoTestOfType(name).Shown;
             targets = [.. methods.Where(m => m.FullName is { } test && m.Path is not null && TestLinks.NamedAfter(TestLinks.Short(TestSession.ClassOf(test)), name))
                 .GroupBy(m => TestSession.ClassOf(m.FullName!), StringComparer.Ordinal)
                 .Select(g => (g.First().Path!, g.Key))];

@@ -63,10 +63,10 @@ public partial class MainWindow
     }
 
     /// <summary>Why the file shown takes no change: none is, or it is read-only.</summary>
-    private static string? WhyNoChange(ActionContext context) => Refusals.NeedsFile(context) ?? context.ReadOnlyWhy;
+    private static Words? WhyNoChange(ActionContext context) => Refusals.NeedsFile(context) ?? context.ReadOnlyWhy;
 
     /// <summary>Why the file shown takes no change by C#'s structure.</summary>
-    private string? WhyNoCSharpChange(ActionContext context) => WhyNoCSharpStructure(context) ?? context.ReadOnlyWhy;
+    private Words? WhyNoCSharpChange(ActionContext context) => WhyNoCSharpStructure(context) ?? context.ReadOnlyWhy;
 
     private void MoveStatement(bool up)
     {

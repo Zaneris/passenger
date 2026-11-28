@@ -51,15 +51,15 @@ public partial class MainWindow
 
     /// <summary>Why the command is not added as it stands: none where adding it changes something.</summary>
     private static string? NotAdded(MacCommand read) =>
-        read.Unlinkable ?? (read.Held == CommandHeld.Others ? Refusals.CommandOthers(read.Link)
+        (read.Unlinkable ?? (read.Held == CommandHeld.Others ? Refusals.CommandOthers(read.Link)
             : read is { Held: CommandHeld.This, OnPath: null } ? Refusals.CommandThere(read.Link)
-            : null);
+            : null))?.Shown;
 
     /// <summary>Why the command is not removed as it stands: none where a link of Passenger's is there.</summary>
     private static string? NotRemoved(MacCommand read) => read.Held switch
     {
-        CommandHeld.None => Refusals.NoCommand(read.Link),
-        CommandHeld.Others => Refusals.CommandOthers(read.Link),
+        CommandHeld.None => Refusals.NoCommand(read.Link).Shown,
+        CommandHeld.Others => Refusals.CommandOthers(read.Link).Shown,
         _ => null,
     };
 
@@ -95,7 +95,7 @@ public partial class MainWindow
     private async Task AddCommandAsync()
     {
         UiThread.Check();
-        if (RefusedToAgentsInput(Refusals.CommandIsThePersons)
+        if (RefusedToAgentsInput(Refusals.CommandIsThePersons.Shown)
             || work.Begin(AppActions.AddCommand, $"Asking to add the {PassengerCommand.Name} command", stoppable: false) is not { } adding)
         {
             return;
@@ -116,7 +116,7 @@ public partial class MainWindow
                 : $" {folder} is on your shell's PATH already.";
             string text = $"Passenger links {link} to the {PassengerCommand.Name} script it carries{replacing}, so in a terminal {PassengerCommand.Name} opens a folder, a solution "
                 + $"or a file in Passenger, the Passenger running taking it where one is.{path} No administrator is asked; Tools, Remove the {PassengerCommand.Name} Command… takes it away.";
-            if (!await ConfirmAsync($"Add the {PassengerCommand.Name} command?", text, "Add Command", null, Refusals.CommandIsThePersons))
+            if (!await ConfirmAsync($"Add the {PassengerCommand.Name} command?", text, "Add Command", null, Refusals.CommandIsThePersons.Shown))
             {
                 Told(adding, false, $"The {PassengerCommand.Name} command was not added");
                 return;
@@ -137,7 +137,7 @@ public partial class MainWindow
     private async Task RemoveCommandAsync()
     {
         UiThread.Check();
-        if (RefusedToAgentsInput(Refusals.CommandIsThePersons)
+        if (RefusedToAgentsInput(Refusals.CommandIsThePersons.Shown)
             || work.Begin(AppActions.RemoveCommand, $"Asking to remove the {PassengerCommand.Name} command", stoppable: false) is not { } removing)
         {
             return;
@@ -154,7 +154,7 @@ public partial class MainWindow
             string link = PathNames.Shown(read.Link, null);
             string text = $"Passenger removes {link}, which leads to {(read.Held == CommandHeld.This ? "this Passenger" : "another Passenger")}. "
                 + $"{PathNames.Shown(PassengerCommand.Folder, null)} stays on your shell's PATH, where other programs' commands may be.";
-            if (!await ConfirmAsync($"Remove the {PassengerCommand.Name} command?", text, "Remove Command", null, Refusals.CommandIsThePersons))
+            if (!await ConfirmAsync($"Remove the {PassengerCommand.Name} command?", text, "Remove Command", null, Refusals.CommandIsThePersons.Shown))
             {
                 Told(removing, false, $"The {PassengerCommand.Name} command was left as it was");
                 return;

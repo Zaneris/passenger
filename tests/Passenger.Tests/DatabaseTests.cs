@@ -418,7 +418,7 @@ public sealed class DatabaseTests
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
                 CodeEditor editor = window.EditorArea.CodeEditor;
                 editor.Focus();
-                Assert.Equal(Refusals.NoTableCells, window.Actions.Run(AppActions.CopyAsJson));
+                Assert.Equal(Refusals.NoTableCells.Shown, window.Actions.Run(AppActions.CopyAsJson)?.Shown);
                 editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
                 Assert.True(window.Perform(EditorActions.Paste), "Paste did not run in the console");
                 Ui.WaitFor(() => editor.Document.Snapshot.ToString().ReplaceLineEndings("\n") == Inserts, () => editor.Document.Snapshot.ToString());
@@ -485,7 +485,7 @@ public sealed class DatabaseTests
                 Field<TextBox>(dialog, "ExportFile").Text = big;
                 ExportUnsettled(dialog);
                 RowExport export = Ui.AwaitPumped(held, "the export held halfway");
-                Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.DatabaseExport)?.Stage.Contains("500,000 rows written", StringComparison.Ordinal) == true,
+                Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.DatabaseExport)?.Stage.Shown.Contains("500,000 rows written", StringComparison.Ordinal) == true,
                     "the export saying the rows it has written");
                 (long bytes, string most) = HeldBytes.Of(export, o => o is Avalonia.AvaloniaObject or Delegate or DatabaseSource);
                 Assert.True(bytes < 4 << 20, $"Halfway through a million rows the export holds {bytes:N0} bytes, the most in {most}: it holds rows it has written");
@@ -651,7 +651,7 @@ public sealed class DatabaseTests
                 Assert.Equal("production", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
                 Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
-                Assert.Equal(Refusals.ReadOnlyConnection("Shop"), sql.Said);
+                Assert.Equal(Refusals.ReadOnlyConnection("Shop").Shown, sql.Said);
                 Assert.DoesNotContain(window.OwnedWindows.OfType<ConfirmDialog>(), d => d.IsVisible);
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Title == "Products"));
                 Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
@@ -659,8 +659,8 @@ public sealed class DatabaseTests
                 CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
                 grid.Choose((0, 1), (0, 1));
                 Assert.False(grid.BeginWriting(), "A cell of a read-only connection's table opened for writing");
-                Assert.Equal(Refusals.ReadOnlyConnection("Shop"), Tab<TextBlock>(window, "DatabaseTabStatus").Text);
-                Assert.Equal(Refusals.ReadOnlyConnection("Shop"), window.Actions.Run(AppActions.DatabaseAddRow));
+                Assert.Equal(Refusals.ReadOnlyConnection("Shop").Shown, Tab<TextBlock>(window, "DatabaseTabStatus").Text);
+                Assert.Equal(Refusals.ReadOnlyConnection("Shop").Shown, window.Actions.Run(AppActions.DatabaseAddRow)?.Shown);
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
                 Assert.True(window.Perform(AppActions.DatabaseProduction), "Production Connection did not run");
                 Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
@@ -838,7 +838,7 @@ public sealed class DatabaseTests
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Title == "data/sales.csv"));
                 Assert.True(window.Perform(AppActions.DatabaseOpenTable), $"Open Table Data did not run: {window.Status}");
                 Ui.WaitFor(() => Data(window)?.Rows?.RowCount == 3, () => $"sales.csv's rows among the editors ({window.Database.Said})");
-                Assert.NotNull(Data(window)!.WhyNotEdited);
+                Assert.NotNull(Data(window)!.WhyNotEdited?.Shown);
                 Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "stock.duckdb"));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "stock.duckdb's console");
@@ -896,7 +896,7 @@ public sealed class DatabaseTests
                     }
                     Explorer(window).Forget(stock);
                     Ui.Await(Explorer(window).ToggleAsync(row), "stock.duckdb's open, its engine's download refused");
-                    Assert.Equal(Refusals.NoDuckDbEngine($"{DuckDbNative.Named} for {DuckDbNative.Rid} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used"),
+                    Assert.Equal(Refusals.NoDuckDbEngine($"{DuckDbNative.Named} for {DuckDbNative.Rid} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used").Shown,
                         window.Database.Said);
                     Assert.False(row.IsExpanded, "stock.duckdb opened on an engine whose download did not match its SHA256SUMS");
                     Assert.False(File.Exists(Path.Combine(given.Downloaded, DuckDbNative.Library)), "An engine whose download did not match was kept");
@@ -905,7 +905,7 @@ public sealed class DatabaseTests
                     github.Serve(tag, "SHA256SUMS", System.Text.Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(engine))}  {DuckDbNative.Asset}\n"));
                     github.Hold(DuckDbNative.Asset);
                     Task opening = Explorer(window).ToggleAsync(row);
-                    Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.DatabaseConnect)?.Stage.StartsWith($"Downloading {DuckDbNative.Named}", StringComparison.Ordinal) == true
+                    Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.DatabaseConnect)?.Stage.Shown.StartsWith($"Downloading {DuckDbNative.Named}", StringComparison.Ordinal) == true
                         || opening.IsCompleted, "the open's work to say it is downloading DuckDB's engine", TimeSpan.FromMinutes(1));
                     Assert.False(opening.IsCompleted, $"stock.duckdb's open ended before it downloaded its engine: {window.Database.Said}");
                     Assert.True(window.Perform(AppActions.DatabaseCancel), "Stop Database Operation did not run");
@@ -1021,7 +1021,7 @@ public sealed class DatabaseTests
     private static List<string> Told(MainWindow window)
     {
         List<string> told = [];
-        window.Actions.Work.Told += (_, outcome) => told.Add(outcome.Said);
+        window.Actions.Work.Told += (_, outcome) => told.Add(outcome.Said.Shown);
         return told;
     }
 

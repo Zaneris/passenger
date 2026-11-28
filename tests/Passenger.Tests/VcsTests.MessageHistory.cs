@@ -19,7 +19,7 @@ public sealed partial class VcsTests
         {
             MainWindow window = OpenWithState(state);
             CommitView commit = window.CommitView;
-            Assert.Equal(Refusals.NoCommitMessages, window.Actions.WhyNot(AppActions.CommitMessageHistory, window.Actions.Context()));
+            Assert.Equal(Refusals.NoCommitMessages.Shown, window.Actions.WhyNot(AppActions.CommitMessageHistory, window.Actions.Context())?.Shown);
             foreach (string message in (string[])["Add the till", "Fix #12: round totals\n\nThe till rounded down.", "Add the till"])
             {
                 Committed(window, message);

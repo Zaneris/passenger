@@ -66,7 +66,7 @@ public sealed class GodotAudioTests : IClassFixture<GodotGameLoopTests.Game>
         {
             if (window.Debugger.IsDebugging || window.IsRunning)
             {
-                Assert.Null(window.Actions.Run(AppActions.StopAll));
+                Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
                 Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the game to end ({window.Status})", TimeSpan.FromMinutes(1));
             }
             window.Close();

@@ -139,7 +139,7 @@ public sealed partial class LiveTreeController
         {
             if (parts.Actions.Run(AppActions.LiveTreeRefresh) is { } why)
             {
-                parts.Say(why);
+                parts.Say(why.Shown);
             }
         };
         made.GoToRequested += (_, place) => GoTo(place);
@@ -178,7 +178,7 @@ public sealed partial class LiveTreeController
         {
             if (parts.Actions.Run(action) is { } why)
             {
-                parts.Say(why);
+                parts.Say(why.Shown);
             }
         };
         made.SourceChosen += (_, at) =>
@@ -976,7 +976,7 @@ public sealed partial class LiveTreeController
 
     /// <summary>What the window says of an app whose inspector has gone: that its connection closed while the session debugging
     /// it runs on, else that the app has ended.</summary>
-    private string Ended() => app is LiveApp && Debugged() is { State: not DebugState.Ended } ? Refusals.InspectorGone(app.Name) : $"{app!.Name} has ended";
+    private string Ended() => (app is LiveApp && Debugged() is { State: not DebugState.Ended } ? Refusals.InspectorGone(app.Name) : $"{app!.Name} has ended").Shown;
 
     /// <summary>Why the window cannot ask the app now: nothing inspected, not up yet, refused, gone, or paused.</summary>
     private string? WhyNotAsk() => app switch

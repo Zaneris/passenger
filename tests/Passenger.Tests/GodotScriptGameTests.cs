@@ -96,7 +96,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
             RunConfiguration generated = window.Configurations.Single(c => c.Generated && c.Name == "Ticker");
             Assert.True(generated.RunsScriptGame && PathNames.Same(generated.Project, Path.Combine(PathNames.Canonical(game.Folder), "project.godot")),
                 $"The game's configuration runs {generated.Project}, where its project is the project.godot");
-            Assert.Equal(Refusals.NothingToBuildOfScripts, window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
+            Assert.Equal(Refusals.NothingToBuildOfScripts.Shown, window.Actions.WhyNot(AppActions.Build, window.Actions.Context())?.Shown);
 
             Choose(window);
             Ui.Launched(window, window.RunAsync(), "the game's start", TimeSpan.FromMinutes(2));
@@ -448,7 +448,7 @@ public sealed class GodotScriptGameTests : IClassFixture<GodotScriptGameTests.Ga
     {
         if (window.Debugger.IsDebugging || window.IsRunning || window.Profiling is not null)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the game to end ({Sessions(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();

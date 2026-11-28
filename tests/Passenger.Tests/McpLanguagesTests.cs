@@ -74,7 +74,7 @@ public sealed class McpLanguagesTests(McpLanguagesTests.Restored restored) : Mcp
         JsonElement note = Assert.Single((await Call(client, McpTools.Diagnostics, new() { ["path"] = "Deep.cs" })).EnumerateArray());
         Assert.Equal(("info", Languages.CSharp.CSharpParsing.TooDeep, 3), (note.GetProperty("severity").GetString(), note.GetProperty("message").GetString(), note.GetProperty("line").GetInt32()));
         CallToolResult refused = await Result(client, McpTools.SymbolInfo, new() { ["path"] = "Deep.cs", ["line"] = 3, ["column"] = 24 });
-        Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.TooDeep("Deep.cs"), StringComparison.Ordinal), $"symbol_info on a file too deep answered: {Text(refused)}");
+        Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.TooDeep("Deep.cs").English, StringComparison.Ordinal), $"symbol_info on a file too deep answered: {Text(refused)}");
         Assert.Equal("ready", (await Call(client, McpTools.Workspace)).GetProperty("languageServer").GetString());
     }
 

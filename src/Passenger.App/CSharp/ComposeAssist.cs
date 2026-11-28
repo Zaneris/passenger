@@ -45,7 +45,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         Func<string, TextSnapshot?> texts = ServerPlaces.Texts(context.Editors);
         ComposeAnswer answer = await ComposeDeclarationAsync(lsp, document, offset, texts, Projects?.Invoke() ?? []);
         return answer.Page is { } page ? new Declared([], answer.Said) { Page = page }
-            : answer.Places.Count == 0 && answer.Said == Refusals.NoDeclaration ? null
+            : answer.Places.Count == 0 && answer.Said == Refusals.NoDeclaration.Shown ? null
             : new Declared(Declared.Served(answer.Places.Select(p => (p.Path, p.Position)), texts), answer.Said) { Names = [.. answer.Places.Select(p => (string?)p.Name)] };
     }
 
@@ -89,7 +89,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
             }
             switch (answer.Places.Count)
             {
-                case 0 when answer.Said == Refusals.NoDeclaration:
+                case 0 when answer.Said == Refusals.NoDeclaration.Shown:
                     return false;
                 case 0:
                     context.Say(answer.Said);
@@ -101,7 +101,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
             Func<string, TextSnapshot?> texts = ServerPlaces.Texts(context.Editors);
             navigation.Go([.. answer.Places.Select(p => new LspLocation(DocumentUris.FromPath(p.Path), new LspRange(
                 ServerPlaces.ServerPositionOf(texts(p.Path), p.Position), ServerPlaces.ServerPositionOf(texts(p.Path), p.Position))))],
-                offset, "Declarations", Refusals.NoDeclaration, [.. answer.Places.Select(p => (string?)p.Name)]);
+                offset, "Declarations", Refusals.NoDeclaration.Shown, [.. answer.Places.Select(p => (string?)p.Name)]);
             return true;
         }
         catch (LanguageServerFailed failed)
@@ -183,7 +183,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
     {
         if (context.WebOf(document) is not { Lsp: { } lsp })
         {
-            return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"the YAML language server does not run for {document.Name}"));
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"the YAML language server does not run for {document.Name}").Shown);
         }
         ComposeRenaming? renaming;
         try
@@ -192,11 +192,11 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         }
         catch (LanguageServerFailed failed)
         {
-            return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Reason));
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Reason).Shown);
         }
         if (renaming is null || renaming.Name != old)
         {
-            return RefactorOutcome.Refused(Refusals.NotRenamed(old, "the file no longer names it there"));
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, "the file no longer names it there").Shown);
         }
         if (ComposeRename.Problem(renaming, name, context.ReadOpenOrDisk) is { } problem)
         {

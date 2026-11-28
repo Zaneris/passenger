@@ -95,7 +95,7 @@ public sealed class NodeScriptsTests
                 Assert.Equal(web, PathNames.Canonical(pnpm.Folder));
                 Assert.DoesNotContain(started, s => s.Command.Contains("npm-cli.js", StringComparison.Ordinal));
             }
-            Assert.Equal(Refusals.ScriptOnlyRuns("@mono/web: dev"), window.Actions.WhyNot(AppActions.Debug, window.Actions.Context()));
+            Assert.Equal(Refusals.ScriptOnlyRuns("@mono/web: dev").Shown, window.Actions.WhyNot(AppActions.Debug, window.Actions.Context())?.Shown);
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Shown(window.Configuration!) == "@mono/web: dev", () => $"the script's run to end once stopped: {window.Status}");

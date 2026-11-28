@@ -98,7 +98,7 @@ internal sealed class MSBuildAssist : LanguageAssist
         }
         IReadOnlyList<MSBuildTarget> targets = await msbuild.TargetsAsync(offset) is { } found ? found.Targets : [];
         Func<string, TextSnapshot?> texts = ServerPlaces.Texts(context.Editors);
-        return new Declared(Declared.Served(targets.Select(t => (t.Place.Path, PositionOf(texts(t.Place.Path), t.Place))), texts), Refusals.NoDeclaration)
+        return new Declared(Declared.Served(targets.Select(t => (t.Place.Path, PositionOf(texts(t.Place.Path), t.Place))), texts), Refusals.NoDeclaration.Shown)
         {
             Names = [.. targets.Select(t => (string?)t.Title)],
         };
@@ -315,7 +315,7 @@ internal sealed class MSBuildAssist : LanguageAssist
     {
         if (await msbuild.TargetsAsync(offset) is not { Targets.Count: > 0 } found)
         {
-            context.Say(Refusals.NoDeclaration);
+            context.Say(Refusals.NoDeclaration.Shown);
             return;
         }
         if (found.Targets.Count == 1)

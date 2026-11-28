@@ -119,7 +119,7 @@ public sealed class ProfilerCommands
         {
             if (parts.Actions.Run(action) is { } why)
             {
-                parts.Say(why);
+                parts.Say(why.Shown);
             }
         };
         made.KillRequested += (_, _) =>
@@ -233,7 +233,7 @@ public sealed class ProfilerCommands
         string name = (configuration ?? profiled.Configurations.Chosen)?.Name ?? "the program";
         if (parts.Actions.Work.Begin(AppActions.Profile, $"Working out how to profile {name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.Profile)!);
+            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.Profile)!).Shown;
         }
         launching = profiled;
         try
@@ -260,7 +260,7 @@ public sealed class ProfilerCommands
     private ProjectSession? launching;
 
     /// <summary>Why another run cannot be profiled in a folder now: one is, or one is still starting.</summary>
-    private string? Busy(ProjectSession folder) => folder.Profiling is not null || launching is not null ? Refusals.Profiling : null;
+    private Words? Busy(ProjectSession folder) => folder.Profiling is not null || launching is not null ? Refusals.Profiling : null;
 
     /// <summary>Why Profile cannot start another program: the one it started last goes on after its snapshot, and Kill, Stop
     /// and the folder's end reach one such program at a time.</summary>
@@ -271,9 +271,9 @@ public sealed class ProfilerCommands
     /// running or about to, whose output it would clear and whose typing it would take. What runs of the configuration
     /// profiled is ended first (<see cref="BuildRunController.EndRunningAsync"/>).</summary>
     private string? RunConsoleTaken(ProjectSession folder, RunConfiguration? chosen) =>
-        parts.Actions.Work.Of(AppActions.RunProgram) is { } running ? ActionWork.Busy(running)
+        (parts.Actions.Work.Of(AppActions.RunProgram) is { } running ? ActionWork.Busy(running)
         : folder.Runner.IsRunning && (chosen is null || !parts.Builds().RunsOwnProgram(chosen.Name)) ? "Run's program uses the Run console: stop it first, or Attach Profiler to profile it"
-        : null;
+        : null)?.Shown;
 
     /// <summary>Why Profile cannot start now, or null when it can.</summary>
     private string? WhyNotProfile(ProjectSession folder, RunConfiguration? configuration = null)
@@ -281,10 +281,10 @@ public sealed class ProfilerCommands
         RunConfiguration? chosen = configuration ?? folder.Configurations.Chosen;
         if (folder.Folder is not null && !folder.Trusted)
         {
-            return Refusals.Untrusted;
+            return Refusals.Untrusted.Shown;
         }
-        return Busy(folder) ?? (chosen is not null && folder.Aspire.IsAspire(chosen) ? null
-            : GoesOn(folder) ?? (chosen?.Console == ConsoleKind.Terminal ? null : RunConsoleTaken(folder, chosen)));
+        return (Busy(folder) ?? (chosen is not null && folder.Aspire.IsAspire(chosen) ? null
+            : GoesOn(folder) ?? (chosen?.Console == ConsoleKind.Terminal ? null : RunConsoleTaken(folder, chosen))))?.Shown;
     }
 
     private async Task<string?> LaunchAsync(ProjectSession profiled, string? arguments, Working work, RunConfiguration? configuration)
@@ -314,8 +314,8 @@ public sealed class ProfilerCommands
             : plan.WhyNot("profile")) is { } why)
         {
             plan?.Dashboard?.Dispose();
-            View.Stopped(why);
-            return why;
+            View.Stopped(why.Shown);
+            return why.Shown;
         }
         // Its logs and traces' dashboard, ended with the program once it runs, else with this start.
         Telemetry.RunDashboard? dashboard = plan!.Dashboard;
@@ -396,7 +396,7 @@ public sealed class ProfilerCommands
             {
                 // Its folder was left as it started: it ends with the folder's other programs.
                 program.Kill();
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             profilingName = chosen.Name;
             if (!inTerminal)
@@ -423,7 +423,7 @@ public sealed class ProfilerCommands
                 {
                     View.Stopped();
                 }
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             profiled.Profiling = null;
             string stopped = $"Profiling {chosen.Name} was stopped as it started";
@@ -526,7 +526,7 @@ public sealed class ProfilerCommands
         }
         if (profiled.IsEnded)
         {
-            return Refusals.SolutionClosed;
+            return Refusals.SolutionClosed.Shown;
         }
         // A start that failed once recording had begun read its snapshot as it took its containers down, which the window shows.
         bool recorded = profiled.ContainerRun?.Profiled is not null;
@@ -650,7 +650,7 @@ public sealed class ProfilerCommands
         // A service of a run of services, recorded through its run, which Stop reads first.
         if (target?.Run is { } run)
         {
-            return Busy(Session) is { } busy ? Task.FromResult<string?>(busy) : parts.Builds().ProfileServiceAsync(run, target.Name);
+            return Busy(Session) is { } busy ? Task.FromResult<string?>(busy.Shown) : parts.Builds().ProfileServiceAsync(run, target.Name);
         }
         return AttachTargetAsync(target, choose);
     }
@@ -667,7 +667,7 @@ public sealed class ProfilerCommands
         // Profile's own start (a container configuration's) is under way as its held service is recorded: that is no other.
         if (profiled.Profiling is not null || asItRuns && launching is not null)
         {
-            return Refusals.Profiling;
+            return Refusals.Profiling.Shown;
         }
         string name = run.NameOf(service);
         bool ours = launching is null;
@@ -711,8 +711,8 @@ public sealed class ProfilerCommands
         {
             // Its run, or its folder, ended as the recording began, or another took the window meanwhile: read by no one.
             await recording.DisposeAsync();
-            return profiled != Session || profiled.IsEnded ? Refusals.SolutionClosed
-                : run.IsStopped ? $"{run.Name} was stopped as {service.Name}'s recording began" : Refusals.Profiling;
+            return (profiled != Session || profiled.IsEnded ? Refusals.SolutionClosed
+                : run.IsStopped ? $"{run.Name} was stopped as {service.Name}'s recording began" : Refusals.Profiling).Shown;
         }
         Follow(profiled, recording, name, killable: false);
         run.Profiled = service;
@@ -726,7 +726,7 @@ public sealed class ProfilerCommands
         ProjectSession profiled = Session;
         if (Busy(profiled) is { } busy)
         {
-            return busy;
+            return busy.Shown;
         }
         launching = profiled;
         string snapshotFolder = SnapshotFolder;
@@ -737,7 +737,7 @@ public sealed class ProfilerCommands
                 DotnetProcess? chosen = await parts.ChooseInContainer();
                 if (profiled != Session || profiled.IsEnded)
                 {
-                    return Refusals.SolutionClosed;
+                    return Refusals.SolutionClosed.Shown;
                 }
                 if (chosen is null)
                 {
@@ -763,7 +763,7 @@ public sealed class ProfilerCommands
         parts.Dock.Show(ToolWindowIds.Profiler);
         if (parts.Actions.Work.Begin(AppActions.AttachProfiler, $"Attaching the profiler to {target.Name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.AttachProfiler)!);
+            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.AttachProfiler)!).Shown;
         }
         using (work)
         {
@@ -783,7 +783,7 @@ public sealed class ProfilerCommands
             }
             if (profiled.IsEnded || profiled != Session)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             if (Paused(target) is { } paused)
             {
@@ -819,7 +819,7 @@ public sealed class ProfilerCommands
             if (profiled.IsEnded || profiled != Session || profiled.Profiling is not null)
             {
                 await running.DisposeAsync();
-                return profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : Refusals.Profiling;
+                return (profiled.IsEnded || profiled != Session ? Refusals.SolutionClosed : Refusals.Profiling).Shown;
             }
             if (game is not null)
             {
@@ -837,7 +837,7 @@ public sealed class ProfilerCommands
     /// <summary>Why a program (of this machine, or of a container by its id there) cannot be profiled or have its heap read
     /// now, <paramref name="doing"/> it: the debugger holds it paused.</summary>
     private string? Paused(int processId, string? container, string name, string doing) =>
-        Session.Debug.Debugging(processId, container) is { State: DebugState.Paused } ? Refusals.PausedInDebugger(name, doing) : null;
+        (Session.Debug.Debugging(processId, container) is { State: DebugState.Paused } ? Refusals.PausedInDebugger(name, doing) : null)?.Shown;
 
     /// <summary>Has a wait for a program's runtime say, while the debugger pauses that program, that it waits for it to go on,
     /// and its own stage again once it does, until the returned action ends it.</summary>
@@ -852,7 +852,7 @@ public sealed class ProfilerCommands
         {
             if (debugged.State == DebugState.Paused)
             {
-                waiting ??= work.Stage;
+                waiting ??= work.Stage.Shown;
                 work.Say(Refusals.PausedInDebugger(name, doing));
             }
             else if (waiting is { } stage)
@@ -877,7 +877,7 @@ public sealed class ProfilerCommands
         try
         {
             (DotnetProcess found, ProfilePlace place) = await parts.InContainer(target.Elsewhere!, target.Paths ?? ContainerPaths.None,
-                UiThread.Marshal<string>(work.Say), work.Stopping);
+                UiThread.Marshal<string>(said => work.Say(said)), work.Stopping);
             work.Say($"Recording {target.Name}…");
             return await ProfilingSession.AttachAsync(found.Id, target.File, snapshotFolder, place, target.Resume, work.Stopping);
         }
@@ -1165,7 +1165,7 @@ public sealed class ProfilerCommands
         string name = profilingName;
         if (parts.Actions.Work.Begin(AppActions.MemorySnapshot, $"Taking a memory snapshot of {name}…") is not { } work)
         {
-            string busy = ActionWork.Busy(parts.Actions.Work.Of(AppActions.MemorySnapshot)!);
+            string busy = ActionWork.Busy(parts.Actions.Work.Of(AppActions.MemorySnapshot)!).Shown;
             parts.Say(busy);
             return (null, busy);
         }

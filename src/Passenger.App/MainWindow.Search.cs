@@ -373,7 +373,7 @@ public partial class MainWindow
             OpenDocument? open = Editors.Find(path);
             if (open is not { HoldsText: false } && (ReadOnlyFiles.Why(path) ?? (open is { IsReadOnly: true } ? FileSearch.ReadOnlyWhy : null)) is { } why)
             {
-                left.Add((path, why));
+                left.Add((path, why.Shown));
             }
         }
         return left;
@@ -420,7 +420,7 @@ public partial class MainWindow
     {
         if (work.Begin(AppActions.ReplaceInFiles, "Finding every match to replace…") is not { } finding)
         {
-            return (null, ActionWork.Busy(work.Of(AppActions.ReplaceInFiles)!));
+            return (null, ActionWork.Busy(work.Of(AppActions.ReplaceInFiles)!).Shown);
         }
         using (finding)
         {

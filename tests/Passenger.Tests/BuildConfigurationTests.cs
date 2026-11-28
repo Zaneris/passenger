@@ -213,7 +213,7 @@ public sealed class BuildConfigurationTests
         {
             if (window.IsRunning)
             {
-                Assert.Null(window.Actions.Run(AppActions.StopAll));
+                Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
                 Ui.WaitFor(() => !window.IsRunning, "the profile's programs to end");
             }
             window.Close();

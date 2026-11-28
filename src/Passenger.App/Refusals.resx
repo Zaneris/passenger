@@ -1,0 +1,1954 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="NoToolWindowOpen" xml:space="preserve">
+    <value>No tool window is open</value>
+    <comment>No tool window is open, for an action on the one open last.</comment>
+  </data>
+  <data name="NoToolWindowHadKeys" xml:space="preserve">
+    <value>No tool window has had the keys yet</value>
+    <comment>No tool window's view has had the keys yet, for Jump to Last Tool Window.</comment>
+  </data>
+  <data name="NoToolTabs" xml:space="preserve">
+    <value>No tool window with tabs has the keys</value>
+    <comment>What has the keys holds no tabs, for Close Tool Window Tab.</comment>
+  </data>
+  <data name="ToolTabStays" xml:space="preserve">
+    <value>The tab shown has no close: it stays open</value>
+    <comment>The tab shown has no ×, for Close Tool Window Tab.</comment>
+  </data>
+  <data name="NoFile" xml:space="preserve">
+    <value>No file is open</value>
+    <comment>No file is shown in the editor.</comment>
+  </data>
+  <data name="NothingToSwitchTo" xml:space="preserve">
+    <value>No tab or tool window is open to switch to</value>
+    <comment>No tab is open and no tool window serves the folder, for the Switcher.</comment>
+  </data>
+  <data name="NoGodotScene" xml:space="preserve">
+    <value>No scene of a Godot game is open: open a .tscn, or a script one of its nodes runs</value>
+    <comment>The file shown is no Godot scene, nor a script a scene runs, of a Godot project the folder builds a game of.</comment>
+  </data>
+  <data name="NoForm" xml:space="preserve">
+    <value>No form is open: open a Windows Forms form's or user control's code or its .Designer.cs</value>
+    <comment>A form's layout asked for of a file that is no Windows Forms form's.</comment>
+  </data>
+  <data name="FormsDrawOnWindows" xml:space="preserve">
+    <value>Windows Forms draws only on Windows, where its designer runs</value>
+    <comment>A form's design asked for off Windows, where Windows Forms draws nothing.</comment>
+  </data>
+  <data name="NoFormDesign" xml:space="preserve">
+    <value>No form's design is shown: open a form's code or its .Designer.cs and show its design</value>
+    <comment>A design's action asked for while no form's design has the keys, or the Toolbox while none is shown.</comment>
+  </data>
+  <data name="NoComponentChosen" xml:space="preserve">
+    <value>No component of the form is chosen: click one in its design</value>
+    <comment>A design's action on its chosen components while none is chosen.</comment>
+  </data>
+  <data name="FormItselfStays" xml:space="preserve">
+    <value>The form itself is neither deleted nor put in front of or behind anything</value>
+    <comment>Delete, Bring to Front or Send to Back asked of the form itself.</comment>
+  </data>
+  <data name="NotInList" xml:space="preserve">
+    <value>Only an item of a list (a menu's, a strip's, a list's columns, a tab control's pages) moves up or down in it</value>
+    <comment>Move Up or Move Down asked of a component that is no item of a list.</comment>
+  </data>
+  <data name="FirstInList" xml:space="preserve">
+    <value>It is first in its list already</value>
+    <comment>Move Up asked of the first item of its list.</comment>
+  </data>
+  <data name="LastInList" xml:space="preserve">
+    <value>It is last in its list already</value>
+    <comment>Move Down asked of the last item of its list.</comment>
+  </data>
+  <data name="ItemHasNoOrder" xml:space="preserve">
+    <value>An item is drawn by what holds it, in its list's order, which Move Up and Move Down change</value>
+    <comment>Bring to Front or Send to Back asked of an item a control draws (a menu's, a list's columns).</comment>
+  </data>
+  <data name="TrayHasNoOrder" xml:space="preserve">
+    <value>A component in the tray is drawn nowhere, so it stands in front of or behind nothing</value>
+    <comment>Bring to Front or Send to Back asked of a component in the tray.</comment>
+  </data>
+  <data name="DesignerBusy" xml:space="preserve">
+    <value>The designer is still making the last change</value>
+    <comment>An edit of a design asked for while the designer makes the last one.</comment>
+  </data>
+  <data name="DesignChangedMeanwhile" xml:space="preserve">
+    <value>The form's code changed while the designer worked: make the change again</value>
+    <comment>The form's code changed (or the designer started again) while the designer made an edit, which it then wrote nowhere.</comment>
+  </data>
+  <data name="DesignChangesNothing" xml:space="preserve">
+    <value>That changes nothing the form's code says</value>
+    <comment>An edit of a design that the form's code says nothing of (a control moved to where it stood).</comment>
+  </data>
+  <data name="PropertyAtDefault" xml:space="preserve">
+    <value>The form's code sets nothing of it: it stands at its default</value>
+    <comment>Reset asked of a property the form's code sets nothing of.</comment>
+  </data>
+  <data name="NoHandler" xml:space="preserve">
+    <value>No handler is hooked to it</value>
+    <comment>Remove Handler asked of an event no handler is hooked to.</comment>
+  </data>
+  <data name="FormNameIsItsClass" xml:space="preserve">
+    <value>The form's name is its class's: rename the class in its code</value>
+    <comment>(Name) given to the form itself, whose name is its class's.</comment>
+  </data>
+  <data name="NothingToUndo" xml:space="preserve">
+    <value>Nothing of the form's code to undo</value>
+    <comment>Undo or Redo in a form's design with nothing of its file's to take back or make again.</comment>
+  </data>
+  <data name="NothingToRedo" xml:space="preserve">
+    <value>Nothing of the form's code to redo</value>
+  </data>
+  <data name="NoFormsProject" xml:space="preserve">
+    <value>No Windows Forms project is open</value>
+    <comment>The Toolbox asked for in a folder with no Windows Forms project.</comment>
+  </data>
+  <data name="TrustLets" xml:space="preserve">
+    <value>Trusted, Passenger runs its code as it works: design-time builds and restore as it opens, the analyzers and source generators its projects name, builds, runs, tests and debugging, its own TypeScript, ESLint, Prettier, Oxlint, Oxfmt and Biome, and the programs its Git configuration names.</value>
+    <comment>What trusting a folder lets Passenger run, as the trust question and the banner say it.</comment>
+  </data>
+  <data name="UntrustedSaid" xml:space="preserve">
+    <value>This folder is not trusted: none of its code runs until you trust it</value>
+    <comment>What the banner over an untrusted folder says.</comment>
+  </data>
+  <data name="RestoresUntrusted" xml:space="preserve">
+    <value>{template} restores the project it makes and cannot be told not to, which would run this folder's MSBuild files: trust the folder first</value>
+    <comment>A project template that restores what it makes, with no option to skip that, refused in a folder not trusted.</comment>
+  </data>
+  <data name="TrustIsThePersons" xml:space="preserve">
+    <value>Only the person trusts a folder, with Trust Folder over the editors</value>
+    <comment>An agent asked to trust a folder, which only the person does: through an action, or by its input into Passenger's windows.</comment>
+  </data>
+  <data name="TrustAnsweredByThePerson" xml:space="preserve">
+    <value>Only the person answers whether to trust a folder: no agent's input reaches the question</value>
+    <comment>An agent's input reaching the question whether to trust a folder, which only the person answers.</comment>
+  </data>
+  <data name="TrustedAlready" xml:space="preserve">
+    <value>The folder is trusted already</value>
+    <comment>The folder open is trusted already.</comment>
+  </data>
+  <data name="NoFolder" xml:space="preserve">
+    <value>No folder is open</value>
+    <comment>The window has no folder open (a solution, a project or a folder of files).</comment>
+  </data>
+  <data name="NoMembersListed" xml:space="preserve">
+    <value>No completion list of a type's members of that kind is open</value>
+    <comment>A completion list's filter by the kind of member asked for where none is offered.</comment>
+  </data>
+  <data name="NoOverloadsShown" xml:space="preserve">
+    <value>Parameter Info shows no call of several overloads</value>
+    <comment>Parameter Info's next or previous overload asked for where it shows no call of several.</comment>
+  </data>
+  <data name="NoSolution" xml:space="preserve">
+    <value>No solution is open</value>
+    <comment>The folder open has no solution (a project opened alone, or a folder of files).</comment>
+  </data>
+  <data name="NoSolutionView" xml:space="preserve">
+    <value>The open folder has no solution or project: the Explorer shows its files alone</value>
+    <comment>The folder open has neither a solution nor a project, so the Explorer has only its files to show.</comment>
+  </data>
+  <data name="NoRepository" xml:space="preserve">
+    <value>The folder is not in a Git repository</value>
+    <comment>The folder open is in no Git working tree.</comment>
+  </data>
+  <data name="InRepository" xml:space="preserve">
+    <value>The folder is in a Git repository already</value>
+    <comment>The folder open is in a Git working tree already, which Create Git Repository would make.</comment>
+  </data>
+  <data name="CommitWithConflicts" xml:space="preserve">
+    <value>Resolve conflicts in order to commit</value>
+    <comment>Git has files in conflict, which no commit takes as they are.</comment>
+  </data>
+  <data name="NoFilesChosenToCommit" xml:space="preserve">
+    <value>No files are chosen to commit</value>
+    <comment>The Commit window has no file chosen, and no merge to finish or commit to amend.</comment>
+  </data>
+  <data name="EmptyCommitMessage" xml:space="preserve">
+    <value>The commit message is empty</value>
+    <comment>The Commit window's message is empty or blank.</comment>
+  </data>
+  <data name="NoCommitMessages" xml:space="preserve">
+    <value>No message has been committed from the Commit window in this repository yet</value>
+    <comment>Commit Message History in a repository the Commit window has committed nothing in yet.</comment>
+  </data>
+  <data name="NoRefChosen" xml:space="preserve">
+    <value>No branch or tag is chosen</value>
+    <comment>The Git log's branches panel has HEAD, a group or no row chosen, where a branch or tag is acted on.</comment>
+  </data>
+  <data name="NoBranchChosen" xml:space="preserve">
+    <value>No branch is chosen</value>
+    <comment>The branches panel has no branch chosen, which alone is marked as a favourite.</comment>
+  </data>
+  <data name="NoLocalBranchChosen" xml:space="preserve">
+    <value>No local branch is chosen</value>
+    <comment>The branches panel has no local branch chosen, which alone Update brings up to date.</comment>
+  </data>
+  <data name="Untracked" xml:space="preserve">
+    <value>{branch} tracks no remote's branch to update from</value>
+    <comment>A local branch to update that tracks no remote's branch to bring it up to.</comment>
+  </data>
+  <data name="FetchedNotUpdated" xml:space="preserve">
+    <value>{branch} is a remote's branch, which Git › Fetch brings up to date</value>
+    <comment>A remote's branch, which a fetch brings up to date where Update brings a local branch.</comment>
+  </data>
+  <data name="CheckedOut" xml:space="preserve">
+    <value>{branch} is checked out</value>
+    <comment>The branch checked out, which git deletes only once another is.</comment>
+  </data>
+  <data name="NoCSharp" xml:space="preserve">
+    <value>No C# language server runs for this folder</value>
+    <comment>The folder has no C# language server: it has neither a solution nor a project, or its window starts none.</comment>
+  </data>
+  <data name="NotCSharp" xml:space="preserve">
+    <value>The file is not C#</value>
+    <comment>What is asked works only in a C# file, and the file shown is another language's.</comment>
+  </data>
+  <data name="NoUsagesHighlighted" xml:space="preserve">
+    <value>No usage of the symbol at the caret is highlighted</value>
+    <comment>Next or Previous Usage where the editor highlights no usage of the symbol at the caret.</comment>
+  </data>
+  <data name="NothingImplements" xml:space="preserve">
+    <value>Nothing at the caret has an implementation or a declaration to show</value>
+    <comment>Quick Implementations where the server knows nothing the caret's symbol is implemented by or declared at.</comment>
+  </data>
+  <data name="NoProblemHere" xml:space="preserve">
+    <value>No problem is marked on the caret's line</value>
+    <comment>Error Description where the caret's line has no problem.</comment>
+  </data>
+  <data name="SolutionAnalysisOff" xml:space="preserve">
+    <value>Solution-wide analysis is off: Toggle Solution-Wide Analysis lists every file's errors to step through</value>
+    <comment>Next or Previous Error in Solution with solution-wide analysis off, whose errors they step through.</comment>
+  </data>
+  <data name="NoInspections" xml:space="preserve">
+    <value>No analyzer of the solution reports a rule to run</value>
+    <comment>Run Inspection by Name's list where no analyzer of the solution's reports a rule whose severity can be set.</comment>
+  </data>
+  <data name="NoExpressionType" xml:space="preserve">
+    <value>No expression with a type is at the caret</value>
+    <comment>Expression Type Info where no expression with a type stands at the caret.</comment>
+  </data>
+  <data name="NothingSelectedToFold" xml:space="preserve">
+    <value>Select what to fold first</value>
+    <comment>Collapse Selection with nothing selected.</comment>
+  </data>
+  <data name="NoBlockHere" xml:space="preserve">
+    <value>No block of braces is around the caret</value>
+    <comment>Collapse Block where no block of braces is around the caret.</comment>
+  </data>
+  <data name="NoBuildRunning" xml:space="preserve">
+    <value>No build is running</value>
+    <comment>Cancel Build with no build running.</comment>
+  </data>
+  <data name="NoBreakpointsInCode" xml:space="preserve">
+    <value>No breakpoint is set in the code</value>
+    <comment>Remove All Breakpoints with none in the code (on a line, a lambda, an attribute or a method).</comment>
+  </data>
+  <data name="NoTestOperations" xml:space="preserve">
+    <value>No unit test action can run here</value>
+    <comment>Unit Test Operations where none of the Tests menu's actions can run.</comment>
+  </data>
+  <data name="NoVcsOperations" xml:space="preserve">
+    <value>No Git action can run here</value>
+    <comment>VCS Operations where none of the Git menu's actions can run.</comment>
+  </data>
+  <data name="NoStatementAbove" xml:space="preserve">
+    <value>No statement or member is above it in its block, nor a block around it to move out of</value>
+    <comment>Move Statement Up where nothing stands above the statement or member in its block, type or file, and no block around it is one it moves out of (a member's body).</comment>
+  </data>
+  <data name="NoStatementBelow" xml:space="preserve">
+    <value>No statement or member is below it in its block, nor a block around it to move out of</value>
+    <comment>Move Statement Down where nothing stands below the statement or member in its block, type or file, and no block around it is one it moves out of (a member's body).</comment>
+  </data>
+  <data name="NoElementLeft" xml:space="preserve">
+    <value>No element of a list is left of the caret's</value>
+    <comment>Move Element Left where the element at the caret is a list's first, or in no list.</comment>
+  </data>
+  <data name="NoElementRight" xml:space="preserve">
+    <value>No element of a list is right of the caret's</value>
+    <comment>Move Element Right where the element at the caret is a list's last, or in no list.</comment>
+  </data>
+  <data name="NothingToUnwrap" xml:space="preserve">
+    <value>No statement around the caret holds others to unwrap</value>
+    <comment>Unwrap where no statement around the caret holds others (an if, a loop, a using, a try, a block).</comment>
+  </data>
+  <data name="NoRunConfigurationMatches" xml:space="preserve">
+    <value>No run configuration matches</value>
+    <comment>Choose and Run or Debug where no run configuration matches what is typed, or the folder has none.</comment>
+  </data>
+  <data name="NothingToRunYet" xml:space="preserve">
+    <value>No run configurations: type a command line to run it in the Terminal</value>
+    <comment>Run Anything with nothing typed in a folder with no run configuration.</comment>
+  </data>
+  <data name="NothingCopied" xml:space="preserve">
+    <value>Nothing has been copied yet</value>
+    <comment>Paste from History before anything was copied, here or on the clipboard.</comment>
+  </data>
+  <data name="NoTypeExpected" xml:space="preserve">
+    <value>No type is expected at the caret</value>
+    <comment>Smart Type Completion where C# expects no type at the caret.</comment>
+  </data>
+  <data name="NothingFits" xml:space="preserve">
+    <value>Nothing in reach fits {type} here</value>
+    <comment>Smart Type Completion where nothing in reach of the caret fits the type expected there.</comment>
+  </data>
+  <data name="NoRegions" xml:space="preserve">
+    <value>{file} has no #region</value>
+    <comment>Go to Region in a C# file with no #region.</comment>
+  </data>
+  <data name="CSharpStopped" xml:space="preserve">
+    <value>The C# language server ended too often and was left stopped until it is started again</value>
+    <comment>The C# language server ended too often and was left stopped, until a person starts it again.</comment>
+  </data>
+  <data name="CSharpUnavailable" xml:space="preserve">
+    <value>The C# language server could not start, so it has none of the folder's code to answer from until it is started again: {why}</value>
+    <comment>The C# language server could not start, why in the words of what stopped it, until a person starts it again.</comment>
+  </data>
+  <data name="CSharpNotRunning" xml:space="preserve">
+    <value>the C# language server is not running</value>
+    <comment>The folder's C# language server asked of has not started yet, or has ended: a clause, after what it stopped or as LanguageServerFailed's reason, or a sentence through Sentence.</comment>
+  </data>
+  <data name="TooDeep" xml:space="preserve">
+    <value>{file} is nested too deeply for Passenger to read, so the C# language server is not given it</value>
+    <comment>A C# file nested past what Passenger reads, which the C# language server is never given.</comment>
+  </data>
+  <data name="NoGameInWindow" xml:space="preserve">
+    <value>A Godot game whose run configuration starts it in Passenger's Game window draws here (Run › Edit Configurations, Starts). While the game has the keys, {keys} or a click anywhere in Passenger takes them back</value>
+    <comment>What the Game window shows while it holds no game: which game draws there, and the keys that take the keys back from a game that has them.</comment>
+  </data>
+  <data name="NoGameInPane" xml:space="preserve">
+    <value>No Godot game draws in the Game window: run one whose configuration starts it there</value>
+    <comment>No game draws in the Game window for the keys to be handed to.</comment>
+  </data>
+  <data name="GameHeadless" xml:space="preserve">
+    <value>{game} runs headless, with no picture to draw in the Game window</value>
+    <comment>A game that runs headless, as one nobody sees does, has no picture for the Game window.</comment>
+  </data>
+  <data name="GameNotEmbeddedHere" xml:space="preserve">
+    <value>Passenger draws a game in its Game window on Windows, on macOS and on Linux under X11 (XWayland too); here a game draws in a window of its own</value>
+    <comment>The Game window holds a game on Windows, on macOS and under X11 alone.</comment>
+  </data>
+  <data name="GameNoLayerHost" xml:space="preserve">
+    <value>this macOS has no CALayerHost, through which the Game window shows a game's picture, so a game draws in a window of its own</value>
+    <comment>A macOS whose QuartzCore has no CALayerHost cannot show a game's shared picture.</comment>
+  </data>
+  <data name="GameWindowHolds" xml:space="preserve">
+    <value>the Game window holds {game}</value>
+    <comment>The Game window holds one game at a time: another copy, or a game started meanwhile, draws in its own.</comment>
+  </data>
+  <data name="ProjectsUnloadable" xml:space="preserve">
+    <value>The folder's projects are not loaded, so the C# language server has none of their code to search or read: {lacking}</value>
+    <comment>A C# code tool asked while the folder's projects have no .NET SDK to load with, as lacking says it: the language server holds none of their code to answer from.</comment>
+  </data>
+  <data name="NoDotnet" xml:space="preserve">
+    <value>No .NET is installed: files open and edit, and Git and the terminal work, but projects need the .NET SDK to load, build, run and test</value>
+    <comment>No dotnet at all, runtime or SDK, was found.</comment>
+  </data>
+  <data name="AgentInstalls" xml:space="preserve">
+    <value>An agent's own Passenger, which nobody is at, never installs software: ask the person, who does it with the banner over Passenger's window, or Tools, Install .NET SDK…</value>
+    <comment>What an agent's ide_action of Install .NET SDK or Add .NET to the Shell's PATH is refused with.</comment>
+  </data>
+  <data name="InstallIsThePersons" xml:space="preserve">
+    <value>Only the person installs the .NET SDK by Passenger's window, never an agent's input: an agent's ide_action of Install .NET SDK… asks the person at their window</value>
+    <comment>An agent's input into Passenger's window asking to install the .NET SDK, or answering the person's question whether to: only the person installs it there, an agent asking them through ide_action.</comment>
+  </data>
+  <data name="AgentChangesPath" xml:space="preserve">
+    <value>An agent never changes the person's shell PATH: ask the person, who does it with the banner over Passenger's window, or Tools, Add .NET to the Shell's PATH…</value>
+    <comment>An agent's Add .NET to the Shell's PATH: the person's shell is theirs to change.</comment>
+  </data>
+  <data name="LooseWithoutSdk" xml:space="preserve">
+    <value>{file} is a C# file of no project, which knows no framework types until a .NET SDK is installed: Roslyn reads a loose file's framework only from a project the SDK's MSBuild builds</value>
+    <comment>The banner's word of a C# file of no project shown while the machine has no .NET SDK: what Roslyn's server cannot give it, and why.</comment>
+  </data>
+  <data name="NoFolderTo" xml:space="preserve">
+    <value>Nothing to {verb, select, build {build} run {run} publish {publish} export {export} other {{verb}}}: no folder is open</value>
+    <comment>A build, publish, export or run (the verb) asked for with no folder open, or once its folder has closed.</comment>
+  </data>
+  <data name="NoBuildConfigurations" xml:space="preserve">
+    <value>The folder's build configurations are not read yet: its solution or projects are still being read</value>
+    <comment>Why no build configuration can be chosen: the folder's solution or projects have not been read yet.</comment>
+  </data>
+  <data name="NoGodotProject" xml:space="preserve">
+    <value>The open folder holds no Godot project (project.godot)</value>
+    <comment>An action on a Godot project asked for in a folder that holds none.</comment>
+  </data>
+  <data name="NoAppHost" xml:space="preserve">
+    <value>The open folder holds no Aspire AppHost</value>
+    <comment>The Aspire window, in a folder holding no AppHost: no project Aspire's SDK makes one, no single-file AppHost.</comment>
+  </data>
+  <data name="NoWebApp" xml:space="preserve">
+    <value>The open folder holds no ASP.NET Core app</value>
+    <comment>The Requests window, in a folder holding no project a web SDK builds.</comment>
+  </data>
+  <data name="NoWebRequests" xml:space="preserve">
+    <value>The open folder holds no ASP.NET Core app and no .http file</value>
+    <comment>The Endpoints window, in a folder holding no web app's routes and no .http or .rest file's requests.</comment>
+  </data>
+  <data name="NoStepDefinitions" xml:space="preserve">
+    <value>The open folder holds no Reqnroll or SpecFlow project</value>
+    <comment>The Step Library, in a folder holding no project that takes Reqnroll's or SpecFlow's packages.</comment>
+  </data>
+  <data name="NoInspectedApp" xml:space="preserve">
+    <value>The open folder holds no Avalonia, WPF, Windows Forms, .NET MAUI or Godot app, and no app is inspected</value>
+    <comment>Live Visual Tree, in a folder holding no app Passenger's inspector looks into, with none inspected now.</comment>
+  </data>
+  <data name="InspectorGone" xml:space="preserve">
+    <value>{app} still runs, but the connection to its inspector closed, so nothing more is read of its windows until it starts again</value>
+    <comment>The Live Visual Tree or an agent's app tool, of an app (named as it is shown) still debugged whose inspector's connection closed under it.</comment>
+  </data>
+  <data name="NoNextStatement" xml:space="preserve">
+    <value>The paused program's debugger cannot move where it goes on, so there is no Set Next Statement there</value>
+    <comment>Set Next Statement asked of a program whose debugger cannot move where a paused thread goes on (a Godot game's GDScript).</comment>
+  </data>
+  <data name="NothingToBuild" xml:space="preserve">
+    <value>The open folder has no solution or project to build</value>
+    <comment>A build asked of a folder with no solution or project file MSBuild could build, which it would refuse in its own words (MSB1003); short enough to read whole in the smallest window's status bar.</comment>
+  </data>
+  <data name="NeedsTerminal" xml:space="preserve">
+    <value>{program} needs a terminal for {call}: the {window} window gives it pipes</value>
+    <comment>A program whose output said it needs a terminal for a call (TerminalNeeds) where the Run or Debug window's console gave it pipes.</comment>
+  </data>
+  <data name="NoTerminalNeed" xml:space="preserve">
+    <value>No program in the {window} window said it needs a terminal</value>
+    <comment>Run or Debug in the Terminal asked for while no program the window's console holds said it needs one.</comment>
+  </data>
+  <data name="ScriptOnlyRuns" xml:space="preserve">
+    <value>{name} runs a package.json script with its package manager, which Run starts: Passenger debugs and profiles .NET programs</value>
+    <comment>Debug or Profile asked of a configuration running a Node package's script, which Run alone starts.</comment>
+  </data>
+  <data name="NothingToBuildOfScripts" xml:space="preserve">
+    <value>The open folder's Godot project is GDScript alone, which Godot runs as it is: there is nothing to build (Run, Debug and Profile start its game)</value>
+    <comment>A build asked of a folder whose one kind of project is a Godot project of GDScript alone, which builds nothing.</comment>
+  </data>
+  <data name="TestsNotFound" xml:space="preserve">
+    <value>the tests in {assembly} ({framework}) could not be found: {why}</value>
+    <comment>A built test assembly whose tests its runner could not look through, with what the runner said: a clause, after what found no test or a run's tally.</comment>
+  </data>
+  <data name="Building" xml:space="preserve">
+    <value>Another build is running</value>
+    <comment>A build or publish asked for while another of the window's runs: one builds at a time.</comment>
+  </data>
+  <data name="AppHostNotOwned" xml:space="preserve">
+    <value>The AppHost is no longer owned by the workspace</value>
+    <comment>An AppHost the folder's session no longer runs, asked of by an agent's call or an Aspire tool: it stopped, or the folder was left.</comment>
+  </data>
+  <data name="AppHostChanged" xml:space="preserve">
+    <value>The workspace or owned AppHost changed</value>
+    <comment>An AppHost's folder left, or the AppHost stopped or started again, while what was asked of it waited.</comment>
+  </data>
+  <data name="NoOutline" xml:space="preserve">
+    <value>{file} has no outline: no language server has it open</value>
+    <comment>Why a file shown has no outline for Structure and File Structure: they list what its language server outlines, and none has it open.</comment>
+  </data>
+  <data name="DeclaresNothing" xml:space="preserve">
+    <value>{file} declares nothing to go to</value>
+    <comment>Why Jump to Navigation Bar opens nothing in a file shown: its outline is read, and holds no declaration, heading or key.</comment>
+  </data>
+  <data name="NoContextHelp" xml:space="preserve">
+    <value>{file} has no context help: Context Help opens Godot's reference from C#, GDScript and shaders</value>
+    <comment>Why Context Help has nothing to name in a file shown: neither C#'s server nor GDScript's has it, and it is no shader.</comment>
+  </data>
+  <data name="NoGodotDocumentation" xml:space="preserve">
+    <value>The caret is on no Godot class or member, whose page in Godot's class reference Context Help opens</value>
+    <comment>Context Help with the caret on nothing of Godot's engine: the project's own code, or .NET's.</comment>
+  </data>
+  <data name="NoShaderDocumentation" xml:space="preserve">
+    <value>The caret is on no built-in, mode, hint or function of Godot's shading language, whose place in its reference Context Help opens</value>
+    <comment>Context Help in a shader with the caret on nothing of Godot's shading language: the shader's own names.</comment>
+  </data>
+  <data name="PersonsKeys" xml:space="preserve">
+    <value>It moves the person's keys, which only the person does</value>
+    <comment>An action whose whole work is to move the person's keys (Focus Editor), asked for by an agent, which never moves them.</comment>
+  </data>
+  <data name="AsksThePerson" xml:space="preserve">
+    <value>It asks the person in a popup or dialog, which would take their keys: the agent's own tools do its work</value>
+    <comment>An action that asks the person in a popup or dialog (Go to File, Rename, Settings), asked for by an agent, whose own tools do what those ask for.</comment>
+  </data>
+  <data name="NoExpression" xml:space="preserve">
+    <value>No expression is at the caret</value>
+    <comment>Neither a selection nor a name is at the caret for the debugger to evaluate.</comment>
+  </data>
+  <data name="DebuggingEnded" xml:space="preserve">
+    <value>Debugging {program} has ended: choose a program that is debugged in the Debug window</value>
+    <comment>A debugger's action asked of the chosen program while one is debugged, its own tab chosen after it ended.</comment>
+  </data>
+  <data name="NotPaused" xml:space="preserve">
+    <value>The program is not paused</value>
+    <comment>An action of a stop (a step, an evaluation, Memory's read) asked of the chosen program while it runs or starts.</comment>
+  </data>
+  <data name="ConfigurationUnnamed" xml:space="preserve">
+    <value>A configuration needs a name</value>
+    <comment>A run configuration given no name, which names it in the list and on the toolbar.</comment>
+  </data>
+  <data name="PropertyEditedMeanwhile" xml:space="preserve">
+    <value>Rename was not applied: the property was edited meanwhile</value>
+    <comment>A JSON property's rename whose property was edited before the rename could be placed.</comment>
+  </data>
+  <data name="NoDeclaration" xml:space="preserve">
+    <value>Cannot find a declaration to go to</value>
+    <comment>Go to Declaration found nothing to go to where it was asked.</comment>
+  </data>
+  <data name="NoReqnrollProject" xml:space="preserve">
+    <value>No Reqnroll or SpecFlow project's step definitions are read: open its .feature files, or wait for C# to load</value>
+    <comment>No project of the folder is a Reqnroll or SpecFlow one whose bindings the C# server has read.</comment>
+  </data>
+  <data name="NoFeature" xml:space="preserve">
+    <value>The editor shows no .feature file: open the feature to write the step into</value>
+    <comment>A step's phrase asked to be written where the editor shows no .feature file.</comment>
+  </data>
+  <data name="NoStepChosen" xml:space="preserve">
+    <value>No step definition is chosen in the Step Library</value>
+    <comment>The Step Library's action asked with no definition chosen there.</comment>
+  </data>
+  <data name="OverloadNotInSource" xml:space="preserve">
+    <value>This overload is not in the source, which has changed since its assembly was built: went to the declarations of that name</value>
+    <comment>Go to Declaration of an overload an unloaded project's source no longer declares, gone to by its name.</comment>
+  </data>
+  <data name="SolutionClosed" xml:space="preserve">
+    <value>The solution was closed</value>
+    <comment>What a start or an action under way was working in has ended: its folder was left or closed.</comment>
+  </data>
+  <data name="WorkspaceEnding" xml:space="preserve">
+    <value>The workspace is ending</value>
+    <comment>A debug session or Hot Reload asked of a folder the window is leaving, whose debugging is ending.</comment>
+  </data>
+  <data name="NotOfFolder" xml:space="preserve">
+    <value>{project} is not one of the folder's projects</value>
+    <comment>A project named (as it is shown) that the folder's projects do not hold.</comment>
+  </data>
+  <data name="NotAProject" xml:space="preserve">
+    <value>{name} is not a project</value>
+    <comment>A row of the Explorer (named as it is shown) that is no project, which an action on a project was asked of.</comment>
+  </data>
+  <data name="NotLeftOut" xml:space="preserve">
+    <value>{name} is no file a shared project leaves out</value>
+    <comment>A row of the Explorer (named as it is shown) that Include in Project was asked of, which is no file a shared project's items file leaves out.</comment>
+  </data>
+  <data name="NotSharedFile" xml:space="preserve">
+    <value>{name} is no file of a shared project</value>
+    <comment>A row of the Explorer (named as it is shown) that Exclude from Project was asked of, which is no file a shared project's items file names.</comment>
+  </data>
+  <data name="SharedProject" xml:space="preserve">
+    <value>{name} is a shared project: its files build in the projects importing it</value>
+    <comment>A shared project (named as it is shown), which an action on a project that builds was asked of.</comment>
+  </data>
+  <data name="NoAspireCli" xml:space="preserve">
+    <value>{appHost} runs through the aspire CLI, which is not on the PATH: install Aspire 17 or later</value>
+    <comment>An AppHost of another language than C#, which only the aspire CLI runs, where none is found.</comment>
+  </data>
+  <data name="NoGoDebugger" xml:space="preserve">
+    <value>{name} is a Go program, and Passenger has no Go debugger</value>
+    <comment>A debugger asked of a Go program an AppHost runs, which Passenger has none for.</comment>
+  </data>
+  <data name="ProgramNotRunning" xml:space="preserve">
+    <value>The program is not running</value>
+    <comment>Hot Reload asked of a program the debugger no longer runs, or never ran.</comment>
+  </data>
+  <data name="BuiltUnlike" xml:space="preserve">
+    <value>{program} runs {project} built as {runs}, while the editor's code is read as the folder builds it, as {read}: Hot Reload would make its changes for code {program} does not run, so it applies none. Choose {runs} for the folder, or start {program} as the folder builds, to apply them</value>
+    <comment>Hot Reload asked of a program whose build (its project, or one it references) is of another configuration or platform than the one the language server reads the code as, the folder's: its edits would be made for other code.</comment>
+  </data>
+  <data name="EngineNotRunning" xml:space="preserve">
+    <value>The container engine is not running</value>
+    <comment>The container engine's CLI answers, but its engine does not, and it gave no words of its own.</comment>
+  </data>
+  <data name="WslcNoCompose" xml:space="preserve">
+    <value>WSL Containers has no Compose: a Compose file runs on Docker or Podman</value>
+    <comment>A Compose file run, or Compose's own checks, on WSL Containers, whose wslc has no Compose.</comment>
+  </data>
+  <data name="WslcNoBuildKit" xml:space="preserve">
+    <value>Dockerfiles are not checked with BuildKit on WSL Containers: its wslc has no Buildx</value>
+    <comment>A Dockerfile's BuildKit checks on WSL Containers, whose wslc has no Buildx to run them with.</comment>
+  </data>
+  <data name="WslcNoScout" xml:space="preserve">
+    <value>WSL Containers has no Docker Scout: an image's known vulnerabilities are asked through Docker's CLI</value>
+    <comment>Docker Scout asked of WSL Containers, whose wslc has no scout.</comment>
+  </data>
+  <data name="WslcNoPause" xml:space="preserve">
+    <value>WSL Containers cannot pause a container</value>
+    <comment>Pause or Unpause of a container on WSL Containers, whose wslc has neither.</comment>
+  </data>
+  <data name="WslcNoDockerApi" xml:space="preserve">
+    <value>Testcontainers reaches its engine through Docker's API, which WSL Containers does not serve</value>
+    <comment>A test using Testcontainers on WSL Containers: Testcontainers reaches an engine through Docker's API alone.</comment>
+  </data>
+  <data name="WslcNoImageLoad" xml:space="preserve">
+    <value>the .NET SDK loads an image into Docker or Podman, not WSL Containers: publish it to a registry, then pull it with wslc</value>
+    <comment>A container image published into the engine on WSL Containers: the .NET SDK loads one into Docker or Podman alone.</comment>
+  </data>
+  <data name="Profiling" xml:space="preserve">
+    <value>A run is already being profiled</value>
+    <comment>A profile asked for while another run of the window is profiled or starting to be: one records at a time.</comment>
+  </data>
+  <data name="AppHostStarting" xml:space="preserve">
+    <value>The AppHost resource connection is still starting</value>
+    <comment>An AppHost run whose resource connection (Interactions) is not made yet.</comment>
+  </data>
+  <data name="NoDatabaseConnection" xml:space="preserve">
+    <value>Choose a database connection first</value>
+    <comment>A database action with none of the explorer's connections chosen.</comment>
+  </data>
+  <data name="NoDatabaseTable" xml:space="preserve">
+    <value>Choose a table or view first</value>
+    <comment>Open Table Data with no table or view chosen in the Database window.</comment>
+  </data>
+  <data name="NoDatabaseOperation" xml:space="preserve">
+    <value>No database operation is running</value>
+    <comment>Stop Database Operation with none running.</comment>
+  </data>
+  <data name="NoSqlFile" xml:space="preserve">
+    <value>Open a SQL file or console first</value>
+    <comment>Run Statement with no SQL file shown.</comment>
+  </data>
+  <data name="NoPlan" xml:space="preserve">
+    <value>Only a query or a change of rows has a plan to explain</value>
+    <comment>Explain Plan of a statement that is no query or change of rows (DDL, a session's SET), or an EXPLAIN already.</comment>
+  </data>
+  <data name="NoSqlConsole" xml:space="preserve">
+    <value>Open a query console of a connection first</value>
+    <comment>Query History, Explain Plan or a console's own action with no console of a connection shown.</comment>
+  </data>
+  <data name="NoSqlStatement" xml:space="preserve">
+    <value>No statement here to run</value>
+    <comment>Run Statement with the caret where no statement stands.</comment>
+  </data>
+  <data name="SqlRunning" xml:space="preserve">
+    <value>A statement is running in this console</value>
+    <comment>Run Statement while the console runs one.</comment>
+  </data>
+  <data name="NoSqlRunning" xml:space="preserve">
+    <value>No statement is running in this console</value>
+    <comment>Stop Statement with none running in the file shown.</comment>
+  </data>
+  <data name="DatabaseBusy" xml:space="preserve">
+    <value>A database operation is under way</value>
+    <comment>A database action while the Database window reads a connection.</comment>
+  </data>
+  <data name="NoRowEdits" xml:space="preserve">
+    <value>{kind} changes rows by statements, not one by one: change them in a query console</value>
+    <comment>A table's changes, or an import, on a database that writes no row by its key.</comment>
+  </data>
+  <data name="NoDuckDbEngine" xml:space="preserve">
+    <value>DuckDB could not be opened: {why}</value>
+    <comment>A DuckDB connection opened where its engine could not be had: a release's download that failed or did not match.</comment>
+  </data>
+  <data name="NoTransactions" xml:space="preserve">
+    <value>{kind} runs each statement alone, with no transaction to commit or roll back</value>
+    <comment>Manual commit on a database whose statements each stand alone.</comment>
+  </data>
+  <data name="NotSql" xml:space="preserve">
+    <value>{kind} is read in its own queries, in a console of it, not as SQL's tables</value>
+    <comment>SQL's own reading of a database that speaks no SQL (its DDL, a plan, an import of rows, a whole table's export): a document database's documents and Redis's keys are read through their own clients, in their own queries.</comment>
+  </data>
+  <data name="NoRedisKey" xml:space="preserve">
+    <value>Choose a Redis key first</value>
+    <comment>Set Time to Live with no Redis key chosen in the explorer or shown among the editors.</comment>
+  </data>
+  <data name="NoTimeToLive" xml:space="preserve">
+    <value>Seconds, a whole number above 0, or none to keep the key for good</value>
+    <comment>A time to live that is no whole number of seconds above 0 (none keeps the key for good).</comment>
+  </data>
+  <data name="KeyGone" xml:space="preserve">
+    <value>{key} is gone: read its database again</value>
+    <comment>A Redis key's time to live set where the key is gone (it expired, or another deleted it).</comment>
+  </data>
+  <data name="ItemLacksKey" xml:space="preserve">
+    <value>An item added needs its key, {key}</value>
+    <comment>A DynamoDB item added without its table's key, which every item holds.</comment>
+  </data>
+  <data name="ItemChanged" xml:space="preserve">
+    <value>An item of {table} changed since it was read, so nothing was written: read the table again</value>
+    <comment>A DynamoDB table's changes, refused whole as an item they change no longer stands as it was read.</comment>
+  </data>
+  <data name="NoAwsProfile" xml:space="preserve">
+    <value>No AWS profile {profile} in your AWS credentials or config files</value>
+    <comment>A DynamoDB connection naming an AWS profile the person's AWS files hold none of.</comment>
+  </data>
+  <data name="NoCloudSignIn" xml:space="preserve">
+    <value>{kind} on AWS takes no IAM authentication: sign in by a Secrets Manager secret or a password</value>
+    <comment>A kind of database a cloud sign-in does not sign in to.</comment>
+  </data>
+  <data name="NoEntraSignIn" xml:space="preserve">
+    <value>{kind} takes no Microsoft Entra ID sign-in: Azure's SQL databases, PostgreSQL and MySQL servers do</value>
+    <comment>A kind of database no Azure server signs in to by Microsoft Entra ID.</comment>
+  </data>
+  <data name="NoAwsRegion" xml:space="preserve">
+    <value>{host} names no AWS region, nor does the profile: give the region in the connection's settings</value>
+    <comment>A cloud sign-in that names no region, to a host that names none either.</comment>
+  </data>
+  <data name="NoIamUser" xml:space="preserve">
+    <value>IAM authentication signs in as the database user the connection names: give its user</value>
+    <comment>IAM authentication signs in as the connection's own user, which it names none of.</comment>
+  </data>
+  <data name="NoRedshiftCluster" xml:space="preserve">
+    <value>{host} names no Redshift cluster or workgroup: give its name in the connection's cloud sign-in</value>
+    <comment>Redshift's IAM sign-in to a host that names no cluster or workgroup, with none given.</comment>
+  </data>
+  <data name="RedshiftRefusedIam" xml:space="preserve">
+    <value>Redshift gave no credentials for {cluster}: {said}</value>
+    <comment>Redshift refused the credentials an IAM sign-in asked of it.</comment>
+  </data>
+  <data name="SecretUnread" xml:space="preserve">
+    <value>Secrets Manager's secret {secret} gave no sign-in: {said}</value>
+    <comment>A Secrets Manager secret that could not be read, or held no sign-in.</comment>
+  </data>
+  <data name="AwsProfileUnusable" xml:space="preserve">
+    <value>AWS profile {profile} signs in by {what}, which Passenger cannot sign in with</value>
+    <comment>An AWS profile Passenger signs in with names something it cannot sign in by.</comment>
+  </data>
+  <data name="AwsProcessFailed" xml:space="preserve">
+    <value>AWS profile {profile}'s credential_process gave no credentials: {said}</value>
+    <comment>An AWS profile's credential_process failed or answered what AWS's credentials are not.</comment>
+  </data>
+  <data name="AwsSignInNeeded" xml:space="preserve">
+    <value>AWS profile {profile} signs in through IAM Identity Center and has no sign-in that holds: choose Sign In… on its connection's menu</value>
+    <comment>An AWS profile that signs in through IAM Identity Center has no sign-in that holds.</comment>
+  </data>
+  <data name="NoBrowserSignIn" xml:space="preserve">
+    <value>The chosen connection signs in through neither Microsoft Entra ID nor an AWS profile's IAM Identity Center</value>
+    <comment>Sign In asked of a connection that signs in by none of the sign-ins the person makes in their browser.</comment>
+  </data>
+  <data name="AzureAccountUnchosen" xml:space="preserve">
+    <value>Several Microsoft Entra ID accounts are signed in: choose the connection's account in its settings</value>
+    <comment>A connection that names no Microsoft Entra ID account, with several signed in.</comment>
+  </data>
+  <data name="AzureRefused" xml:space="preserve">
+    <value>Azure refused {what}: {said}</value>
+    <comment>Microsoft Entra ID's sign-in failed, or Azure refused what was asked of it.</comment>
+  </data>
+  <data name="AwsSignInNotApproved" xml:space="preserve">
+    <value>AWS profile {profile}'s sign-in was not approved in the browser before its code ran out</value>
+    <comment>IAM Identity Center's device sign-in was refused, or ran out before the person approved it.</comment>
+  </data>
+  <data name="KeyChanged" xml:space="preserve">
+    <value>{key} changed since it was read, so nothing was written: read it again</value>
+    <comment>A Redis key's changes, refused whole as a value they change no longer stands as it was read.</comment>
+  </data>
+  <data name="StreamEntriesFixed" xml:space="preserve">
+    <value>A stream's entries are only added and deleted, never changed</value>
+    <comment>A stream's entry changed, which Redis never does: its entries are added and deleted alone.</comment>
+  </data>
+  <data name="NoCosmosDatabase" xml:space="preserve">
+    <value>{connection} names no database: add Database=… to its connection string to query its containers</value>
+    <comment>A Cosmos DB console of a connection that names no database, whose containers it would query.</comment>
+  </data>
+  <data name="ConsoleOfAnother" xml:space="preserve">
+    <value>A {language} file does not run against {kind}: open a console of the connection</value>
+    <comment>A console's file run against a connection whose queries are in another language: MongoDB's shell or Redis's commands on SQL's databases, or SQL on MongoDB or Redis.</comment>
+  </data>
+  <data name="NoSchemaReads" xml:space="preserve">
+    <value>Schema diagrams and comparisons read SQLite, PostgreSQL, SQL Server and MySQL, not {kind}</value>
+    <comment>A schema diagram or comparison of a database whose keys and constraints these read in no way of its own.</comment>
+  </data>
+  <data name="ReadOnlyConnection" xml:space="preserve">
+    <value>{connection} is marked read-only: nothing that changes its data or schema runs there</value>
+    <comment>A statement, or a table's changes, that would change data or schema on a connection marked read-only.</comment>
+  </data>
+  <data name="NoDefinition" xml:space="preserve">
+    <value>The database gives no definition of {name}: read it again in Database</value>
+    <comment>Show DDL, or a script made from it, of an object its database gives no definition of (dropped since it was read).</comment>
+  </data>
+  <data name="NoDatabaseObject" xml:space="preserve">
+    <value>Choose a table, view, routine, trigger, index or column first</value>
+    <comment>Show DDL or a script with no table, view, routine, trigger, index or column chosen in the Database window.</comment>
+  </data>
+  <data name="NoPrimaryKey" xml:space="preserve">
+    <value>{table} has no primary key, so none of its rows can be found again to change</value>
+    <comment>A change asked of a table or view with no primary key, by which a row is found again to write it.</comment>
+  </data>
+  <data name="NotTrueOrFalse" xml:space="preserve">
+    <value>''{text}' is neither true nor false</value>
+    <comment>A cell of a column read as true or false written with other words.</comment>
+  </data>
+  <data name="NoPreviousPage" xml:space="preserve">
+    <value>This is the first page</value>
+    <comment>A table's Previous Page on its first page.</comment>
+  </data>
+  <data name="NoNextPage" xml:space="preserve">
+    <value>This is the last page</value>
+    <comment>A table's Next Page on its last page.</comment>
+  </data>
+  <data name="DatabaseNotReading" xml:space="preserve">
+    <value>Nothing of this table is being read or written</value>
+    <comment>A table's Stop with nothing of it being read or written.</comment>
+  </data>
+  <data name="NoPendingChanges" xml:space="preserve">
+    <value>No changes are pending</value>
+    <comment>Submit or Revert with a table's changes all written or reverted.</comment>
+  </data>
+  <data name="NoPendingUndo" xml:space="preserve">
+    <value>No change of this table to undo</value>
+    <comment>A table's Undo with no change of it to take back.</comment>
+  </data>
+  <data name="NoPendingRedo" xml:space="preserve">
+    <value>No change of this table to redo</value>
+    <comment>A table's Redo with no change of it taken back.</comment>
+  </data>
+  <data name="NoRowChosen" xml:space="preserve">
+    <value>Choose a row first</value>
+    <comment>Delete Rows with no row chosen in a table that may change.</comment>
+  </data>
+  <data name="AutoCommits" xml:space="preserve">
+    <value>This console commits each statement as it runs</value>
+    <comment>Commit or Rollback in a console that commits each statement as it runs.</comment>
+  </data>
+  <data name="NoTransaction" xml:space="preserve">
+    <value>No transaction is open in this console</value>
+    <comment>Commit or Rollback in a console in manual commit with no transaction open.</comment>
+  </data>
+  <data name="TransactionOpen" xml:space="preserve">
+    <value>Commit or roll back the open transaction first</value>
+    <comment>A change of a console's commit, or of its connection, while its transaction is open.</comment>
+  </data>
+  <data name="NoInsertTable" xml:space="preserve">
+    <value>Only a database's rows are copied as SQL inserts</value>
+    <comment>Copy as SQL Inserts of cells that are no database's (a CSV file's), whose table and SQL none says.</comment>
+  </data>
+  <data name="NoTableCells" xml:space="preserve">
+    <value>Choose a table's cells first</value>
+    <comment>Copy As with no table's cells having the keys.</comment>
+  </data>
+  <data name="NothingToExport" xml:space="preserve">
+    <value>Choose a table or view, or show a table's data or a console's result, first</value>
+    <comment>Export Data with no table or view chosen, no table shown and no result of a console's shown.</comment>
+  </data>
+  <data name="NoExportFile" xml:space="preserve">
+    <value>Name the file to write</value>
+    <comment>Export Data with no file named to write.</comment>
+  </data>
+  <data name="NoInsertTableNamed" xml:space="preserve">
+    <value>Name the table the inserts go into</value>
+    <comment>Export Data as SQL inserts with no table named for them to go into.</comment>
+  </data>
+  <data name="NoFolderThere" xml:space="preserve">
+    <value>{folder} is not there to write into</value>
+    <comment>Export Data into a folder that is not there.</comment>
+  </data>
+  <data name="SshHostKeyUnknown" xml:space="preserve">
+    <value>{host}'s SSH host key is not trusted yet: edit the connection to see and trust it</value>
+    <comment>A connection's SSH tunnel whose bastion gave a host key the person has not trusted.</comment>
+  </data>
+  <data name="SshHostKeyChanged" xml:space="preserve">
+    <value>{host}'s SSH host key changed to {seen} since it was trusted, so nothing was sent: edit the connection to trust the new key if its administrator changed it</value>
+    <comment>A connection's SSH tunnel whose bastion gave another host key than the one the person trusted.</comment>
+  </data>
+  <data name="SshUnreachable" xml:space="preserve">
+    <value>The SSH tunnel through {host} could not be opened: {why}</value>
+    <comment>A connection's SSH tunnel that could not be opened.</comment>
+  </data>
+  <data name="SshHostKeyByThePerson" xml:space="preserve">
+    <value>Only the person answers whether to trust an SSH host key: no agent's input reaches the question</value>
+    <comment>Why only the person answers whether to trust an SSH host key.</comment>
+  </data>
+  <data name="NoSshHost" xml:space="preserve">
+    <value>Name the SSH host and its user</value>
+    <comment>A connection through an SSH tunnel with no bastion, or no user on it, named.</comment>
+  </data>
+  <data name="NoColumnImported" xml:space="preserve">
+    <value>Choose a column of the table for at least one of the file's columns</value>
+    <comment>Import Data with none of the file's columns going into the table.</comment>
+  </data>
+  <data name="NoImportFile" xml:space="preserve">
+    <value>Name the file to read</value>
+    <comment>Import Data with no file named to read.</comment>
+  </data>
+  <data name="NoNewTableNamed" xml:space="preserve">
+    <value>Name the new table</value>
+    <comment>Import Data into a new table with no name for it.</comment>
+  </data>
+  <data name="NothingToImportInto" xml:space="preserve">
+    <value>Choose a connection, database, schema or table to import into first</value>
+    <comment>Import Data with nothing chosen to import into: no connection, database, schema or table.</comment>
+  </data>
+  <data name="ImportNotRead" xml:space="preserve">
+    <value>The file or the tables are still being read</value>
+    <comment>Import Data while what was asked to import into is no longer read (its database's tables not read yet).</comment>
+  </data>
+  <data name="UnsavedThere" xml:space="preserve">
+    <value>{name} is open with changes not saved: save or close it first</value>
+    <comment>Export Data over a file open with changes not saved, which the export would lose.</comment>
+  </data>
+  <data name="NoEfCore" xml:space="preserve">
+    <value>No project here uses EF Core</value>
+    <comment>The Migrations window, or an EF Core action, in a folder none of whose projects references EF Core.</comment>
+  </data>
+  <data name="NoEfContext" xml:space="preserve">
+    <value>List the project's contexts first</value>
+    <comment>A Migrations action on a context before the project's contexts were listed.</comment>
+  </data>
+  <data name="NoDatabaseOf" xml:space="preserve">
+    <value>{connection} names no SQLite, PostgreSQL, SQL Server or MySQL database the Database window opens</value>
+    <comment>A connection string asked to open in the Database window that names no database of a kind it opens.</comment>
+  </data>
+  <data name="AgentsQueryWrites" xml:space="preserve">
+    <value>"{statement}" {what}: an agent's database queries only read, so nothing ran</value>
+    <comment>An agent's database query holding a statement that would change something, which its reads never do.</comment>
+  </data>
+  <data name="NoRequestCommand" xml:space="preserve">
+    <value>Choose a database command in the Requests window first</value>
+    <comment>A Requests action on a command with none chosen.</comment>
+  </data>
+  <data name="NoCommandDatabase" xml:space="preserve">
+    <value>Its app told no SQLite, PostgreSQL, SQL Server or MySQL database it ran on</value>
+    <comment>A command whose app told no database Passenger opens (its connection of another provider, or none told).</comment>
+  </data>
+  <data name="NoConnectionReaching" xml:space="preserve">
+    <value>No connection in the Database window reaches {database} at {at}: add one with New Database Connection…</value>
+    <comment>A command's database that no connection of the Database window reaches.</comment>
+  </data>
+  <data name="NoEfConnection" xml:space="preserve">
+    <value>Nothing tells {context}'s connection string in the {environment} environment: name it in the startup project's settings or its run's ConnectionStrings__ variables</value>
+    <comment>A context's database asked for where nothing tells the connection it uses.</comment>
+  </data>
+  <data name="NoOutputFolder" xml:space="preserve">
+    <value>An output folder is needed</value>
+    <comment>A publish asked for with no folder chosen to publish into.</comment>
+  </data>
+  <data name="PausedInDebugger" xml:space="preserve">
+    <value>{program} is paused in the debugger: continue it to {doing}</value>
+    <comment>Why a program cannot be profiled, or its heap read (doing it), now: the debugger holds it paused, and its runtime answers the profiler only as it runs.</comment>
+  </data>
+  <data name="NotChromium" xml:space="preserve">
+    <value>{where} names {program}, which is no Chromium browser, and only a Chromium browser debugs them: name Chrome, Edge, Chromium or Brave there to debug them</value>
+    <comment>Why a Blazor app's WebAssembly half is not debugged in the browser a run names (where, a place in words that begins a sentence): program is known to be no Chromium browser, the one kind .NET's browser debug proxy drives.</comment>
+  </data>
+  <data name="MetricsWhilePaused" xml:space="preserve">
+    <value>{program} is paused in the debugger: its metrics come once it runs</value>
+    <comment>A program's metrics asked for while the debugger holds it paused, read once it runs.</comment>
+  </data>
+  <data name="DontStart" xml:space="preserve">
+    <value>its run configuration says Don't start</value>
+    <comment>Why a service of a run of services is not started.</comment>
+  </data>
+  <data name="NotStarted" xml:space="preserve">
+    <value>{service} is not started: its run configuration says Don't start; {startsIt}</value>
+    <comment>A service its run left unstarted (DontStart), as it is named, and what starts it as its run's kind starts one (StartsIt).</comment>
+  </data>
+  <data name="RemovedAlone" xml:space="preserve">
+    <value>Delete moves several files and folders to the Trash at once, but {name} only leaves {from}, its files staying on disk: choose it alone to remove it</value>
+    <comment>A row Delete only takes out of the solution or a project, its files staying on disk, chosen with others, which Delete moves to the Trash at once: Remove takes it chosen alone, asking its own questions.</comment>
+  </data>
+  <data name="ReplacesItsFolder" xml:space="preserve">
+    <value>{name} cannot replace the folder it is in</value>
+    <comment>A file or folder moved or copied into a folder where its name is a folder holding it (Docs/Docs put beside Docs): replacing that would take it along first, so it stays where it is.</comment>
+  </data>
+  <data name="ReadOnly" xml:space="preserve">
+    <value>{name} is read-only</value>
+    <comment>A file shown read-only (decompiled, installed, carried by the app, a copy to read), which nothing edits or saves.</comment>
+  </data>
+  <data name="NeverAsked" xml:space="preserve">
+    <value>{path} is never asked of the disk: it names another machine's share, a device or a folder mounted from another machine, or is no path</value>
+    <comment>A path an agent named that is never asked of the disk (FoundPaths), as asking would reach another machine, open a device or mount a folder.</comment>
+  </data>
+  <data name="OutputReadOnly" xml:space="preserve">
+    <value>The output is read-only</value>
+    <comment>A console's or a test's output, which only its program writes; a line typed at its end goes to a program reading its input.</comment>
+  </data>
+  <data name="InputFromStarter" xml:space="preserve">
+    <value>{name}'s Debug console takes no input: the debugger attached to it, so it reads its standard input {from}</value>
+    <comment>Input for a program the debugger attached to rather than launched, which reads its standard input from (InputFrom), never from its Debug console.</comment>
+  </data>
+  <data name="InputBeside" xml:space="preserve">
+    <value>{name}'s Debug console takes no input: the program's input goes to {companion}'s session</value>
+    <comment>Input for a session debugging another part of a program beside companion's (a game's GDScript, an app's code in the browser), which takes the program's input.</comment>
+  </data>
+  <data name="MergeSideReadOnly" xml:space="preserve">
+    <value>A merge's sides are read-only: edit the result between them</value>
+    <comment>A merge's own sides, which it takes changes from into the result between them.</comment>
+  </data>
+  <data name="PreviewReadOnly" xml:space="preserve">
+    <value>The preview is read-only: open its file to change it</value>
+    <comment>A few lines shown of a file (a usage's, a search's match, a place gone to), not the file itself.</comment>
+  </data>
+  <data name="TextReadOnly" xml:space="preserve">
+    <value>The text is read-only</value>
+    <comment>A text box shown to read and copy from (an error's details, a log, a response, a licence).</comment>
+  </data>
+  <data name="OnlyToRead" xml:space="preserve">
+    <value>The text is only to read: Escape goes back to where you were</value>
+    <comment>What a thing says, shown as text to read (Read as Text), never the thing itself.</comment>
+  </data>
+  <data name="NothingToRead" xml:space="preserve">
+    <value>Nothing here to read as text: put the keys in the editor, the terminal, a diff, the Tests window, Problems or the status bar</value>
+    <comment>Read as Text where the keys are on nothing that says anything as text.</comment>
+  </data>
+  <data name="NothingAtCaret" xml:space="preserve">
+    <value>Nothing at the caret to read as text: no problem is on its line, and its language says nothing of it</value>
+    <comment>Read as Text in the editor where nothing at the caret says anything.</comment>
+  </data>
+  <data name="ReadingAlready" xml:space="preserve">
+    <value>Its text is open: Escape goes back to where you were</value>
+    <comment>Read as Text asked while its own text is open.</comment>
+  </data>
+  <data name="ChangedSinceRead" xml:space="preserve">
+    <value>{file} changed after Passenger read it, so the places found there may be where they were before: nothing was changed; try again in a moment</value>
+    <comment>Why edits found in a file as Passenger read it are not made once the file is another text.</comment>
+  </data>
+  <data name="NotRenamed" xml:space="preserve">
+    <value>{old} was not renamed: {why}</value>
+    <comment>Why a rename renamed nothing: why, said as a clause.</comment>
+  </data>
+  <data name="HeldInGodot" xml:space="preserve">
+    <value>{held}, which only the person may choose to write over: save it in Godot first</value>
+    <comment>A change an agent asked for that would write over what the person's Godot editor holds of a file (GodotHolds), which only the person may choose to.</comment>
+  </data>
+  <data name="NothingToTidy" xml:space="preserve">
+    <value>{what} found no file it lays out {of}</value>
+    <comment>A run of Reformat Code, Code Cleanup or Optimize Imports (what) over what the Explorer has chosen (of, "of src/App") that holds no file it lays out.</comment>
+  </data>
+  <data name="DotnetFormatsProjects" xml:space="preserve">
+    <value>dotnet format lays out a project's files, and {name} is in none of the folder's projects</value>
+    <comment>A C# file Settings' C# formatter would have dotnet format lay out that is in none of the folder's projects (or is a file-based program), which dotnet format opens no workspace for.</comment>
+  </data>
+  <data name="GeneratedLeft" xml:space="preserve">
+    <value>{file} is generated code: what generates it writes it again, so it was left as it is</value>
+    <comment>A file of generated code as Roslyn tells it (GeneratedAmongAsync), which a run over many files leaves as what generates it writes it.</comment>
+  </data>
+  <data name="GeneratedNoLonger" xml:space="preserve">
+    <value>No generator makes {name} now: shown as it was last made</value>
+    <comment>A copy of a source generator's code whose document the C# language server no longer has, shown as it was last made.</comment>
+  </data>
+  <data name="ReadingStrings" xml:space="preserve">
+    <value>{name} is still being read, to tell the lines inside its strings</value>
+    <comment>A file whose grammar has yet to read it whole, so the lines inside its strings are not yet known.</comment>
+  </data>
+  <data name="GrammarFailed" xml:space="preserve">
+    <value>Passenger can't tell which lines of {name} begin inside a string: its {language} grammar failed reading it ({why})</value>
+    <comment>A file whose grammar failed as it read it, and stopped, so the lines inside its strings will never be known.</comment>
+  </data>
+  <data name="UnreadStrings" xml:space="preserve">
+    <value>Passenger can't tell which lines of {name} begin inside a string, whose text a conversion would change</value>
+    <comment>A file in a language with no parse or grammar here, whose lines may begin inside a string that converting their indentation would change.</comment>
+  </data>
+  <data name="NoRunTarget" xml:space="preserve">
+    <value>{project} runs on a device, an emulator or a simulator: choose one beside the run configuration</value>
+    <comment>A project whose app runs on a device, an emulator or a simulator has none chosen to run on.</comment>
+  </data>
+  <data name="ChooseRunTarget" xml:space="preserve">
+    <value>choose one beside the run configuration</value>
+    <comment>How the person chooses where an app runs, which ends NoRunTarget.</comment>
+  </data>
+  <data name="NotYetOn" xml:space="preserve">
+    <value>Passenger does not run apps on {target} yet: it runs them on Android devices and emulators and on iOS simulators</value>
+    <comment>A target of a platform Passenger does not run apps on yet.</comment>
+  </data>
+  <data name="IosOnMacAlone" xml:space="preserve">
+    <value>iOS apps run on simulators only on a Mac, with Xcode</value>
+    <comment>An iOS app's simulators asked for on a system other than macOS.</comment>
+  </data>
+  <data name="MacCatalystOnMacAlone" xml:space="preserve">
+    <value>a Mac Catalyst app runs only on a Mac</value>
+    <comment>A Mac Catalyst app run on a system other than macOS.</comment>
+  </data>
+  <data name="NoInstrumentation" xml:space="preserve">
+    <value>{project}'s tests cannot run on Android: its app starts through no instrumentation, which runs an Android app's tests (androidtest's template declares one)</value>
+    <comment>An Android test project's tests asked to run where its app starts through no instrumentation, which runs them.</comment>
+  </data>
+  <data name="NoIos" xml:space="preserve">
+    <value>iOS's simulators could not be listed ({problem}): iOS apps need the .NET ios workload (dotnet workload install ios) and the Xcode it names, with an iOS simulator runtime (Xcode's Settings, Components)</value>
+    <comment>The iOS workload could not list simulators (no workload, no Xcode), with how to get them.</comment>
+  </data>
+  <data name="MacCatalystUnprofiled" xml:space="preserve">
+    <value>Passenger's profiler does not record a Mac Catalyst app yet, so {app} cannot be profiled: Run starts it</value>
+    <comment>A Mac Catalyst app profiled, whose sandbox keeps the profiler's port out of its reach.</comment>
+  </data>
+  <data name="Undebugged" xml:space="preserve">
+    <value>Could not debug {program}: {why}</value>
+    <comment>A program the debugger cannot follow, by its name, and why (X86DebuggerMissing).</comment>
+  </data>
+  <data name="Unattached" xml:space="preserve">
+    <value>Cannot attach to {name}: {why}</value>
+    <comment>A running program the debugger cannot attach to (a test host a runner started), by the name its tab takes, and why.</comment>
+  </data>
+  <data name="X86OnWindowsAlone" xml:space="preserve">
+    <value>it is built for 32-bit x86 (its PlatformTarget), which .NET runs only on Windows</value>
+    <comment>A program built for 32-bit x86 run off Windows, the one system .NET runs x86 programs on.</comment>
+  </data>
+  <data name="NoAndroid" xml:space="preserve">
+    <value>Android's devices could not be listed ({problem}): Android apps need the .NET android workload (dotnet workload install android), the Android SDK (its folder in ANDROID_HOME, or Android Studio's) and a JDK (its folder in JAVA_HOME)</value>
+    <comment>The Android workload could not list devices (no workload, no Android SDK, no Java), with how to get them.</comment>
+  </data>
+  <data name="NoAndroidPlatform" xml:space="preserve">
+    <value>The Android SDK lacks {package}, the platform the .NET android workload builds against: install it with the SDK's sdkmanager (sdkmanager "{package}") or Android Studio's SDK Manager</value>
+    <comment>The Android SDK lacks the platform the workload builds against, named as its sdkmanager names the package.</comment>
+  </data>
+  <data name="RestartIsThePersons" xml:space="preserve">
+    <value>Only the person restarts Passenger into its update, which closes their windows and ends what runs there: ask them to, with the update's notice in the status bar</value>
+    <comment>An agent's Restart to Update, by its ide_action or its input into Passenger's window: the person restarts Passenger, which closes their windows.</comment>
+  </data>
+  <data name="QuitIsThePersons" xml:space="preserve">
+    <value>Only the person quits Passenger or closes its last window, which ends what runs there and installs an update made ready: ask them to</value>
+    <comment>An attached agent's Exit, by its ide_action or its input into Passenger's window, or its close of the person's last window: the person quits Passenger, which ends what runs there.</comment>
+  </data>
+  <data name="CloseSolutionIsThePersons" xml:space="preserve">
+    <value>Only the person closes the solution, which ends what runs there and leaves its folder: ask them to</value>
+    <comment>An agent's Close Solution, by its ide_action or its input into Passenger's window, attached or in its own Passenger: the person closes the solution, which ends what runs there.</comment>
+  </data>
+  <data name="CloseIsThePersons" xml:space="preserve">
+    <value>Only the person closes this window, which Passenger asks them about first as Settings says (Confirm before closing): ask them to</value>
+    <comment>An attached agent's input closing a window that Settings' Confirm before closing asks the person about, or answering that question: the person closes it.</comment>
+  </data>
+  <data name="NothingFetched" xml:space="preserve">
+    <value>No branch of {remote} is fetched yet: Fetch reads them</value>
+    <comment>A remote's menu in the branch popup, with none of its branches fetched.</comment>
+  </data>
+  <data name="DiscardIsThePersons" xml:space="preserve">
+    <value>Only the person discards their uncommitted changes as a branch is checked out, which cannot be undone: ask them to</value>
+    <comment>An agent's input answering whether a checkout discards the uncommitted changes: the person discards them.</comment>
+  </data>
+  <data name="AgentInstallsMobile" xml:space="preserve">
+    <value>Only the person installs what a mobile project needs (a workload downloads from NuGet, the Android SDK asks them to accept its licences): ask them to, with the banner over Passenger's window</value>
+    <comment>An agent's install of what a mobile project needs: the person installs it, accepting what it asks.</comment>
+  </data>
+  <data name="NoWorkloadLacking" xml:space="preserve">
+    <value>No project of the folder lacks a .NET workload</value>
+    <comment>Install Workloads with every workload the projects need installed.</comment>
+  </data>
+  <data name="NothingAndroidLacking" xml:space="preserve">
+    <value>No Android project of the folder lacks the Android SDK, its packages or a JDK</value>
+    <comment>Install Android SDK and Java with nothing of Android's lacking.</comment>
+  </data>
+  <data name="NothingTrimmed" xml:space="preserve">
+    <value>No Mac Catalyst head of the folder has a Debug build that trims .NET's own assemblies</value>
+    <comment>Keep .NET's Assemblies Whole with no Mac Catalyst head whose Debug build trims them.</comment>
+  </data>
+  <data name="NoMobileEdits" xml:space="preserve">
+    <value>No mobile app's head of the folder needs an edit Passenger makes</value>
+    <comment>Make the Mobile Edits with no mobile head needing an edit Passenger makes.</comment>
+  </data>
+  <data name="NoFunc" xml:space="preserve">
+    <value>{project} is an Azure Functions app, which Azure Functions Core Tools' func runs, and none is on the PATH: install them (https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools)</value>
+    <comment>A Functions app an AppHost asks for, with no Azure Functions Core Tools' func on the PATH to host it.</comment>
+  </data>
+  <data name="LoadsOthersCode" xml:space="preserve">
+    <value>{project} was not started: {why}</value>
+    <comment>A service an AppHost's orchestrator asked to start with a variable loading code from where another user may write (LoadingVariables), which it is not.</comment>
+  </data>
+  <data name="NotReached" xml:space="preserve">
+    <value>{project} was not started: it lies outside the open folder and the projects its solution and AppHosts name beside it</value>
+    <comment>A service an AppHost's orchestrator asked to start outside the open folder and what it reaches beside it (Reaches).</comment>
+  </data>
+  <data name="NamedByAgent" xml:space="preserve">
+    <value>{project} was not started: only an agent's edit of its AppHost names it beside the open folder, which lends it no trust until you save that AppHost yourself</value>
+    <comment>A service only an agent's edit of an AppHost in the open folder names by path beside it, which lends it no trust (WroteFor), its orchestrator asking to start it.</comment>
+  </data>
+  <data name="FunctionsUnprofiled" xml:space="preserve">
+    <value>{service} is an Azure Functions app, whose worker Azure Functions Core Tools start: Passenger does not profile it yet</value>
+    <comment>Profile of a Functions app (its own project's, or an AppHost's), whose worker func starts and the profiler does not reach.</comment>
+  </data>
+  <data name="FunctionsUnreloaded" xml:space="preserve">
+    <value>Passenger does not apply Hot Reload to an Azure Functions app's worker, which Azure Functions Core Tools start, yet</value>
+    <comment>Run with Hot Reload of a Functions app, whose worker func starts, which runs on without it.</comment>
+  </data>
+  <data name="NoTargets" xml:space="preserve">
+    <value>No device, emulator or simulator is listed for this project: connect a device, or make an emulator with Android Studio's Device Manager</value>
+    <comment>The project has no device chosen to run on, where the chooser lists none.</comment>
+  </data>
+  <data name="PackageChangeUnderWay" xml:space="preserve">
+    <value>A package change is under way</value>
+    <comment>A change of NuGet packages asked for while another of the folder's runs.</comment>
+  </data>
+  <data name="VulnerabilitiesUnread" xml:space="preserve">
+    <value>The feeds have not yet said which versions have known vulnerabilities</value>
+    <comment>A NuGet package's Install, Update or Downgrade while the audit's feeds are still asked which versions have known vulnerabilities, so the version put in might be one they name.</comment>
+  </data>
+  <data name="NoPackageChosen" xml:space="preserve">
+    <value>No package is chosen in the NuGet window</value>
+    <comment>An action on the NuGet window's chosen package with none chosen.</comment>
+  </data>
+  <data name="ReferencedByNoProject" xml:space="preserve">
+    <value>No project references {id}</value>
+    <comment>Update in All Projects of a package no project references.</comment>
+  </data>
+  <data name="NoVersionChosen" xml:space="preserve">
+    <value>No version of {id} is chosen</value>
+    <comment>An action putting the chosen version of a package in, where its feeds offer none.</comment>
+  </data>
+  <data name="UpdatedEverywhere" xml:space="preserve">
+    <value>Every project referencing {id} has {version} or a newer version</value>
+    <comment>Update in All Projects where every project referencing the package has the chosen version or a newer one.</comment>
+  </data>
+  <data name="NoOtherSnapshot" xml:space="preserve">
+    <value>The run took no other snapshot to compare this one with</value>
+    <comment>Compare with… on a memory snapshot, the only one its run took.</comment>
+  </data>
+  <data name="UpdatesNotShown" xml:space="preserve">
+    <value>Open the Updates tab first</value>
+    <comment>An action on the NuGet window's updates while another of its tabs is shown, or it is not built yet.</comment>
+  </data>
+  <data name="NoUpdateChosen" xml:space="preserve">
+    <value>No update is chosen in the Updates tab</value>
+    <comment>Update Selected with no row chosen in the NuGet window's Updates tab.</comment>
+  </data>
+  <data name="FileDeleted" xml:space="preserve">
+    <value>The file is deleted</value>
+    <comment>A changed file's Go to Source or Delete where the change deleted it.</comment>
+  </data>
+  <data name="Tracked" xml:space="preserve">
+    <value>Git tracks this file: only an unversioned file is added to .gitignore</value>
+    <comment>Add to .gitignore on a file Git tracks, where only an unversioned one is ignored.</comment>
+  </data>
+  <data name="NotUnversioned" xml:space="preserve">
+    <value>Git tracks it or ignores it already: only an unversioned file or folder is added to .gitignore</value>
+    <comment>Add to .gitignore on what the Commit window does not list as unversioned: tracked, or ignored already.</comment>
+  </data>
+  <data name="DeletedByCommit" xml:space="preserve">
+    <value>The commit deleted this file, so it holds none to compare</value>
+    <comment>Compare with Local on a file the commit deleted.</comment>
+  </data>
+  <data name="ProblemNamesNoFile" xml:space="preserve">
+    <value>The problem names no file</value>
+    <comment>A problem's Go to Source or Show Context Actions where it is said of no file (a build's, the toolset's).</comment>
+  </data>
+  <data name="ProblemHasNoLink" xml:space="preserve">
+    <value>The problem gives no link</value>
+    <comment>A problem's Open Link where it gives none.</comment>
+  </data>
+  <data name="ToolsetUnfixed" xml:space="preserve">
+    <value>No context action fixes a problem of the toolset or the environment</value>
+    <comment>Show Context Actions on a problem of the toolset or the environment, which no code action fixes.</comment>
+  </data>
+  <data name="BindingUnfixed" xml:space="preserve">
+    <value>No member of the binding's source is near enough its path to offer</value>
+    <comment>Show Context Actions on a failed binding whose source's type has no member near its path.</comment>
+  </data>
+  <data name="TestUnplaced" xml:space="preserve">
+    <value>The test's runner gives no file for it</value>
+    <comment>A test's Go to Source where its runner gave no file for it.</comment>
+  </data>
+  <data name="NoTestSession" xml:space="preserve">
+    <value>No unit test session is made yet: New Session makes one of the tests chosen or at the caret</value>
+    <comment>Append to Session, Run Current Session or Show Current Session before any test session is made.</comment>
+  </data>
+  <data name="NoSessionShown" xml:space="preserve">
+    <value>The Unit Tests window shows every test, not a session's</value>
+    <comment>Remove from Session while the Unit Tests window shows every test, in no session.</comment>
+  </data>
+  <data name="NoTestsForSession" xml:space="preserve">
+    <value>No test is chosen in the Unit Tests window or the Explorer, nor at the caret</value>
+    <comment>New Session or Append to Session with no test chosen in the Unit Tests window or the Explorer, nor at the caret.</comment>
+  </data>
+  <data name="SessionHoldsNone" xml:space="preserve">
+    <value>None of {session}'s tests is found among the solution's</value>
+    <comment>Run Current Session where none of the session's tests is found among the solution's.</comment>
+  </data>
+  <data name="NoTypeForTest" xml:space="preserve">
+    <value>Go to Test goes from the type the caret is in to its tests, and back: the caret is in no type of a C# file</value>
+    <comment>Go to Test where the caret is in no class, struct, record or interface of a C# file.</comment>
+  </data>
+  <data name="NoTestOfType" xml:space="preserve">
+    <value>No test class is named after {type} ({type}Tests, {type}Test, {type}Fixture…)</value>
+    <comment>Go to Test from a type whose tests no test class is named after (its name and Tests, Test, Fixture…).</comment>
+  </data>
+  <data name="CoverageUnplaced" xml:space="preserve">
+    <value>The coverage report names no file of this row's on this machine</value>
+    <comment>The Coverage window's Go to Source on a project's or a namespace's row, or a type's whose file the report's paths did not lead to.</comment>
+  </data>
+  <data name="NoObjectToMark" xml:space="preserve">
+    <value>The value is no object to mark: a number or a struct is copied as it goes</value>
+    <comment>Mark Object on a row whose value is no object (a number, a bool), which is copied as it goes.</comment>
+  </data>
+  <data name="NoCloneChosen" xml:space="preserve">
+    <value>Choose a group of clones in the Clones window</value>
+    <comment>Compare Clones Side by Side and Extract Method from Clones with no group of clones chosen in the Clones window.</comment>
+  </data>
+  <data name="FirstClone" xml:space="preserve">
+    <value>This is the group's first clone</value>
+    <comment>Compare with First Clone on a group's first clone.</comment>
+  </data>
+  <data name="NotCSharpStatements" xml:space="preserve">
+    <value>Find Clones of Selection compares C# statements, and the file is not C#</value>
+    <comment>Find Clones of Selection in a file that is not C#.</comment>
+  </data>
+  <data name="DoublesAreCSharp" xml:space="preserve">
+    <value>Test doubles stand in for C# types, and the file is not C#</value>
+    <comment>Create Fake or Fill Arguments with Doubles in a file that is not C#.</comment>
+  </data>
+  <data name="NothingToFill" xml:space="preserve">
+    <value>Fill Arguments with Doubles fills the missing arguments of the call the caret is in with doubles of NSubstitute, Moq or FakeItEasy, where its project references one</value>
+    <comment>Fill Arguments with Doubles where the caret is in no call missing arguments a double stands in for, or its project references no mocking library.</comment>
+  </data>
+  <data name="NoTestProject" xml:space="preserve">
+    <value>The folder has no C# test project for a fake to go into</value>
+    <comment>Create Fake in a folder with no C# test project for a fake to go into.</comment>
+  </data>
+  <data name="NoFakeHere" xml:space="preserve">
+    <value>Create Fake makes a fake of the interface or class whose name the caret is on, where a test project sees it</value>
+    <comment>Create Fake where the caret is on no interface or class a test project sees and a fake can stand in for.</comment>
+  </data>
+  <data name="FakeThere" xml:space="preserve">
+    <value>Fakes/{file} is already in {project}</value>
+    <comment>Create Fake where the test project has the fake's file already.</comment>
+  </data>
+  <data name="MapNodeUnplaced" xml:space="preserve">
+    <value>This node of the map is written in no file of the solution's</value>
+    <comment>Go to Source on a node of the dependency map the compiler declares with no file of the solution's.</comment>
+  </data>
+  <data name="ModuleUnplaced" xml:space="preserve">
+    <value>The module has no file: the program made it, or the debugger read it from its memory</value>
+    <comment>Copy Path on a module made as the program runs, or read from its memory alone.</comment>
+  </data>
+  <data name="NoCoverage" xml:space="preserve">
+    <value>No coverage is measured: Run All Tests with Coverage measures it</value>
+    <comment>Clear Coverage and Export Coverage before a run with coverage, or once it is cleared.</comment>
+  </data>
+  <data name="CoverageDebugged" xml:space="preserve">
+    <value>Coverage is not measured while debugging: a debugged test host runs its code as built, for breakpoints and Hot Reload</value>
+    <comment>tests_run asked to debug and measure coverage at once.</comment>
+  </data>
+  <data name="CoverageOnDevice" xml:space="preserve">
+    <value>A device test project's tests run in its app, where coverage is not measured</value>
+    <comment>A run with coverage of a device test project's tests, which its app runs on a device, emulator or simulator.</comment>
+  </data>
+  <data name="FrameUnplaced" xml:space="preserve">
+    <value>The frame has no source file the debugger knows</value>
+    <comment>A stack frame's Go to Source where its code has no source the debugger knows (no symbols, or code the runtime made).</comment>
+  </data>
+  <data name="NoFrameChosen" xml:space="preserve">
+    <value>No frame is chosen</value>
+    <comment>A stack frame's Go to Source with no frame chosen.</comment>
+  </data>
+  <data name="SnapshotsOfDotnet" xml:space="preserve">
+    <value>Snapshot points are taken by Passenger's .NET debugger alone: this debugger stops or logs at a breakpoint</value>
+    <comment>A snapshot point set where the debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</comment>
+  </data>
+  <data name="SnapshotValue" xml:space="preserve">
+    <value>This value was read at a past moment, a snapshot's or a recording's, and the program has run on since: run to a breakpoint to change or watch it</value>
+    <comment>A value of a snapshot or a recorded moment shown, which no evaluation, setting, watch on it or mark reaches: its program has run on.</comment>
+  </data>
+  <data name="NothingRecorded" xml:space="preserve">
+    <value>Nothing is recorded before this stop: Record Calls records the calls of the program's own code as it runs</value>
+    <comment>Step Back with no moment recorded before the stop.</comment>
+  </data>
+  <data name="EarliestMoment" xml:space="preserve">
+    <value>This is the earliest moment the recording keeps</value>
+    <comment>Step Back at the earliest moment a recording keeps.</comment>
+  </data>
+  <data name="LiveStop" xml:space="preserve">
+    <value>This is the live stop: Step Back goes to the moments recorded before it</value>
+    <comment>Step Forward at the live stop.</comment>
+  </data>
+  <data name="RecordsDotnet" xml:space="preserve">
+    <value>Calls are recorded by Passenger's .NET debugger alone</value>
+    <comment>Record Calls where the debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</comment>
+  </data>
+  <data name="NoSnapshots" xml:space="preserve">
+    <value>No snapshot point has taken a snapshot yet</value>
+    <comment>No snapshot point has taken a capture in the folder.</comment>
+  </data>
+  <data name="MemoryOfDotnet" xml:space="preserve">
+    <value>A program's memory is read by Passenger's .NET debugger alone</value>
+    <comment>Memory asked of a program whose debugger is not Passenger's .NET one (a page's WebAssembly, GDScript).</comment>
+  </data>
+  <data name="PastMemory" xml:space="preserve">
+    <value>A past moment is shown, a snapshot's or a recording's, and its memory was not kept: Memory reads the program at its live stop</value>
+    <comment>Memory asked while a snapshot or a recorded moment is shown as a past stop, of which no byte was kept.</comment>
+  </data>
+  <data name="NoFrameToResolve" xml:space="preserve">
+    <value>No frame is chosen: an address expression is resolved in the chosen frame of the stop</value>
+    <comment>An address expression for Memory to resolve while the stop has no frame chosen (its frames not yet shown).</comment>
+  </data>
+  <data name="NotAnAddress" xml:space="preserve">
+    <value>{written} is no address: write one in hexadecimal after 0x, or an address expression</value>
+    <comment>What Memory was given to read at that is neither an address nor an expression the debugger resolved to one.</comment>
+  </data>
+  <data name="MemoryUnread" xml:space="preserve">
+    <value>The debugger could not read memory at {address}</value>
+    <comment>Memory's read of a page none of whose bytes the program let the debugger read.</comment>
+  </data>
+  <data name="NothingListed" xml:space="preserve">
+    <value>Nothing is listed here yet</value>
+    <comment>A menu's list (the recent solutions) while it lists nothing.</comment>
+  </data>
+  <data name="NothingSelected" xml:space="preserve">
+    <value>No text is selected</value>
+    <comment>Copy where no text is selected.</comment>
+  </data>
+  <data name="NoCells" xml:space="preserve">
+    <value>The table has no cells</value>
+    <comment>Copy or Select All in a table with no cells.</comment>
+  </data>
+  <data name="WatchedAlready" xml:space="preserve">
+    <value>It is a watch already</value>
+    <comment>Add to Watches on a row that is a watch.</comment>
+  </data>
+  <data name="AskingDebugger" xml:space="preserve">
+    <value>The debugger has not yet said whether one can be set here</value>
+    <comment>A data breakpoint's item while the debugger has not yet said whether one can be set on the row.</comment>
+  </data>
+  <data name="BreakpointOnNoLine" xml:space="preserve">
+    <value>The breakpoint stands on no line</value>
+    <comment>Go to Source on a breakpoint that stands on no line (an exception's, a binding error's, a script error's).</comment>
+  </data>
+  <data name="NoMethodAtCaret" xml:space="preserve">
+    <value>No C# method is declared at the caret</value>
+    <comment>Why Toggle Method Breakpoint cannot run where the caret is.</comment>
+  </data>
+  <data name="BreakpointKept" xml:space="preserve">
+    <value>The debugger always keeps this breakpoint: turn it off instead</value>
+    <comment>Remove on a breakpoint the debugger always keeps (every exception, binding errors, script errors), which is turned off rather than removed.</comment>
+  </data>
+  <data name="RecentGone" xml:space="preserve">
+    <value>It is gone from disk</value>
+    <comment>Show in the file manager of a recent solution gone from disk.</comment>
+  </data>
+  <data name="MethodUnplaced" xml:space="preserve">
+    <value>Its method is not found in the project's source</value>
+    <comment>Go to Source on a step definition or hook whose method is not found where its project was read.</comment>
+  </data>
+  <data name="Detached" xml:space="preserve">
+    <value>HEAD is detached: no branch is checked out</value>
+    <comment>A rebase on a branch while HEAD is detached, with no branch of its own.</comment>
+  </data>
+  <data name="NotNarrowed" xml:space="preserve">
+    <value>The list is neither narrowed nor ordered otherwise</value>
+    <comment>Clear Filters while the list is shown whole as at first.</comment>
+  </data>
+  <data name="Unmaximized" xml:space="preserve">
+    <value>Only a docked tool window is maximized</value>
+    <comment>Maximize of a tool window that floats or is shown over the editors for a moment.</comment>
+  </data>
+  <data name="CommandRunning" xml:space="preserve">
+    <value>A command of the resource is running</value>
+    <comment>An Aspire resource's command while another runs.</comment>
+  </data>
+  <data name="CommandDisabled" xml:space="preserve">
+    <value>The resource says it cannot run now</value>
+    <comment>An Aspire resource's command the resource says cannot run now.</comment>
+  </data>
+  <data name="WindowAsLargeAsItGoes" xml:space="preserve">
+    <value>The window is as large as it goes</value>
+    <comment>Zoom In where the window's scale is the largest Settings' Display scale takes.</comment>
+  </data>
+  <data name="WindowAsSmallAsItGoes" xml:space="preserve">
+    <value>The window is as small as it goes</value>
+    <comment>Zoom Out where the window's scale is the smallest Settings' Display scale takes.</comment>
+  </data>
+  <data name="ClosedKeepIconsAt" xml:space="preserve">
+    <value>Closed tool windows keep their icons or tabs: Hide closes them ({page} | Closed tool windows)</value>
+    <comment>Close on a tool window while closed tool windows keep their stripe icons or tabs; {page} is the Settings page that holds that setting.</comment>
+  </data>
+  <data name="UntrustedFeedsOf" xml:space="preserve">
+    <value>The folder is not trusted: an agent's {tool} asks none of the feeds its nuget.config names until the person trusts it</value>
+    <comment>An agent's package search in a folder not trusted, whose nuget.config may name any server; {tool} is the agent's tool.</comment>
+  </data>
+  <data name="UntrustedInRepositoryNamed" xml:space="preserve">
+    <value>This folder is not trusted: none of its code runs until you trust the Git repository it is in, {repository}</value>
+    <comment>The banner over a folder not trusted below the top of a Git repository, whose Trust Folder trusts the repository; {repository} is its folder's name.</comment>
+  </data>
+  <data name="UntrustedWhileRunning" xml:space="preserve">
+    <value>This folder is no longer trusted: {running} {count, plural, one {runs on until it ends} other {run on until they end}} or this window closes</value>
+    <comment>The banner over a folder no longer trusted while what the person started there runs on; {running} lists those programs, {count} counts them.</comment>
+  </data>
+  <data name="CheckedOutInWorktree" xml:space="preserve">
+    <value>{branch} is checked out in the worktree {folder}: work on it there</value>
+    <comment>A branch checked out in another working tree of the repository, which git checks out in one at a time.</comment>
+  </data>
+  <data name="NoSolutionErrors" xml:space="preserve">
+    <value>{hidden, plural, =0 {Solution-wide analysis has found no error in the solution} one {Problems' filter hides the solution's # error} other {Problems' filter hides the solution's # errors}}</value>
+    <comment>Next or Previous Error in Solution where Problems lists no error of the solution; {hidden} counts the errors its filter hides.</comment>
+  </data>
+  <data name="NoSymbolToInspect" xml:space="preserve">
+    <value>No C# symbol is at the caret to inspect</value>
+    <comment>Inspect This where no C# symbol is at the caret.</comment>
+  </data>
+  <data name="SymbolHasNothingToInspect" xml:space="preserve">
+    <value>{symbol} has no value, calls or types to inspect</value>
+    <comment>Inspect This where the caret's symbol has no value, calls or types to inspect.</comment>
+  </data>
+  <data name="GameEmbedsFromNoVersion" xml:space="preserve">
+    <value>Godot of no version said draws a game only in a window of its own: the Game window takes Godot 4.4 or newer</value>
+    <comment>A Godot that says no version, as one before 4.4 may, which has no embedding of a game in another program's window.</comment>
+  </data>
+  <data name="GameEmbedsFromVersion" xml:space="preserve">
+    <value>Godot {version} draws a game only in a window of its own: the Game window takes Godot 4.4 or newer</value>
+    <comment>A Godot before 4.4, which has no embedding of a game in another program's window.</comment>
+  </data>
+  <data name="GameEmbedsOnMacFromNoVersion" xml:space="preserve">
+    <value>Godot of no version said draws a game only in a window of its own on macOS: the Game window takes Godot 4.5 or newer there, whose embedded display shares the game's picture</value>
+    <comment>On macOS, a Godot that says no version: a game draws in the Game window through Godot's embedded display, from Godot 4.5.</comment>
+  </data>
+  <data name="GameEmbedsOnMacFromVersion" xml:space="preserve">
+    <value>Godot {version} draws a game only in a window of its own on macOS: the Game window takes Godot 4.5 or newer there, whose embedded display shares the game's picture</value>
+    <comment>On macOS, a Godot before 4.5: a game draws in the Game window through Godot's embedded display, from Godot 4.5.</comment>
+  </data>
+  <data name="GameWindowNeverCameFor" xml:space="preserve">
+    <value>{game}'s window never came to the Game window</value>
+    <comment>A game's window never came to the Game window: it ended first, or none came in time.</comment>
+  </data>
+  <data name="GameWindowNeverCameSaying" xml:space="preserve">
+    <value>{game}'s window never came to the Game window. Godot said: {said}</value>
+    <comment>A game's window never came to the Game window, with Godot's last errors from its console.</comment>
+  </data>
+  <data name="NotTakenInAfter" xml:space="preserve">
+    <value>{file} is not loaded into {project} yet: the C# language server has not taken it in after {waited}, and would answer without it; try again once it has</value>
+    <comment>A C# file come under a project that the language server has not loaded into it; {waited} is how long Passenger waited.</comment>
+  </data>
+  <data name="NotOpenInServerYet" xml:space="preserve">
+    <value>{what} needs {file} in the C# language server, which has not taken it in yet: try again in a moment</value>
+    <comment>A command ({what}) asked of a file the C# language server is ready but has not opened yet.</comment>
+  </data>
+  <data name="NotLoadedIntoServerYet" xml:space="preserve">
+    <value>{what} needs {file} in the C# language server, which has not loaded it into {project} yet: try again once it has</value>
+    <comment>A command ({what}) asked of a file come under a project whose load of it has not ended.</comment>
+  </data>
+  <data name="NotLoadedAgainAfter" xml:space="preserve">
+    <value>{project} is not loaded again yet: the C# language server has not loaded it as changed after {waited}, and would answer from it as it was; try again once it has</value>
+    <comment>A project the C# language server was asked to load again that it has not loaded since; {waited} is how long Passenger waited.</comment>
+  </data>
+  <data name="UntakenFiles" xml:space="preserve">
+    <value>Without {files}, which the C# language server has not loaded into {count, plural, one {its project} other {their projects}} yet</value>
+    <comment>What an answer went without: C# files come under projects that the language server has not taken in; {count} counts them.</comment>
+  </data>
+  <data name="ProjectsAsTheyWere" xml:space="preserve">
+    <value>From {projects} as {count, plural, one {it was before it changed} other {they were before they changed}}, which the C# language server has not loaded again yet</value>
+    <comment>What an answer went without: it read projects as they were before they changed; {count} counts them.</comment>
+  </data>
+  <data name="WentWithoutBoth" xml:space="preserve">
+    <value>{untaken}. {asTheyWere}</value>
+    <comment>What an answer went without, both: the files not taken in ({untaken}), then the projects read as they were ({asTheyWere}).</comment>
+  </data>
+  <data name="NamesAndMore" xml:space="preserve">
+    <value>{names} and {more, number} more</value>
+    <comment>A list's first three names, and how many more it has.</comment>
+  </data>
+  <data name="SdkAskedNotInstalled" xml:space="preserve">
+    <value>The .NET SDK {sdk} that {file} asks for is not installed: install it, or have global.json name one that is</value>
+    <comment>The .NET SDK the folder's global.json ({file}) asks for is not installed.</comment>
+  </data>
+  <data name="OnlyRuntimeInstalled" xml:space="preserve">
+    <value>Only the .NET runtime is installed: projects need the .NET SDK to load, build, run and test</value>
+    <comment>dotnet has runtimes alone, no SDK.</comment>
+  </data>
+  <data name="OnlyRuntimeInstalledIn" xml:space="preserve">
+    <value>Only the .NET runtime is installed, in {root}: projects need the .NET SDK to load, build, run and test</value>
+    <comment>dotnet in {root} has runtimes alone, no SDK.</comment>
+  </data>
+  <data name="NoSdkFound" xml:space="preserve">
+    <value>No .NET SDK was found for this folder: {said}</value>
+    <comment>dotnet found no .NET SDK for the folder, for the reason it gives ({said}).</comment>
+  </data>
+  <data name="ProjectNotLoadedWith" xml:space="preserve">
+    <value>{project} did not load into the C# language server, which holds none of its code to answer from: {error}. Mend that and it loads again; diagnostics with no path lists what each project met loading</value>
+    <comment>A C# code tool asked about a file of a project the language server met an error loading; diagnostics is the agent's tool.</comment>
+  </data>
+  <data name="NoneWhileProjectsUnloaded" xml:space="preserve">
+    <value>{none}, but the C# language server met errors loading {projects}, whose code it may not hold: {errors}</value>
+    <comment>A C# code tool's empty answer ({none}) while projects the language server failed to load may hold what it looked for.</comment>
+  </data>
+  <data name="StillLoadingAfter" xml:space="preserve">
+    <value>The C# language server is still loading the folder's projects after {waited} ({state}), so it has nothing of them to answer from yet: ask again once workspace says languageServer is ready</value>
+    <comment>A C# code tool asked while the language server still loads the folder's projects; workspace is the agent's tool, languageServer its field.</comment>
+  </data>
+  <data name="StillLoadingStarting" xml:space="preserve">
+    <value>The C# language server is still loading the folder's projects after {waited} (starting), so it has nothing of them to answer from yet: ask again once workspace says languageServer is ready</value>
+    <comment>A C# code tool asked while the language server is still starting; workspace is the agent's tool, languageServer its field.</comment>
+  </data>
+  <data name="StillStartingAfter" xml:space="preserve">
+    <value>The {server} language server is still starting after {waited}, so it has nothing to answer from yet: ask again in a moment</value>
+    <comment>A code tool asked of a file whose language server ({server}, such as YAML) is still starting.</comment>
+  </data>
+  <data name="StillComingAfter" xml:space="preserve">
+    <value>Passenger waited {waited} for {coming}, which has not come, so the answer would be of the code before it: ask again in a moment</value>
+    <comment>A C# code tool asked while what a restore brought, or a load again ({coming}), is still to reach the language server.</comment>
+  </data>
+  <data name="OnlyNativeSdkOn" xml:space="preserve">
+    <value>This {system, select, macos {Intel build of Passenger, run by Rosetta, loads projects only with an Intel (x64) .NET SDK, and this Mac's is Apple Silicon's: download Passenger for Apple Silicon, which suits this Mac} other {x64 build of Passenger, run by emulation, loads projects only with an x64 .NET SDK, and this computer's is Arm64's: download Passenger for Arm64, which suits this computer}}, or install the x64 .NET SDK beside it</value>
+    <comment>An x64 Passenger the system translates (macos: Rosetta) found only a .NET SDK of the system's own processor, whose MSBuild it cannot load.</comment>
+  </data>
+  <data name="TranslatedWithoutDotnet" xml:space="preserve">
+    <value>No .NET is installed, and this {system, select, macos {Intel build of Passenger, run by Rosetta, loads projects only with an Intel (x64) .NET SDK: download Passenger for Apple Silicon, which suits this Mac} other {x64 build of Passenger, run by emulation, loads projects only with an x64 .NET SDK: download Passenger for Arm64, which suits this computer}} and installs the .NET SDK for it, or install the x64 .NET SDK yourself</value>
+    <comment>An x64 Passenger the system translates (macos: Rosetta) with no .NET at all.</comment>
+  </data>
+  <data name="TranslatedWithRuntimeAlone" xml:space="preserve">
+    <value>Only the .NET runtime is installed, in {root}, and this {system, select, macos {Intel build of Passenger, run by Rosetta, loads projects only with an Intel (x64) .NET SDK: download Passenger for Apple Silicon, which suits this Mac} other {x64 build of Passenger, run by emulation, loads projects only with an x64 .NET SDK: download Passenger for Arm64, which suits this computer}} and installs the .NET SDK for it, or install the x64 .NET SDK yourself</value>
+    <comment>An x64 Passenger the system translates (macos: Rosetta) with a .NET runtime alone, in {root}.</comment>
+  </data>
+  <data name="InstallsOnlyNativeOn" xml:space="preserve">
+    <value>Install .NET SDK installs only {system, select, macos {this Mac's own .NET SDK, Apple Silicon's, which this Intel build of Passenger, run by Rosetta, cannot load: download Passenger for Apple Silicon, which suits this Mac} other {this computer's own .NET SDK, Arm64's, which this x64 build of Passenger, run by emulation, cannot load: download Passenger for Arm64, which suits this computer}}, or install the x64 .NET SDK yourself</value>
+    <comment>Install .NET SDK in an x64 Passenger the system translates (macos: Rosetta): the SDK it installs is one this Passenger cannot load.</comment>
+  </data>
+  <data name="SdkTooOldChosen" xml:space="preserve">
+    <value>{project} targets .NET {framework}, which the .NET SDK {sdk} does not build: {file} chose it, asking for {version}; {count, plural, =0 {no .NET SDK installed builds .NET {framework}: install the .NET {framework} SDK, and have global.json ask for it} one {the .NET SDK {builders} installed builds it: have global.json ask for it} other {the .NET SDKs {builders} installed build it: have global.json ask for one of them}}</value>
+    <comment>A project targets a .NET newer than the SDK the folder's global.json ({file}) chose builds; {builders} lists the SDKs installed that build it, {count} counts them.</comment>
+  </data>
+  <data name="SdkTooOldChosenRolling" xml:space="preserve">
+    <value>{project} targets .NET {framework}, which the .NET SDK {sdk} does not build: {file} chose it, asking for {version} with rollForward {roll}; {count, plural, =0 {no .NET SDK installed builds .NET {framework}: install the .NET {framework} SDK, and have global.json ask for it} one {the .NET SDK {builders} installed builds it: have global.json ask for it} other {the .NET SDKs {builders} installed build it: have global.json ask for one of them}}</value>
+    <comment>A project targets a .NET newer than the SDK the folder's global.json ({file}) chose, rolling forward as {roll}, builds; {builders} lists the SDKs installed that build it, {count} counts them.</comment>
+  </data>
+  <data name="SdkTooOld" xml:space="preserve">
+    <value>{project} targets .NET {framework}, which the .NET SDK {sdk} does not build: it needs the .NET {framework} SDK</value>
+    <comment>A project targets a .NET newer than the SDK found builds.</comment>
+  </data>
+  <data name="SdkOffPath" xml:space="preserve">
+    <value>Passenger uses the .NET SDK {sdk} in {root}, which your shell's PATH does not name, so a terminal outside Passenger finds no dotnet</value>
+    <comment>The .NET Passenger uses is not on the shell's PATH.</comment>
+  </data>
+  <data name="CommandIsThePersonsOf" xml:space="preserve">
+    <value>An agent never adds or removes the person's {command} command: ask the person, who does it with Tools, Add the {command} Command… or Remove the {command} Command…</value>
+    <comment>An agent's Add or Remove of Passenger's shell command ({command}): the person's shell is theirs to change.</comment>
+  </data>
+  <data name="CommandMadeByInstaller" xml:space="preserve">
+    <value>On Windows, Passenger's installer puts the {command} command on your Path, and uninstalling takes it off</value>
+    <comment>Add or Remove of Passenger's shell command ({command}) on Windows, where the installer makes it.</comment>
+  </data>
+  <data name="CommandMadeByInstallScript" xml:space="preserve">
+    <value>On Linux, install.sh links the {command} command, and install.sh --uninstall removes it</value>
+    <comment>Add or Remove of Passenger's shell command ({command}) on Linux, where install.sh makes it.</comment>
+  </data>
+  <data name="CommandPlaceStillRead" xml:space="preserve">
+    <value>Passenger is still reading where the {command} command stands</value>
+    <comment>Passenger's shell command ({command}) while the window has not yet read what stands at its place.</comment>
+  </data>
+  <data name="CommandOfNoAppBundle" xml:space="preserve">
+    <value>This Passenger is in no app bundle, as a build from source is not, so it carries no {command} command</value>
+    <comment>Passenger's shell command ({command}) of a Passenger in no app bundle.</comment>
+  </data>
+  <data name="CommandOfTranslocatedCopy" xml:space="preserve">
+    <value>macOS runs this Passenger from a copy of its own ({bundle}), which goes as it ends: once Passenger is in Applications, its {command} command can be added</value>
+    <comment>Passenger's shell command ({command}) of a Passenger macOS runs from a copy of its own.</comment>
+  </data>
+  <data name="CommandOfDiskImageCopy" xml:space="preserve">
+    <value>This Passenger runs from {bundle}, on a disk image or a disk it cannot write: drag it onto Applications, then add its {command} command</value>
+    <comment>Passenger's shell command ({command}) of a Passenger on a disk image, which goes as the image is ejected.</comment>
+  </data>
+  <data name="CommandNotCarriedAt" xml:space="preserve">
+    <value>This Passenger carries no {command} command at {launcher}</value>
+    <comment>Passenger's shell command ({command}) where the app's bundle carries no launcher for it.</comment>
+  </data>
+  <data name="CommandPlaceOthers" xml:space="preserve">
+    <value>{link} is another program's, not Passenger's: move it away, then add the command again</value>
+    <comment>The place of Passenger's shell command held by another program, a folder, or a link to one.</comment>
+  </data>
+  <data name="CommandPlaceTaken" xml:space="preserve">
+    <value>{link} is there already, leading to this Passenger</value>
+    <comment>Add the shell command where it is there already, leading to this Passenger.</comment>
+  </data>
+  <data name="NoCommandAt" xml:space="preserve">
+    <value>There is no {command} command at {link} to remove</value>
+    <comment>Remove the shell command ({command}) where nothing is at its place.</comment>
+  </data>
+  <data name="SdkInstalledAlready" xml:space="preserve">
+    <value>The .NET SDK {sdk} is installed, in {root}: nothing is missing</value>
+    <comment>Install .NET SDK with nothing it installs mending what is missing.</comment>
+  </data>
+  <data name="StillLookingForDotnet" xml:space="preserve">
+    <value>Passenger is still looking for .NET</value>
+    <comment>Install .NET SDK while Passenger has not yet found what .NET is installed.</comment>
+  </data>
+  <data name="OnShellPathAlready" xml:space="preserve">
+    <value>{root} is on your shell's PATH already</value>
+    <comment>Add .NET to the Shell's PATH where the shell's PATH has it already.</comment>
+  </data>
+  <data name="NoExecutableProjectTo" xml:space="preserve">
+    <value>Nothing to {verb, select, run {run} debug {debug} profile {profile} other {{verb}}}: no executable project</value>
+    <comment>Run, Debug or Profile (the verb) where the folder has no executable project to run.</comment>
+  </data>
+  <data name="GoDotTestNeverRunsIn" xml:space="preserve">
+    <value>{game} never runs its GoDotTest tests: no scene of it calls GoTest.RunTests, neither its main scene nor a test scene (GoDotTest's README makes one in {folder}), so Godot is not started for them</value>
+    <comment>A Godot game's GoDotTest tests asked to run where no scene of the game runs them.</comment>
+  </data>
+  <data name="NoTestFound" xml:space="preserve">
+    <value>No test of {name} was found; is the project a test project?</value>
+    <comment>Run Tests at the caret found no test of the method or class there.</comment>
+  </data>
+  <data name="NoTestFoundBecause" xml:space="preserve">
+    <value>No test of {name} was found: {why}</value>
+    <comment>Run Tests at the caret found no test of the method or class there, because its project's tests could not be found ({why}).</comment>
+  </data>
+  <data name="GoDotTestAlikeClasses" xml:space="preserve">
+    <value>Not run: GoDotTest knows {classes} by one name ({suite}), so it can run neither alone. Rename one, or choose all of their tests together</value>
+    <comment>A test chosen of one of the classes GoDotTest cannot tell apart.</comment>
+  </data>
+  <data name="TheRunSettingsFile" xml:space="preserve">
+    <value>The run settings file</value>
+    <comment>Names the file that chose a GoDotTest scene where its path is not known, at the start of a sentence.</comment>
+  </data>
+  <data name="GoDotTestSceneMissing" xml:space="preserve">
+    <value>{file} names {scene} for {game}'s GoDotTest tests (its {parameter} parameter), but the game has no such scene, so Godot is not started for them</value>
+    <comment>The scene a run settings file ({file}) names for GoDotTest is not the game's.</comment>
+  </data>
+  <data name="GoDotTestSceneRunsNone" xml:space="preserve">
+    <value>{file} names {scene} for {game}'s GoDotTest tests (its {parameter} parameter), but no script of that scene calls GoTest.RunTests, so Godot is not started for them</value>
+    <comment>The scene a run settings file ({file}) names for GoDotTest runs no tests.</comment>
+  </data>
+  <data name="XamlUncompiledIn" xml:space="preserve">
+    <value>{count, plural, one {{projects}'s build has} other {The builds of {projects} have}} no compiled XAML: Avalonia's XAML compiler did not finish in the build that last compiled {count, plural, one {its} other {their}} C#, and the builds since took that as up to date. Rebuild to compile it</value>
+    <comment>A build whose projects' assemblies hold Avalonia XAML never compiled; {projects} lists them, {count} counts them.</comment>
+  </data>
+  <data name="FolderChangedFromNone" xml:space="preserve">
+    <value>The folder changed while the person was asked: the Passenger window left the folder it had open before they answered, so nothing was done. A later call is asked about the folder open now</value>
+    <comment>An agent's call whose question the window took away as it left its folder before the person answered.</comment>
+  </data>
+  <data name="FolderChangedFrom" xml:space="preserve">
+    <value>The folder changed while the person was asked: the Passenger window left {left} before they answered, so nothing was done. A later call is asked about the folder open now</value>
+    <comment>An agent's call whose question the window took away as it left the folder {left} before the person answered.</comment>
+  </data>
+  <data name="EditedMeanwhile" xml:space="preserve">
+    <value>{files, plural, one {it was edited meanwhile} other {they were edited meanwhile}}</value>
+    <comment>Why an edit left files as they were: each was edited after the edit was worked out; {files} counts them.</comment>
+  </data>
+  <data name="DoneButNotIn" xml:space="preserve">
+    <value>{done}, but not in {files}: {count, plural, one {it was} other {they were}} edited meanwhile</value>
+    <comment>What an edit did ({done}), and the files it left as they were for being edited meanwhile; {count} counts them.</comment>
+  </data>
+  <data name="NotAppliedTo" xml:space="preserve">
+    <value>{what} was not applied to {files}: {count, plural, one {it was} other {they were}} edited meanwhile</value>
+    <comment>An edit ({what}) not applied to the files it left as they were for being edited meanwhile; {count} counts them.</comment>
+  </data>
+  <data name="StepsUnmatchedUnanswered" xml:space="preserve">
+    <value>No step definitions were read to match its steps against (the C# language server did not answer for them): no step is marked undefined, nor an argument its definition cannot take</value>
+    <comment>A feature's diagnostics with no step definitions read: the C# language server, which reads them, did not answer for them.</comment>
+  </data>
+  <data name="StepsUnmatchedNoServer" xml:space="preserve">
+    <value>No step definitions were read to match its steps against (the C# language server is not running): no step is marked undefined, nor an argument its definition cannot take</value>
+    <comment>A feature's diagnostics with no step definitions read: no C# language server runs for the folder.</comment>
+  </data>
+  <data name="StepsUnmatchedLoadFailed" xml:space="preserve">
+    <value>No step definitions were read to match its steps against (the C# language server took in nothing of {project}, whose load failed: {loadError}): no step is marked undefined, nor an argument its definition cannot take</value>
+    <comment>A feature's diagnostics where its project's last load failed with an error.</comment>
+  </data>
+  <data name="NotRunning" xml:space="preserve">
+    <value>{name} is not running</value>
+    <comment>A program, container, resource, game or run, named as it is shown, that has not started, or has ended.</comment>
+  </data>
+  <data name="ServiceNotRunning" xml:space="preserve">
+    <value>{service} of {run} is not running</value>
+    <comment>A service of a run of services, each named as it is shown, that has not started, or has ended.</comment>
+  </data>
+  <data name="X64OnlyUnrunnableOn" xml:space="preserve">
+    <value>{what} can't run on this {machine, select, mac {Mac} other {machine}}: its image is built for x86-64 alone, and {engine} {runs, select, never {runs no x86-64 image here} other {emulates x86-64 here without Rosetta, under which {what} fails as it starts}}{advice, select, desktop {. Choose the Apple Virtualization framework and turn on Use Rosetta for x86_64/amd64 emulation on Apple Silicon in Docker Desktop's settings (General)} podman {. Run it on a Podman machine that uses Rosetta} other {}}</value>
+    <comment>An image built for x86-64 alone on an Arm container engine ({engine}) that runs none, or emulates x86-64 without Rosetta.</comment>
+  </data>
+  <data name="NoEntraAccountSignedIn" xml:space="preserve">
+    <value>No Microsoft Entra ID account is signed in: choose Sign In… on the connection's menu</value>
+    <comment>A connection that signs in by Microsoft Entra ID with no account signed in.</comment>
+  </data>
+  <data name="EntraAccountNotSignedIn" xml:space="preserve">
+    <value>Microsoft Entra ID account {account} has no sign-in that holds: choose Sign In… on its connection's menu</value>
+    <comment>A Microsoft Entra ID account a connection signs in as, with no sign-in that holds.</comment>
+  </data>
+  <data name="RowGone" xml:space="preserve">
+    <value>The row {key} of {table} was deleted since it was read, so nothing was written: read the table again</value>
+    <comment>A table's changes reaching a row deleted since it was read.</comment>
+  </data>
+  <data name="RowChanged" xml:space="preserve">
+    <value>The row {key} of {table} changed since it was read, so nothing was written: read the table again</value>
+    <comment>A table's changes reaching a row changed elsewhere since it was read.</comment>
+  </data>
+  <data name="NotAValueOf" xml:space="preserve">
+    <value>''{text}' is no {kind} for {column}</value>
+    <comment>A file's cell its column's type does not read.</comment>
+  </data>
+  <data name="RowRefused" xml:space="preserve">
+    <value>Row {row, number} of {file} was refused, so nothing was written: {why}</value>
+    <comment>An import stopped by a row the database or its column's type refused.</comment>
+  </data>
+  <data name="CSharpNotRunningSentence" xml:space="preserve">
+    <value>The C# language server is not running</value>
+    <comment>An action that needs the folder's C# language server, which has not started yet, or has ended.</comment>
+  </data>
+  <data name="ReplacedTooLong" xml:space="preserve">
+    <value>the text replaced would be {length, number} characters long, more than {most, number}</value>
+    <comment>Why no match of a search is replaced: replacing every one would make the text longer than a replacement may.</comment>
+  </data>
+  <data name="WebRootReadBySdk" xml:space="preserve">
+    <value>{name} is the project's web root: ASP.NET Core serves its static files from it</value>
+    <comment>Rename, Delete or Cut of a project's web root, which the SDK reads by its name.</comment>
+  </data>
+  <data name="ProfilesReadBySdk" xml:space="preserve">
+    <value>{name} holds the project's launch and publish profiles</value>
+    <comment>Rename, Delete or Cut of a project's Properties folder, which the SDK reads by its name.</comment>
+  </data>
+  <data name="NamedOfPackage" xml:space="preserve">
+    <value>{name} is {kind, select, folder {a folder} other {a file}} of the package {package}, as NuGet restored it for every project</value>
+    <comment>A file or folder of a NuGet package folder, every project's copy of that version.</comment>
+  </data>
+  <data name="OfPackageFolder" xml:space="preserve">
+    <value>{kind, select, folder {a folder} other {a file}} of the package {package}, as NuGet restored it for every project</value>
+    <comment>What a file or folder of a NuGet package folder is, said after its name where a list names each.</comment>
+  </data>
+  <data name="PackagesFileShownReadOnly" xml:space="preserve">
+    <value>A file of the package {package}, as NuGet restored it for every project, read-only</value>
+    <comment>The banner over a NuGet package's file, shown read-only.</comment>
+  </data>
+  <data name="OutOfReachOfAny" xml:space="preserve">
+    <value>{path} is outside any open folder: an agent's tools {changes, select, true {change only the folder's files and, where it is trusted, those of the projects its solution and AppHosts name beside it} other {read and change only the folder's files and, where it is trusted, those of the projects its solution and AppHosts name beside it, and read outside them only what Go to Declaration leads to: the packages its projects restore, the SDK's MSBuild files, and the copies Passenger makes to be read (a source generator's code, a library's decompiled or linked source)}}</value>
+    <comment>A path an agent named outside what its tools reach, with no folder open; changes is true for one it would change.</comment>
+  </data>
+  <data name="OutOfReachOfFolder" xml:space="preserve">
+    <value>{path} is outside the open folder {folder}: an agent's tools {changes, select, true {change only the folder's files and, where it is trusted, those of the projects its solution and AppHosts name beside it} other {read and change only the folder's files and, where it is trusted, those of the projects its solution and AppHosts name beside it, and read outside them only what Go to Declaration leads to: the packages its projects restore, the SDK's MSBuild files, and the copies Passenger makes to be read (a source generator's code, a library's decompiled or linked source)}}</value>
+    <comment>A path an agent named outside what its tools reach; changes is true for one it would change.</comment>
+  </data>
+  <data name="InputEndedBy" xml:space="preserve">
+    <value>{name}'s Debug console takes no more input: its input was ended ({keys}), so it reads none</value>
+    <comment>Input for a launched program whose input was ended in its Debug console by the keys {keys}.</comment>
+  </data>
+  <data name="FileChangedAsRead" xml:space="preserve">
+    <value>{file} changed as it was read</value>
+    <comment>Why a rename stopped: a file's text is not what was read of it.</comment>
+  </data>
+  <data name="GodotEditorOfPersonBy" xml:space="preserve">
+    <value>{tool} acts in the person's own Godot editor, which connects to the Passenger window they use, never to an agent's own: attach to that window (--mcp-attach)</value>
+    <comment>An agent's act in Godot's editor ({tool}) from its own Passenger, which no editor of the person's reaches.</comment>
+  </data>
+  <data name="NoGodotAddonIn" xml:space="preserve">
+    <value>Passenger's addon is not in {project}: Install Passenger's Godot Addon… puts it there (asking the person), and Godot's editor connects as it opens the project</value>
+    <comment>An agent's act in Godot's editor on a project without Passenger's addon.</comment>
+  </data>
+  <data name="NoGodotEditorRun" xml:space="preserve">
+    <value>No Godot editor on {project} is connected: run {opens} to open one, whose Passenger's addon connects to this window</value>
+    <comment>An agent's act in Godot's editor on a project whose editor is not connected; {opens} is a run configuration that opens it.</comment>
+  </data>
+  <data name="NoGodotEditorOpen" xml:space="preserve">
+    <value>No Godot editor on {project} is connected: open the project in Godot's editor, whose Passenger's addon connects to this window</value>
+    <comment>An agent's act in Godot's editor on a project whose editor is not connected.</comment>
+  </data>
+  <data name="GodotProjectsUnnamed" xml:space="preserve">
+    <value>The folder holds {count, number} Godot projects ({projects}): name the scene by its path in the folder, such as {first}/main.tscn, so the act goes to that project's Godot editor</value>
+    <comment>An agent's act in Godot's editor naming no scene by its path, in a folder of several Godot projects.</comment>
+  </data>
+  <data name="GodotAddonOlderAt" xml:space="preserve">
+    <value>Passenger's addon in {project} is version {version}, which takes no agent's acts: Install Passenger's Godot Addon… updates it, and Godot's editor takes it as it next opens the project</value>
+    <comment>An agent's act in Godot's editor whose addon is older than one that takes it.</comment>
+  </data>
+  <data name="DotnetFormatFailedSaying" xml:space="preserve">
+    <value>dotnet format failed (exit code {exit}): {said}</value>
+    <comment>dotnet format, Settings' C# formatter, ended with an exit code other than 0, saying why.</comment>
+  </data>
+  <data name="DotnetFormatFailedWith" xml:space="preserve">
+    <value>dotnet format failed (exit code {exit})</value>
+    <comment>dotnet format, Settings' C# formatter, ended with an exit code other than 0.</comment>
+  </data>
+  <data name="GeneratedCopy" xml:space="preserve">
+    <value>{name} is a source generator's code copied to read: the C# language server answers in the code it is made from</value>
+    <comment>A source generator's code copied to read, which the C# language server holds no file of.</comment>
+  </data>
+  <data name="GeneratedCopyOf" xml:space="preserve">
+    <value>{name} is a source generator's code, {origin}, copied to read: the C# language server answers in the code it is made from</value>
+    <comment>A source generator's code copied to read, with what made it and for which project ({origin}).</comment>
+  </data>
+  <data name="SpacesAlone" xml:space="preserve">
+    <value>{language} takes no tabs in its indentation, so {name} would no longer read as {language}</value>
+    <comment>Convert Indentation to tabs in a file of a language tabs can't indent.</comment>
+  </data>
+  <data name="LineAtRisk" xml:space="preserve">
+    <value>Converted, line {line} of {name} could read as another block, as {language} counts tabs and spaces apart</value>
+    <comment>Convert Indentation in a language whose blocks are its indentation, where a line could move to another block.</comment>
+  </data>
+  <data name="IsSaved" xml:space="preserve">
+    <value>{name} is saved</value>
+    <comment>Save where the file shown has nothing to save.</comment>
+  </data>
+  <data name="ShownWithNoLines" xml:space="preserve">
+    <value>{name} is {shown}, with no lines</value>
+    <comment>An action on a line where the tab shows the file as something with no lines ({shown}, such as a preview).</comment>
+  </data>
+  <data name="X86DebuggerMissingBecause" xml:space="preserve">
+    <value>it {runs}, and {why}</value>
+    <comment>Why a 32-bit program is not debugged: it runs as one ({runs}), and the debugger's 32-bit host could not be had ({why}).</comment>
+  </data>
+  <data name="X86RuntimeLacking" xml:space="preserve">
+    <value>it {runs}, on the x86 .NET in {root}, which has no {named}: install the {named} for x86, from {where}</value>
+    <comment>Why a 32-bit program does not run: it runs as one ({runs}) on an x86 .NET that lacks what it runs on.</comment>
+  </data>
+  <data name="AndroidBuiltOnlyOn" xml:space="preserve">
+    <value>Android apps are built only on {builders}: {why}</value>
+    <comment>An Android app run where this machine builds none.</comment>
+  </data>
+  <data name="NoAndroidDeviceOrEmulator" xml:space="preserve">
+    <value>No Android device is connected and no emulator is made: connect a device with USB debugging on, or make an emulator in Android Studio's Device Manager</value>
+    <comment>The Android workload listed no device or emulator.</comment>
+  </data>
+  <data name="NoAndroidDeviceOrEmulatorMade" xml:space="preserve">
+    <value>No Android device is connected and no emulator is made: connect a device with USB debugging on, or make an emulator in Android Studio's Device Manager or with the Android SDK's avdmanager ({avdManager} create avd)</value>
+    <comment>The Android workload listed no device or emulator, naming the SDK's avdmanager.</comment>
+  </data>
+  <data name="GitCannotBringSaying" xml:space="preserve">
+    <value>Git cannot bring them to {to}: {said}</value>
+    <comment>A checkout's question of uncommitted changes, where git refuses to carry them, in git's own words.</comment>
+  </data>
+  <data name="GitCannotBringOver" xml:space="preserve">
+    <value>Git cannot bring them: {to} changes {files} too, which checking it out would write over</value>
+    <comment>A checkout's question of uncommitted changes, where git refuses to carry them, naming the files it would write over.</comment>
+  </data>
+  <data name="TwoFilesAndMore" xml:space="preserve">
+    <value>{first}, {second} and {more, plural, one {# more file} other {# more files}}</value>
+    <comment>A list of files cut short after two.</comment>
+  </data>
+  <data name="WorkloadsNeedAdministratorOn" xml:space="preserve">
+    <value>The .NET in {root} was installed for every user, so its workloads install only with an administrator's rights: run {command} in a terminal{system, select, windows { run as administrator} other {}}</value>
+    <comment>Workloads of a .NET installed for every user, which take an administrator's rights to install.</comment>
+  </data>
+  <data name="NotLentFrom" xml:space="preserve">
+    <value>{project} was not started: its AppHost names it in {place, select, root {the disk's root {folder}} holdsOpen {{folder}, which holds the open folder} home {your home folder {folder}} holdsHome {{folder}, which holds your home folder} other {{folder}}}, to which the open folder lends none of its trust, as that would trust what you never chose: open a folder holding both</value>
+    <comment>A service an AppHost names in a folder no workspace lends its trust to; place says why it lends none.</comment>
+  </data>
+  <data name="NoFunctionsWorkerWithin" xml:space="preserve">
+    <value>Azure Functions Core Tools started no worker for it within {limit}</value>
+    <comment>A debugged Functions app whose host started no worker within its time.</comment>
+  </data>
+  <data name="NoTestedType" xml:space="preserve">
+    <value>No type of the solution is named {tested}, which {testClass} is named after</value>
+    <comment>Go to Test from a test class whose name names no type of the solution.</comment>
+  </data>
+  <data name="FakeNeedsSeam" xml:space="preserve">
+    <value>{type} {seam, select, sealed {is sealed} static {is static} other {has no constructor a class deriving from it can call}}, so no fake can stand in for it: {extract} on it, then {introduce} where it is used, give the code a seam a fake of the interface fills</value>
+    <comment>Why a class has no fake, and the two refactorings, by their titles, that give the code a seam a fake fills.</comment>
+  </data>
+  <data name="SeamOf" xml:space="preserve">
+    <value>{seam, select, sealed {is sealed} static {is static} other {has no constructor a class deriving from it can call}}</value>
+    <comment>Why no fake can stand in for a class: sealed, static, or with no constructor a class deriving from it can call.</comment>
+  </data>
+  <data name="StepUsesNotCounted" xml:space="preserve">
+    <value>Its feature steps are not counted yet</value>
+    <comment>Find Usages of a step definition whose feature steps are not counted yet.</comment>
+  </data>
+  <data name="NoStepBinds" xml:space="preserve">
+    <value>No feature step binds it</value>
+    <comment>Find Usages of a step definition no feature step binds.</comment>
+  </data>
+  <data name="NoActionCalled" xml:space="preserve">
+    <value>No action is called {id}</value>
+    <comment>An action asked for by an id no action has, as an agent or a keymap may name one.</comment>
+  </data>
+  <data name="AlreadyUnderWay" xml:space="preserve">
+    <value>Already under way: {stage}</value>
+    <comment>An action asked for again while its work is under way, saying the stage it is at.</comment>
+  </data>
+  <data name="NoImport" xml:space="preserve">
+    <value>{kind} writes each statement alone, so an import refused partway could not write nothing: import with its own tools</value>
+    <comment>Import Data into a database with no transaction, where a row refused could not leave the rows before it unwritten.</comment>
+  </data>
+  <data name="DocumentChangesPending" xml:space="preserve">
+    <value>Submit or revert the changes first: another page's documents may hold other fields</value>
+    <comment>Another page, filter or sort of a document database's table while its changes wait, which stand by the fields of the page shown.</comment>
+  </data>
+  <data name="TooManyItemChangesAtOnce" xml:space="preserve">
+    <value>DynamoDB writes at most {most} changes in one transaction, and these are {changes}: submit them in parts, so none is written apart from the rest</value>
+    <comment>A DynamoDB table's changes past the most one transaction writes, refused before any is written.</comment>
+  </data>
+  <data name="MaskedPartChanged" xml:space="preserve">
+    <value>Write the value whole: a part of it shown masked was changed</value>
+    <comment>A cell written over its text shown masked, a mask added or taken out, so what each hid cannot be put back.</comment>
+  </data>
+  <data name="RowsFixed" xml:space="preserve">
+    <value>A string's one value is written in place: delete or add a key in a console</value>
+    <comment>Add Row or Delete Rows in a table whose one value is written in place alone: a Redis string's.</comment>
+  </data>
+  <data name="NoEfFactoryConnection" xml:space="preserve">
+    <value>{context}'s migrations take their connection from its design-time factory, {factory}, which names none Passenger can read: name it there through GetConnectionString or a connection string written whole</value>
+    <comment>A context's database asked for where its design-time factory, which dotnet ef makes it by, makes its connection in a way read from no code.</comment>
+  </data>
+</root>

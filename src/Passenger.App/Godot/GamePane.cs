@@ -204,7 +204,7 @@ public sealed partial class GamePane : Border, IOwnKeys
     private void NeverCame(GodotGame started)
     {
         string[] errors = [.. (started.Console?.Entries ?? []).Where(e => !e.Warning).TakeLast(2).Select(e => e.Header)];
-        words.Text = Refusals.GameWindowNeverCame(started.Name, errors.Length == 0 ? null : string.Join(" ", errors));
+        words.Text = Refusals.GameWindowNeverCame(started.Name, errors.Length == 0 ? null : string.Join(" ", errors)).Shown;
         words.IsVisible = true;
     }
 

@@ -21,7 +21,7 @@ public partial class MainWindow
 
     private Godot.GamePane MakeGamePane()
     {
-        Godot.GamePane pane = new(Refusals.NoGameInWindow(Actions.Shortcut(AppActions.GameKeys) ?? "Give the Keys to the Game"));
+        Godot.GamePane pane = new(Refusals.NoGameInWindow(Actions.Shortcut(AppActions.GameKeys) ?? "Give the Keys to the Game").Shown);
         pane.KeysAsked += (_, _) => TakeKeysFromGame();
         // A layered game hears every key but those that take its keys back.
         pane.Keeps = e => AppActions.Keymap().ShortcutsFor(AppActions.KeysIn(AppActions.GameKeys))
@@ -61,11 +61,11 @@ public partial class MainWindow
     {
         UiThread.Check();
         Godot.GameWindows? windows = Unseen || OperatingSystem.IsMacOS() ? null : GamePane.Windows(this);
-        (Godot.GamePaneHolds holds, string? why) = InPaneChoice(plan.Name, Unseen, plan.GodotUnseen || GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotVersion,
+        (Godot.GamePaneHolds holds, Words? why) = InPaneChoice(plan.Name, Unseen, plan.GodotUnseen || GodotExecutables.RunsHeadless(plan.Arguments), plan.GodotVersion,
             OperatingSystem.IsMacOS(), windows is not null, Godot.GameLayer.Hosts, GamePane.Game is { State: not LiveAppState.Ended } holding ? holding.Name : null);
         if (holds == Godot.GamePaneHolds.Nothing)
         {
-            GamePane.Refused(why ?? Refusals.GameNotEmbeddedHere);
+            GamePane.Refused((why ?? Refusals.GameNotEmbeddedHere).Shown);
             status.Text = $"{plan.Name} draws in a window of its own: {why}";
             return plan;
         }
@@ -110,7 +110,7 @@ public partial class MainWindow
     /// <summary>How the Game window holds a game, or why it holds none: the game's own window held over it (Windows, X11, from
     /// Godot 4.4, where the window has an embedding), or its layer drawn in it (macOS, from Godot 4.5, where QuartzCore has a
     /// CALayerHost); none for a game nobody sees or run headless, or while the pane holds another, each with the words why.</summary>
-    public static (Godot.GamePaneHolds Holds, string? WhyNot) InPaneChoice(string game, bool unseen, bool headless, string? version, bool macOS,
+    public static (Godot.GamePaneHolds Holds, Words? WhyNot) InPaneChoice(string game, bool unseen, bool headless, string? version, bool macOS,
         bool embedding, bool layerHost, string? holding) =>
         unseen || headless ? (Godot.GamePaneHolds.Nothing, Refusals.GameHeadless(game))
         : macOS && !GodotExecutables.DrawsEmbedded(version) ? (Godot.GamePaneHolds.Nothing, Refusals.GameEmbedsOnMacFrom(version))

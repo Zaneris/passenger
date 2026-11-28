@@ -198,7 +198,7 @@ public sealed class WebLanguagesTests : IClassFixture<BlazorShop>
         Ui.WaitFor(() => window.Session.Web?.For(cart) is { Lsp: not null }, "TypeScript's document of cart.ts");
         ActionContext context = window.Actions.Context();
         string[] offered = [.. ((string[])[AppActions.ChangeSignature, AppActions.ExtractInterface, AppActions.Move, AppActions.SafeDelete, AppActions.PullMembersUp, AppActions.PushMembersDown])
-            .Where(id => window.Actions.WhyNot(id, context) != Refusals.NotCSharp).Select(id => $"{id} ({window.Actions.WhyNot(id, context) ?? "enabled"})")];
+            .Where(id => window.Actions.WhyNot(id, context)?.Shown != Refusals.NotCSharp.Shown).Select(id => $"{id} ({window.Actions.WhyNot(id, context)?.Shown ?? "enabled"})")];
         Assert.True(offered.Length == 0, $"In a TypeScript file these refactorings of C# alone, which fail there, are not greyed as C#'s: {string.Join(", ", offered)}");
         int call = BlazorShop.Cart.IndexOf("total(items)", StringComparison.Ordinal);
         editor.Selections = SelectionSet.Single(new Selection(call, call + "total(items)".Length));

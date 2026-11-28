@@ -169,7 +169,7 @@ public partial class MainWindow
         RunConfigurations configurations = session.Configurations;
         if (Folder is not { } top)
         {
-            return (null, Refusals.NoFolder);
+            return (null, Refusals.NoFolder.Shown);
         }
         string? solution = configurations.Solution;
         IReadOnlyList<RunConfiguration> before = configurations.Several;
@@ -287,7 +287,7 @@ public partial class MainWindow
     {
         if (Folder is null)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         if (shared is null)
         {
@@ -318,7 +318,7 @@ public partial class MainWindow
         string profile = LaunchSettingsEdits.ProfileName(project, shared);
         if (profile.Length == 0)
         {
-            return Refusals.ConfigurationUnnamed;
+            return Refusals.ConfigurationUnnamed.Shown;
         }
         if (LaunchProfile.Read(project).FirstOrDefault(p => string.Equals(p.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {
@@ -516,7 +516,7 @@ public partial class MainWindow
         string? why;
         try
         {
-            why = actions!.Run(start.Debug ? AppActions.Debug : AppActions.RunProgram);
+            why = actions!.Run(start.Debug ? AppActions.Debug : AppActions.RunProgram)?.English;
         }
         finally
         {
@@ -529,7 +529,7 @@ public partial class MainWindow
         await heard.DoneAsync(CancellationToken.None);
         if (heard.Outcome is { Failed: true, Said: { } failed })
         {
-            NotStarted = start.Cannot(configurations.Chosen?.Name ?? shown, failed, reading.Problems.Find(p => p.Severity == ProblemSeverity.Error) is { } first ? $"{first.Where}: {first.Message}" : null);
+            NotStarted = start.Cannot(configurations.Chosen?.Name ?? shown, failed.English, reading.Problems.Find(p => p.Severity == ProblemSeverity.Error) is { } first ? $"{first.Where}: {first.Message}" : null);
             Program.SayNotStarted(NotStarted);
         }
         return null;
@@ -615,7 +615,7 @@ public partial class MainWindow
         }
         if (actions!.Run(start, context) is { } why)
         {
-            status.Text = why;
+            status.Text = why.Shown;
         }
     }
 

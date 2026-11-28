@@ -202,7 +202,7 @@ public sealed partial class MobileHeadEditsTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.Shown);
         }
     }
 

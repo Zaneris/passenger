@@ -1086,7 +1086,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private void UpdateRollback() => ToolButtons.Grey(rollback, vcs.WhyNotRollback(RollbackTargets()));
 
     /// <summary>Why a file's own item (Go to Source, Delete…) cannot act on a change that deleted it; null where it can.</summary>
-    private static string? Deleted(FileChange change) => change.Kind is ChangeKind.Deleted ? Refusals.FileDeleted : null;
+    private static string? Deleted(FileChange change) => (change.Kind is ChangeKind.Deleted ? Refusals.FileDeleted : null)?.Shown;
 
     /// <summary>Lists the status again in place: a file still changed as it was keeps its row, its box and whether it is
     /// selected, so a refresh with nothing new (the window coming to the front, a save) leaves the list as it was, and
@@ -1348,10 +1348,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// saying why as a press would.</summary>
     private void UpdateButtons()
     {
-        string? why = vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(groups.Any(g => g.IsChosen != false), Message, Amend);
+        string? why = (vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(groups.Any(g => g.IsChosen != false), Message, Amend))?.Shown;
         foreach (Button button in (Button[])[commit, commitAndPush])
         {
-            string? refused = button == commitAndPush ? why ?? vcs.WhyNotRemote : why;
+            string? refused = (button == commitAndPush ? why ?? vcs.WhyNotRemote : why)?.Shown;
             ToolButtons.Grey(button, refused);
             // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
             button.IsEnabled = refused is null && !vcs.IsBusy;

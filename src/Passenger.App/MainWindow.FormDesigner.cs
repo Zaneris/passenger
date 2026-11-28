@@ -432,7 +432,7 @@ public partial class MainWindow
 
     /// <summary>Why an action on a design's chosen component greys: no design has the keys, none of its components is chosen,
     /// the form itself is, or its designer does not run.</summary>
-    private string? DesignWhyNot(ActionContext context, bool orders = false) => DesignWith(context) is not { } shown ? Refusals.NoFormDesign
+    private Words? DesignWhyNot(ActionContext context, bool orders = false) => DesignWith(context) is not { } shown ? Refusals.NoFormDesign
         : shown.Pane.Chosen is not { } chosen ? Refusals.NoComponentChosen
         : chosen.Field.Length == 0 ? Refusals.FormItselfStays
         : orders && FormDesignPane.InTray(chosen) ? Refusals.TrayHasNoOrder
@@ -538,7 +538,7 @@ public partial class MainWindow
             return;
         }
         FormDesign? design = Editors.ActiveGroup.Side is FormDesignPane pane ? pane.Design : null;
-        toolbox.Show(design?.Toolbox ?? [], design is null ? Refusals.NoFormDesign : design.Status);
+        toolbox.Show(design?.Toolbox ?? [], (design is null ? Refusals.NoFormDesign : design.Status).Shown);
     }
 
     /// <summary>The keys a design with the keys takes from the editor's actions: Undo and Redo take back or make again its

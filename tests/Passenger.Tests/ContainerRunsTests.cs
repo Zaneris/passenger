@@ -811,7 +811,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Ui.WaitFor(() => Run(window).Contains("services still run: following their log again", StringComparison.Ordinal) || !window.IsRunning,
                 "the run's log to be followed again", TimeSpan.FromMinutes(1));
             Assert.True(window.IsRunning, $"The run took its log's end for its own: {window.Status}\n{Run(window)}");
-            Assert.Null(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown);
             int followed = Run(window).LastIndexOf("following their log again", StringComparison.Ordinal);
             Ui.WaitFor(() => Run(window)[followed..].Contains("tick ", StringComparison.Ordinal), "the ticker's next lines after the log was followed again",
                 TimeSpan.FromMinutes(1));
@@ -990,7 +990,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
                 (AppActions.Profile, () => window.ProfileAsync())])
             {
                 Task<string?> starting = start();
-                Ui.PumpUntil(() => window.Actions.Work.Of(action)?.Stage.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || starting.IsCompleted,
+                Ui.PumpUntil(() => window.Actions.Work.Of(action)?.Stage.Shown.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || starting.IsCompleted,
                     $"{action} to check the development certificate", TimeSpan.FromMinutes(5));
                 Assert.False(starting.IsCompleted, $"{action} ended before it checked the certificate: {(starting.IsCompleted ? starting.Result : null)}");
                 Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
@@ -1349,7 +1349,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Assert.True(window.Perform(AppActions.Detach), "Detach did not run");
             Ui.WaitFor(() => !window.IsRunning, "the run to be let go of");
             Assert.StartsWith("Detached from docker-compose", window.Status, StringComparison.Ordinal);
-            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
+            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown);
             Assert.Equal(["api", "cache", "web"], States(project).Keys.Order(StringComparer.Ordinal));
             Assert.All(States(project).Values, state => Assert.Equal("running", state));
             Assert.Equal("web 1", Served(window, project, "web"));

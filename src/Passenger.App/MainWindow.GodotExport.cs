@@ -130,7 +130,7 @@ public partial class MainWindow
         }
         if (this.work.Begin(AppActions.InstallGodotTemplates, $"Reading {Path.GetFileName(archive)}…") is not { } work)
         {
-            status.Text = ActionWork.Busy(this.work.Of(AppActions.InstallGodotTemplates)!);
+            status.Text = ActionWork.Busy(this.work.Of(AppActions.InstallGodotTemplates)!).Shown;
             return false;
         }
         using (work)

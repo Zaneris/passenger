@@ -32,12 +32,12 @@ public partial class MainWindow
         Add(AppActions.AbortRevert, "Abort Revert", context => IdeErrors.Observe(AbortAsync("Abort Revert", "Abort revert?")), 13,
             () => session.Vcs.Merge.Operation is MergeOperation.Revert ? null : "No revert in progress");
 
-        string? NoRebase() => session.Vcs.Merge.Operation is MergeOperation.Rebase ? null : "No rebase in progress";
+        Words? NoRebase() => session.Vcs.Merge.Operation is MergeOperation.Rebase ? null : "No rebase in progress";
 
         Editors.Opened += (_, document) => FollowConflict(document, Conflicted());
         Editors.MergeRequested += (_, document) => IdeErrors.Observe(MergeAsync(document.Path));
 
-        void Add(string id, string title, Action<ActionContext> run, int order, Func<string?> whyNot) =>
+        void Add(string id, string title, Action<ActionContext> run, int order, Func<Words?> whyNot) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : whyNot()),

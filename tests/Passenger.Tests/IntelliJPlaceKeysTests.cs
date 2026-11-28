@@ -91,7 +91,7 @@ public sealed class IntelliJPlaceKeysTests : IDisposable
         {
             window.EditorArea.CodeEditor.Focus();
             Ui.Press(window, "alt F2");
-            string? why = window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context());
+            string? why = window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context())?.Shown;
             Assert.True(window.Browsed.Count == 0 && why is not null && window.Status == why,
                 $"Alt+F2 in Program.cs opened [{string.Join("; ", window.Browsed)}], the status bar saying \"{window.Status}\", where it is Next Error in Solution's, refused: {why}");
 

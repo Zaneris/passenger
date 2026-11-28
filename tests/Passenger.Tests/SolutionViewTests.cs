@@ -1079,7 +1079,7 @@ public sealed class SolutionViewTests : IDisposable
             Assert.False(Show(window, path).IsCut, $"Cut's keys dimmed {path} as cut");
             foreach (string action in (string[])[AppActions.Rename, EditorActions.Delete, EditorActions.Cut])
             {
-                Assert.Equal(why, window.Actions.Run(action));
+                Assert.Equal(why, window.Actions.Run(action)?.Shown);
             }
             Assert.True(Directory.Exists(path), $"{path} went, deleted by its keys");
         }
@@ -1143,7 +1143,7 @@ public sealed class SolutionViewTests : IDisposable
         Assert.False(Row(window, NodeKind.File, "notes.txt", notes).IsCut, "Cut's keys dimmed the package's notes.txt as cut");
         foreach (string action in (string[])[AppActions.Rename, EditorActions.Delete, EditorActions.Cut])
         {
-            Assert.Equal(why, window.Actions.Run(action));
+            Assert.Equal(why, window.Actions.Run(action)?.Shown);
         }
         Assert.False(window.IsPopupOpen, "Rename on the package's notes.txt asked a new name");
         Assert.Empty(asked);
@@ -1170,7 +1170,7 @@ public sealed class SolutionViewTests : IDisposable
         Assert.Equal(why, window.Status);
         foreach (string action in (string[])[EditorActions.Paste, AppActions.NewFile, AppActions.NewFolder, AppActions.NewType, AppActions.NewItem])
         {
-            Assert.Equal(why, window.Actions.Run(action));
+            Assert.Equal(why, window.Actions.Run(action)?.Shown);
         }
         Assert.False(window.IsPopupOpen, "New on the package's notes.txt asked a name for something made in the package's folder");
         Assert.Empty(asked);

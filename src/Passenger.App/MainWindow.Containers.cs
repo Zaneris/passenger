@@ -25,7 +25,7 @@ public partial class MainWindow
     {
         // The actions first: the window's toolbar and menu take their titles, and they act on its row chosen.
         ContainerRow? Chosen() => containersView?.Chosen;
-        string? OneContainer(ActionContext _) => Chosen()?.Container is null ? "No container is chosen in the Containers window" : null;
+        Words? OneContainer(ActionContext _) => Chosen()?.Container is null ? "No container is chosen in the Containers window" : null;
         foreach ((string id, string title, string action) in (ReadOnlySpan<(string, string, string)>)[
             (AppActions.ContainerStart, "Start", "start"),
             (AppActions.ContainerStop, "Stop", "stop"),
@@ -153,7 +153,7 @@ public partial class MainWindow
         }
         if (session.Running.FirstOrDefault(p => p.Kind == RunningKind.Service && p.Services == run && p.Service?.Name == service)?.Service is not { } running)
         {
-            return DotnetLookup.Missing(Refusals.NotRunning(service, run.Name));
+            return DotnetLookup.Missing(Refusals.NotRunning(service, run.Name).Shown);
         }
         ServiceProgram? found;
         try
@@ -169,7 +169,7 @@ public partial class MainWindow
             return null;
         }
         return found is { WhyNot: null, Recorded: { } place } ? DotnetLookup.Found(found.Id, place)
-            : DotnetLookup.Missing(found?.WhyNot is { } why ? $"{service}: {why}" : Refusals.NotRunning(service, run.Name));
+            : DotnetLookup.Missing((found?.WhyNot is { } why ? $"{service}: {why}" : Refusals.NotRunning(service, run.Name)).Shown);
     }
 
     /// <summary>The window's folder opened: when it holds a Compose file or a Dockerfile, the engine is asked once, off the
@@ -277,7 +277,7 @@ public partial class MainWindow
                     ShowEngine(state);
                 }
             });
-            return state.IsWslc ? (Refusals.WslcNoDockerApi, null)
+            return state.IsWslc ? (Refusals.WslcNoDockerApi.Shown, null)
                 : state.Status is EngineStatus.Ready or EngineStatus.NoCompose ? (null, state.Endpoint) : (state.Problem, null);
         };
         CheckEngineFor(next.Folder);
@@ -305,7 +305,7 @@ public partial class MainWindow
             }
             if (await BackgroundWork.Run(() => engine.StateAsync()) is { IsReady: false } state)
             {
-                status.Say(state.Problem ?? Refusals.EngineNotRunning, ProblemSeverity.Warning, EnginePlace(state));
+                status.Say((state.Problem ?? Refusals.EngineNotRunning).Shown, ProblemSeverity.Warning, EnginePlace(state));
                 reading.Tell(false, state.Problem ?? Refusals.EngineNotRunning);
                 return;
             }

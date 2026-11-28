@@ -53,7 +53,7 @@ public sealed class GodotScriptEditorTests
             return Task.FromResult(true);
         };
 
-        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor));
+        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor)?.Shown);
         Ui.WaitFor(() => window.Status?.Contains("now opens its scripts in Passenger", StringComparison.Ordinal) == true,
             () => $"the status to say Godot's editor now opens its scripts in Passenger; it says {window.Status}");
 
@@ -69,7 +69,7 @@ public sealed class GodotScriptEditorTests
             && text.Contains("interface/editor/localization/editor_language = \"fr\"", StringComparison.Ordinal),
             $"Godot 4.7's settings were to make Passenger its script editor and keep the 4.6 file's other settings:\n{text}");
 
-        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor));
+        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor)?.Shown);
         Ui.WaitFor(() => window.Status?.Contains("already opens its scripts in this Passenger", StringComparison.Ordinal) == true,
             () => $"the status to say Godot's editor already opens its scripts in Passenger; it says {window.Status}");
         Assert.True(asked.Count == 1, $"Asked again with nothing to change, Passenger asked: {string.Join(" | ", asked)}");

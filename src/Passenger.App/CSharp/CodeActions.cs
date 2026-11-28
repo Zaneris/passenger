@@ -344,7 +344,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         if (made.Left.Count > 0)
         {
-            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left));
+            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left).Shown);
         }
         if (made.Said.Length > 0)
         {
@@ -900,8 +900,8 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         List<RefactoredFile> changed = [.. edited.Where(f => !(context.Editors.Find(f.Path) is { } open && dropped.Contains(open.Name)))];
         string movedSaid = applied.Moved.Count > 0 ? $"; {string.Join(", ", applied.Moved.Select(m => $"{Path.GetFileName(m.From)} to {Path.GetFileName(m.To)}"))}" : string.Empty;
-        string said = dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
-            : (changed.Count > 1 ? $"Renamed in {Numbers.Said(changed.Count)} files" : "Renamed") + movedSaid;
+        string said = (dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
+            : (changed.Count > 1 ? $"Renamed in {Numbers.Said(changed.Count)} files" : "Renamed") + movedSaid).Shown;
         if (applied.Unmoved is { } unmoved)
         {
             said += $"{(dropped.Count > 0 ? "; and" : ", but")} {unmoved}";
@@ -1101,7 +1101,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         /// <summary>A reformat of a file shown read-only, refused whatever its formatter would make of it; null for a file
         /// that takes one.</summary>
         public static Reformatted? ReadOnly(OpenDocument document, string what) =>
-            document.ReadOnlyWhy is { } readOnly ? Refused(what, readOnly) : null;
+            document.ReadOnlyWhy is { } readOnly ? Refused(what, readOnly.Shown) : null;
 
         /// <summary>A reformat's edits, in the offsets of the text as <paramref name="asked"/> began, carried onto the open
         /// file as it is now and applied as one undoable edit; refused where the file is read-only or the code one changes
@@ -1387,7 +1387,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         if (made.Left.Count > 0)
         {
-            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left));
+            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left).Shown);
         }
         return made.Left.Count == 0;
     }

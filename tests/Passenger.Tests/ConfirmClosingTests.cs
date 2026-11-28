@@ -174,21 +174,21 @@ public sealed class ConfirmClosingTests : ProjectWindowsFolders
         (MainWindow first, MainWindow second) = TwoWindows(ConfirmClosing.EveryWindow);
         try
         {
-            Assert.Equal(Refusals.CloseIsThePersons, AgentAsks.Input(second.Close));
+            Assert.Equal(Refusals.CloseIsThePersons.Shown, AgentAsks.Input(second.Close));
             Ui.Settle();
             Assert.True(second.IsVisible && Questions().Length == 0, "An agent's input closed a window Every window asks about, or met its question");
-            Assert.Equal(Refusals.CloseIsThePersons, second.Status);
+            Assert.Equal(Refusals.CloseIsThePersons.Shown, second.Status);
 
             second.Close();
             ConfirmDialog asked = Asked(CloseTitle);
-            Assert.Equal(Refusals.CloseIsThePersons, AgentAsks.Input(() => Ui.ClickButton(asked, MainWindow.CloseWord)));
+            Assert.Equal(Refusals.CloseIsThePersons.Shown, AgentAsks.Input(() => Ui.ClickButton(asked, MainWindow.CloseWord)));
             Ui.Settle();
             Assert.True(asked.IsVisible && asked.Answered is null && second.IsVisible, "An agent's click answered the person's question");
             Ui.ClickButton(asked, "Cancel");
 
             Assert.True(first.Perform(AppActions.Exit));
             ConfirmDialog quit = Asked(QuitTitle);
-            Assert.Equal(Refusals.QuitIsThePersons, AgentAsks.Input(() => Ui.ClickButton(quit, MainWindow.QuitWord)));
+            Assert.Equal(Refusals.QuitIsThePersons.Shown, AgentAsks.Input(() => Ui.ClickButton(quit, MainWindow.QuitWord)));
             Ui.Settle();
             Assert.True(quit.IsVisible && quit.Answered is null && first.IsVisible && second.IsVisible, "An agent's click answered the person's question whether to quit");
             Ui.ClickButton(quit, "Cancel");

@@ -37,7 +37,7 @@ public partial class MainWindow
         }
         if (actions!.Run(launch, context) is { } why)
         {
-            status.Text = why;
+            status.Text = why.Shown;
         }
     }
 
@@ -80,8 +80,8 @@ public partial class MainWindow
         return first;
     }
 
-    private string WhyNoProgram(ActionContext context) => RowOf(context) is { } row ? $"{row.Name} is no program"
+    private string WhyNoProgram(ActionContext context) => (RowOf(context) is { } row ? $"{row.Name} is no program"
         : ExplorerHasKeys(context) ? NoRow
         : context.File is { } file ? $"{file.Name} is in no program"
-        : Refusals.NoFile;
+        : Refusals.NoFile).Shown;
 }

@@ -884,7 +884,7 @@ public partial class MainWindow : IdeWindow
     private void AddToolWindows()
     {
         // Each shows only while the open folder holds what it serves, every one added later too.
-        Dock.WhyUnserved = window => window.Serves.WhyNot(session.Folder is null ? null : session.Holds);
+        Dock.WhyUnserved = window => window.Serves.WhyNot(session.Folder is null ? null : session.Holds)?.Shown;
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, "Explorer", IconKeys.Explorer, Explorer, Docking.ToolAnchor.LeftTop)
         {
             Serves = ToolWindowServes.EveryFolder,

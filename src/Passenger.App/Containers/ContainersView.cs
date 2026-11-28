@@ -834,7 +834,7 @@ public sealed class ContainersView : DockPanel
         }
         if (parts.Work.Begin(id, ContainerCommands.Stage(action, row)) is not { } working)
         {
-            return ActionWork.Busy(parts.Work.Of(id)!);
+            return ActionWork.Busy(parts.Work.Of(id)!).Shown;
         }
         using (working)
         {

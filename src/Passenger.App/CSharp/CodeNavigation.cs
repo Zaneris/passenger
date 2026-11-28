@@ -120,7 +120,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             }
             string name = Editor.Document.Snapshot.GetText(start, end - start);
             context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", usages, inPopup ? asked : null,
-                untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Path.GetFileName(u.Path))]) : null);
+                (untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Path.GetFileName(u.Path))]) : null)?.Shown);
         }
         catch (LanguageServerFailed failed)
         {

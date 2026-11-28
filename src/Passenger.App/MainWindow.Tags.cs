@@ -25,7 +25,7 @@ public partial class MainWindow
             {
                 return;
             }
-            start = new TagStart(at, moving, await vcs.SigningAsync(), await vcs.RemotesAsync(), vcs.WhyNotRemote);
+            start = new TagStart(at, moving, await vcs.SigningAsync(), await vcs.RemotesAsync(), vcs.WhyNotRemote?.Shown);
         }
         TagDialog dialog = new(start, vcs.CommitAtAsync, vcs.TagOfAsync);
         tagDialog = dialog;

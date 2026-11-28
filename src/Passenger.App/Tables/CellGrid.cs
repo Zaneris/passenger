@@ -407,7 +407,7 @@ public sealed class CellGrid : Control, IOwnKeys
 
     /// <summary>Why the chosen cells cannot be copied as <paramref name="action"/> asks: no cells, or inserts of a table that is
     /// no database's; null where they can.</summary>
-    public string? WhyNotCopy(string action) => table is not { RowCount: > 0, ColumnCount: > 0 } ? Refusals.NoCells
+    public Words? WhyNotCopy(string action) => table is not { RowCount: > 0, ColumnCount: > 0 } ? Refusals.NoCells
         : action == AppActions.CopyAsInserts && table.Inserts(TextWriter.Null, Environment.NewLine) is null ? Refusals.NoInsertTable : null;
 
     /// <summary>The chosen cells' rows (the one standing empty for a new row left out) as Copy As writes them: CSV with their

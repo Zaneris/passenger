@@ -298,7 +298,7 @@ public sealed partial class BuildRunController
     {
         if (run.IsStopped)
         {
-            return (null, Refusals.NotRunning(run.Name));
+            return (null, Refusals.NotRunning(run.Name).Shown);
         }
         if (name is null || run.ServiceNamed(name) is not { } service)
         {
@@ -465,7 +465,7 @@ public sealed partial class BuildRunController
         }
         if (program is null || run.IsStopped || session.IsEnded)
         {
-            return Said(Refusals.NotRunning(service.Name, run.Name));
+            return Said(Refusals.NotRunning(service.Name, run.Name).Shown);
         }
         parts.Dock.Show(ToolWindowIds.Debug);
         if (await session.Debug.DebugQuietAsync(quiet, run.Group, program.App) is { } refused)
@@ -582,7 +582,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(action, stage) is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(action)!));
+            return Said(ActionWork.Busy(parts.Work.Of(action)!).Shown);
         }
         using (work)
         {

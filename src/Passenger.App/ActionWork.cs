@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App;
 
 /// <summary>What the window's actions are doing that takes a while, from the moment each is asked for until its work is done
@@ -19,13 +21,13 @@ public sealed class ActionWork
     public static Hearing? Heard => hearing.Value;
 
     /// <summary>Tells what an operation came to, in its words, to the action heard in its flow (<see cref="Hear"/>), if any.</summary>
-    public static void Tell(bool succeeded, string said) => hearing.Value?.Came(succeeded, said);
+    public static void Tell(bool succeeded, Words said) => hearing.Value?.Came(succeeded, said);
 
     /// <summary>Raised as a work begins, says a new stage, or ends.</summary>
     public event EventHandler<WorkChange>? Changed;
 
     /// <summary>Raised as a work tells what it came to (<see cref="Working.Tell"/>), whether it succeeded and in its words.</summary>
-    public event EventHandler<(bool Succeeded, string Said)>? Told;
+    public event EventHandler<(bool Succeeded, Words Said)>? Told;
 
     /// <summary>The work under way that said its stage last, which the status bar shows; null with none under way.</summary>
     public Working? Latest => under.Count > 0 ? under[^1] : null;
@@ -35,7 +37,7 @@ public sealed class ActionWork
 
     /// <summary>Begins an action's work, saying its first stage; null when that action's work is under way already, which
     /// <see cref="Of"/> then gives.</summary>
-    public Working? Begin(string id, string stage, bool stoppable = true)
+    public Working? Begin(string id, Words stage, bool stoppable = true)
     {
         UiThread.Check();
         if (Of(id) is not null)
@@ -93,7 +95,7 @@ public sealed class ActionWork
     }
 
     /// <summary>What a second ask for an action under way is told.</summary>
-    public static string Busy(Working work) => $"Already under way: {work.Stage}";
+    public static Words Busy(Working work) => Refusals.AlreadyUnderWay(work.Stage);
 
     /// <summary>Ends every start that Stop can end: each sees its <see cref="Working.Stopping"/> and ends itself.</summary>
     public void Stop()
@@ -115,7 +117,7 @@ public sealed class ActionWork
         Changed?.Invoke(this, new WorkChange(work, Ended: false));
     }
 
-    internal void Came(bool succeeded, string said) => Told?.Invoke(this, (succeeded, said));
+    internal void Came(bool succeeded, Words said) => Told?.Invoke(this, (succeeded, said));
 
     internal void Ended(Working work)
     {
@@ -141,7 +143,7 @@ public sealed class Hearing
     private bool running = true;
 
     /// <summary>What the action came to as its operation told it, and whether that failed; null while none has told.</summary>
-    public (bool Failed, string Said)? Outcome { get; private set; }
+    public (bool Failed, Words Said)? Outcome { get; private set; }
 
     /// <summary>The action has run: a work begun from here is not its own.</summary>
     public void Ran() => running = false;
@@ -150,7 +152,7 @@ public sealed class Hearing
     /// a session open), at once with none, or the wait is canceled.</summary>
     public Task DoneAsync(CancellationToken cancel) => begun.All(w => w.HasEnded) ? Task.CompletedTask : handedOver.Task.WaitAsync(cancel);
 
-    internal void Came(bool succeeded, string said) => Outcome = (!succeeded, said);
+    internal void Came(bool succeeded, Words said) => Outcome = (!succeeded, said);
 
     internal bool Began(Working work)
     {
@@ -184,7 +186,7 @@ public sealed class Working : IDisposable
 
     private readonly TaskCompletionSource ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal Working(ActionWork owner, string id, string stage, bool stoppable)
+    internal Working(ActionWork owner, string id, Words stage, bool stoppable)
     {
         this.owner = owner;
         Id = id;
@@ -208,7 +210,7 @@ public sealed class Working : IDisposable
     public string Id { get; }
 
     /// <summary>What it is doing now, as the status bar says it ("Building Hello…").</summary>
-    public string Stage { get; private set; }
+    public Words Stage { get; private set; }
 
     /// <summary>Whether Stop ends it as it starts.</summary>
     public bool Stoppable { get; }
@@ -219,7 +221,7 @@ public sealed class Working : IDisposable
     public bool IsStopped => stopping.IsCancellationRequested;
 
     /// <summary>Says the next stage.</summary>
-    public void Say(string stage)
+    public void Say(Words stage)
     {
         UiThread.Check();
         Stage = stage;
@@ -230,7 +232,7 @@ public sealed class Working : IDisposable
 
     /// <summary>Tells what the work came to, in its words: to the window, and to the action an agent runs that began it, if
     /// one did.</summary>
-    public void Tell(bool succeeded, string said)
+    public void Tell(bool succeeded, Words said)
     {
         owner.Came(succeeded, said);
         Heard?.Came(succeeded, said);

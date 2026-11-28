@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Passenger.App.Debugging;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Editor;
 using Passenger.Text;
@@ -188,7 +189,7 @@ public sealed class DebugModel
     public event EventHandler<VariableNode>? MarkRequested;
 
     /// <summary>Why the chosen session's debugger marks no object, where it cannot.</summary>
-    public Func<string?> MarksWhyNot { get; set; } = () => null;
+    public Func<Words?> MarksWhyNot { get; set; } = () => null;
 
     /// <summary>Read Again, over Variables once every thread ran in an evaluation: the frame's values to be read anew.</summary>
     public event EventHandler? ReadAgainRequested;
@@ -261,13 +262,13 @@ public sealed class DebugModel
 
     /// <summary>Why the chosen program takes no debugger action now: nothing is being debugged, or the tab chosen is one
     /// that ended.</summary>
-    public string? NotLive() => !Sessions.Any(tab => tab.IsLive && tab.Session is not null) ? Refusals.NothingDebugged
+    public Words? NotLive() => !Sessions.Any(tab => tab.IsLive && tab.Session is not null) ? Refusals.NothingDebugged
         : Chosen is not { Session.State: not DebugState.Ended } ? Refusals.DebuggingEnded(Chosen?.Name ?? string.Empty)
         : null;
 
     /// <summary>Why the chosen program takes no action of a stop now: it takes none (<see cref="NotLive"/>), or it runs or
     /// is still starting.</summary>
-    public string? NotPaused() => NotLive() ?? (Chosen!.Session!.State != DebugState.Paused ? Refusals.NotPaused : null);
+    public Words? NotPaused() => NotLive() ?? (Chosen!.Session!.State != DebugState.Paused ? Refusals.NotPaused : null);
 
     /// <summary>The tab shown, whose program's frames, values and console are the window's.</summary>
     private DebugTab? Chosen => Sessions.FirstOrDefault(tab => tab.IsChosen);

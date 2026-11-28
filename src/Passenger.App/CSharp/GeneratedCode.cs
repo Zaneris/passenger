@@ -166,12 +166,12 @@ public sealed class GeneratedCode
     public async Task<(LspDocument? Lsp, string? Why)> AskableAsync(OpenDocument copy, CancellationToken cancel = default)
     {
         UiThread.Check();
-        string unanswered = Refusals.Generated(copy.Name, OriginOf(copy.Path));
+        string unanswered = Refusals.Generated(copy.Name, OriginOf(copy.Path)).Shown;
         if (server() is not { } session || session.Server.ExtensionProblem is not null)
         {
             return (null, unanswered);
         }
-        return await MadeAsync(session, copy.Path, cancel) is not { } made ? (null, Refusals.GeneratedNoLonger(copy.Name))
+        return await MadeAsync(session, copy.Path, cancel) is not { } made ? (null, Refusals.GeneratedNoLonger(copy.Name).Shown)
             : await TakeAsync(made) is null ? (null, unanswered)
             : (session.Unopened(made.Uri, copy.Text), null);
     }
@@ -311,7 +311,7 @@ public sealed class GeneratedCode
             }
             else if (open.Contains(followed[i]))
             {
-                followed[i].Notice = Refusals.GeneratedNoLonger(followed[i].Name);
+                followed[i].Notice = Refusals.GeneratedNoLonger(followed[i].Name).Shown;
             }
         }
     }

@@ -31,15 +31,15 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is not { } folder || session.IsEnded)
         {
-            return Refused(Refusals.NoFolderTo("publish"));
+            return Refused(Refusals.NoFolderTo("publish").Shown);
         }
         if (IsBuilding)
         {
-            return Refused(Refusals.Building);
+            return Refused(Refusals.Building.Shown);
         }
         if (session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, request.Project)) is not { } project)
         {
-            return Refused(Refusals.NotOfFolder(request.Name));
+            return Refused(Refusals.NotOfFolder(request.Name).Shown);
         }
         if (project is { IsEvaluated: false, Problem: null })
         {
@@ -57,7 +57,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.Publish, $"Reading how {request.Shown} publishes…") is not { } work)
         {
-            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!));
+            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!).Shown);
         }
         (PublishRequest? resolved, string? unread) = (null, null);
         using (BackgroundWork.Scope())
@@ -74,7 +74,7 @@ public sealed partial class BuildRunController
         if (session.IsEnded || work.IsStopped || resolved is null)
         {
             work.Dispose();
-            return Said(session.IsEnded ? new BuildOutcome(BuildStatus.Refused, Refusals.SolutionClosed) : work.IsStopped ? new BuildOutcome(BuildStatus.Stopped, "Publish stopped")
+            return Said(session.IsEnded ? new BuildOutcome(BuildStatus.Refused, Refusals.SolutionClosed.Shown) : work.IsStopped ? new BuildOutcome(BuildStatus.Stopped, "Publish stopped")
                 : new BuildOutcome(BuildStatus.NotStarted, unread!));
         }
         if (resolved.Kind == PublishKind.Container)
@@ -83,7 +83,7 @@ public sealed partial class BuildRunController
             resolved = ready;
             if (resolved is null || session.IsEnded || IsBuilding)
             {
-                string said = refused ?? (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? "Publish stopped" : Refusals.Building);
+                string said = (refused ?? (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? "Publish stopped" : Refusals.Building)).Shown;
                 work.Tell(false, said);
                 work.Dispose();
                 return Said(new BuildOutcome(work.IsStopped ? BuildStatus.Stopped : BuildStatus.Refused, said));
@@ -144,7 +144,7 @@ public sealed partial class BuildRunController
         string begun = request.Deploys ? $"Running {request.Step} of {request.Name}…" : $"Publishing {request.Name} through its publishers…";
         if (parts.Work.Begin(AppActions.Publish, begun) is not { } work)
         {
-            return Said(new BuildOutcome(BuildStatus.Refused, ActionWork.Busy(parts.Work.Of(AppActions.Publish)!)));
+            return Said(new BuildOutcome(BuildStatus.Refused, ActionWork.Busy(parts.Work.Of(AppActions.Publish)!).Shown));
         }
         if (request.Needs != Aspire.DeployNeeds.None)
         {
@@ -170,7 +170,7 @@ public sealed partial class BuildRunController
             }
             if (session.IsEnded || IsBuilding)
             {
-                string said = session.IsEnded ? Refusals.SolutionClosed : Refusals.Building;
+                string said = (session.IsEnded ? Refusals.SolutionClosed : Refusals.Building).Shown;
                 work.Tell(false, said);
                 work.Dispose();
                 return Said(new BuildOutcome(BuildStatus.Refused, said));
@@ -320,7 +320,7 @@ public sealed partial class BuildRunController
                 _ => $"Publishing {publish.Shown}: copying it to its folder…",
             }
             : null;
-        if (stage is not null && buildWork is { } work && work.Stage != stage)
+        if (stage is not null && buildWork is { } work && work.Stage.Shown != stage)
         {
             work.Say(stage);
         }

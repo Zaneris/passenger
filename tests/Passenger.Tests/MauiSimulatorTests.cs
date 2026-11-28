@@ -48,7 +48,7 @@ public sealed class MauiSimulatorTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.Shown);
         }
         string folder = PathNames.Canonical(TestFolders.Create("ios-device-tests"));
         try
@@ -269,7 +269,7 @@ public sealed class MauiSimulatorTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.Shown);
         }
         string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
         if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))

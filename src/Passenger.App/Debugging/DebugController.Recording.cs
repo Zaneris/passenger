@@ -79,7 +79,7 @@ public sealed partial class DebugController
     }
 
     /// <summary>Why Step Back goes nowhere now; null where it goes.</summary>
-    private string? WhyNotStepBack() => NotPaused() ?? (Session!.Engine != DebugEngine.Managed ? Refusals.RecordsDotnet
+    private Words? WhyNotStepBack() => NotPaused() ?? (Session!.Engine != DebugEngine.Managed ? Refusals.RecordsDotnet
         : timeline is { } read && read.Session == Session && read.Stop == Session.Stops && read.Timeline.Moments.Count == 0 && !RecordsCalls ? Refusals.NothingRecorded
         : null);
 
@@ -89,14 +89,14 @@ public sealed partial class DebugController
         UiThread.Check();
         if (WhyNotStepBack() is { } why)
         {
-            return why;
+            return why.Shown;
         }
         DebugSession session = Session!;
         IReadOnlyList<DapMoment> moments = (await TimelineAsync(session)).Moments;
         int at = MomentShown is { } shownNow ? IndexOf(moments, shownNow) - 1 : moments.Count - 1;
         if (at < 0)
         {
-            return moments.Count == 0 ? Refusals.NothingRecorded : Refusals.EarliestMoment;
+            return (moments.Count == 0 ? Refusals.NothingRecorded : Refusals.EarliestMoment).Shown;
         }
         await ShowMomentAsync(session, moments[at]);
         return null;
@@ -108,11 +108,11 @@ public sealed partial class DebugController
         UiThread.Check();
         if (NotPaused() is { } why)
         {
-            return why;
+            return why.Shown;
         }
         if (MomentShown is not { } shownNow)
         {
-            return Refusals.LiveStop;
+            return Refusals.LiveStop.Shown;
         }
         DebugSession session = Session!;
         IReadOnlyList<DapMoment> moments = (await TimelineAsync(session)).Moments;

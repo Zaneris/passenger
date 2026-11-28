@@ -424,16 +424,16 @@ public sealed class SqlConsoleView : DockPanel
             commits.SelectedIndex = manual ? 1 : 0;
             commit.IsVisible = manual;
             rollback.IsVisible = manual;
-            string? ended = shown?.Running == true ? Refusals.SqlRunning : shown?.InTransaction != true ? Refusals.NoTransaction : null;
+            string? ended = (shown?.Running == true ? Refusals.SqlRunning : shown?.InTransaction != true ? Refusals.NoTransaction : null)?.Shown;
             ToolButtons.Grey(commit, ended, ActionTips.Of(commit));
             ToolButtons.Grey(rollback, ended, ActionTips.Of(rollback));
             transaction.IsVisible = shown?.InTransaction == true;
-            marked.Say(source?.Mark switch
+            marked.Say((source?.Mark switch
             {
                 DatabaseMark.Production => $"{ContainerSecrets.InSaid(source.Name)} is marked production: a statement that changes data or schema asks before it runs",
                 DatabaseMark.ReadOnly => Refusals.ReadOnlyConnection(ContainerSecrets.InSaid(source.Name)),
                 _ => null,
-            });
+            })?.Shown);
             said.Text = ContainerSecrets.InSaid(shown?.Running == true ? "Running…" : shown?.Said ?? string.Empty);
             int before = tabs.Choice;
             tabs.Clear();

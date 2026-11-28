@@ -78,7 +78,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Assert.Equal("Building Sums.Tests.csproj…", window.Status);
         Assert.True(window.IsBuilding && window.DockHost.IsShown(ToolWindowIds.Tests), "Run All's build took the Unit Tests window's place as it started");
         Assert.False(window.Perform(AppActions.RunTests) || window.Perform(AppActions.RunAllTests), "A second test run started while the first one worked");
-        Assert.StartsWith("Already under way: ", window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context()), StringComparison.Ordinal);
+        Assert.StartsWith("Already under way: ", window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())?.Shown, StringComparison.Ordinal);
         Avalonia.Controls.Button runAll = Avalonia.LogicalTree.LogicalExtensions.GetLogicalDescendants(window.BottomPanel.Tests).OfType<Avalonia.Controls.Button>()
             .Single(b => ActionButtons.GetAction(b) == AppActions.RunAllTests);
         Assert.True(ActionButtons.IsWorking(runAll), "The Unit Tests window's Run All should show the run working, as the toolbar's buttons show theirs");
@@ -1100,7 +1100,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Ui.Settle();
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Ma");
         Assert.True(TestItems(window) is [], $"The editor's menu on Main offers {string.Join(", ", TestItems(window))}, where Main is no test");
-        Assert.Equal("No test is at the caret", window.Actions[AppActions.RunTests]!.WhyNot(window.Actions.Context()));
+        Assert.Equal("No test is at the caret", window.Actions[AppActions.RunTests]!.WhyNot(window.Actions.Context())?.Shown);
         window.OpenFile(Path.Combine(solution, "App.Tests", "SumTests.cs"));
         Ui.Settle();
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "void Ad");

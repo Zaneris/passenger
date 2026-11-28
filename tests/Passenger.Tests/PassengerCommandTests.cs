@@ -79,8 +79,8 @@ public sealed class PassengerCommandTests : IDisposable
             Assert.Skip("The login shell is fish, whose lines /bin/sh cannot read");
             return;
         }
-        Assert.Equal(Refusals.CommandIsThePersons, window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context().ForAgent()));
-        Assert.Equal(Refusals.NoCommand(Link), window.Actions.WhyNot(AppActions.RemoveCommand, window.Actions.Context()));
+        Assert.Equal(Refusals.CommandIsThePersons.Shown, window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context().ForAgent())?.Shown);
+        Assert.Equal(Refusals.NoCommand(Link).Shown, window.Actions.WhyNot(AppActions.RemoveCommand, window.Actions.Context())?.Shown);
 
         Chosen(window, $"Add the {PassengerCommand.Name} Command…");
         ConfirmDialog adding = Asked(window);
@@ -93,8 +93,8 @@ public sealed class PassengerCommandTests : IDisposable
         Assert.True(new FileInfo(Link).LinkTarget is { } target && PathNames.Same(target, PathNames.Canonical(launcher)),
             $"~/.local/bin/{PassengerCommand.Name} was to lead to the app's launcher at {launcher}; it is {new FileInfo(Link).LinkTarget ?? "no link"} ({window.Status})");
         Assert.Contains("export PATH=\"$HOME/.local/bin:$PATH\"\n", File.ReadAllText(startup), StringComparison.Ordinal);
-        Assert.True(window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context()) == Refusals.CommandThere(Link),
-            $"With the command added Add the command was to say it is there; it says {window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context()) ?? "nothing"}, the window reading {window.PassengerCommandRead}");
+        Assert.True(window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context())?.Shown == Refusals.CommandThere(Link).Shown,
+            $"With the command added Add the command was to say it is there; it says {window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context())?.Shown ?? "nothing"}, the window reading {window.PassengerCommandRead}");
 
         // As a shell started since runs it, after its startup file, in the folder above the project it names from there.
         Ended(Started("/bin/sh", ["-c", ". \"$1\" && exec passenger-ide \"$2\" --file Player.cs --caret 3:2", "sh", startup, Project], folder));
@@ -107,7 +107,7 @@ public sealed class PassengerCommandTests : IDisposable
         Assert.True(!File.Exists(Link) && new FileInfo(Link).LinkTarget is null, $"Remove left ~/.local/bin/{PassengerCommand.Name} leading to {new FileInfo(Link).LinkTarget}");
         Assert.True(File.ReadAllText(startup).Contains("$HOME/.local/bin", StringComparison.Ordinal),
             $"Remove took ~/.local/bin off the PATH in {startup}, where other programs' commands may be");
-        Assert.Equal(Refusals.NoCommand(Link), window.Actions.WhyNot(AppActions.RemoveCommand, window.Actions.Context()));
+        Assert.Equal(Refusals.NoCommand(Link).Shown, window.Actions.WhyNot(AppActions.RemoveCommand, window.Actions.Context())?.Shown);
     }
 
     /// <summary>Another program of the command's name, or a link to one, stays as it was and the command is not added; a link
@@ -125,8 +125,8 @@ public sealed class PassengerCommandTests : IDisposable
         MainWindow window = Ui.OpenFolder(Directory.CreateDirectory(Path.Combine(folder, "open")).FullName, languageServer: false);
         Ui.WaitFor(() => window.PassengerCommandRead is not null, "the window to read where the command stands");
 
-        Assert.Equal(Refusals.CommandOthers(Link), window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context()));
-        Assert.Equal(Refusals.CommandOthers(Link), window.Actions.WhyNot(AppActions.RemoveCommand, window.Actions.Context()));
+        Assert.Equal(Refusals.CommandOthers(Link).Shown, window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context())?.Shown);
+        Assert.Equal(Refusals.CommandOthers(Link).Shown, window.Actions.WhyNot(AppActions.RemoveCommand, window.Actions.Context())?.Shown);
         Assert.Throws<IOException>(() => PassengerCommand.Add());
         Assert.Equal("#!/bin/sh\necho 'Phusion Passenger(R) 6.0.27'\n", File.ReadAllText(Link));
 
@@ -210,7 +210,7 @@ public sealed class PassengerCommandTests : IDisposable
         string project = Directory.CreateDirectory(Path.Combine(folder, Project)).FullName;
         string script = TestFolders.Write(project, "Player.cs", "one\ntwo\nthree\nfour\n");
         MainWindow window = Ui.OpenFolder(project, languageServer: false);
-        Assert.Equal(Refusals.CommandMadeElsewhere, window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context()));
+        Assert.Equal(Refusals.CommandMadeElsewhere?.Shown, window.Actions.WhyNot(AppActions.AddCommand, window.Actions.Context())?.Shown);
 
         Ended(Started(command, [Project, "--file", "Player.cs", "--caret", "3:2"], folder));
 
@@ -276,7 +276,7 @@ public sealed class PassengerCommandTests : IDisposable
     {
         NativeMenuItem item = Ui.Submenu(window.MenuBar, "Tools").Items.OfType<NativeMenuItem>().SingleOrDefault(i => i.Header == title)
             ?? throw new Xunit.Sdk.XunitException($"Tools has no {title}");
-        Assert.True(item.IsEnabled, $"{title} is greyed: {window.Actions.WhyNot(title == $"Add the {PassengerCommand.Name} Command…" ? AppActions.AddCommand : AppActions.RemoveCommand, window.Actions.Context())}");
+        Assert.True(item.IsEnabled, $"{title} is greyed: {window.Actions.WhyNot(title == $"Add the {PassengerCommand.Name} Command…" ? AppActions.AddCommand : AppActions.RemoveCommand, window.Actions.Context())?.Shown}");
         item.Command!.Execute(null);
         Ui.Settle();
     }

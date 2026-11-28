@@ -429,8 +429,8 @@ public sealed class BranchesTests : IDisposable
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
         ListBox rows = List(panel);
-        string[] nothing = [$"New Branch…: {Refusals.NoRefChosen}", $"Update Selected: {Refusals.NoLocalBranchChosen}", $"Delete: {Refusals.NoRefChosen}",
-            $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen}", $"Navigate Log to Selected Branch Head: {Refusals.NoRefChosen}"];
+        string[] nothing = [$"New Branch…: {Refusals.NoRefChosen.Shown}", $"Update Selected: {Refusals.NoLocalBranchChosen.Shown}", $"Delete: {Refusals.NoRefChosen.Shown}",
+            $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen.Shown}", $"Navigate Log to Selected Branch Head: {Refusals.NoRefChosen.Shown}"];
         string[] all = ["New Branch…", "Update Selected", "Delete", "Mark/Unmark As Favorite", "Navigate Log to Selected Branch Head"];
         Assert.Null(panel.Selected);
         Assert.Equal(nothing, Tools(panel));
@@ -439,15 +439,15 @@ public sealed class BranchesTests : IDisposable
         foreach ((string key, string[] tools) in (ReadOnlySpan<(string, string[])>)[
             ("head", nothing),
             ("local", nothing),
-            ("refs/heads/main", [all[0], all[1], $"Delete: {Refusals.CheckedOut("main")}", all[3], all[4]]),
+            ("refs/heads/main", [all[0], all[1], $"Delete: {Refusals.CheckedOut("main").Shown}", all[3], all[4]]),
             ("local/team/", nothing),
-            ("refs/heads/team/login", [all[0], $"Update Selected: {Refusals.Untracked("team/login")}", all[2], all[3], all[4]]),
+            ("refs/heads/team/login", [all[0], $"Update Selected: {Refusals.Untracked("team/login").Shown}", all[2], all[3], all[4]]),
             ("refs/heads/feature", all),
             ("remote", nothing),
             ("remote/origin", nothing),
-            ("refs/remotes/origin/main", [all[0], $"Update Selected: {Refusals.FetchedNotUpdated("origin/main")}", all[2], all[3], all[4]]),
+            ("refs/remotes/origin/main", [all[0], $"Update Selected: {Refusals.FetchedNotUpdated("origin/main").Shown}", all[2], all[3], all[4]]),
             ("tags", nothing),
-            ("refs/tags/v1.0", [all[0], $"Update Selected: {Refusals.NoLocalBranchChosen}", all[2], $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen}", all[4]])])
+            ("refs/tags/v1.0", [all[0], $"Update Selected: {Refusals.NoLocalBranchChosen.Shown}", all[2], $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen.Shown}", all[4]])])
         {
             BranchNode row = panel.Rows.Single(r => r.Key == key);
             Ui.Click(Ui.Row(rows, row));
@@ -464,7 +464,7 @@ public sealed class BranchesTests : IDisposable
             if (menu.FirstOrDefault(i => i.Header as string == "Update") is { } update)
             {
                 Assert.Equal(SideButton(panel, "Update Selected").IsEnabled, update.IsEnabled);
-                Assert.Equal(update.IsEnabled ? null : Refusals.Untracked(branch.Name), ToolTip.GetTip(update));
+                Assert.Equal(update.IsEnabled ? null : Refusals.Untracked(branch.Name).Shown, ToolTip.GetTip(update));
             }
             else
             {

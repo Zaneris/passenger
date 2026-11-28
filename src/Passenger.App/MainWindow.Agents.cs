@@ -316,7 +316,7 @@ public partial class MainWindow
             }
             if (at is WorkspaceTrustDialog)
             {
-                return Refusals.TrustAnsweredByThePerson;
+                return Refusals.TrustAnsweredByThePerson.Shown;
             }
             if (at is ConfirmDialog { PersonsAlone: { } persons })
             {

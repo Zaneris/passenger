@@ -947,7 +947,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     {
         if (actions?.Run(AppActions.SaveAsLaunchProfile) is { } why)
         {
-            problem.Text = why;
+            problem.Text = why.Shown;
         }
     }
 
@@ -989,7 +989,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             return;
         }
-        string? why = actions.WhyNot(AppActions.SaveAsLaunchProfile, actions.Context());
+        string? why = actions.WhyNot(AppActions.SaveAsLaunchProfile, actions.Context())?.Shown;
         ToolButtons.Grey(SaveAsProfileButton, why, SaveAsTip);
     }
 
@@ -1018,7 +1018,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             if (row.Configuration.Name.Length == 0)
             {
-                return (row, Refusals.ConfigurationUnnamed);
+                return (row, Refusals.ConfigurationUnnamed.Shown);
             }
             if (!names.Add(row.Configuration.Name))
             {
@@ -1030,7 +1030,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             RunConfiguration configuration = row.Configuration;
             if (configuration.Name.Length == 0)
             {
-                return (row, Refusals.ConfigurationUnnamed);
+                return (row, Refusals.ConfigurationUnnamed.Shown);
             }
             if (!names.Add(configuration.Name))
             {

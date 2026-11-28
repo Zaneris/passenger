@@ -432,7 +432,7 @@ public sealed class CodeAssist
 
     /// <summary>Quick Implementations: the code of what implements the symbol at the caret, else of its declaration, each
     /// under its file and line, in a card at the caret.</summary>
-    public Task QuickImplementationsAsync(string title) => quickInfo.PeekAsync(title, Refusals.NothingImplements, async (card, cancel) =>
+    public Task QuickImplementationsAsync(string title) => quickInfo.PeekAsync(title, Refusals.NothingImplements.Shown, async (card, cancel) =>
     {
         if (context.Editors.Active is not { } file || context.ServerOf(file)?.Lsp is not { } lsp)
         {
@@ -480,7 +480,7 @@ public sealed class CodeAssist
     }
 
     /// <summary>Error Description: the problems on the caret's line, each in its kind's colour, in a card at the caret.</summary>
-    public Task ErrorDescriptionAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoProblemHere, (card, _) =>
+    public Task ErrorDescriptionAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoProblemHere.Shown, (card, _) =>
     {
         TextSnapshot text = context.Editor.Document.Snapshot;
         LineSpan line = text.GetLine(text.GetLineFromOffset(Math.Min(context.Caret, text.Length)));
@@ -497,7 +497,7 @@ public sealed class CodeAssist
     });
 
     /// <summary>Expression Type Info: the type of the expression at the caret, as C# writes it there, in a card.</summary>
-    public Task ExpressionTypeAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoExpressionType, async (card, cancel) =>
+    public Task ExpressionTypeAsync(string title) => quickInfo.PeekAsync(title, Refusals.NoExpressionType.Shown, async (card, cancel) =>
     {
         if (context.Editors.Active is { } file && file.Language == Passenger.Languages.Language.CSharp && context.ServerOf(file)?.Lsp is { } lsp
             && (await lsp.ExtensionAsync<Roslyn.Extension.ExpressionTyped>(Roslyn.Extension.Handlers.ExpressionType, new Roslyn.Extension.Caret(lsp.PlaceOf(context.Caret)), cancel)).Type is { } type)
@@ -985,7 +985,7 @@ public sealed class CodeAssist
     private static IReadOnlyList<OwnRefactoring> OwnRefactorings(ActionRegistry registry, ActionContext context) =>
         [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, MainMenu.Refactor))
             .Where(id => id != AppActions.RefactorThis && registry.WhyNot(id, context) is null)
-            .Select(id => new OwnRefactoring(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, () => registry.Run(id, context),
+            .Select(id => new OwnRefactoring(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, () => registry.Run(id, context)?.Shown,
                 CodeActions.ServersOf(id)))];
 
     private int Caret => Editor.Selections.Primary.Caret;
@@ -1030,8 +1030,8 @@ public sealed class CodeAssist
 
     /// <summary>Why Rename cannot run at the editor's caret, a file shown read-only included; null when it can.</summary>
     public string? WhyNotRename(ActionContext context) =>
-        (IsGodotScene(context.File) || context.File is { } file && Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path) ? null : WhyNot(context, server: true, xaml: true))
-            ?? context.ReadOnlyWhy;
+        ((IsGodotScene(context.File) || context.File is { } file && Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path) ? null : WhyNot(context, server: true, xaml: true))
+            ?? context.ReadOnlyWhy)?.Shown;
 
     /// <summary>Whether a file is a text scene or resource of a Godot project, which Passenger reads itself.</summary>
     private bool IsGodotScene(OpenDocument? file) =>
@@ -1040,15 +1040,15 @@ public sealed class CodeAssist
     /// <summary>Why an action of a XAML file's alone cannot run: no file, a file not XAML of a project Passenger reads, or
     /// one that cannot be edited.</summary>
     private string? WhyNotXaml(ActionContext action) =>
-        action.File is null ? Refusals.NoFile
+        (action.File is null ? Refusals.NoFile
         : context.XamlOf(action.File) is not { } markup || (markup.Loaded.IsCompleted && !markup.IsLoaded) ? "The file is not XAML of an Avalonia or WPF project"
-        : action.ReadOnlyWhy;
+        : action.ReadOnlyWhy)?.Shown;
 
     /// <summary>Why an action cannot run: no file; for one that asks the server, none for the file (a source generator's
     /// code copied, which it has not); for one that edits by the file's syntax, a file not C# or one that cannot be edited.
     /// One that also edits XAML (<paramref name="markup"/>) takes any XAML file that can be edited; XAML and MSBuild files
     /// answer those they say they do.</summary>
-    private string? WhyNot(ActionContext action, bool server, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false) =>
+    private Words? WhyNot(ActionContext action, bool server, bool syntax = false, bool xaml = false, bool markup = false, bool msbuild = false) =>
         action.File is null ? Refusals.NoFile
         : markup && XamlService.IsXaml(action.File.Path) ? action.ReadOnlyWhy
         : xaml && context.XamlOf(action.File) is { } markupFile && (markupFile.IsLoaded || !markupFile.Loaded.IsCompleted) ? null

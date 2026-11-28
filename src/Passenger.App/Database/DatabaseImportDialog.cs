@@ -294,10 +294,10 @@ public sealed class DatabaseImportDialog : IdeWindow
     /// <summary>Import: the dialog closed with the choice made; null once closed, else why not, said in it.</summary>
     public string? Import()
     {
-        string? why = File.Trim().Length == 0 ? Refusals.NoImportFile
+        string? why = (File.Trim().Length == 0 ? Refusals.NoImportFile
             : read is null || !IsNew && target?.Table != tables[into.SelectedIndex - 1] ? Refusals.ImportNotRead
             : IsNew && string.IsNullOrWhiteSpace(name.Text) ? Refusals.NoNewTableNamed
-            : columns.Columns.All(c => c.Into is null) ? Refusals.NoColumnImported : null;
+            : columns.Columns.All(c => c.Into is null) ? Refusals.NoColumnImported : null)?.Shown;
         if (why is not null)
         {
             problem.Text = why;

@@ -335,10 +335,10 @@ public sealed class ProblemsModel
     /// <summary>Why a problem of the tab shown has no fixes to offer, null where it has: none in Toolset, and a failed
     /// binding's are the nearest members of its source's type, when it has any.</summary>
     internal string? WhyNotFix(Problem problem) =>
-        problem.Path is null ? Refusals.ProblemNamesNoFile
+        (problem.Path is null ? Refusals.ProblemNamesNoFile
         : Shown == ProblemsTab.Toolset ? Refusals.ToolsetUnfixed
         : Shown == ProblemsTab.Bindings && !bindings.Any(b => b.Problem == problem && b.Failure.Nearest.Count > 0) ? Refusals.BindingUnfixed
-        : null;
+        : null)?.Shown;
 
     /// <summary>A problem gone to, as a double-click, Enter or Go to does.</summary>
     internal void GoTo(Problem problem) => Chosen?.Invoke(this, problem);
@@ -861,7 +861,7 @@ public sealed class ProblemsModel
         {
             case ProblemsTab.File:
                 FileRows(made, again);
-                EmptyText = fileName is null ? Refusals.NoFile : "No problems in this file";
+                EmptyText = (fileName is null ? Refusals.NoFile : "No problems in this file").Shown;
                 break;
             case ProblemsTab.Solution:
                 Grouped(made, (SolutionProblems ?? []).Where(Filter.Passes));

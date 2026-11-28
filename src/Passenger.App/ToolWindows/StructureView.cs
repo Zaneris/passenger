@@ -198,7 +198,7 @@ public sealed class StructureView : DockPanel
         (string Path, string Name, int CaretLine)? active = source?.Invoke();
         if (active is not { } now || outlineOf?.Invoke() is not { } file)
         {
-            Show(Outline<SymbolRow>.Empty, null, active is { } shownFile ? Refusals.NoOutline(shownFile.Name) : null);
+            Show(Outline<SymbolRow>.Empty, null, (active is { } shownFile ? Refusals.NoOutline(shownFile.Name) : null)?.Shown);
             return;
         }
         CancellationTokenSource mine = asking = new CancellationTokenSource();

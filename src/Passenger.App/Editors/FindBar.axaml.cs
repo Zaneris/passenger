@@ -523,7 +523,7 @@ public partial class FindBar : UserControl
     /// <summary>Every match's replacement as an edit, or why none is made: the text it makes would be too long, said
     /// before any is made.</summary>
     private static (IReadOnlyList<TextEdit> Edits, string? Why) Replacing(SearchResult found, string replacement) =>
-        Refusals.TooLongReplaced(found, replacement) is { } why ? ([], why) : (found.Replacements(replacement), null);
+        Refusals.TooLongReplaced(found, replacement) is { } why ? ([], why.Shown) : (found.Replacements(replacement), null);
 
     private async Task ReplaceAllApartAsync(CodeEditor shown, TextSnapshot text, SearchQuery query, string replacement)
     {

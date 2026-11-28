@@ -190,7 +190,7 @@ public sealed class InteractiveTestDialog : IdeWindow
         };
         if (endpoints.Busy is { } under)
         {
-            problem.Text = ActionWork.Busy(under);
+            problem.Text = ActionWork.Busy(under).Shown;
             return;
         }
         await endpoints.SendAsync(request, draft, options, criteria.Count > 0 ? criteria : [Expectation.Answered], Response, this);

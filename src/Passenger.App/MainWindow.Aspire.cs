@@ -45,7 +45,7 @@ public partial class MainWindow
             IReadOnlyList<AspireResource> resources = await ReadAspireResourcesAsync(configuration.Project);
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             AspireSelection[] choices = resources.Select(resource => new AspireSelection(configuration.Project, resource))
                 .Where(selection => current.Aspire.FindService(selection)?.ProcessId is > 0).ToArray();
@@ -296,7 +296,7 @@ public partial class MainWindow
     public Task<IReadOnlyList<AspireResource>> ReadAspireResourcesAsync(string appHost, CancellationToken cancel = default) =>
         session.Aspire.FindApp(appHost) is { IsTest: false } app
             ? app.Interactions?.GetResourcesAsync(cancel)
-                ?? Task.FromException<IReadOnlyList<AspireResource>>(new InvalidOperationException(Refusals.AppHostStarting))
+                ?? Task.FromException<IReadOnlyList<AspireResource>>(new InvalidOperationException(Refusals.AppHostStarting.English))
             : AspireCli().GetResourcesAsync(appHost, cancel);
 
     private async Task<AspireSelection> ReadAspireSelectionAsync(string appHost, string resource, CancellationToken cancel)
@@ -316,7 +316,7 @@ public partial class MainWindow
         AspireSelection selection = await ReadAspireSelectionAsync(appHost, resource, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new InvalidOperationException(Refusals.SolutionClosed.English);
         }
         return await ResourceCommandAsync(current, selection, command, () => true, cancel, forAgent: true);
     }
@@ -391,7 +391,7 @@ public partial class MainWindow
         {
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             (AspireAppRun app, AspireResourceRun service) = RunningOf(current, selection);
             return await DebugAspireRunningAsync(current, app, service, attach);
@@ -412,7 +412,7 @@ public partial class MainWindow
         AspireAppRun app = current.Aspire.FindApp(selection.AppHostPath) is { IsTest: false } owned ? owned
             : throw new InvalidOperationException(NotRunHere(selection.AppHostPath));
         AspireResourceRun service = current.Aspire.FindService(selection)
-            ?? throw new InvalidOperationException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name));
+            ?? throw new InvalidOperationException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name).English);
         return (app, service);
     }
 
@@ -447,7 +447,7 @@ public partial class MainWindow
         {
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             (AspireAppRun app, AspireResourceRun service) = RunningOf(current, selection);
             return await ProfileAspireRunningAsync(current, app, service);
@@ -486,7 +486,7 @@ public partial class MainWindow
         {
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             if (current.Aspire.FindService(selection) is { } running && current.Aspire.FindApp(selection.AppHostPath) is { } app)
             {
@@ -565,7 +565,7 @@ public partial class MainWindow
         }
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new InvalidOperationException(Refusals.SolutionClosed.English);
         }
         foreach (AspireResourceRun start in starts.DistinctBy(start => (start.Project, start.Plan.Framework)))
         {
@@ -621,7 +621,7 @@ public partial class MainWindow
         Containers.EngineState engine = await Engine.StateAsync(again: true, cancel: cancel);
         if (session != current || current.IsEnded)
         {
-            return Refusals.SolutionClosed;
+            return Refusals.SolutionClosed.Shown;
         }
         ShowAspireEngine(engine);
         FollowEngineForAspire(current);

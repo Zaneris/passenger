@@ -292,8 +292,8 @@ public sealed class FormProperties : DockPanel
         {
             list.SelectedItem = again;
         }
-        placeholder.Text = design is null || design.Inspected is null ? Refusals.NoComponentChosen
-            : Rows.Count == 0 ? (design.Running ? "Reading its properties…" : design.Status) : null;
+        placeholder.Text = (design is null || design.Inspected is null ? Refusals.NoComponentChosen
+            : Rows.Count == 0 ? (design.Running ? "Reading its properties…" : design.Status) : null)?.Shown;
         placeholder.IsVisible = placeholder.Text is not null;
         list.IsVisible = !placeholder.IsVisible;
 

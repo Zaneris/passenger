@@ -18,18 +18,18 @@ public partial class MainWindow
     {
         if (session.Folder is not { } folder)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         if (!session.Trusted)
         {
-            return Refusals.Untrusted;
+            return Refusals.Untrusted.Shown;
         }
         List<(string Workspace, List<string> Files)> runs = [];
         foreach (IGrouping<ProjectModel?, string> owned in files.GroupBy(f => session.ProjectOf(f)))
         {
             if (owned.Key is not { IsProgram: false } project)
             {
-                return Refusals.DotnetFormatsProjects(Path.GetFileName(owned.First()));
+                return Refusals.DotnetFormatsProjects(Path.GetFileName(owned.First())).Shown;
             }
             runs.Add((project.Path, [.. owned]));
         }
@@ -42,7 +42,7 @@ public partial class MainWindow
         {
             if (!WorkspaceTrust.Trusts(workspace))
             {
-                return Refusals.Untrusted;
+                return Refusals.Untrusted.Shown;
             }
             foreach (IReadOnlyList<string> named in Named(laid))
             {
@@ -55,11 +55,11 @@ public partial class MainWindow
                 }
                 catch (FileNotFoundException)
                 {
-                    return Refusals.NoDotnet;
+                    return Refusals.NoDotnet.Shown;
                 }
                 if (!ran.Succeeded)
                 {
-                    return Refusals.DotnetFormatFailed(ran.ExitCode, ChildResult.FirstLineOf(ran.Error) is { Length: > 0 } said ? said : ran.FirstLine);
+                    return Refusals.DotnetFormatFailed(ran.ExitCode, ChildResult.FirstLineOf(ran.Error) is { Length: > 0 } said ? said : ran.FirstLine).Shown;
                 }
             }
         }

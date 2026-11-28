@@ -94,7 +94,7 @@ internal sealed partial class XamlAssist
         }
         if (symbol is null)
         {
-            return (null, Refusals.NoDeclaration);
+            return (null, Refusals.NoDeclaration.Shown);
         }
         if (NamedElementOf(file, symbol) is { } named)
         {

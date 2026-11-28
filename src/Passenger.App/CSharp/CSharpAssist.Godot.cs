@@ -336,7 +336,7 @@ internal sealed partial class CSharpAssist
         if (await GodotNamesAsync(document, lsp, offset, uses: false) is { Via: GodotNameVia.String, Symbol: { Path: { } declaring, At: { } place } })
         {
             LspPosition at = new(place.Line, place.Character);
-            return new Declared([new LspLocation(DocumentUris.FromPath(declaring), new LspRange(at, at))], Refusals.NoDeclaration);
+            return new Declared([new LspLocation(DocumentUris.FromPath(declaring), new LspRange(at, at))], Refusals.NoDeclaration.Shown);
         }
         if (await GodotKindDeclaredAsync(document, offset) is { } defined)
         {
@@ -405,7 +405,7 @@ internal sealed partial class CSharpAssist
                 }
             }
         }
-        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration) { Names = names, Title = "Declarations" };
+        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration.Shown) { Names = names, Title = "Declarations" };
     }
 
     /// <summary>The GDScript member a string of a Godot project's C# names at an offset, on a node the code tells it is
@@ -475,7 +475,7 @@ internal sealed partial class CSharpAssist
         }
         // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
         actions.AskRename(document, caret, old, async (held, name, patience) => await GodotNodeAtAsync(document, held.Offset) is ({ } again, { } same, { Count: > 0 } now) && same == old
-            ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
+            ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name).Shown));
         return true;
     }
 
@@ -555,7 +555,7 @@ internal sealed partial class CSharpAssist
         {
             if (paths is null)
             {
-                return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"a raw string of {Path.GetFileName(file)} can't say {name}"));
+                return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"a raw string of {Path.GetFileName(file)} can't say {name}").Shown);
             }
             if (paths.Count > 0)
             {

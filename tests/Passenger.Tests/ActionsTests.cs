@@ -55,7 +55,7 @@ public sealed class ActionsTests : IDisposable
             IdeAction? previous = null;
             foreach (IdeAction action in listed.Where(a => !LeftAlone.Contains(a.Id)))
             {
-                string? why = window.Actions.WhyNot(action.Id, window.Actions.Context());
+                string? why = window.Actions.WhyNot(action.Id, window.Actions.Context())?.Shown;
                 ActionPopup popup = FindAction(window);
                 Assert.True(popup.Rows[0].Id == first.Id, (previous is null || previous == first
                     ? $"{first.Title} ({first.Id}) ran from Find Action but is not offered first the next time"

@@ -44,7 +44,7 @@ public partial class MainWindow
         Editors.ShowWelcome(Welcome);
         AddNewProjectActions();
         // The system's panels ask the person, never an agent.
-        Func<ActionContext, string?> persons = c => c.ByAgent ? Refusals.AsksThePerson : null;
+        Func<ActionContext, Words?> persons = c => c.ByAgent ? Refusals.AsksThePerson : null;
         actions!.Add(new IdeAction(AppActions.OpenSolution, "Open Solution…", "IDE", _ => IdeErrors.Observe(PickSolutionAsync()))
         {
             WhyNot = persons,

@@ -40,11 +40,11 @@ public partial class MainWindow
         Row(A.AddExistingItem, "Add Existing Item…", row => IdeErrors.Observe(AddExistingItemsAsync(row.SolutionPath!)),
             row => row is { Kind: NodeKind.SolutionFolder, SolutionPath: not null } ? null : "An existing item is added to a solution folder", _ => "Existing Item…");
         Row(A.AddReference, "Add Reference…", row => ShowAddReference(Referencing(row)!),
-            row => row.IsShared ? Refusals.SharedProject(row.Name) : Referencing(row) is null ? $"{row.Name} takes no reference" : null,
+            row => (row.IsShared ? Refusals.SharedProject(row.Name) : Referencing(row) is null ? $"{row.Name} takes no reference" : null)?.Shown,
             row => row.Kind == NodeKind.Project ? "Reference…" : "Add Reference…");
         Row(A.AddDockerSupport, "Add Docker Support…", row => ShowDockerSupport(row.Path!),
-            row => row.IsShared ? Refusals.SharedProject(row.Name)
-                : row is { Kind: NodeKind.Project, Path: { } project, IsProgram: false } ? DockerSupportWhyNot(project) : "Docker support is added to a project", _ => "Docker Support…");
+            row => (row.IsShared ? Refusals.SharedProject(row.Name)
+                : row is { Kind: NodeKind.Project, Path: { } project, IsProgram: false } ? DockerSupportWhyNot(project) : "Docker support is added to a project")?.Shown, _ => "Docker Support…");
         Row(A.AddDockerCompose, "Add Docker Compose…", _ => ShowDockerCompose(),
             row => row.Kind == NodeKind.Solution ? null : "Docker Compose is added to the solution", _ => "Docker Compose…");
         // The solution's, from its row or a solution folder's, and from Find Action wherever a solution is open.
@@ -56,7 +56,7 @@ public partial class MainWindow
             TitleIn = c => c.ExplorerRow is null ? "Add Aspire Orchestration…" : "Aspire Orchestration…",
         });
         Row(A.ManageNuGet, "Manage NuGet Packages", _ => ShowToolWindow(ToolWindowIds.NuGet),
-            row => row.IsShared ? Refusals.SharedProject(row.Name) : row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages");
+            row => (row.IsShared ? Refusals.SharedProject(row.Name) : row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages")?.Shown);
         // The solution's row, and Find Action wherever a solution is open: the NuGet window over every project.
         actions!.Add(new IdeAction(A.ManageNuGetForSolution, "Manage NuGet Packages for Solution", ExplorerGroup, ManageSolutionPackages)
         {
@@ -66,18 +66,18 @@ public partial class MainWindow
         });
         // A shared project's file is its items file, which names its files.
         Row(A.EditProjectFile, "Edit Project File", row => OpenFile(row.IsShared ? Passenger.Workspace.SharedProjects.ItemsFileOf(row.Path!) : row.Path!),
-            row => row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name));
+            row => (row is { Kind: NodeKind.Project, Path: not null } ? null : Refusals.NotAProject(row.Name))?.Shown);
         Row(A.UnloadProject, "Unload Project", row => SetUnloaded(row.Path!, true),
-            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
-                : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null);
+            row => (row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
+                : Explorer.Tree.Unloaded.Contains(project) ? $"{row.Name} is unloaded" : null)?.Shown);
         Row(A.ReloadProject, "Reload Project", row => SetUnloaded(row.Path!, false),
-            row => row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
-                : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded");
+            row => (row is not { Kind: NodeKind.Project, Path: { } project } ? Refusals.NotAProject(row.Name) : row.IsShared ? Refusals.SharedProject(row.Name)
+                : Explorer.Tree.Unloaded.Contains(project) ? null : $"{row.Name} is loaded")?.Shown);
         // A shared project's file its items file leaves out, or names: the chosen ones taken in, or left out on disk.
         Row(A.IncludeInProject, "Include in Project", row => SetShared(SharedRows(row, unlisted: true), include: true),
-            row => SharedRows(row, unlisted: true).Count > 0 ? null : Refusals.NotLeftOut(row.Name));
+            row => (SharedRows(row, unlisted: true).Count > 0 ? null : Refusals.NotLeftOut(row.Name))?.Shown);
         Row(A.ExcludeFromProject, "Exclude from Project", row => SetShared(SharedRows(row, unlisted: false), include: false),
-            row => SharedRows(row, unlisted: false).Count > 0 ? null : Refusals.NotSharedFile(row.Name));
+            row => (SharedRows(row, unlisted: false).Count > 0 ? null : Refusals.NotSharedFile(row.Name))?.Shown);
         // Compare With... for one file, Compare Files for two chosen together.
         actions!.Add(new IdeAction(A.CompareFiles, "Compare Files", ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {
@@ -135,7 +135,7 @@ public partial class MainWindow
     {
         if (session.CSharp is not { } csharp)
         {
-            status.Text = Refusals.NoCSharp;
+            status.Text = Refusals.NoCSharp.Shown;
             return;
         }
         if (await csharp.Generated.CopyOfAsync(made) is { } copy)
@@ -144,7 +144,7 @@ public partial class MainWindow
         }
         else
         {
-            status.Text = Refusals.GeneratedNoLonger(Lsp.DocumentUris.GeneratedName(made) ?? made);
+            status.Text = Refusals.GeneratedNoLonger(Lsp.DocumentUris.GeneratedName(made) ?? made).Shown;
         }
     }
 
@@ -343,9 +343,9 @@ public partial class MainWindow
                 return $"{each.Name} cannot be deleted";
             }
         }
-        return rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
+        return (rows.Count > 1 && rows.FirstOrDefault(n => n.LeavesFilesBehind) is { } leaving
             ? Refusals.RemovedAlone(leaving.Name, leaving is { Kind: NodeKind.ProjectReference or NodeKind.SharedProject, Owner: { } owner } ? Path.GetFileNameWithoutExtension(owner) : "the solution")
-            : null;
+            : null)?.Shown;
     }
 
     /// <summary>A row's menu, its items the window's actions run on the row: Build, Rebuild and Clean for the solution or
@@ -577,9 +577,9 @@ public partial class MainWindow
         return new CSharp.ChosenFiles(of, kind => [.. files.Concat(folders.SelectMany(f => FolderWalk.Files(f, built: true)))
                 .Concat(projects.SelectMany(p => FolderWalk.ProjectFiles(p)))
                 .Select(PathNames.Canonical).Distinct(PathNames.Comparer).Where(f => CSharp.CodeActions.Takes(kind, f)).Order(StringComparer.Ordinal)],
-            kind => files.Count + folders.Count + projects.Count == 0 ? Refusals.NothingToTidy(CSharp.CodeActions.TitleOf(kind), of)
+            kind => (files.Count + folders.Count + projects.Count == 0 ? Refusals.NothingToTidy(CSharp.CodeActions.TitleOf(kind), of)
                 : folders.Count + projects.Count == 0 && !files.Any(f => CSharp.CodeActions.Takes(kind, f)) ? Refusals.NothingToTidy(CSharp.CodeActions.TitleOf(kind), of)
-                : null);
+                : null)?.Shown);
     }
 
     /// <summary>The editor's keys the Explorer takes while it has them: Cut, Copy, Paste, Delete, Backspace, Undo and

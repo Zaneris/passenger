@@ -29,7 +29,7 @@ public partial class MainWindow
         });
     }
 
-    private string? WhyNoDoubles(ActionContext context) => Refusals.NeedsFile(context)
+    private Words? WhyNoDoubles(ActionContext context) => Refusals.NeedsFile(context)
         ?? (context.File!.Language != Languages.Language.CSharp ? Refusals.DoublesAreCSharp : session.CSharp is null ? session.WhyNoCSharp : null);
 
     /// <summary>The folder's C# test projects, by their files.</summary>
@@ -89,7 +89,7 @@ public partial class MainWindow
         {
             string extract = TitleOf(AppActions.ExtractInterface);
             string introduce = TitleOf(AppActions.IntroduceParameter);
-            string why = Refusals.FakeNeedsSeam(type, seam, extract, introduce);
+            string why = Refusals.FakeNeedsSeam(type, seam, extract, introduce).Shown;
             return [new EditorFix($"{title} of {type}", $"{Refusals.SeamOf(seam)}: {extract}, then {introduce}", here, string.Empty)
             {
                 Elsewhere = (_, _) => Task.FromResult(RefactorOutcome.Refused(why)),
@@ -100,7 +100,7 @@ public partial class MainWindow
             place.Exists ? $"Fakes/{Path.GetFileName(place.File)} is there already" : kept, here, string.Empty)
         {
             Elsewhere = (range, patience) => place.Exists
-                ? Task.FromResult(RefactorOutcome.Refused(Refusals.FakeThere(Path.GetFileName(place.File), place.Name)))
+                ? Task.FromResult(RefactorOutcome.Refused(Refusals.FakeThere(Path.GetFileName(place.File), place.Name).Shown))
                 : Assist.Actions.MakeAsync(title, file, range.Start,
                     now => now.ExtensionAsync<Refactored>(Handlers.CreateFake, new FakeAsked(now.PlaceOf(range.Start), place.Project)),
                     _ => $"Made Fakes/{Path.GetFileName(place.File)} in {place.Name}", patience),

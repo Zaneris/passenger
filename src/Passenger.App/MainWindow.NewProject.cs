@@ -113,7 +113,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            status.Text = Refusals.NoSolution;
+            status.Text = Refusals.NoSolution.Shown;
             return null;
         }
         ProjectTarget target = new(solution.Path, into, [.. solution.Projects.Select(p => Path.GetFileNameWithoutExtension(p.Path))],

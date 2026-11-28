@@ -52,7 +52,7 @@ public partial class MainWindow
         Editors.FileLinkClicked += (_, path) => OpenLinkedFile(path);
     }
 
-    private static string? WhyNotMarkdown(ActionContext context) => context.File is null ? Refusals.NoFile
+    private static Words? WhyNotMarkdown(ActionContext context) => context.File is null ? Refusals.NoFile
         : context.File.Language != Languages.Language.Markdown ? "The preview is for Markdown files" : null;
 
     /// <summary>A Markdown file's layout as an action, checked while it is in force: Editor and Preview chosen while it is

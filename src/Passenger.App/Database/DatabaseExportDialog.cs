@@ -122,8 +122,8 @@ public sealed class DatabaseExportDialog : IdeWindow
     public string? Export()
     {
         string path = file.Text?.Trim() ?? string.Empty;
-        string? why = path.Length == 0 ? Refusals.NoExportFile
-            : Format == ExportFormat.Inserts && string.IsNullOrWhiteSpace(table.Text) ? Refusals.NoInsertTableNamed : null;
+        string? why = (path.Length == 0 ? Refusals.NoExportFile
+            : Format == ExportFormat.Inserts && string.IsNullOrWhiteSpace(table.Text) ? Refusals.NoInsertTableNamed : null)?.Shown;
         if (why is not null)
         {
             problem.Text = why;

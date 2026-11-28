@@ -110,7 +110,7 @@ public sealed class MetricsPane : DockPanel
         if (Paused?.Invoke(id, where) == true)
         {
             held = true;
-            Say(Refusals.MetricsWhilePaused(shown));
+            Say(Refusals.MetricsWhilePaused(shown).Shown);
             return;
         }
         Say($"Waiting for {shown}'s first metrics…");
@@ -129,7 +129,7 @@ public sealed class MetricsPane : DockPanel
         bool paused = Paused?.Invoke(process, place) == true;
         if (paused)
         {
-            Say(Refusals.MetricsWhilePaused(name));
+            Say(Refusals.MetricsWhilePaused(name).Shown);
         }
         else if (held)
         {
@@ -137,7 +137,7 @@ public sealed class MetricsPane : DockPanel
             Say($"Waiting for {name}'s first metrics…");
             IdeErrors.Observe(FollowAsync(++follows, again: false));
         }
-        else if (said == Refusals.MetricsWhilePaused(name))
+        else if (said == Refusals.MetricsWhilePaused(name).Shown)
         {
             Say(charts.Count == 0 ? $"Waiting for {name}'s first metrics…" : string.Empty);
         }
@@ -240,7 +240,7 @@ public sealed class MetricsPane : DockPanel
                     if (Paused?.Invoke(process, place) == true)
                     {
                         held = true;
-                        Say(Refusals.MetricsWhilePaused(name));
+                        Say(Refusals.MetricsWhilePaused(name).Shown);
                         return;
                     }
                     bool askAgain = place is null ? SessionStarts.AskAgain(error, Stopwatch.GetElapsedTime(first), HeldStart.PortLimit) : attempt < ContainerAttempts;

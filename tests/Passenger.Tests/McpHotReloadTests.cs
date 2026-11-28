@@ -151,7 +151,7 @@ public sealed class McpHotReloadTests : McpRig, IClassFixture<RestoredFolders>
         {
             if (change.Work.Id == AppActions.ApplyHotReloadChanges && !change.Ended)
             {
-                worked.Add(change.Work.Stage);
+                worked.Add(change.Work.Stage.Shown);
             }
         };
         McpClient? client = null;

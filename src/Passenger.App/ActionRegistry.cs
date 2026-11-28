@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -131,22 +132,22 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
 
     /// <summary>Null when the action can run in this context, else why not: no action has the id, its work is under way
     /// already, or what it needs is not there.</summary>
-    public string? WhyNot(string id, ActionContext context) =>
-        !byId.TryGetValue(AppActions.Now(id), out IdeAction? action) ? $"No action is called {id}"
+    public Words? WhyNot(string id, ActionContext context) =>
+        !byId.TryGetValue(AppActions.Now(id), out IdeAction? action) ? Refusals.NoActionCalled(id)
         : work.Of(action.WorkId) is { } under ? ActionWork.Busy(under)
         : action.WhyNot(context);
 
     /// <summary>Runs an action where it is asked for now; null once it has run, else why it could not.</summary>
-    public string? Run(string id) => Run(id, Context());
+    public Words? Run(string id) => Run(id, Context());
 
     /// <summary>Runs an action an agent asks for (ide_action) where it is asked for now, without the person's keys or a
     /// window brought forward (<see cref="ActionContext.ByAgent"/>), and refused where it would open a popup or dialog
     /// (<see cref="AgentAsks.Act"/>); null once it has run, else why it could not.</summary>
-    public string? RunForAgent(string id) => Run(id, Context().ForAgent());
+    public Words? RunForAgent(string id) => Run(id, Context().ForAgent());
 
     /// <summary>Runs an action in a context made before something else took the keys (a menu, a popup); null once it has
     /// run, else why it could not.</summary>
-    public string? Run(string id, ActionContext context)
+    public Words? Run(string id, ActionContext context)
     {
         if (WhyNot(id, context) is { } why)
         {

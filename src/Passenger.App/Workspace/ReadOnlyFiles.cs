@@ -17,11 +17,11 @@ public static class ReadOnlyFiles
 
     /// <summary>Why a file (a canonical path) read-only by where it lies is left as it was, said after its name where a list
     /// of such files names each ("Kit.cs (…)"): a package's naming the package; null for one that may be written.</summary>
-    public static string? Why(string path) => Packages.PackageFolders.PackageOf(path) is { } package ? Refusals.PackagesOwn(package)
+    public static Words? Why(string path) => Packages.PackageFolders.PackageOf(path) is { } package ? Refusals.PackagesOwn(package)
         : Holds(path) ? FileSearch.ReadOnlyWhy : null;
 
     /// <summary>A change of a file (a canonical path) read-only by where it lies refused, the file called <paramref name="name"/>:
     /// a package's naming the package (<see cref="Refusals.OfPackage"/>); null for one that may be written.</summary>
-    public static string? Refused(string path, string name) => Packages.PackageFolders.PackageOf(path) is { } package ? Refusals.OfPackage(name, package)
+    public static Words? Refused(string path, string name) => Packages.PackageFolders.PackageOf(path) is { } package ? Refusals.OfPackage(name, package)
         : Holds(path) ? Refusals.ReadOnly(name) : null;
 }

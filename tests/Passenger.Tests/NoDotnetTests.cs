@@ -187,15 +187,15 @@ public sealed class NoDotnetTests : IAsyncDisposable
         MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false };
         window.Show();
         Ui.Settle();
-        Assert.True(window.DotnetSaid == Refusals.NoDotnet, $"With no .NET, the Welcome screen's banner said: {window.DotnetSaid}");
+        Assert.True(window.DotnetSaid == Refusals.NoDotnet.Shown, $"With no .NET, the Welcome screen's banner said: {window.DotnetSaid}");
         Assert.Equal(DotnetLack.NoDotnet, window.DotnetWant.Lack);
 
-        Assert.True(!window.Welcome.NewSolutionButton.IsEnabled && ToolTip.GetTip(window.Welcome.NewSolutionButton) as string == Refusals.NoDotnet,
+        Assert.True(!window.Welcome.NewSolutionButton.IsEnabled && ToolTip.GetTip(window.Welcome.NewSolutionButton) as string == Refusals.NoDotnet.Shown,
             $"The Welcome screen's New Solution is {(window.Welcome.NewSolutionButton.IsEnabled ? "not greyed" : "greyed")}, its tip saying {ToolTip.GetTip(window.Welcome.NewSolutionButton)}");
         bool ran = window.Perform(AppActions.NewSolution);
         Ui.Settle();
-        Assert.True(!ran && window.Actions.WhyNot(AppActions.NewSolution, window.Actions.Context()) == Refusals.NoDotnet && !window.OwnedWindows.OfType<NewProjectDialog>().Any(),
-            $"New Solution with no .NET {(ran ? "ran" : "refused")}, saying {window.Actions.WhyNot(AppActions.NewSolution, window.Actions.Context())} ({window.OwnedWindows.Count} windows over it)");
+        Assert.True(!ran && window.Actions.WhyNot(AppActions.NewSolution, window.Actions.Context())?.Shown == Refusals.NoDotnet.Shown && !window.OwnedWindows.OfType<NewProjectDialog>().Any(),
+            $"New Solution with no .NET {(ran ? "ran" : "refused")}, saying {window.Actions.WhyNot(AppActions.NewSolution, window.Actions.Context())?.Shown} ({window.OwnedWindows.Count} windows over it)");
 
         Ui.ClickButton(window, "Download Page");
         Assert.Equal("https://dotnet.microsoft.com/download", Assert.Single(window.Browsed).AbsoluteUri);
@@ -210,18 +210,18 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Ui.WaitFor(() => window.Session.Models.MissingSdk is not null, "the project host to find no .NET", TimeSpan.FromMinutes(1));
         Ui.WaitFor(() => window.CSharpService is { IsReady: true } or { IsStopped: true }, () => $"the C# language server to have tried the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(2));
         Ui.Settle();
-        Assert.True(window.DotnetSaid == Refusals.NoDotnet, $"Over a C# folder with no .NET, the banner said: {window.DotnetSaid}");
-        Assert.True(window.Status == Refusals.NoDotnet, $"Over a C# folder with no .NET, the status bar said: {window.Status}");
+        Assert.True(window.DotnetSaid == Refusals.NoDotnet.Shown, $"Over a C# folder with no .NET, the banner said: {window.DotnetSaid}");
+        Assert.True(window.Status == Refusals.NoDotnet.Shown, $"Over a C# folder with no .NET, the status bar said: {window.Status}");
         ActionContext here = window.Actions.Context();
         foreach (string action in (string[])[AppActions.Build, AppActions.RunProgram, AppActions.Debug, AppActions.RunAllTests, AppActions.NewProject])
         {
-            Assert.True(window.Actions.WhyNot(action, here) == Refusals.NoDotnet, $"{action} with no .NET is refused with: {window.Actions.WhyNot(action, here)}");
+            Assert.True(window.Actions.WhyNot(action, here)?.Shown == Refusals.NoDotnet.Shown, $"{action} with no .NET is refused with: {window.Actions.WhyNot(action, here)?.Shown}");
         }
-        Assert.Null(window.Actions.WhyNot(AppActions.InstallDotnetSdk, here));
-        Assert.Null(window.Actions.WhyNot(AppActions.InstallDotnetSdk, here.ForAgent()));
-        Assert.Equal(Refusals.AgentChangesPath, window.Actions.WhyNot(AppActions.AddDotnetToPath, here.ForAgent()));
+        Assert.Null(window.Actions.WhyNot(AppActions.InstallDotnetSdk, here)?.Shown);
+        Assert.Null(window.Actions.WhyNot(AppActions.InstallDotnetSdk, here.ForAgent())?.Shown);
+        Assert.Equal(Refusals.AgentChangesPath.Shown, window.Actions.WhyNot(AppActions.AddDotnetToPath, here.ForAgent())?.Shown);
         Ui.Run(window, AppActions.Build);
-        Assert.Equal(Refusals.NoDotnet, window.Status);
+        Assert.Equal(Refusals.NoDotnet.Shown, window.Status);
 
         window.OpenFile(Path.Combine(folder, "App", "Program.cs"));
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "(\"Shop\");");
@@ -266,9 +266,9 @@ public sealed class NoDotnetTests : IAsyncDisposable
             ActionContext here = window.Actions.Context();
             foreach (string action in (string[])[AppActions.RunAllTests, AppActions.RerunTests, AppActions.RerunFailedTests])
             {
-                Assert.True(window.Actions.WhyNot(action, here) is null, $"{action} of a game of GDScript alone is refused with: {window.Actions.WhyNot(action, here)}");
+                Assert.True(window.Actions.WhyNot(action, here)?.Shown is null, $"{action} of a game of GDScript alone is refused with: {window.Actions.WhyNot(action, here)?.Shown}");
             }
-            Assert.True(window.Actions.WhyNot(AppActions.RunTests, here) != Refusals.NoDotnet, "Run Unit Tests of a game of GDScript alone is refused for want of .NET");
+            Assert.True(window.Actions.WhyNot(AppActions.RunTests, here)?.Shown != Refusals.NoDotnet.Shown, "Run Unit Tests of a game of GDScript alone is refused for want of .NET");
         }
         finally
         {
@@ -289,7 +289,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         {
             window.OpenFolder(folder);
             Ui.WaitFor(() => window.Tests.Tree.Methods.Any(m => m.Name == "test_adds"), () => $"the GUT test found in its GDScript ({window.Tests.Tree.EmptyText})");
-            Assert.True(window.Perform(AppActions.RunAllTests), $"Run All Tests refused: {window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())}");
+            Assert.True(window.Perform(AppActions.RunAllTests), $"Run All Tests refused: {window.Actions.WhyNot(AppActions.RunAllTests, window.Actions.Context())?.Shown}");
             Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Tree.Methods.Single(m => m.Name == "test_adds").State == TestState.Passed,
                 () => $"the GUT test to pass ({window.BottomPanel.Tests.Status}; {window.BottomPanel.Build.Document.Snapshot})", TimeSpan.FromMinutes(3));
         }
@@ -383,7 +383,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Assert.True(!Directory.Exists(Installs), Directory.Exists(Installs)
             ? $"A refused install left the folder it made, {Installs}, holding [{string.Join(", ", Directory.EnumerateFileSystemEntries(Installs).Select(Path.GetFileName))}]"
             : string.Empty);
-        Assert.Equal(Refusals.NoDotnet, window.DotnetSaid);
+        Assert.Equal(Refusals.NoDotnet.Shown, window.DotnetSaid);
         window.Close();
     }
 
@@ -483,7 +483,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         ConfirmDialog dialog = DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().Single());
         Ui.ClickButton(dialog, "Add to PATH");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.AddDotnetToPath) is null && window.DotnetSaid is null, () => $"the banner to go once the PATH has it ({window.Status})", TimeSpan.FromMinutes(1));
-        Assert.Equal(Refusals.OnPathAlready(own), window.Actions.WhyNot(AppActions.AddDotnetToPath, window.Actions.Context()));
+        Assert.Equal(Refusals.OnPathAlready(own).Shown, window.Actions.WhyNot(AppActions.AddDotnetToPath, window.Actions.Context())?.Shown);
         window.Close();
     }
 
@@ -498,11 +498,11 @@ public sealed class NoDotnetTests : IAsyncDisposable
         window.Show();
         Ui.Settle();
         List<string> stages = Stages(window);
-        Assert.Null(window.Actions.RunForAgent(AppActions.InstallDotnetSdk));
+        Assert.Null(window.Actions.RunForAgent(AppActions.InstallDotnetSdk)?.English);
         ConfirmDialog asked = Question(window, stages);
         Assert.Equal($"Let an agent install the .NET SDK {sdk.Version}?", asked.Title);
-        Assert.True(window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage == $"Waiting for the person to allow installing the .NET SDK {sdk.Version}",
-            $"The agent's install waits saying {window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}");
+        Assert.True(window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage.Shown == $"Waiting for the person to allow installing the .NET SDK {sdk.Version}",
+            $"The agent's install waits saying {window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage.Shown}");
         Ui.ClickButton(asked, "Don't Install");
         Ui.WaitFor(() => window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null, "the agent's install to end", TimeSpan.FromMinutes(1));
         Assert.Equal($"The person did not allow installing the .NET SDK {sdk.Version}, so nothing was installed", window.Status);
@@ -512,7 +512,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         MainWindow own = new() { Width = 1200, Height = 800, StartsLanguageServer = false, AgentsOwn = true };
         own.Show();
         Ui.Settle();
-        Assert.Equal(Refusals.AgentInstalls, own.Actions.WhyNot(AppActions.InstallDotnetSdk, own.Actions.Context().ForAgent()));
+        Assert.Equal(Refusals.AgentInstalls.Shown, own.Actions.WhyNot(AppActions.InstallDotnetSdk, own.Actions.Context().ForAgent())?.Shown);
         own.Close();
     }
 
@@ -527,7 +527,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         Ui.Settle();
         Assert.Null(window.OpenFile(loose));
         Ui.Settle();
-        Assert.Equal($"{Refusals.NoDotnet}. {Refusals.LooseWithoutSdk("Basket.cs")}", window.DotnetSaid);
+        Assert.Equal($"{Refusals.NoDotnet.Shown}. {Refusals.LooseWithoutSdk("Basket.cs").Shown}", window.DotnetSaid);
         window.Close();
     }
 
@@ -548,7 +548,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
 
         Assert.True(window.Status?.StartsWith(said, StringComparison.Ordinal) == true, $"The install did not end saying '{said}': {Told(stages, window)}");
         Assert.Equal([kept], Directory.EnumerateFileSystemEntries(Installs));
-        Assert.Equal(Refusals.NoDotnet, window.DotnetSaid);
+        Assert.Equal(Refusals.NoDotnet.Shown, window.DotnetSaid);
         Assert.Null(Environment.GetEnvironmentVariable(RuntimeVariables.Root));
         window.Close();
     }
@@ -601,7 +601,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
     private static ConfirmDialog Question(MainWindow window, IReadOnlyList<string> stages)
     {
         Ui.WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any() || window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null,
-            () => $"Install .NET SDK to ask ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}; {window.Status})", TimeSpan.FromMinutes(1));
+            () => $"Install .NET SDK to ask ({window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage.Shown}; {window.Status})", TimeSpan.FromMinutes(1));
         return DialogButtonsTests.Check(window.OwnedWindows.OfType<ConfirmDialog>().SingleOrDefault()
             ?? throw new InvalidOperationException($"Install .NET SDK asked nothing. It said: {string.Join(" | ", stages)}. The window says: {window.Status}{Ui.IdeLogTail()}"));
     }
@@ -614,7 +614,7 @@ public sealed class NoDotnetTests : IAsyncDisposable
         {
             if (change.Work.Id == AppActions.InstallDotnetSdk && !change.Ended)
             {
-                stages.Add(change.Work.Stage);
+                stages.Add(change.Work.Stage.Shown);
             }
         };
         return stages;

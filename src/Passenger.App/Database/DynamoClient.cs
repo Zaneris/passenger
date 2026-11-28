@@ -188,7 +188,7 @@ internal static class DynamoClient
             {
                 // Deleted only while each plain attribute holds what was read, of the type the item holds it as now, a missing one missing.
                 Dictionary<string, AttributeValue> now = (await client.GetItemAsync(new GetItemRequest { TableName = schema.Table.Name, Key = KeyOf(schema, keys, key),
-                    ConsistentRead = true }, cancel)).Item ?? throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name));
+                    ConsistentRead = true }, cancel)).Item ?? throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name).English);
                 Dictionary<string, string> names = new() { ["#k"] = keys[0] };
                 Dictionary<string, AttributeValue> values = [];
                 List<string> holds = ["attribute_exists(#k)"];
@@ -206,7 +206,7 @@ internal static class DynamoClient
                     }
                     if (!now.TryGetValue(page.Columns[column], out AttributeValue? held))
                     {
-                        throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name));
+                        throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name).English);
                     }
                     if (read[column] is null)
                     {
@@ -233,7 +233,7 @@ internal static class DynamoClient
                     .ToDictionary(w => page.Columns[w.Key], w => Attribute(DocumentClient.Written(w.Value, null)), StringComparer.Ordinal);
                 if (keys.FirstOrDefault(k => !item.ContainsKey(k)) is { } lacking)
                 {
-                    throw new InvalidOperationException(Refusals.ItemLacksKey(lacking));
+                    throw new InvalidOperationException(Refusals.ItemLacksKey(lacking).English);
                 }
                 // A key's written words, as written, take the type its table declares: 000123 stays a string's.
                 foreach (string key in keys)
@@ -251,7 +251,7 @@ internal static class DynamoClient
             }
             if (writes.Count > MostInTransaction)
             {
-                throw new InvalidOperationException(Refusals.TooManyItemChanges(writes.Count, MostInTransaction));
+                throw new InvalidOperationException(Refusals.TooManyItemChanges(writes.Count, MostInTransaction).English);
             }
             try
             {
@@ -259,7 +259,7 @@ internal static class DynamoClient
             }
             catch (TransactionCanceledException refused) when (refused.CancellationReasons?.Any(r => r.Code == "ConditionalCheckFailed") == true)
             {
-                throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name), refused);
+                throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name).English, refused);
             }
             return true;
         });
@@ -359,7 +359,7 @@ internal static class DynamoClient
     {
         "number" => new AttributeValue { N = text.Trim() },
         "binary" => ImportTypes.TryConvert(text, typeof(byte[]), out object bytes) ? new AttributeValue { B = new MemoryStream((byte[])bytes) }
-            : throw new InvalidOperationException(Refusals.NotAValue(text, "bytes", key)),
+            : throw new InvalidOperationException(Refusals.NotAValue(text, "bytes", key).English),
         _ => new AttributeValue { S = text },
     };
 

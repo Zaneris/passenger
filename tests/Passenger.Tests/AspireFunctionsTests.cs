@@ -105,7 +105,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
                 TimeSpan.FromMinutes(2));
             Assert.Contains("Azure Functions Core Tools", ran(), StringComparison.Ordinal);
             Assert.Equal(AspireFunctionsApp.Answer, Ui.AwaitPumped(http.GetStringAsync(Listening(function)), "the function's answer under Run"));
-            Assert.Contains(Refusals.FunctionsUnreloaded, window.Status, StringComparison.Ordinal);
+            Assert.Contains(Refusals.FunctionsUnreloaded.Shown, window.Status, StringComparison.Ordinal);
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => Leftovers().Count == 0, () => $"Stop to end func and its worker: {string.Join("; ", Leftovers().Values)}");
 

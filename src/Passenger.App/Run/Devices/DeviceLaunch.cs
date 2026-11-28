@@ -124,7 +124,7 @@ public static class DeviceLaunches
         }
         if (device.Target.Platform != TargetPlatform.Android)
         {
-            return (null, Refusals.NotYetOn(device.Target.Name));
+            return (null, Refusals.NotYetOn(device.Target.Name).Shown);
         }
         string name = Path.GetFileNameWithoutExtension(project);
         say($"Looking for {device.Target.Name}…");

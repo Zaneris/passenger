@@ -94,8 +94,8 @@ public sealed class NavigationBarTests : IDisposable
             editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
             Ui.Press(window, "BACKSPACE");
             Ui.WaitFor(() => !bar.Bar.IsVisible, "the bar gone once the file declares nothing");
-            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
-            Ui.WaitFor(() => window.Status == Refusals.DeclaresNothing("Cart.cs"), () => $"Jump to Navigation Bar in a file declaring nothing saying why, not '{window.Status}'");
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar)?.Shown);
+            Ui.WaitFor(() => window.Status == Refusals.DeclaresNothing("Cart.cs").Shown, () => $"Jump to Navigation Bar in a file declaring nothing saying why, not '{window.Status}'");
             window.KeyTextInput("record Order;");
             Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.SequenceEqual(["Order"]),
                 () => $"the bar back naming the record typed into the emptied file, not {(bar.Bar.IsVisible ? string.Join(" › ", bar.Shown) : "hidden")}");
@@ -111,7 +111,7 @@ public sealed class NavigationBarTests : IDisposable
         (MainWindow window, CodeEditor editor, NavigationBar bar) = OpenCart();
         try
         {
-            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar)?.Shown);
             Ui.Settle();
             Assert.True(bar.Buttons[^1].IsKeyboardFocusWithin, "Jump to Navigation Bar left the bar's last part without the keys");
             Ui.Press(window, "LEFT");
@@ -126,7 +126,7 @@ public sealed class NavigationBarTests : IDisposable
             Ui.Press(window, "Escape");
             Assert.True(editor.IsKeyboardFocusWithin, "Escape in the bar did not give the editor the keys back");
 
-            Assert.Null(window.Actions.Run(AppActions.PreviousRegion));
+            Assert.Null(window.Actions.Run(AppActions.PreviousRegion)?.Shown);
             Ui.Settle();
             Assert.True(bar.Bar.IsKeyboardFocusWithin, "Previous Region from the editor passed over the bar above it");
             Ui.Press(window, "Escape");
@@ -134,7 +134,7 @@ public sealed class NavigationBarTests : IDisposable
             window.ApplySettings(window.Settings with { ShowNavigationBar = false });
             Ui.Settle();
             Assert.False(bar.Bar.IsVisible, "With the setting off, the bar still shows over the editor");
-            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar)?.Shown);
             Ui.WaitFor(() => window.Popup is SymbolPopup { IsSettled: true }, "the caret's part's list");
             SymbolPopup members = (SymbolPopup)window.Popup!;
             Assert.Equal("Members of Cart", members.Title);

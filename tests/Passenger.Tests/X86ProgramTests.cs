@@ -50,7 +50,7 @@ public sealed class X86ProgramTests
             if (!OperatingSystem.IsWindows())
             {
                 string? elsewhere = Ui.Await(window.RunAsync(), "Run's refusal of an x86 program off Windows", TimeSpan.FromMinutes(2));
-                Assert.True(elsewhere?.Contains(Refusals.X86OnWindowsAlone, StringComparison.Ordinal) == true,
+                Assert.True(elsewhere?.Contains(Refusals.X86OnWindowsAlone.Shown, StringComparison.Ordinal) == true,
                     $"Run of an x86 program off Windows was not refused saying .NET runs one only on Windows, so it would fail loading its assembly: {elsewhere ?? "it ran"}");
                 return;
             }
@@ -139,7 +139,7 @@ public sealed class X86ProgramTests
             window.Debugger.Breakpoints.Toggle(Path.Combine(PathNames.Canonical(folder), "Program.cs"), Started);
             string? refused = Ui.Await(window.DebugAsync(), "Debug's refusal of a 32-bit debugger whose download did not match", TimeSpan.FromMinutes(4));
             string mismatched = Refusals.Undebugged("Hello",
-                Refusals.X86DebuggerMissing($"{X86DebuggerSource.Named} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used"));
+                Refusals.X86DebuggerMissing($"{X86DebuggerSource.Named} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used")).Shown;
             Assert.True(refused == mismatched, $"Debug with a 32-bit debugger whose download did not match its SHA256SUMS answered\n{refused ?? "nothing: it debugged"}\nwhere it should say\n{mismatched}");
             Assert.False(window.Debugger.IsDebugging, "A session started on a 32-bit debugger whose download did not match its SHA256SUMS");
             Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(cache, Product.Version)));
@@ -148,7 +148,7 @@ public sealed class X86ProgramTests
             github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData(zip))}  {X86DebuggerSource.Asset}\n"));
             github.Hold(X86DebuggerSource.Asset);
             Task<string?> held = window.DebugAsync();
-            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Debug)?.Stage.StartsWith($"Downloading {X86DebuggerSource.Named}", StringComparison.Ordinal) == true
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Debug)?.Stage.Shown.StartsWith($"Downloading {X86DebuggerSource.Named}", StringComparison.Ordinal) == true
                 || held.IsCompleted, "Debug's work to say it is downloading the 32-bit debugger", TimeSpan.FromMinutes(4));
             Assert.False(held.IsCompleted, $"Debug ended before it downloaded the 32-bit debugger: {(held.IsCompleted ? held.Result : null)}");
             Ui.Run(window, AppActions.Stop, settle: false);
@@ -349,7 +349,7 @@ public sealed class X86ProgramTests
             };
             window.SetConfigurations([configuration], configuration.Name);
             string? refused = Ui.Await(window.RunAsync(), "Run's refusal of an x86 program with no x86 .NET", TimeSpan.FromMinutes(4));
-            string expected = $"Could not run Hello: {Refusals.X86RuntimeMissing(none, [(".NET Runtime", TestProjects.Framework["net".Length..])])}";
+            string expected = $"Could not run Hello: {Refusals.X86RuntimeMissing(none, [(".NET Runtime", TestProjects.Framework["net".Length..])]).Shown}";
             Assert.True(refused == expected,
                 $"Run of an x86 program with no x86 .NET did not name the runtime to install, so the program would fail as it starts:\n{refused ?? "it ran"}\nwhere it should say\n{expected}");
             Assert.DoesNotContain("started as", Output(window), StringComparison.Ordinal);

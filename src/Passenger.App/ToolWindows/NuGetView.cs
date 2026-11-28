@@ -356,7 +356,7 @@ public sealed partial class NuGetView : DockPanel
     /// <summary>Why a project's action can't run: another package change under way, or, for one that puts the chosen version
     /// in, the audit's feeds not having said yet whether it is vulnerable; null where it can.</summary>
     private string? WhyNot(bool putsIn) =>
-        model.IsBusy ? Refusals.PackageChangeUnderWay : putsIn && model.IsAuditing ? Refusals.VulnerabilitiesUnread : null;
+        (model.IsBusy ? Refusals.PackageChangeUnderWay : putsIn && model.IsAuditing ? Refusals.VulnerabilitiesUnread : null)?.Shown;
 
     /// <summary>The chosen package's line per project, among its details; null while none is chosen.</summary>
     private StackPanel? ProjectsPanel => details.Children.OfType<StackPanel>().FirstOrDefault(p => p.Name == "projects");
@@ -748,7 +748,7 @@ public sealed partial class NuGetView : DockPanel
     {
         if (model.IsAuditing)
         {
-            Hold(Refusals.VulnerabilitiesUnread);
+            Hold(Refusals.VulnerabilitiesUnread.Shown);
             return false;
         }
         return Selected is { } row && (ChosenVersion ?? row.Version) is { Length: > 0 } version
@@ -767,7 +767,7 @@ public sealed partial class NuGetView : DockPanel
     {
         if (model.IsAuditing)
         {
-            Hold(Refusals.VulnerabilitiesUnread);
+            Hold(Refusals.VulnerabilitiesUnread.Shown);
             return false;
         }
         return Said(await model.InstallAsync(project, fix.Id, fix.Version, frameworks: fix.Frameworks));

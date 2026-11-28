@@ -22,14 +22,17 @@ public sealed class GamePaneChoiceTests
 
     private void On_macOS_a_godot_from_4_5_draws_its_game_as_a_layer_in_the_game_window()
     {
-        Assert.Equal((GamePaneHolds.Layer, (string?)null), MainWindow.InPaneChoice("Ticker", unseen: false, headless: false, "4.7.2", macOS: true, embedding: false, layerHost: true, holding: null));
+        Assert.Equal((GamePaneHolds.Layer, (string?)null), Said(MainWindow.InPaneChoice("Ticker", unseen: false, headless: false, "4.7.2", macOS: true, embedding: false, layerHost: true, holding: null)));
     }
 
     private void A_game_nobody_sees_or_one_while_the_game_window_holds_another_draws_in_its_own()
     {
-        Assert.Equal((GamePaneHolds.Nothing, Refusals.GameHeadless("Ticker")),
-            MainWindow.InPaneChoice("Ticker", unseen: true, headless: false, "4.7.2", macOS: true, embedding: false, layerHost: true, holding: null));
-        Assert.Equal((GamePaneHolds.Nothing, Refusals.GameWindowHolds("Ticker #2")),
-            MainWindow.InPaneChoice("Ticker", unseen: false, headless: false, "4.7.2", macOS: true, embedding: false, layerHost: true, holding: "Ticker #2"));
+        Assert.Equal((GamePaneHolds.Nothing, Refusals.GameHeadless("Ticker").Shown),
+            Said(MainWindow.InPaneChoice("Ticker", unseen: true, headless: false, "4.7.2", macOS: true, embedding: false, layerHost: true, holding: null)));
+        Assert.Equal((GamePaneHolds.Nothing, Refusals.GameWindowHolds("Ticker #2").Shown),
+            Said(MainWindow.InPaneChoice("Ticker", unseen: false, headless: false, "4.7.2", macOS: true, embedding: false, layerHost: true, holding: "Ticker #2")));
     }
+
+    /// <summary>A choice with its words why as the window says them.</summary>
+    private static (GamePaneHolds Holds, string? WhyNot) Said((GamePaneHolds Holds, Passenger.Core.Words? WhyNot) choice) => (choice.Holds, choice.WhyNot?.Shown);
 }

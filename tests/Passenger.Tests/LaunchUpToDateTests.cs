@@ -148,7 +148,7 @@ public sealed class LaunchUpToDateTests
         {
             if (!change.Ended)
             {
-                stages.Add(change.Work.Stage);
+                stages.Add(change.Work.Stage.Shown);
             }
         };
         window.Actions.Work.Changed += worked;

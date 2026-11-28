@@ -40,7 +40,7 @@ public sealed class InstrumentationRunner(Func<string, IReadOnlyList<TestItem>> 
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
         ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default)
     {
-        coverage?.Missed(Refusals.CoverageOnDevice);
+        coverage?.Missed(Refusals.CoverageOnDevice.Shown);
         RunSummary? summary = null;
         foreach (IGrouping<(string Project, string? Framework), TestItem> asked in tests.GroupBy(t => (t.Project, t.Framework)))
         {

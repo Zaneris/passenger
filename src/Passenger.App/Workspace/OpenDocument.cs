@@ -1044,7 +1044,7 @@ public sealed class OpenDocument : Observable
     {
         if (WhyNotConverted(toTabs) is { } why)
         {
-            throw new IOException(why);
+            throw new IOException(why.English);
         }
         IndentOptions from = Indentation.Options;
         // Tabs as wide as a level, so the lines stand where they stood.
@@ -1067,7 +1067,7 @@ public sealed class OpenDocument : Observable
     /// takes no tabs, the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
     /// language's once its grammar has read the whole file (never, once it failed; a language with neither has none known
     /// unless it holds none), or its language would read a block of the result otherwise.</summary>
-    public string? WhyNotConverted(bool toTabs) =>
+    public Words? WhyNotConverted(bool toTabs) =>
         ReadOnlyWhy is { } readOnly ? readOnly
         : toTabs && Language.IndentsWithSpacesAlone ? Refusals.SpacesAlone(Name, Language.Name)
         : parser is TextMateHighlighter { Failure: { } failure } ? Refusals.GrammarFailed(Name, Language.Name, failure.Message)
@@ -1280,7 +1280,7 @@ public sealed class OpenDocument : Observable
         }
         if (ReadOnlyWhy is { } readOnly)
         {
-            throw new IOException(readOnly);
+            throw new IOException(readOnly.English);
         }
         Stored before = Current;
         SelectionSet carets = Selections;
@@ -1483,7 +1483,7 @@ public sealed class OpenDocument : Observable
     /// <summary>Why every change of it is refused, in Refusals' words, while it is read-only (<see cref="IsReadOnly"/>); null
     /// while it is not. Its text read-only by where it lies is refused as every write of such a file is, open or not, a
     /// package's naming the package (<see cref="ReadOnlyFiles.Refused"/>); a tab holding none of its file's text as read-only.</summary>
-    public string? ReadOnlyWhy => !IsReadOnly ? null : (HoldsText ? ReadOnlyFiles.Refused(Path, Name) : null) ?? Refusals.ReadOnly(Name);
+    public Words? ReadOnlyWhy => !IsReadOnly ? null : (HoldsText ? ReadOnlyFiles.Refused(Path, Name) : null) ?? Refusals.ReadOnly(Name);
 
     /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
     private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
@@ -1529,7 +1529,7 @@ public sealed class OpenDocument : Observable
         : Diff is not null ? "A diff of two versions of the file, side by side"
         : Product.Carries(Path) ? "Passenger's own file, as the app carries it, read-only"
         : MSBuild.MSBuildFiles.IsInstalled(Path) ? "An MSBuild file of the .NET SDK or a package, as installed, read-only"
-        : Packages.PackageFolders.PackageOf(Path) is { } package ? $"{Refusals.Sentence(Refusals.PackagesOwn(package))}, read-only"
+        : Packages.PackageFolders.PackageOf(Path) is { } package ? Refusals.PackagesFileReadOnly(package).Shown
         : Containers.ContainerFilesPane.IsCopy(Path) ? "A copy of what a container holds, or of what the engine says of it, read-only"
         : Endpoints.RequestLog.IsCommandCopy(Path) ? "SQL a running app issued, or an EF Core query's the debugger read, copied to read, read-only"
         : CSharp.GeneratedCode.IsCopy(Path) ? "Code a source generator made, as the C# language server has it, read-only"
@@ -1745,7 +1745,7 @@ public sealed class OpenDocument : Observable
         }
         if (ReadOnlyWhy is { } readOnly)
         {
-            throw new IOException(readOnly);
+            throw new IOException(readOnly.English);
         }
         if (!IsModified && !overDisk)
         {

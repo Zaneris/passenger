@@ -198,14 +198,14 @@ internal static class DocumentClient
                 {
                     if (await collection.CountDocumentsAsync(read, cancellationToken: cancel) == 0)
                     {
-                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()));
+                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()).English);
                     }
                 }
                 foreach ((RowKey deleted, object?[] read) in edits.Deleted)
                 {
                     if ((await collection.DeleteOneAsync(AsRead(key, deleted, read, page.Columns, Enumerable.Range(0, read.Length)), cancel)).DeletedCount == 0)
                     {
-                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), deleted.ToString()));
+                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), deleted.ToString()).English);
                     }
                     left = left with { Deleted = left.Deleted.Remove(deleted) };
                 }
@@ -214,7 +214,7 @@ internal static class DocumentClient
                     BsonDocument set = new(row.Written.Select(w => new BsonElement(page.Columns[w.Key], Written(w.Value, row.Read[w.Key]))));
                     if ((await collection.UpdateOneAsync(held[changed], new BsonDocument("$set", set), cancellationToken: cancel)).MatchedCount == 0)
                     {
-                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()));
+                        throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()).English);
                     }
                     left = left with { Changed = left.Changed.Remove(changed) };
                 }
@@ -236,7 +236,7 @@ internal static class DocumentClient
                     cancellationToken: cancel);
                 if (!now.IsSuccessStatusCode || (await JsonNode.ParseAsync(now.Content, cancellationToken: cancel))?["_etag"]?.ToJsonString() != read["_etag"]?.ToJsonString())
                 {
-                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()));
+                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), changed.ToString()).English);
                 }
             }
             foreach (RowKey deleted in edits.Deleted.Keys)
@@ -282,7 +282,7 @@ internal static class DocumentClient
             {
                 if (answer.StatusCode == HttpStatusCode.PreconditionFailed)
                 {
-                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), written.ToString()));
+                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), written.ToString()).English);
                 }
                 Checked(answer);
             }
@@ -307,7 +307,7 @@ internal static class DocumentClient
     {
         if (source.Kind == DatabaseKind.CosmosDb && source.Database.Length == 0)
         {
-            told(new SqlResult(runs.FirstOrDefault() ?? string.Empty, [], -1, Refusals.NoCosmosDatabase(source.Name), TimeSpan.Zero));
+            told(new SqlResult(runs.FirstOrDefault() ?? string.Empty, [], -1, Refusals.NoCosmosDatabase(source.Name).Shown, TimeSpan.Zero));
             return;
         }
         using MongoClient? mongo = source.Kind == DatabaseKind.MongoDb ? Mongo(source) : null;
