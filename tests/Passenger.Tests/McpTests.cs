@@ -601,9 +601,9 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
 
     /// <summary>An agent's code_actions at an interface's name offers Create Fake into the test project that sees it, and at a
     /// sealed class the same action, refused saying the seam it needs; apply_code_action writes the fake into the test
-    /// project's Fakes folder, and tests_run runs green the tests that stand it in for the clock. In a call missing the
-    /// clock, Fill Arguments with Doubles writes a double of the mocking library the test project references (a stand-in
-    /// of NSubstitute's, a proxy answering defaults), which a test runs green with too (#2087).</summary>
+    /// project's Fakes folder, beside fakes keeping their types' declarations (<see cref="Doubled"/>), and tests_run runs them
+    /// green. In a call missing the clock, Fill Arguments with Doubles writes a double of the mocking library the test
+    /// project references (a stand-in of NSubstitute's, a proxy answering defaults), which a test runs green with (#2087).</summary>
     private async Task An_agent_makes_a_fake_of_a_dependency_and_fills_a_calls_arguments_with_its_mocking_librarys_doubles_and_tests_using_them_run_green()
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-fake-"));
@@ -612,6 +612,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             TestFolders.Write(folder, "Shop/Shop.csproj", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
             TestFolders.Write(folder, "Shop/Greeter.cs", ClockedGreeter);
+            TestFolders.Write(folder, "Shop/Doubled.cs", Doubled);
             TestFolders.Write(folder, "Shop.Tests/Shop.Tests.csproj",
                 $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <Nullable>enable</Nullable>\n" +
                 "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
@@ -636,6 +637,17 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string fake = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "Fakes", "FakeClock.cs"));
         Assert.True(fake.StartsWith("namespace Shop.Tests.Fakes;", StringComparison.Ordinal) && fake.Contains("public Func<int, string>? OnZone { get; set; }", StringComparison.Ordinal),
             $"the fake written was\n{fake}");
+        foreach ((int line, int column, string type, string file, string written) in new[]
+        {
+            (3, 23, "Named", "FakeNamed.cs", "public override string Name { get; protected set; }"),
+            (8, 18, "IStore<T>", "FakeStore.cs", "where T : unmanaged"),
+            (15, 22, "Outer<T>.IInner<U>", "FakeInner.cs", "class FakeInner<T, U> : Outer<T>.IInner<U>"),
+        })
+        {
+            await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop/Doubled.cs", ["line"] = line, ["column"] = column, ["title"] = $"Create Fake of {type} in Shop.Tests" });
+            string made = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "Fakes", file)).ReplaceLineEndings("\n");
+            Assert.True(made.Contains(written, StringComparison.Ordinal), $"the fake of {type} written was\n{made}");
+        }
         TestFolders.Write(folder, "Shop.Tests/GreeterTests.cs", GreeterTests);
         JsonElement run = await Call(client, McpTools.TestsRun);
         Assert.StartsWith("Tests passed: 2, failed: 0 of 2", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
@@ -669,6 +681,31 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         {
             protected override object? Invoke(MethodInfo? method, object?[]? args) =>
                 method?.ReturnType is { IsValueType: true } type && type != typeof(void) ? System.Activator.CreateInstance(type) : null;
+        }
+
+        """;
+
+    /// <summary>Types whose fakes must keep what they declare to compile: an accessor less accessible than its property, a
+    /// type parameter's unmanaged constraint, and the type parameters of the type holding a nested one.</summary>
+    private const string Doubled = """
+        namespace Shop;
+
+        public abstract class Named
+        {
+            public abstract string Name { get; protected set; }
+        }
+
+        public interface IStore<T> where T : unmanaged
+        {
+            T Read();
+        }
+
+        public class Outer<T>
+        {
+            public interface IInner<U>
+            {
+                T Make(U from);
+            }
         }
 
         """;

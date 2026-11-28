@@ -173,14 +173,26 @@ internal static partial class TestDoubles
         : type.InstanceConstructors.Any(Callable) ? null : FakeSeams.Closed;
 
     /// <summary>Whether a fake can stand in for a type: an interface with no static abstract members, or a class a fake can
-    /// derive from whose abstract members it can all override and that has a member to override.</summary>
-    public static bool CanFake(INamedTypeSymbol type) => type.TypeKind switch
+    /// derive from whose abstract members it can all override and that has a member to override; never one whose type
+    /// parameters and those of the types holding it share a name, which a fake declaring them all can't.</summary>
+    public static bool CanFake(INamedTypeSymbol type) => TypeParameters(type).DistinctBy(p => p.Name).Count() == TypeParameters(type).Count && type.TypeKind switch
     {
         TypeKind.Interface => !Interfaces(type).SelectMany(i => i.GetMembers()).Any(m => m.IsStatic && m.IsAbstract),
         TypeKind.Class => !type.IsRecord && SeamOf(type) is null && Overridable(type).Any()
             && !Chain(type).SelectMany(t => t.GetMembers()).Any(m => m.IsAbstract && !Reachable(m.DeclaredAccessibility) && !IsOverriddenBelow(type, m)),
         _ => false,
     };
+
+    /// <summary>A type's type parameters with those of the types holding it, the outermost's first, as a fake of it declares them.</summary>
+    private static List<ITypeParameterSymbol> TypeParameters(INamedTypeSymbol type)
+    {
+        List<ITypeParameterSymbol> parameters = [];
+        for (INamedTypeSymbol? at = type; at is not null; at = at.ContainingType)
+        {
+            parameters.InsertRange(0, at.TypeParameters);
+        }
+        return parameters;
+    }
 
     /// <summary>Whether a fake of a class leaves members a test cannot set its own: a public instance member that is not
     /// virtual.</summary>
@@ -357,23 +369,48 @@ internal static partial class TestDoubles
                 Derive(type, name);
             }
             // Each member a line or two from the one before, as the formatter leaves them; the file's blank lines are made one after.
-            SyntaxNode declared = generator.ClassDeclaration(name, type.TypeParameters.Select(t => t.Name), Accessibility.Internal, DeclarationModifiers.Sealed,
+            List<ITypeParameterSymbol> parameters = TypeParameters(type);
+            SyntaxNode declared = generator.ClassDeclaration(name, parameters.Select(t => t.Name), Accessibility.Internal, DeclarationModifiers.Sealed,
                 type.TypeKind == TypeKind.Class ? Type(type) : null, type.TypeKind == TypeKind.Interface ? [Type(type)] : null,
                 members.Select((m, i) => i == 0 ? m : m.WithLeadingTrivia(m.GetLeadingTrivia().InsertRange(0, [EndOfLine("\n"), EndOfLine("\n")]))));
-            foreach (ITypeParameterSymbol parameter in type.TypeParameters)
-            {
-                SpecialTypeConstraintKind kinds = (parameter.HasReferenceTypeConstraint ? SpecialTypeConstraintKind.ReferenceType : 0)
-                    | (parameter.HasValueTypeConstraint ? SpecialTypeConstraintKind.ValueType : 0)
-                    | (parameter.HasConstructorConstraint ? SpecialTypeConstraintKind.Constructor : 0);
-                if (kinds != SpecialTypeConstraintKind.None || parameter.ConstraintTypes.Length > 0)
-                {
-                    declared = generator.WithTypeConstraint(declared, parameter.Name, kinds, parameter.ConstraintTypes.Select(Type));
-                }
-            }
+            declared = ((ClassDeclarationSyntax)declared).WithConstraintClauses(List(parameters.Select(Constraints).OfType<TypeParameterConstraintClauseSyntax>()));
             string own = type.TypeKind == TypeKind.Class ? $", else by {type.Name}'s own where it has one" : string.Empty;
             return ((MemberDeclarationSyntax)declared).WithLeadingTrivia(ParseLeadingTrivia(
                 $"/// <summary>A fake of {type.Name} for tests: each call is recorded in its member's Calls and answered by its On hook where a test\n"
                 + $"/// sets one{own}, else by a default.</summary>\n"));
+        }
+
+        /// <summary>A type parameter's constraints as its type declares them, in the order C# writes them; none where it has none.</summary>
+        private TypeParameterConstraintClauseSyntax? Constraints(ITypeParameterSymbol parameter)
+        {
+            List<TypeParameterConstraintSyntax> constraints = [];
+            if (parameter.HasReferenceTypeConstraint)
+            {
+                constraints.Add(ClassOrStructConstraint(SyntaxKind.ClassConstraint)
+                    .WithQuestionToken(parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated ? Token(SyntaxKind.QuestionToken) : default));
+            }
+            else if (parameter.HasUnmanagedTypeConstraint)
+            {
+                constraints.Add(TypeConstraint(IdentifierName("unmanaged")));
+            }
+            else if (parameter.HasValueTypeConstraint)
+            {
+                constraints.Add(ClassOrStructConstraint(SyntaxKind.StructConstraint));
+            }
+            else if (parameter.HasNotNullConstraint)
+            {
+                constraints.Add(TypeConstraint(IdentifierName("notnull")));
+            }
+            constraints.AddRange(parameter.ConstraintTypes.Select(t => TypeConstraint(Type(t))));
+            if (parameter.HasConstructorConstraint)
+            {
+                constraints.Add(ConstructorConstraint());
+            }
+            if (parameter.AllowsRefLikeType)
+            {
+                constraints.Add(AllowsConstraintClause(SingletonSeparatedList<AllowsConstraintSyntax>(RefStructConstraint())));
+            }
+            return constraints.Count == 0 ? null : TypeParameterConstraintClause(IdentifierName(parameter.Name), SeparatedList(constraints));
         }
 
         /// <summary>Each abstract member of an interface and those it extends, once for each signature; a second of a
@@ -561,7 +598,8 @@ internal static partial class TestDoubles
         }
 
         /// <summary>A member made public and plain where it implements an interface, or an override of its class's member at
-        /// that member's accessibility without the constraints its overridden member gives it, then given its bodies.</summary>
+        /// that member's accessibility (an accessor's at its own) without the constraints its overridden member gives it, then
+        /// given its bodies.</summary>
         private MemberDeclarationSyntax Overriding(SyntaxNode declared, ISymbol member, bool overriding, IEnumerable<SyntaxNode>? statements = null,
             IEnumerable<SyntaxNode>? get = null, IEnumerable<SyntaxNode>? set = null)
         {
@@ -582,6 +620,13 @@ internal static partial class TestDoubles
             if (set is not null)
             {
                 declared = generator.WithSetAccessorStatements(declared, set);
+            }
+            if (overriding && member is IPropertySymbol property && declared is BasePropertyDeclarationSyntax { AccessorList: { } accessors } overridden)
+            {
+                declared = overridden.WithAccessorList(accessors.WithAccessors(List(accessors.Accessors.Select(a =>
+                    (a.IsKind(SyntaxKind.GetAccessorDeclaration) ? property.GetMethod : property.SetMethod) is { } own && own.DeclaredAccessibility != property.DeclaredAccessibility
+                        ? a.WithModifiers(TokenList(SyntaxFacts.GetText(Accessible(own.DeclaredAccessibility)).Split(' ').Select(w => Token(SyntaxFacts.GetKeywordKind(w)))))
+                        : a))));
             }
             return (MemberDeclarationSyntax)declared;
         }
