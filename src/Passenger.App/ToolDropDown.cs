@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -27,9 +29,9 @@ public class ToolDropDown : ComboBox
     protected override Type StyleKeyOverride => typeof(ComboBox);
 
     /// <summary>Words before a drop-down, which name it to a screen reader; with too little room the drop-down gives way.</summary>
-    public static Control Labelled(string label, ComboBox box)
+    public static Control Labelled(Words label, ComboBox box)
     {
-        TextBlock words = new() { Text = label, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock words = new() { [ShownWords.TextProperty] = label, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetLabeledBy(box, words);
         DockPanel.SetDock(words, Dock.Left);
         return new DockPanel { HorizontalSpacing = Gaps.Small, Children = { words, box } };

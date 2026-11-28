@@ -623,8 +623,8 @@ public sealed partial class PassengerTools
         }
         EfUpdate weighed = await window.Migrations.UpdateAsync(chosen, id, at, null, cancel);
         PackageChange done = weighed.AsAsked
-            ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said }
-            : weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said }
+            ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said?.English }
+            : weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said?.English }
             : throw new RefusedException(weighed.Said ?? Refusals.SolutionClosed);
         return await WarnedAsync(done, feeds, offered, cancel);
     });

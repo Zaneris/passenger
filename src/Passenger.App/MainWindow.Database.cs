@@ -1222,7 +1222,7 @@ public partial class MainWindow
     /// <summary>Shows a connection another window uses in the Database window and opens its row as a click would, the folder's
     /// connections found first: one listed with its connection string taken, else <paramref name="wanted"/> listed beside them
     /// (until the folder's end where <paramref name="lasting"/>). Why not once refused, said.</summary>
-    internal async Task<(DatabaseSource? Used, string? Why)> ShowDatabaseOfAsync(DatabaseSource wanted, bool lasting)
+    internal async Task<(DatabaseSource? Used, Words? Why)> ShowDatabaseOfAsync(DatabaseSource wanted, bool lasting)
     {
         ProjectSession asked = session;
         DatabaseController controller = Database;
@@ -1230,13 +1230,13 @@ public partial class MainWindow
         await DatabasesFoundAsync();
         if (session != asked)
         {
-            return (null, Refusals.SolutionClosed.Shown);
+            return (null, Refusals.SolutionClosed);
         }
         DatabaseSource used = controller.Use(wanted, lasting);
         if (WhyNotOpened(used) is { } why)
         {
             Refuse(why);
-            return (null, why.Shown);
+            return (null, why);
         }
         if (DatabaseExplorer.Rows.FirstOrDefault(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == used.Id) is { } row)
         {

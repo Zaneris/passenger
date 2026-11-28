@@ -54,16 +54,16 @@ public sealed class EfOutputFoldersTests
     private void A_folder_typed_or_picked_is_taken_from_the_projects_and_one_outside_it_refused()
     {
         string folder = Data.Folder;
-        Assert.Equal(((string?)null, (string?)null), EfOutputFolders.Read("  ", Data));
-        Assert.Equal(("Migrations/Postgres", (string?)null), EfOutputFolders.Read("Migrations/Postgres/", Data));
-        Assert.Equal(("Migrations/Postgres", (string?)null), EfOutputFolders.Read("./Migrations/../Migrations/Postgres", Data));
-        Assert.Equal(("Data/Migrations", (string?)null), EfOutputFolders.Read(Path.Combine(folder, "Data", "Migrations"), Data));
-        Assert.Equal((".", (string?)null), EfOutputFolders.Read(folder, Data));
+        Assert.Equal(((string?)null, (EfFolderUnfit?)null), EfOutputFolders.Read("  ", Data));
+        Assert.Equal(("Migrations/Postgres", (EfFolderUnfit?)null), EfOutputFolders.Read("Migrations/Postgres/", Data));
+        Assert.Equal(("Migrations/Postgres", (EfFolderUnfit?)null), EfOutputFolders.Read("./Migrations/../Migrations/Postgres", Data));
+        Assert.Equal(("Data/Migrations", (EfFolderUnfit?)null), EfOutputFolders.Read(Path.Combine(folder, "Data", "Migrations"), Data));
+        Assert.Equal((".", (EfFolderUnfit?)null), EfOutputFolders.Read(folder, Data));
         foreach (string outside in (string[])["../Shared/Migrations", Path.Combine(Root, "Elsewhere")])
         {
-            (string? taken, string? why) = EfOutputFolders.Read(outside, Data);
-            Assert.True(taken is null && why?.Contains("outside MyApp.Data", StringComparison.Ordinal) == true,
-                $"{outside} was taken as {taken ?? "nothing"} ({why ?? "no refusal"}): dotnet ef would write the migrations outside the project");
+            (string? taken, EfFolderUnfit? unfit) = EfOutputFolders.Read(outside, Data);
+            Assert.True(taken is null && unfit == new EfFolderUnfit(outside, null),
+                $"{outside} was taken as {taken ?? "nothing"} ({unfit?.ToString() ?? "no refusal"}): dotnet ef would write the migrations outside the project");
         }
     }
 
