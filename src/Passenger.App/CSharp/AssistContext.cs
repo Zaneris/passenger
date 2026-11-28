@@ -163,6 +163,38 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         return itself.Count > 0 ? itself : await csharp.UntakenAsync(document, offset(), CancellationToken.None);
     }
 
+    /// <summary>How many times in a row <see cref="AnsweredAsync"/> asks again a server that could not answer.</summary>
+    private const int AskedAgain = 5;
+
+    /// <summary>The C# server's answer of an open file for a box, card or list a person waits on, given to <paramref name="answered"/>:
+    /// a question it could not answer (cancelled for a change it took in, refused, or gone with the server) asked again once a
+    /// server answers for the file, at once where the one asked still does, else once another has taken the file in, up to
+    /// <see cref="AskedAgain"/> times in a row while <paramref name="open"/> lets it, then its failure thrown; a file no C#
+    /// server reads asked once. Each question is held as background work with its answer.</summary>
+    public async Task AnsweredAsync<T>(OpenDocument document, LspDocument served, Func<LspDocument, CancellationToken, Task<T>> ask, Action<T> answered,
+        CancellationToken open)
+    {
+        for (int failed = 0; ; failed++)
+        {
+            CSharpService waiting;
+            LspDocument? gone;
+            using (BackgroundWork.Scope())
+            {
+                try
+                {
+                    answered(await ask(served, open));
+                    return;
+                }
+                catch (LanguageServerFailed refused) when (failed < AskedAgain && CSharp is { } csharp && csharp.For(document) is not null)
+                {
+                    (waiting, gone) = (csharp, refused.Ended ? served : null);
+                }
+            }
+            // Not held: a server's start or a project's load may take long, or not end while what waits is open.
+            served = await waiting.TakenInAsync(document, gone, open);
+        }
+    }
+
     private void SayWaiting(string? waiting) => Say(waiting is null ? string.Empty
         : global::Passenger.Workspace.WorkspaceModel.IsProjectFile(waiting) ? $"Waiting for the C# language server to load {Path.GetFileName(waiting)} again…"
         : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…");

@@ -78,7 +78,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a method chosen from the list is written called, the caret inside its brackets when it takes arguments", () => new CodeAssistTests(project), t => t.A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments());
         Flow.StepApart("a method chosen is written at once, its brackets following in its step of Undo unless typed on before they came", () => new CodeAssistTests(project), t => t.A_method_chosen_is_written_at_once_its_brackets_following_in_its_step_of_undo_unless_typed_on_before_they_came());
         Flow.StepApart("with parentheses turned off a method chosen from the list is written as its name alone", () => new CodeAssistTests(project), t => t.With_parentheses_turned_off_a_method_chosen_from_the_list_is_written_as_its_name_alone());
-        Flow.StepApart("typing after a dot completes, filtered as you type, and Enter commits it", () => new CodeAssistTests(project), t => t.Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out());
+        Flow.StepApart("typing after a dot completes, filtered as you type, its item's card asked again where the server cancelled the question, and Enter commits it", () => new CodeAssistTests(project), t => t.Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out());
         Flow.StepApart("CamelHumps typed offer the names they start after the prefix matches, and Enter writes the one chosen", () => new CodeAssistTests(project), t => t.CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen());
         Flow.StepApart("a space after override lists the members to override and no template, and Enter writes one", () => new CodeAssistTests(project), t => t.A_space_after_override_lists_the_members_to_override_and_no_template_and_Enter_writes_one());
         Flow.StepApart("a list still asked for is let go by an Escape or the caret moved out of its name", () => new CodeAssistTests(project), t => t.A_list_still_asked_for_is_let_go_by_an_escape_or_the_caret_moved_out_of_its_name());
@@ -1496,11 +1496,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         window.KeyTextInput("W");
         Ui.Settle();
+        // The first question for WriteLine's card is cancelled, as the server cancels one a change it took in made stale; the card still comes.
+        Task cancelled = window.CSharpService!.Session!.Server.HoldNextAnswer(window.CSharpService.For(window.EditorArea.Active!)!.Lsp!.ResolveMethod,
+            p => p is Passenger.Lsp.CompletionItem { Label: "WriteLine" }, Task.FromCanceled(new CancellationToken(canceled: true)));
         window.KeyTextInput("riteL");
         Ui.Settle();
         Assert.True(window.Assist.IsCompletionOpen);
         Assert.Equal("WriteLine", window.Assist.CompletionLabels.FirstOrDefault());
-        Ui.WaitFor(() => window.Assist.ItemDocumentation is { Length: > 0 }, "WriteLine's documentation");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation is { Length: > 0 }, "WriteLine's documentation, asked again where the server cancelled the question");
+        Assert.True(cancelled.IsCompleted, "No question for WriteLine's card was cancelled, so the step no longer holds the card to asking again");
         string card = window.Assist.ItemDocumentation!;
         int listed = window.Assist.ItemCard!.GetVisualDescendants().OfType<ColouredCode>().Count();
         Assert.True(listed == 8 && card.Contains(" more overloads", StringComparison.Ordinal) && card.Contains("Writes", StringComparison.Ordinal),

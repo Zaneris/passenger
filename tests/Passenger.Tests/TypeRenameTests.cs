@@ -93,12 +93,14 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Flow.StepApart("the rename of a class whose file cannot be renamed is refused before anything changes, and made once the file is let go", () => new TypeRenameTests(folders), t => t.Rename_of_a_class_whose_file_cannot_be_renamed_is_refused_before_anything_changes_and_made_once_the_file_is_let_go());
     }
 
-    /// <summary>A rename meeting what else goes on loses nothing: a line typed while it is out, Undo pressed while it
-    /// writes its closed files, a rename asked while an Undo's writes are held, a closed file gone partway; and one
-    /// across large closed files costs the window's thread what one across small ones does.</summary>
+    /// <summary>A rename meeting what else goes on loses nothing: its box's question for the files cancelled by the server,
+    /// a line typed while it is out, Undo pressed while it writes its closed files, a rename asked while an Undo's writes are
+    /// held, a closed file gone partway; and one across large closed files costs the window's thread what one across small
+    /// ones does.</summary>
     [AvaloniaFact]
     public void A_rename_meeting_typing_an_undo_or_a_file_gone_loses_nothing_and_costs_the_window_what_a_small_one_does()
     {
+        Flow.StepApart("Rename's box on a class named like its file offers the file where the server cancelled the first question for it", () => new TypeRenameTests(folders), t => t.Renames_box_on_a_class_named_like_its_file_offers_the_file_where_the_server_cancelled_the_first_question_for_it());
         Flow.StepApart("a line typed in a class's file while its rename is out still renames the class and its file", () => new TypeRenameTests(folders), t => t.A_line_typed_in_a_classs_file_while_its_rename_is_out_still_renames_the_class_and_its_file());
         Flow.StepApart("a line typed in a file the solution view renames with its class still takes the class's other part along", () => new TypeRenameTests(folders), t => t.A_line_typed_in_a_file_the_solution_view_renames_with_its_class_still_takes_the_classs_other_part_along());
         Flow.StepApart("Undo pressed while a rename writes its closed files waits for it and takes the whole rename back", () => new TypeRenameTests(folders), t => t.Undo_pressed_while_a_rename_writes_its_closed_files_waits_for_it_and_takes_the_whole_rename_back());
@@ -362,6 +364,28 @@ public sealed class TypeRenameTests : IClassFixture<RestoredFolders>, IDisposabl
         Assert.Equal([("Undo", "Undo Rename Shapes.cs to Figures.cs? It renames Figures.cs back to Shapes.cs.")], asked);
         Assert.True(File.Exists(shapes), $"Undo did not name Figures.cs back: {window.Status}");
         Assert.Equal("Shapes.cs", window.EditorArea.Active?.Name);
+        window.Close();
+    }
+
+    /// <summary>Rename's box on a class named like its file offers to rename the file with it though the server cancelled its
+    /// first question for the class's declarations, as Roslyn's server cancels one a change it took in made stale: asked
+    /// again, the box offers the file all the same.</summary>
+    private void Renames_box_on_a_class_named_like_its_file_offers_the_file_where_the_server_cancelled_the_first_question_for_it()
+    {
+        MainWindow window = Open("Order.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.PlaceAfter(editor, "class Ord");
+        editor.Focus();
+        Task cancelled = window.CSharpService!.Session!.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.Definition,
+            p => p is Passenger.Lsp.TextDocumentPositionParams { TextDocument.Uri: var uri } && uri.EndsWith("/Order.cs", StringComparison.Ordinal),
+            Task.FromCanceled(new CancellationToken(canceled: true)));
+        Ui.Run(window, AppActions.Rename);
+        Ui.WaitFor(() => window.Assist.RenameOffersFiles.Count > 0, "the rename to offer Order.cs, asked again where the server cancelled the question");
+        Assert.True(cancelled.IsCompleted, "No question for the files Rename offers was cancelled, so the step no longer holds the box to asking again");
+        Assert.Equal(["Order.cs"], window.Assist.RenameOffersFiles.Select(Path.GetFileName));
+        Ui.Press(window, "ESCAPE");
+        Assert.Null(window.Assist.Renaming);
+        Assert.Equal(Order, window.EditorArea.Active?.Text.Snapshot.ToString());
         window.Close();
     }
 

@@ -1178,42 +1178,21 @@ internal sealed partial class CodeCompletion
         LspDocument? lsp = context.Current?.Lsp;
         CancellationTokenSource cancel = new();
         describing = cancel;
-        using IDisposable held = BackgroundWork.Scope();
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(120), cancel.Token);
+            using (BackgroundWork.Scope())
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(120), cancel.Token);
+            }
             CompletionItem item = row.Item;
-            if (item.Data is not null && item.Documentation is null && lsp is not null)
+            if (item.Data is not null && item.Documentation is null && lsp is not null && context.Editors.Active is { } shown)
             {
-                item = await lsp.ResolveAsync(item, cancel.Token) ?? item;
+                await context.AnsweredAsync(shown, lsp, (served, asking) => served.ResolveAsync(item, asking), resolved => Describe(row, resolved ?? item, cancel), cancel.Token);
             }
-            if (cancel.IsCancellationRequested || !completion.IsVisible || !CompletionItem.Same(completion.Selected?.Item, row.Item))
+            else
             {
-                return;
+                Describe(row, item, cancel);
             }
-            itemCard.Clear();
-            Languages.Language? shownIn = context.Editors.Active is { } active && active.Text == Editor.Document ? active.Language : null;
-            bool overloads = item.Overloads is { Count: > 1 };
-            if (overloads)
-            {
-                // Every overload the item names, those the call its name already makes no longer fits set back.
-                itemCard.AddOverloads(item.Overloads!, item.OverloadFits, shownIn);
-            }
-            else if (item.Detail is { Length: > 0 } detail)
-            {
-                itemCard.AddServed(detail, null, shownIn);
-            }
-            if (Shapes.Text(item.Documentation) is { Length: > 0 } documentation)
-            {
-                itemCard.AddMarkdown(documentation, item.Code, overloadsShown: overloads,
-                    rich: shownIn == Languages.Language.CSharp && item.Documentation is { ValueKind: JsonValueKind.Object } markup && !HoverMarkdown.IsPlain(markup));
-            }
-            if (!itemCard.IsEmpty)
-            {
-                itemCard.IsVisible = true;
-                popups.PlaceBeside(itemCard, completion);
-            }
-            Described(row.Item);
         }
         catch (OperationCanceledException)
         {
@@ -1224,6 +1203,38 @@ internal sealed partial class CodeCompletion
             // No card beside the list.
             Described(row.Item);
         }
+    }
+
+    /// <summary>The card beside the list for the row still chosen, from its item as the server resolved it.</summary>
+    private void Describe(CompletionRow row, CompletionItem item, CancellationTokenSource cancel)
+    {
+        if (cancel.IsCancellationRequested || !completion.IsVisible || !CompletionItem.Same(completion.Selected?.Item, row.Item))
+        {
+            return;
+        }
+        itemCard.Clear();
+        Languages.Language? shownIn = context.Editors.Active is { } active && active.Text == Editor.Document ? active.Language : null;
+        bool overloads = item.Overloads is { Count: > 1 };
+        if (overloads)
+        {
+            // Every overload the item names, those the call its name already makes no longer fits set back.
+            itemCard.AddOverloads(item.Overloads!, item.OverloadFits, shownIn);
+        }
+        else if (item.Detail is { Length: > 0 } detail)
+        {
+            itemCard.AddServed(detail, null, shownIn);
+        }
+        if (Shapes.Text(item.Documentation) is { Length: > 0 } documentation)
+        {
+            itemCard.AddMarkdown(documentation, item.Code, overloadsShown: overloads,
+                rich: shownIn == Languages.Language.CSharp && item.Documentation is { ValueKind: JsonValueKind.Object } markup && !HoverMarkdown.IsPlain(markup));
+        }
+        if (!itemCard.IsEmpty)
+        {
+            itemCard.IsVisible = true;
+            popups.PlaceBeside(itemCard, completion);
+        }
+        Described(row.Item);
     }
 
     /// <summary>A character of the word a completion list narrows by: a C# name's, a web language's name's in its file

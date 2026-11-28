@@ -514,65 +514,67 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         RenameBox box = ShowRenameBox(document, text, word);
         box.RenamesFilesChanged += (_, on) => RenameSettings = RenameSettings with { RenameFiles = on };
-        IdeErrors.Observe(OfferFileRenames(box, document, word.Start));
+        IdeErrors.Observe(OfferFileRenamesAsync(box, document, served, text, word.Start));
         if (document.Language == Languages.Language.CSharp && !served.IsRazor && popups.Modal == box)
         {
             IdeErrors.Observe(OfferRenameSuggestionsAsync(box, document, served, text, word.Start));
         }
     }
 
-    /// <summary>How many times in a row Rename's box asks again for the names it offers, of a server that could not give them.</summary>
-    private const int NamesAskedAgain = 5;
-
     /// <summary>The names offered under Rename's box, once the server gives them while the box is open on the text it was
-    /// opened on. A question the server could not answer (cancelled for a change it took in, refused, or gone with the
-    /// server) is asked again once a server answers for the file: at once where the one asked still does, else once
-    /// another has taken the file in; up to <see cref="NamesAskedAgain"/> times in a row.</summary>
+    /// opened on, asked again where it could not (<see cref="AssistContext.AnsweredAsync"/>).</summary>
     private async Task OfferRenameSuggestionsAsync(RenameBox box, OpenDocument document, LspDocument served, TextSnapshot text, int offset)
     {
-        using CancellationTokenSource asking = new();
-        void Closed(object? sender, VisualTreeAttachmentEventArgs e) => asking.Cancel();
-        box.DetachedFromVisualTree += Closed;
+        CancellationToken open = popups.WhileOpen(box);
         try
         {
-            for (int failed = 0; ; failed++)
+            await context.AnsweredAsync(document, served, (lsp, asking) => lsp.RenameSuggestionsAsync(offset, asking), suggestions =>
             {
-                LspDocument? gone;
-                using (BackgroundWork.Scope())
+                if (popups.Modal == box && context.Editors.Active == document && document.Text.Snapshot == text)
                 {
-                    try
-                    {
-                        string[] suggestions = await served.RenameSuggestionsAsync(offset, asking.Token);
-                        if (popups.Modal == box && context.Editors.Active == document && document.Text.Snapshot == text)
-                        {
-                            box.OfferSuggestions(suggestions);
-                            popups.Place(box, offset, above: true);
-                        }
-                        return;
-                    }
-                    catch (LanguageServerFailed refused) when (failed < NamesAskedAgain)
-                    {
-                        gone = refused.Ended ? served : null;
-                    }
+                    box.OfferSuggestions(suggestions);
+                    popups.Place(box, offset, above: true);
                 }
-                if (context.CSharp is not { } csharp)
-                {
-                    return;
-                }
-                // Not held: a server's start or a project's load may take long, or not end while the box is open.
-                served = await csharp.TakenInAsync(document, gone, asking.Token);
-            }
+            }, open);
         }
-        catch (OperationCanceledException) when (asking.IsCancellationRequested)
+        catch (OperationCanceledException) when (open.IsCancellationRequested)
         {
         }
         catch (LanguageServerFailed)
         {
             // Names may still not come while the box's name is already usable.
         }
-        finally
+    }
+
+    /// <summary>Also rename files to reflect this change, offered in Rename's box once the server says the name is a type's
+    /// declared in files named after it, while the box is open; asked again where it could not (<see
+    /// cref="AssistContext.AnsweredAsync"/>), only of the text the box was opened on.</summary>
+    private async Task OfferFileRenamesAsync(RenameBox box, OpenDocument document, LspDocument served, TextSnapshot text, int offset)
+    {
+        if (context.WebOf(document) is not null || context.CSharp?.Session?.Folder is not { } folder)
         {
-            box.DetachedFromVisualTree -= Closed;
+            return;
+        }
+        CancellationToken open = popups.WhileOpen(box);
+        try
+        {
+            await context.AnsweredAsync(document, served,
+                (lsp, asking) => document.Text.Snapshot == text ? TypeRename.NamedAsync(context.Editors, folder, lsp, offset, asking) : Task.FromResult<TypeRename.Named?>(null),
+                named =>
+                {
+                    if (named is { Files.Count: > 0 } && popups.Modal == box)
+                    {
+                        box.OfferFiles(named.Files, RenameSettings.RenameFiles);
+                        popups.Place(box, offset, above: true);
+                    }
+                }, open);
+        }
+        catch (OperationCanceledException) when (open.IsCancellationRequested)
+        {
+        }
+        catch (LanguageServerFailed)
+        {
+            // The rename asks the same server, and says why it could not.
         }
     }
 
@@ -1001,26 +1003,6 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     /// <summary>How long a rename from a C# string waits for Godot's server to read the script declaring the member, its
     /// editor started for it where none runs.</summary>
     private static readonly TimeSpan ScriptServed = TimeSpan.FromSeconds(90);
-
-    /// <summary>Also rename files to reflect this change, offered in the open rename box once the server says the name
-    /// is a type's declared in files named after it.</summary>
-    private async Task OfferFileRenames(RenameBox box, OpenDocument document, int offset)
-    {
-        using IDisposable held = BackgroundWork.Scope();
-        try
-        {
-            if (context.WebOf(document) is null && context.CSharp?.Session?.Folder is { } folder && await TypeRename.NamedAsync(context.Editors, folder, context.Now(document), offset) is { Files.Count: > 0 } named
-                && popups.Modal == box)
-            {
-                box.OfferFiles(named.Files, RenameSettings.RenameFiles);
-                popups.Place(box, offset, above: true);
-            }
-        }
-        catch (LanguageServerFailed)
-        {
-            // The rename asks the same server, and says why it could not.
-        }
-    }
 
     public async Task Reformat()
     {

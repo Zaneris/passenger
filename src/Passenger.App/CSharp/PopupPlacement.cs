@@ -32,6 +32,9 @@ internal sealed class PopupPlacement
     /// <summary>The open modal's window's presses, heard while it is open.</summary>
     private IDisposable? presses;
 
+    /// <summary>Cancelled as the open modal closes, however it closes; null with none open.</summary>
+    private CancellationTokenSource? modalOpen;
+
     public PopupPlacement(AssistContext context, Canvas layer)
     {
         this.context = context;
@@ -48,6 +51,10 @@ internal sealed class PopupPlacement
 
     /// <summary>The list of choices or the rename box open, null with none.</summary>
     public Control? Modal => modal;
+
+    /// <summary>What a modal's own questions are asked while: until it closes, however it closes, whichever layer it is
+    /// moved to meanwhile (<see cref="Place(Control, Point, bool)"/>); cancelled already for one not open.</summary>
+    public CancellationToken WhileOpen(Control popup) => modal == popup && modalOpen is { } open ? open.Token : new CancellationToken(canceled: true);
 
     /// <summary>What the open list of choices (fixes, refactorings, definitions) offers, by its words; empty with none open.</summary>
     public IReadOnlyList<string> Offered => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Titles ?? [];
@@ -140,12 +147,11 @@ internal sealed class PopupPlacement
 
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
-    /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or when there is no
-    /// room below, kept inside the editor, below the bars over it (<see cref="HeldIn"/>). A card, a list of choices, Rename's
-    /// box or the colour picker (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one that
-    /// fits neither under nor over its line goes where there is more room, lowered to it where it gives way in height
-    /// (<see cref="IGivesWayInHeight"/>), and where even lowered it cannot show whole, over the tool windows below and above
-    /// the editor (the window's <c>LineOverflow</c>); else moved in as far as it must, though it then hides some of the line.</summary>
+    /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or with no room below, inside the
+    /// editor, below the bars over it (<see cref="HeldIn"/>). A card, a list of choices, Rename's box or the colour picker (<see
+    /// cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one fitting neither under nor over its line goes where
+    /// there is more room, lowered to it where it gives way in height (<see cref="IGivesWayInHeight"/>), and where even lowered it cannot show
+    /// whole, over the tool windows around the editor (the window's <c>LineOverflow</c>); else moved in, hiding some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
         MainWindow? window = TopLevel.GetTopLevel(layer) as MainWindow;
@@ -380,6 +386,7 @@ internal sealed class PopupPlacement
     {
         CloseModal();
         modal = popup;
+        modalOpen = new CancellationTokenSource();
         dismissed = dismiss;
         layer.Children.Add(popup);
         presses = TopLevel.GetTopLevel(layer)?.AddDisposableHandler(InputElement.PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -454,6 +461,9 @@ internal sealed class PopupPlacement
         Action? closed = modalClosed;
         modalClosed = null;
         closed?.Invoke();
+        CancellationTokenSource? asking = modalOpen;
+        modalOpen = null;
+        asking?.Cancel();
     }
 
     /// <summary>Whether an element of the modal's window other than the modal has the keys, which keep them as it closes;
