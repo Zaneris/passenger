@@ -359,7 +359,7 @@ public sealed partial class DebugController : IDisposable
     /// stands, else downloaded now (<see cref="X86DebuggerSource.FolderAsync"/>), <paramref name="work"/> saying each stage
     /// (else the status bar) and its own said again after, <paramref name="stop"/> ending it; neither for any other program,
     /// and why in <see cref="Refusals"/>' words where it could not be had.</summary>
-    public async Task<(string? Host, string? Why)> X86HostAsync(bool x86, Working? work, CancellationToken stop)
+    public async Task<(string? Host, Words? Why)> X86HostAsync(bool x86, Working? work, CancellationToken stop)
     {
         UiThread.Check();
         if (!x86)
@@ -371,7 +371,7 @@ public sealed partial class DebugController : IDisposable
         {
             return (here, null);
         }
-        string? stage = (work?.Stage)?.Shown;
+        Words? stage = work?.Stage;
         bool done = false;
         Action<string> say = UiThread.Marshal<string>(line =>
         {
@@ -395,7 +395,7 @@ public sealed partial class DebugController : IDisposable
         }
         catch (Updates.ReleaseAssetException failed)
         {
-            return (null, Refusals.X86DebuggerMissing(failed.Message).Shown);
+            return (null, Refusals.X86DebuggerMissing(failed.Message));
         }
         finally
         {
@@ -411,8 +411,8 @@ public sealed partial class DebugController : IDisposable
     /// for a start already under way, which Stop ends once it is had: one that could not be had fails the start, saying why.</summary>
     private async Task<string?> X86HostOrFailAsync(bool x86, Working? work)
     {
-        (string? host, string? why) = await X86HostAsync(x86, work, CancellationToken.None);
-        return why is null ? host : throw new InvalidOperationException(why);
+        (string? host, Words? why) = await X86HostAsync(x86, work, CancellationToken.None);
+        return why is null ? host : throw new RefusedException(why);
     }
 
     /// <summary>The chosen session's Hot Reload, while it has one.</summary>
@@ -482,8 +482,7 @@ public sealed partial class DebugController : IDisposable
     public IEnumerable<DebugTab> AttachedChanged => view.Sessions.Where(t => t.IsLive && t.Session is { Attached: true } attached && HotReloadChanged(attached));
 
     /// <summary>Why a program Hot Reload changed is not let go (Detach, its tab's close): its runtime would hold it for good.</summary>
-    public static string LetsNoDebuggerGo(string name) =>
-        $"{name} cannot be let go: Hot Reload changed its code, after which its runtime lets no debugger go; restart it to run it without the debugger";
+    public static Words LetsNoDebuggerGo(string name) => DebuggingWords.CannotLetGo(name);
 
     private BuiltEdits Followed(BuiltLines lines, HotReload? reload)
     {
@@ -878,28 +877,28 @@ public sealed partial class DebugController : IDisposable
     /// debugged; the plan's last session, still debugged, is stopped first. With <paramref name="elsewhere"/> the program
     /// runs on another machine (<see cref="DebugSession.Elsewhere"/>). Null once the session is open (the program may have
     /// ended already), else why it could not.</summary>
-    public Task<string?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null,
+    public Task<Words?> StartAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, LiveApp? app = null, BuiltEdits? edits = null,
         string? copies = null, Working? work = null)
         => StartInTabAsync(plan, elsewhere, place, app: app, edits: edits, copies: copies, work: work, stop: work?.Stopping ?? default);
 
     /// <summary>Starts a plan's program in a tab, one of the <paramref name="copies"/> of a game a configuration (named)
     /// starts where given; a 32-bit program once the debugger's 32-bit host is had (<see cref="X86HostAsync"/>), each stage of
     /// that said by <paramref name="work"/> and ended by <paramref name="stop"/>.</summary>
-    private async Task<string?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
+    private async Task<Words?> StartInTabAsync(Run.LaunchPlan plan, bool elsewhere = false, AdapterPlace? place = null, DebugTab? tab = null, LiveApp? app = null,
         BuiltEdits? edits = null, string? copies = null, Working? work = null, CancellationToken stop = default)
     {
         string? x86Host;
         try
         {
-            (x86Host, string? missing) = await X86HostAsync(!elsewhere && place is null && plan.RunsAsX86, work, stop);
+            (x86Host, Words? missing) = await X86HostAsync(!elsewhere && place is null && plan.RunsAsX86, work, stop);
             if (missing is not null)
             {
-                return Refusals.Undebugged(plan.ProgramName, missing).Shown;
+                return Refusals.Undebugged(plan.ProgramName, missing);
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested)
         {
-            return $"Debugging {plan.Name} was stopped as it started";
+            return DebuggingWords.DebuggingStopped(plan.Name);
         }
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = !elsewhere && place is null && plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
             ? arguments => Run.GodotConsole.RunAsync(plan, arguments, asked => run(plan.Name, asked))
@@ -956,20 +955,20 @@ public sealed partial class DebugController : IDisposable
     /// Hot Reload, offered while Settings has it on (its build checked, <paramref name="builds"/>), told to <paramref name="handlers"/>;
     /// <paramref name="elsewhere"/> runs it on another machine, <paramref name="place"/> the adapter where it is; <paramref name="startedElsewhere"/>
     /// names another program keeping it, which Stop lets it go on in (<see cref="DebugTab.StopLetsGo"/>). Null once open, else why not.</summary>
-    public async Task<string?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
+    public async Task<Words?> AttachAsync(int processId, string name, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null, string? group = null,
         LiveApp? app = null, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null, string? startedElsewhere = null,
         ProgramBuild? builds = null, Working? work = null)
     {
         string? x86Host = null;
-        string? unattached;
+        Words? unattached;
         try
         {
-            (x86Host, string? missing) = await X86HostAsync(!elsewhere && place is null && DotnetProcesses.Runs32Bit(processId), work, work?.Stopping ?? default);
-            unattached = (missing is null ? null : Refusals.Unattached(name, missing))?.Shown;
+            (x86Host, Words? missing) = await X86HostAsync(!elsewhere && place is null && DotnetProcesses.Runs32Bit(processId), work, work?.Stopping ?? default);
+            unattached = missing is null ? null : Refusals.Unattached(name, missing);
         }
         catch (OperationCanceledException) when (work?.Stopping.IsCancellationRequested == true)
         {
-            unattached = $"Attaching to {name} was stopped";
+            unattached = DebuggingWords.AttachingStopped(name);
         }
         if (unattached is not null)
         {
@@ -994,7 +993,7 @@ public sealed partial class DebugController : IDisposable
     /// <paramref name="started"/> finds, else failing with <paramref name="unfound"/>, and the starter ended with the session
     /// or a failed start, saying so; <paramref name="hotReload"/>, <paramref name="app"/> and <paramref name="by"/> as an
     /// attach takes them. Null once the session is open, else why not.</summary>
-    public Task<string?> StartThroughAsync(Run.LaunchPlan plan, Func<int, CancellationToken, Task<int?>> started, string unfound, BuiltEdits? edits = null,
+    public Task<Words?> StartThroughAsync(Run.LaunchPlan plan, Func<int, CancellationToken, Task<int?>> started, Words unfound, BuiltEdits? edits = null,
         Working? work = null, bool hotReload = false, LiveApp? app = null, string? by = null)
     {
         System.Diagnostics.Process? starter = null;
@@ -1004,10 +1003,10 @@ public sealed partial class DebugController : IDisposable
         {
             if (starter is not { } from)
             {
-                throw new InvalidOperationException($"{by} could not start");
+                throw new RefusedException(DebuggingWords.StarterUnstarted(by));
             }
             int debuggee = await started(from.Id, CancellationToken.None) is int found ? found
-                : throw new InvalidOperationException(DotnetProcesses.Runs(from) ? Ended(unfound) : $"{by} ended before it started {plan.Name}");
+                : throw new RefusedException(DotnetProcesses.Runs(from) ? Ended(unfound) : DebuggingWords.StarterEnded(by, plan.Name));
             try
             {
                 TakeRefusal(plan.Name);
@@ -1016,14 +1015,14 @@ public sealed partial class DebugController : IDisposable
             }
             catch (Exception failed) when (failed is DapException or IOException or InvalidOperationException or TimeoutException)
             {
-                throw new InvalidOperationException(Ended(failed is DapException dap ? dap.Reason : failed.Message), failed);
+                throw new RefusedException(Ended(failed is DapException dap ? dap.Reason : RefusedException.Of(failed)));
             }
         }, plan.Name, launched: false, hotReloadOn: hotReloadOn, app: app, plan: plan, edits: edits,
             starts: (() => plan.Placed(ChildProcesses.Command(plan.Program, plan.Arguments, plan.WorkingDirectory, plan.Environment)), process => starter = process),
             attachedWords: $"{plan.Name} runs as {by} starts it, whose output is shown here", inputFrom: $"from {by}, which started it");
 
         // What the starter started would wait for a debugger that never comes, so the starter ends with the start.
-        string Ended(string why) => $"{why}; {by} and all it started end, as {plan.Name} would wait for the debugger";
+        Words Ended(Words why) => DebuggingWords.StarterEnds(why, by, plan.Name);
     }
 
     /// <summary>The next attach to the program of a session's name fails as the debugger's failing to attach does, saying
@@ -1044,7 +1043,7 @@ public sealed partial class DebugController : IDisposable
     /// <summary>Attaches the debugger to an app on a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches"/>),
     /// with Hot Reload as Settings has it (a Debug build's runtime takes edits), each update told to <paramref name="handlers"/>;
     /// its console is the app's log, which its start writes there. Null once the session is open, else why it could not.</summary>
-    public Task<string?> AttachThroughRelayAsync(Run.LaunchPlan plan, Run.Devices.RelaySession relay, BuiltEdits? edits = null, LiveApp? app = null,
+    public Task<Words?> AttachThroughRelayAsync(Run.LaunchPlan plan, Run.Devices.RelaySession relay, BuiltEdits? edits = null, LiveApp? app = null,
         UpdateHandlerHook? handlers = null)
     {
         bool hotReloadOn = HotReloadOn();
@@ -1088,7 +1087,7 @@ public sealed partial class DebugController : IDisposable
     /// (<see cref="Godot.GodotScriptAdapter"/>), in a tab beside the game's (<see cref="DebugTab.Companion"/>), which stays
     /// chosen until a script stops; Stop there ends the game, as Stop of its C# does, and Detach lets its scripts run on
     /// unstopped. Null once the session is open, else why not.</summary>
-    public Task<string?> DebugScriptsAsync(Godot.GodotGame game, string name)
+    public Task<Words?> DebugScriptsAsync(Godot.GodotGame game, string name)
     {
         UiThread.Check();
         DebugTab? companion = view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive);
@@ -1103,7 +1102,7 @@ public sealed partial class DebugController : IDisposable
     /// of the plan's name, launches the game itself (<see cref="Godot.GodotScriptAdapter"/>), its console the game's output, or
     /// a tab of the Terminal window when its configuration uses the terminal, and Stop there ends it. Null once the session is
     /// open, else why not.</summary>
-    public Task<string?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game, string? copies = null)
+    public Task<Words?> LaunchScriptsAsync(Run.LaunchPlan plan, Godot.GodotGame game, string? copies = null)
     {
         UiThread.Check();
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? inTerminal = plan.Console == Run.ConsoleKind.Terminal && RunInTerminal is { } run
@@ -1144,7 +1143,7 @@ public sealed partial class DebugController : IDisposable
     /// (<see cref="WebAssemblyAdapter"/>), in a tab beside the server's (<see cref="DebugTab.Companion"/>), which stays
     /// chosen until the page stops; Stop there stops the app, as Stop of the server does. Null once the session is open,
     /// else why not.</summary>
-    public Task<string?> DebugBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
+    public Task<Words?> DebugBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
     {
         UiThread.Check();
         string name = plan.Name;
@@ -1160,7 +1159,7 @@ public sealed partial class DebugController : IDisposable
     /// <summary>Debugs a standalone Blazor WebAssembly app in a Chromium browser: its WebAssembly session, in a tab of the
     /// plan's name, launches the development server itself (<see cref="WebAssemblyAdapter"/>), its console the server's
     /// output and the page's, and Stop there ends both. Null once the session is open, else why not.</summary>
-    public Task<string?> LaunchBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
+    public Task<Words?> LaunchBrowserAsync(Run.LaunchPlan plan, BrowserDebugging browser)
     {
         UiThread.Check();
         InProcessEnd end = new($"WebAssembly adapter of {plan.Name}");
@@ -1191,7 +1190,7 @@ public sealed partial class DebugController : IDisposable
             pid, cancellation, configure);
     }
 
-    private async Task<DebugLaunch> OpenAdditionalAsync(string name, Func<DebugTab, Task<string?>> open, int? attachedProcessId,
+    private async Task<DebugLaunch> OpenAdditionalAsync(string name, Func<DebugTab, Task<Words?>> open, int? attachedProcessId,
         CancellationToken cancellation, Action<DebugTab>? configure)
     {
         UiThread.Check();
@@ -1202,7 +1201,7 @@ public sealed partial class DebugController : IDisposable
         }
         cancellation.ThrowIfCancellationRequested();
         DebugTab tab = Place(name, replace: false);
-        Task<string?>? opening = null;
+        Task<Words?>? opening = null;
         try
         {
             tab.RestartFor = _ =>
@@ -1215,7 +1214,7 @@ public sealed partial class DebugController : IDisposable
             opening = open(tab);
             if (await opening.WaitAsync(cancellation) is { } failure)
             {
-                throw new InvalidOperationException(failure);
+                throw new RefusedException(failure);
             }
             DebugSession session = tab.Session ?? throw new InvalidOperationException("The debugging session did not start");
             int processId = await session.ProcessStarted.WaitAsync(Waits.Of(TimeSpan.FromSeconds(30)), cancellation);
@@ -1267,7 +1266,7 @@ public sealed partial class DebugController : IDisposable
     /// tab is chosen, and its session <see cref="Session"/> from its first moment, so Stop is there as soon as a session begins.
     /// A start that failed leaves its tab ended, with no session. Tabs of one <paramref name="group"/> (a container run's
     /// services) take Hot Reload's changes together; its tab holds an inspected <paramref name="app"/> and given edits.</summary>
-    private async Task<string?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
+    private async Task<Words?> OpenAsync(Func<BuiltLines, Action<string>, Action<OutputEvent>, Action<DebugSession>, Task<DebugSession>> open, string name, bool launched,
         bool inTerminal = false, bool hotReloadOn = false, AdapterPlace? place = null, string? group = null, DebugTab? tab = null, LiveApp? app = null,
         Run.LaunchPlan? plan = null, BuiltEdits? edits = null, UpdateHandlerHook? hook = null, DebugTab? companion = null, string? attachedWords = null,
         BrowserRefresh? browser = null, string? unkept = null, (IReadOnlyList<string> Projects, string Program)? inBrowser = null, bool copy = false,
@@ -1276,7 +1275,7 @@ public sealed partial class DebugController : IDisposable
     {
         UiThread.Check();
         // A start that opens no session lets go of its update handlers' hook and its pages' refresh with it.
-        string Unopened(string why)
+        Words Unopened(Words why)
         {
             hook?.Dispose();
             browser?.Dispose();
@@ -1285,11 +1284,11 @@ public sealed partial class DebugController : IDisposable
         // A start that comes after its folder was left would open in the next folder's Debug window, which is not its own.
         if (disposed)
         {
-            return Unopened($"Could not debug {name}: its folder was closed");
+            return Unopened(DebuggingWords.FolderClosed(name));
         }
         if (ending)
         {
-            return Unopened(Refusals.WorkspaceEnding.Shown);
+            return Unopened(Refusals.WorkspaceEnding);
         }
         // A program debugged again takes its last session's place, which is let go first.
         if (tab is null && view.Sessions.FirstOrDefault(t => t.Name == name && t.IsLive) is { } again)
@@ -1302,12 +1301,12 @@ public sealed partial class DebugController : IDisposable
             await EndAsync(again);
             if (disposed)
             {
-                return Unopened($"Could not debug {name}: its folder was closed");
+                return Unopened(DebuggingWords.FolderClosed(name));
             }
         }
         if (disposed || ending)
         {
-            return Unopened("The workspace ended during launch");
+            return Unopened(DebuggingWords.EndedDuringLaunch);
         }
         tab ??= Place(name);
         tab.Companion = companion;
@@ -1359,7 +1358,7 @@ public sealed partial class DebugController : IDisposable
             reload?.End();
             tab.HasEnded = true;
             tab.OnStateChanged();
-            return $"Debugging {name} ended before launch completed";
+            return DebuggingWords.EndedBeforeLaunch(name);
         }
         if (tab == chosen)
         {
@@ -1460,7 +1459,7 @@ public sealed partial class DebugController : IDisposable
                 reload?.End();
                 tab.HasEnded = true;
                 tab.OnStateChanged();
-                return $"Debugging {name} ended before launch completed";
+                return DebuggingWords.EndedBeforeLaunch(name);
             }
             reload?.Opened(session);
             tab.HotReload = reload;
@@ -1476,9 +1475,9 @@ public sealed partial class DebugController : IDisposable
         {
             bool stopped = starting is not null && stoppedStarting.Remove(starting);
             reload?.End();
-            string failed = stopped
-                ? launched ? $"Debugging {name} was stopped as it started" : $"Debugging {name} was stopped as the debugger attached, and it runs on"
-                : $"Could not debug {name}: {(error is DapException dap ? dap.Reason : error.Message)}";
+            Words failed = stopped
+                ? launched ? DebuggingWords.DebuggingStopped(name) : DebuggingWords.StoppedAsAttached(name)
+                : DebuggingWords.CouldNotDebug(name, error is DapException dap ? dap.Reason : RefusedException.Of(error));
             // Its output followed from outside (a container's log) ends with the start, whichever tab is the window's.
             StopFollowing(tab);
             if (disposed || !view.Sessions.Contains(tab))
@@ -1493,14 +1492,14 @@ public sealed partial class DebugController : IDisposable
             tab.OnStateChanged();
             if (stopped)
             {
-                shown.Append($"{failed}\n");
+                shown.Append(failed.Shown + "\n");
             }
             shown.Flush();
             if (tab == chosen)
             {
                 view.SetState(DebugState.Ended);
             }
-            Message?.Invoke(this, failed);
+            Message?.Invoke(this, failed.Shown);
             StateChanged?.Invoke(this, EventArgs.Empty);
             if (tab == chosen && Next() is { } next)
             {
@@ -1589,7 +1588,7 @@ public sealed partial class DebugController : IDisposable
     /// game) held at its start with DOTNET_MODIFIABLE_ASSEMBLIES=debug: the attach lets it go. What its applies come to is said by
     /// <paramref name="says"/>, where its output is, each told to <paramref name="handlers"/> it started with; its build,
     /// which Hot Reload checks, <paramref name="builds"/>. Null once attached, else why not.</summary>
-    public Task<string?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
+    public Task<Words?> AttachForHotReloadAsync(int processId, string name, Action<string, bool> says, AdapterPlace? place = null,
         CancellationToken cancellation = default, BuiltEdits? edits = null, UpdateHandlerHook? handlers = null, BrowserRefresh? browser = null,
         LiveTree.LiveApp? app = null, ProgramBuild? builds = null) =>
         AttachQuietlyAsync(name, async (built, starting) => await DebugSession.AttachAsync(processId, Breakpoints, Own(), built, _ => { }, _ => { }, starting: starting,
@@ -1599,14 +1598,14 @@ public sealed partial class DebugController : IDisposable
     /// <summary>Attaches quietly for Hot Reload alone, as <see cref="AttachForHotReloadAsync"/> does, to an app Run started on
     /// a device through Passenger's relay in it (<see cref="Run.Devices.DeviceLaunches.PutRelayAsync"/>), whose start waits
     /// there until the attach lets it go, each update told to <paramref name="handlers"/>. Null once attached, else why not.</summary>
-    public Task<string?> AttachForHotReloadThroughRelayAsync(Run.Devices.RelaySession relay, string name, Action<string, bool> says, CancellationToken cancellation,
+    public Task<Words?> AttachForHotReloadThroughRelayAsync(Run.Devices.RelaySession relay, string name, Action<string, bool> says, CancellationToken cancellation,
         BuiltEdits? edits, LiveTree.LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers) =>
         AttachQuietlyAsync(name, (built, starting) => DebugSession.AttachThroughRelayAsync(name, relay, Breakpoints, Own(), built, _ => { }, _ => { }, starting: starting, hotReload: true,
             quiet: true), says, cancellation, edits, handlers, null, app, builds);
 
     /// <summary>A quiet session for Hot Reload alone, opened by <paramref name="attach"/> over the lines built and handed the
     /// session as it begins, kept among <see cref="Running"/> until it ends. Null once attached, else why not.</summary>
-    private async Task<string?> AttachQuietlyAsync(string name, Func<BuiltLines, Action<DebugSession>, Task<DebugSession>> attach, Action<string, bool> says,
+    private async Task<Words?> AttachQuietlyAsync(string name, Func<BuiltLines, Action<DebugSession>, Task<DebugSession>> attach, Action<string, bool> says,
         CancellationToken cancellation, BuiltEdits? edits, UpdateHandlerHook? handlers, BrowserRefresh? browser, LiveTree.LiveApp? app, ProgramBuild? builds)
     {
         UiThread.Check();
@@ -1615,7 +1614,7 @@ public sealed partial class DebugController : IDisposable
             edits?.Dispose();
             handlers?.Dispose();
             browser?.Dispose();
-            return $"Could not attach to {name} for Hot Reload: its folder was closed";
+            return DebuggingWords.HotReloadFolderClosed(name);
         }
         // Followed since the build read the files where it began there, else from now: an edit made meanwhile is one Apply takes.
         using BuiltEdits own = edits ?? Building(hotReload: true);
@@ -1677,7 +1676,7 @@ public sealed partial class DebugController : IDisposable
             {
                 await attaching.CloseAsync();
             }
-            return $"Could not attach to {name} for Hot Reload: {(error is DapException dap ? dap.Reason : error.Message)}";
+            return DebuggingWords.HotReloadUnattached(name, error is DapException dap ? dap.Reason : RefusedException.Of(error));
         }
         catch
         {
@@ -1696,16 +1695,16 @@ public sealed partial class DebugController : IDisposable
     /// in a Debug tab of its own, of <paramref name="group"/> and holding <paramref name="app"/>, the breakpoints sent, its
     /// Hot Reload and built lines kept, its console the program's output where its place follows it. Null once it debugs,
     /// else why not.</summary>
-    public async Task<string?> DebugQuietAsync(DebugSession quiet, string? group = null, LiveApp? app = null)
+    public async Task<Words?> DebugQuietAsync(DebugSession quiet, string? group = null, LiveApp? app = null)
     {
         UiThread.Check();
         if (running.FirstOrDefault(r => r.Session == quiet) is not { } reload || quiet.State == DebugState.Ended)
         {
-            return $"{quiet.Program} is not run with Hot Reload";
+            return DebuggingWords.NotRunWithHotReload(quiet.Program);
         }
         if (disposed || ending)
         {
-            return Refusals.WorkspaceEnding.Shown;
+            return Refusals.WorkspaceEnding;
         }
         running.Remove(reload);
         DebugTab tab = Place(reload.Name);
@@ -1868,7 +1867,7 @@ public sealed partial class DebugController : IDisposable
         UiThread.Check();
         if (tab.IsLive && tab.Session is { Attached: true } attached && HotReloadChanged(attached))
         {
-            Message?.Invoke(this, LetsNoDebuggerGo(tab.Name));
+            Message?.Invoke(this, LetsNoDebuggerGo(tab.Name).Shown);
             return;
         }
         if (tab.IsLive)
@@ -1989,10 +1988,10 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>Ends the programs of these tabs as a start in their place does (<see cref="EndAsync(DebugTab)"/>), done once
     /// each has ended: null, else why one cannot be (<see cref="WhyNotEnded"/>), none ended then.</summary>
-    public async Task<string?> EndAsync(IReadOnlyList<DebugTab> tabs)
+    public async Task<Words?> EndAsync(IReadOnlyList<DebugTab> tabs)
     {
         UiThread.Check();
-        if (tabs.Select(WhyNotEnded).OfType<string>().FirstOrDefault() is { } kept)
+        if (tabs.Select(WhyNotEnded).OfType<Words>().FirstOrDefault() is { } kept)
         {
             return kept;
         }
@@ -2002,7 +2001,7 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>Why a tab's program is not ended for a start in its place: the debugger attached to it and Hot Reload changed
     /// it, so it can neither be let go (<see cref="LetsNoDebuggerGo"/>) nor be ended unasked.</summary>
-    private string? WhyNotEnded(DebugTab tab) => tab.IsLive && tab.Session is { Attached: true } held && HotReloadChanged(held) ? LetsNoDebuggerGo(tab.Name) : null;
+    private Words? WhyNotEnded(DebugTab tab) => tab.IsLive && tab.Session is { Attached: true } held && HotReloadChanged(held) ? LetsNoDebuggerGo(tab.Name) : null;
 
     /// <summary>Ends a tab's program as another session takes its place, or its tab closes, or the folder is left: one the
     /// debugger attached to is let go, running on, as Detach does, unless Hot Reload changed it, whose runtime would then
@@ -2016,19 +2015,19 @@ public sealed partial class DebugController : IDisposable
     public RunDetaching? RunDetach { get; set; }
 
     /// <summary>Why one session's program cannot be let go now, as Detach asks of the chosen one.</summary>
-    public string? WhyNotDetachOf(DebugSession session) => WhyNotDetach(session)?.Shown;
+    public Words? WhyNotDetachOf(DebugSession session) => WhyNotDetach(session);
 
     /// <summary>Detach: the debugger lets go of the program it attached to, which runs on. Null once it has, else why it
     /// could not (nothing attached to).</summary>
-    public Task<string?> DetachAsync() => DetachAsync(Session);
+    public Task<Words?> DetachAsync() => DetachAsync(Session);
 
     /// <summary>Detach of one session's program: the chosen tab's by default, else the one given.</summary>
-    public async Task<string?> DetachAsync(DebugSession? session)
+    public async Task<Words?> DetachAsync(DebugSession? session)
     {
         UiThread.Check();
         if ((session == Session ? WhyNotDetach() : WhyNotDetach(session)) is { } why)
         {
-            return why.Shown;
+            return why;
         }
         await session!.DetachAsync();
         return null;
@@ -2046,13 +2045,13 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>Why Detach cannot run now: nothing is being debugged, or the debugger started the program, which ends with
     /// its session (its input and output are the adapter's).</summary>
-    private string? WhyNotDetach() => (NotLive() ?? WhyNotDetach(Session))?.Shown;
+    private Words? WhyNotDetach() => NotLive() ?? WhyNotDetach(Session);
 
     /// <summary>Why one session's program cannot be let go now: it has ended, the debugger started it, it still starts, or
     /// Hot Reload changed it (<see cref="LetsNoDebuggerGo"/>).</summary>
     private Words? WhyNotDetach(DebugSession? session) => session is not { State: not DebugState.Ended } ? Refusals.NothingDebugged
-        : !session.Attached ? "The debugger started this program: Stop ends it, and Detach lets go only of a program attached to"
-        : TabOf(session) is { FollowedStarts: true } ? "Passenger started this program through the one that starts it, which ends with it: Stop ends both, and Detach lets go only of a program attached to as it ran"
+        : !session.Attached ? DebuggingWords.DebuggerStartedIt
+        : TabOf(session) is { FollowedStarts: true } ? DebuggingWords.StarterStartedIt
         : session.State == DebugState.Starting ? StillStarting
         : HotReloadChanged(session) ? LetsNoDebuggerGo(TabOf(session)?.Name ?? running.FirstOrDefault(r => r.Session == session)?.Name ?? session.Program)
         : null;
@@ -2397,7 +2396,7 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>Set Next Statement: the paused thread goes on from a line (from zero) of the method it is
     /// in, skipping or repeating what lies between; null when it went, else why not.</summary>
-    public async Task<string?> SetNextStatementAsync(DebugSession session, string path, int line)
+    public async Task<Words?> SetNextStatementAsync(DebugSession session, string path, int line)
     {
         UiThread.Check();
         string? problem = null;
@@ -4131,5 +4130,5 @@ public sealed record BindingStop(BindingProblem Problem, string Value, string? T
 
 /// <summary>A run Detach acts on: whether it takes Detach where it runs, given the session chosen (null for none), why it
 /// cannot now, and the letting go, null once done.</summary>
-public sealed record RunDetaching(Func<ActionContext, DebugSession?, bool> Takes, Func<ActionContext, DebugSession?, string?> WhyNot,
-    Func<ActionContext, DebugSession?, Task<string?>> Detach);
+public sealed record RunDetaching(Func<ActionContext, DebugSession?, bool> Takes, Func<ActionContext, DebugSession?, Words?> WhyNot,
+    Func<ActionContext, DebugSession?, Task<Words?>> Detach);

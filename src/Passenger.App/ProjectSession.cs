@@ -801,7 +801,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// and starts as: the folder's, with the build configuration the configuration names (<see cref="RunConfiguration.BuildConfiguration"/>)
     /// in place of the folder's choice; why not where the one it names cannot be given. A run begun as the folder's choices
     /// are read builds as they come to, never as nothing chosen, which a WinUI app's solution of processors alone refuses.</summary>
-    public async Task<(WorkspaceModel? Workspace, string? Problem)> WorkspaceOfAsync(RunConfiguration configuration)
+    public async Task<(WorkspaceModel? Workspace, Words? Problem)> WorkspaceOfAsync(RunConfiguration configuration)
     {
         UiThread.Check();
         await buildChoicesRead.Ended();
@@ -812,7 +812,7 @@ public sealed class ProjectSession : IAsyncDisposable
         (BuildChoice? choice, string? problem) = await BuildChoices.ForRunAsync(folder, now, configuration.BuildConfiguration);
         // Read again after the solution was asked: a reload meanwhile is what the run reads.
         return problem is null ? ((Workspace ?? now) with { Build = choice }, null)
-            : (null, $"{configuration.Name} cannot build as {configuration.BuildConfiguration}: {problem}");
+            : (null, LaunchWords.CannotBuildAs(configuration.Name, configuration.BuildConfiguration, problem));
     }
 
     /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
@@ -1636,7 +1636,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Why there is no run configuration to run, debug or profile (the <paramref name="verb"/>): no SDK to
     /// load the projects with, or no executable project (<see cref="Refusals.NothingTo"/>).</summary>
-    public string NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder).Shown;
+    public Words NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder);
 
     /// <summary>The folder's projects as the project host builds them at design time, which the language server loads.</summary>
     public ProjectBuilds DesignTimeBuilds { get; }

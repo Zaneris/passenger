@@ -375,7 +375,7 @@ public sealed class AndroidDeviceTests
                 reached.TrySetResult();
                 return go.Task;
             };
-            Task<string?> debugging = window.DebugAsync();
+            Task<Words?> debugging = window.DebugAsync();
             Ui.PumpUntil(() => reached.Task.IsCompleted || debugging.IsCompleted, "the build, the install and the relay put in the app", Slow);
             if (!reached.Task.IsCompleted)
             {
@@ -467,7 +467,7 @@ public sealed class AndroidDeviceTests
                 reached.TrySetResult();
                 return go.Task;
             };
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             Ui.PumpUntil(() => reached.Task.IsCompleted || running.IsCompleted, "the build, the install and the relay put in the app", Slow);
             if (!reached.Task.IsCompleted)
             {
@@ -482,7 +482,7 @@ public sealed class AndroidDeviceTests
             string pid = Pid(tools, serial);
             Assert.True(pid.Length == 0, $"The run Stop stopped once its relay was in the app started the app all the same, which runs as {pid}: "
                 + $"{(running.IsCompletedSuccessfully ? running.Result : running.Exception?.Message) ?? "it said it runs"}\n{Output(window)}");
-            Assert.Equal(Passenger.App.Run.BuildRunController.StoppedStarting("AndroidApp"), Ui.AwaitPumped(running, "the stopped run's answer"));
+            Assert.Equal(Passenger.App.Run.BuildRunController.StoppedStarting("AndroidApp").English, Ui.AwaitPumped(running, "the stopped run's answer")?.English);
             Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"what the stopped run put on the emulator to be taken out; it still has {Left(tools, serial)}",
                 TimeSpan.FromSeconds(30));
         }

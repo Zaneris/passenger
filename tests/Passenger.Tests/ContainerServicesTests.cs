@@ -206,7 +206,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Assert.Equal([("internal-api", "Api.csproj"), ("web", "Web.csproj")],
                 window.Builds.Containers!.Plan.Dotnet.Select(d => (d.Service, Path.GetFileName(d.Project))).OrderBy(d => d.Service, StringComparer.Ordinal));
             Assert.StartsWith("worker is not a .NET service of docker-compose-api: no project of the solution is known to run it; choose its project in a copy of docker-compose-api",
-                window.Builds.WhyNotOnService(AppActions.ServiceDebug, "worker"), StringComparison.Ordinal);
+                window.Builds.WhyNotOnService(AppActions.ServiceDebug, "worker")?.English, StringComparison.Ordinal);
             ContainersView view = Shown(window);
 
             Act(window, view, project, "internal-api", AppActions.ServiceDebug);

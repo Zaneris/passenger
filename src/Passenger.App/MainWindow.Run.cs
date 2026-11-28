@@ -461,10 +461,10 @@ public partial class MainWindow
 
     /// <summary>Runs the chosen configuration as Run does: null once it runs (<see cref="RunEnd"/> is its end), else why it
     /// could not, which the status bar says too.</summary>
-    public Task<string?> RunAsync(string? arguments = null) => buildRun.RunAsync(arguments);
+    public Task<Words?> RunAsync(string? arguments = null) => buildRun.RunAsync(arguments);
 
     /// <summary>Debugs the chosen configuration as Debug does: null once its session is open, else what stopped it.</summary>
-    public Task<string?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
+    public Task<Words?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
 
     /// <summary>What the command line's <c>--run</c> or <c>--debug</c> came to (<see cref="StartConfigurationAsync"/>) in
     /// the window that opened its folder: null once its action ran, or with neither given; else why not, which ends
@@ -537,12 +537,12 @@ public partial class MainWindow
 
     /// <summary>Debug Another Copy (<see cref="BuildRunController.DebugAnotherCopyAsync"/>): what stopped it, if anything, goes to
     /// the status bar; null once the copy's session is open.</summary>
-    public async Task<string?> DebugAnotherCopyAsync()
+    public async Task<Words?> DebugAnotherCopyAsync()
     {
-        string? problem = await buildRun.DebugAnotherCopyAsync();
+        Words? problem = await buildRun.DebugAnotherCopyAsync();
         if (problem is not null)
         {
-            status.Text = problem;
+            status.Text = problem.Shown;
         }
         return problem;
     }
@@ -584,7 +584,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         string start = need.Debugged ? AppActions.DebugInTerminal : need.Profiled ? AppActions.ProfileInTerminal : AppActions.RunInTerminal;
-        console.ShowOffer(need.Said, actions![start]!.Title, () => Request(start));
+        console.ShowOffer(need.Said.Shown, actions![start]!.Title, () => Request(start));
         if (need.Profiled)
         {
             ProfilerView.Offer(console);
@@ -633,7 +633,7 @@ public partial class MainWindow
         {
             if (await DebugAsync() is { } problem)
             {
-                status.Text = problem;
+                status.Text = problem.Shown;
             }
         }
     }

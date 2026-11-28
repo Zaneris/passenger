@@ -31,15 +31,15 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is not { } folder || session.IsEnded)
         {
-            return Refused(Refusals.NoFolderTo("publish").Shown);
+            return Refused(Refusals.NoFolderTo("publish"));
         }
         if (IsBuilding)
         {
-            return Refused(Refusals.Building.Shown);
+            return Refused(Refusals.Building);
         }
         if (session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, request.Project)) is not { } project)
         {
-            return Refused(Refusals.NotOfFolder(request.Name).Shown);
+            return Refused(Refusals.NotOfFolder(request.Name));
         }
         if (project is { IsEvaluated: false, Problem: null })
         {
@@ -57,7 +57,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.Publish, $"Reading how {request.Shown} publishes…") is not { } work)
         {
-            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!).Shown);
+            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!));
         }
         (PublishRequest? resolved, string? unread) = (null, null);
         using (BackgroundWork.Scope())
@@ -83,7 +83,7 @@ public sealed partial class BuildRunController
             resolved = ready;
             if (resolved is null || session.IsEnded || IsBuilding)
             {
-                string said = (refused ?? (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? "Publish stopped" : Refusals.Building)).Shown;
+                Words said = refused ?? (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? "Publish stopped" : Refusals.Building);
                 work.Tell(false, said);
                 work.Dispose();
                 return Said(new BuildOutcome(work.IsStopped ? BuildStatus.Stopped : BuildStatus.Refused, said));
@@ -91,7 +91,7 @@ public sealed partial class BuildRunController
         }
         return await StartPublishAsync(resolved, work, cancel);
 
-        BuildOutcome Refused(string why) => Said(new BuildOutcome(BuildStatus.Refused, why));
+        BuildOutcome Refused(Words why) => Said(new BuildOutcome(BuildStatus.Refused, why));
     }
 
     /// <summary>What a container publish needs before it starts: for a registry that asks for a login, one the SDK would find
@@ -187,7 +187,7 @@ public sealed partial class BuildRunController
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            work.Tell(false, error.Message);
+            work.Tell(false, RefusedException.Of(error));
             work.Dispose();
             return Said(new BuildOutcome(BuildStatus.NotStarted, $"{request.Name} cannot be published: {error.Message}"));
         }

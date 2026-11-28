@@ -51,7 +51,7 @@ public sealed class MigrationsPostgresTests
             Assert.DoesNotContain(window.Database.Sources, s => s.Found?.Contains("running service", StringComparison.Ordinal) == true);
             RunConfiguration compose = window.Configurations.First(c => c.Kind == RunKind.Compose);
             Assert.True(window.SelectConfiguration(compose.Name));
-            string? refused = Ui.Await(window.RunAsync(), "the compose run to come up", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the compose run to come up", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
 
             // A new database, whose history table EF does not find, has no migration applied.

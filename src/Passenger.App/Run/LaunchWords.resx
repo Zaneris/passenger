@@ -20,4 +20,476 @@
     <value>{configuration} cannot run {service}: {why}</value>
     <comment>A container run configuration whose service this machine's container engine cannot run, and why.</comment>
   </data>
+  <data name="StoppedStarting" xml:space="preserve">
+    <value>{name} was stopped as it started</value>
+    <comment>A start Stop ended before what it started ran: a program's, a container run's, an AppHost's; {name} is its run configuration.</comment>
+  </data>
+  <data name="StoppedRestarting" xml:space="preserve">
+    <value>{name}'s restart was stopped</value>
+    <comment>A restart of a run's services (Rerun's, a window's Restart, Hot Reload's) that Stop ended; {name} is the run.</comment>
+  </data>
+  <data name="AlreadyRunning" xml:space="preserve">
+    <value>Already running: {program} has the Run console; stop it first</value>
+    <comment>A start that needs the Run console while another program has it; {program} is that program's run configuration.</comment>
+  </data>
+  <data name="AlreadyRunningProgram" xml:space="preserve">
+    <value>Already running: a program has the Run console; stop it first</value>
+    <comment>A start that needs the Run console while a program of no known name has it.</comment>
+  </data>
+  <data name="CopyDidNotStart" xml:space="preserve">
+    <value>{copy} did not start ({why}); {started} run on</value>
+    <comment>A copy of a game that did not start, and why, while the copies started before it run on; {copy} names the copy, {started} lists those running.</comment>
+  </data>
+  <data name="RunsOn" xml:space="preserve">
+    <value>{name} runs on: nothing was stopped or started</value>
+    <comment>A start of a run configuration whose program runs, where the person chose to leave it running.</comment>
+  </data>
+  <data name="StoppedNotStarted" xml:space="preserve">
+    <value>{name} stopped, not started again</value>
+    <comment>A start of a run configuration whose program ran, where the person chose to stop it and not start it again.</comment>
+  </data>
+  <data name="NoGameConfiguration" xml:space="preserve">
+    <value>{project} has no configuration that runs its game</value>
+    <comment>Run Current Scene where the Godot project has no run configuration that runs its game.</comment>
+  </data>
+  <data name="ProfiledHasConsole" xml:space="preserve">
+    <value>{program}, which Profile started, uses the Run console: Kill it first</value>
+    <comment>A start that needs the Run console while a program Profile started has it.</comment>
+  </data>
+  <data name="NoGameToRunAgain" xml:space="preserve">
+    <value>{name} starts no Godot game, of which Run Another Copy runs one more beside those running</value>
+    <comment>Run Another Copy where the chosen run configuration starts no Godot game.</comment>
+  </data>
+  <data name="RunsNoCopy" xml:space="preserve">
+    <value>Run runs no copy of {name}: Run starts it, then Run Another Copy one more beside it</value>
+    <comment>Run Another Copy where Run runs no copy of the chosen configuration's game yet.</comment>
+  </data>
+  <data name="MostCopies" xml:space="preserve">
+    <value>{most, plural, one {{name} runs # copy, the most one configuration runs} other {{name} runs # copies, the most one configuration runs}}</value>
+    <comment>Run or Debug Another Copy where a configuration already runs as many copies of its game as one may.</comment>
+  </data>
+  <data name="WorkingFolderUnmade" xml:space="preserve">
+    <value>Could not run {program}: its working folder {folder} could not be made: {why}</value>
+    <comment>A run with Hot Reload whose program's working folder could not be made, and the system's reason.</comment>
+  </data>
+  <data name="CouldNotRestart" xml:space="preserve">
+    <value>Hot Reload could not restart {program}: {why}</value>
+    <comment>A copy of a game Hot Reload restarts to apply edits it could not apply as it ran, which could not start again, and why.</comment>
+  </data>
+  <data name="AppHostLinkedTwice" xml:space="preserve">
+    <value>An Aspire configuration cannot link an AppHost more than once</value>
+    <comment>An Aspire run configuration that names one AppHost twice among the AppHosts it starts together.</comment>
+  </data>
+  <data name="AppHostAlreadyRunning" xml:space="preserve">
+    <value>{apphost} is already running in this workspace</value>
+    <comment>An Aspire start of an AppHost that runs already, or is starting, in this folder.</comment>
+  </data>
+  <data name="LinkedAppHostUnavailable" xml:space="preserve">
+    <value>The linked AppHost {file} is not available</value>
+    <comment>An Aspire run configuration linking an AppHost the folder has no Aspire configuration of.</comment>
+  </data>
+  <data name="AppHostEndedBeforeProfiling" xml:space="preserve">
+    <value>The AppHost ended before a service could be profiled</value>
+    <comment>Profile of an Aspire run whose AppHost ended before it started the service to profile.</comment>
+  </data>
+  <data name="AppHostEndedBeforeProfiled" xml:space="preserve">
+    <value>The AppHost ended before {service} could be profiled</value>
+    <comment>Profile of an Aspire run whose AppHost ended before the profiler reached the service it started.</comment>
+  </data>
+  <data name="NothingToRestart" xml:space="preserve">
+    <value>Nothing was launched under the debugger to restart</value>
+    <comment>Hot Reload's restart of a debugged program where Debug launched none of that name.</comment>
+  </data>
+  <data name="Debugging" xml:space="preserve">
+    <value>Debugging {name}</value>
+    <comment>What Debug came to once its program runs under the debugger, as an agent's Debug answers; {name} is the run configuration.</comment>
+  </data>
+  <data name="NoGameToDebugAgain" xml:space="preserve">
+    <value>{name} starts no Godot game, of which Debug Another Copy debugs one more beside those debugged</value>
+    <comment>Debug Another Copy where the chosen run configuration starts no Godot game.</comment>
+  </data>
+  <data name="DebugsNoCopy" xml:space="preserve">
+    <value>No copy of {name} is debugged: Debug starts it, then Debug Another Copy one more beside it</value>
+    <comment>Debug Another Copy where no copy of the chosen configuration's game is debugged yet.</comment>
+  </data>
+  <data name="CatalystAppUnbuilt" xml:space="preserve">
+    <value>Could not debug {name}: its Mac Catalyst app has not been built</value>
+    <comment>Debug of a Mac Catalyst app whose build made no app.</comment>
+  </data>
+  <data name="BrowserNotDebugged" xml:space="preserve">
+    <value>{name}'s components in the browser are not debugged: {why}</value>
+    <comment>Debug of a Blazor app whose WebAssembly components could not be debugged in the browser, and why; the app's server is debugged on where it has one.</comment>
+  </data>
+  <data name="NoPackageAppStarted" xml:space="preserve">
+    <value>Windows started no app of {package}</value>
+    <comment>Debug of a Windows app package where Windows started none of the package's apps; {package} is its family name.</comment>
+  </data>
+  <data name="PageCertificateUntrusted" xml:space="preserve">
+    <value>the development certificate its page {address} is served with is not trusted on this machine, so the browser refuses the page: run dotnet dev-certs https --trust in a terminal, then debug again</value>
+    <comment>Why a Blazor app's page cannot be debugged in the browser, after the app's name (BrowserNotDebugged's why); dotnet dev-certs https --trust is a command, kept as written.</comment>
+  </data>
+  <data name="PageCertificateMissing" xml:space="preserve">
+    <value>its page {address} is served over HTTPS, and this machine has no development certificate: run dotnet dev-certs https --trust in a terminal, then debug again</value>
+    <comment>Why a Blazor app's page cannot be debugged in the browser, after the app's name (BrowserNotDebugged's why); dotnet dev-certs https --trust is a command, kept as written.</comment>
+  </data>
+  <data name="NotBuilt" xml:space="preserve">
+    <value>{verb, select, debug {Could not debug {program}: {file} has not been built} profile {Could not profile {program}: {file} has not been built} other {Could not run {program}: {file} has not been built}}</value>
+    <comment>Run, Debug or Profile ({verb}: run, debug, profile) of a program whose build has not made the file it starts.</comment>
+  </data>
+  <data name="CouldNot" xml:space="preserve">
+    <value>{verb, select, debug {Could not debug {program}: {why}} profile {Could not profile {program}: {why}} other {Could not run {program}: {why}}}</value>
+    <comment>Run, Debug or Profile ({verb}: run, debug, profile) of a program that cannot start here, and why.</comment>
+  </data>
+  <data name="NoWorkingFolder" xml:space="preserve">
+    <value>{verb, select, debug {Could not debug {program}: its working folder {folder} does not exist} profile {Could not profile {program}: its working folder {folder} does not exist} other {Could not run {program}: its working folder {folder} does not exist}}</value>
+    <comment>Run, Debug or Profile ({verb}: run, debug, profile) of a program whose working folder is gone.</comment>
+  </data>
+  <data name="ProjectNotLoaded" xml:space="preserve">
+    <value>{name} cannot run: its project {file} is not loaded in the open folder</value>
+    <comment>A run configuration whose project the open folder has not loaded.</comment>
+  </data>
+  <data name="BuildsUnknown" xml:space="preserve">
+    <value>MSBuild could not say what {project} builds</value>
+    <comment>A start whose project MSBuild named no built file for.</comment>
+  </data>
+  <data name="BuildsUnknownBecause" xml:space="preserve">
+    <value>MSBuild could not say what {project} builds: {why}</value>
+    <comment>A start whose project MSBuild could not evaluate, and why.</comment>
+  </data>
+  <data name="GodotRunsOnly" xml:space="preserve">
+    <value>{name} cannot run: Godot loads a game's {configuration} build alone, where the build configuration chosen builds {project} as {built} (as an export does): choose {configuration} to run it</value>
+    <comment>A Godot game whose project the chosen build configuration builds otherwise than the one Godot loads ({configuration}, such as Debug).</comment>
+  </data>
+  <data name="InContainers" xml:space="preserve">
+    <value>{name} runs in containers, which Run, Debug and Profile bring up: it starts no program on this computer</value>
+    <comment>Why a container run configuration has no program of this machine's to plan: Run, Debug and Profile bring its containers up.</comment>
+  </data>
+  <data name="SeveralProjects" xml:space="preserve">
+    <value>{name} starts several projects, each as its own configuration starts it: Run and Debug start them together, and Profile records one program, which one of their configurations starts</value>
+    <comment>Why a run configuration of several projects has no one program: Profile records one, which a project's own configuration starts.</comment>
+  </data>
+  <data name="CannotRun" xml:space="preserve">
+    <value>{name} cannot run: {why}</value>
+    <comment>A run configuration that cannot run, and why (the container engine's state, a reason of the system's).</comment>
+  </data>
+  <data name="CannotBuildAs" xml:space="preserve">
+    <value>{name} cannot build as {build}: {why}</value>
+    <comment>A run configuration naming a build configuration ({build}, such as Release|x64) its folder cannot give, and why.</comment>
+  </data>
+  <data name="RunsNoContainers" xml:space="preserve">
+    <value>{name} runs no containers</value>
+    <comment>A container start (a run icon's) of a run configuration that is no container configuration.</comment>
+  </data>
+  <data name="NoDockerfile" xml:space="preserve">
+    <value>{name} cannot run: {project} has no Dockerfile</value>
+    <comment>A Dockerfile run configuration whose project has no Dockerfile.</comment>
+  </data>
+  <data name="NoDotnetService" xml:space="preserve">
+    <value>{verb, select, debug {Nothing to debug: {name} starts no .NET service} other {Nothing to profile: {name} starts no .NET service}}</value>
+    <comment>Debug or Profile ({verb}: debug, profile) of a container run configuration none of whose services is .NET.</comment>
+  </data>
+  <data name="ServiceNotBuilt" xml:space="preserve">
+    <value>Could not run {name}: {file} has not been built in {folder}</value>
+    <comment>A container run whose .NET service's assembly ({file}) its build did not make in its output folder.</comment>
+  </data>
+  <data name="OverrideUnwritten" xml:space="preserve">
+    <value>{name} cannot run: Passenger's override could not be written: {why}</value>
+    <comment>A container run whose Compose override file, which Passenger writes for its run, could not be written, and the system's reason.</comment>
+  </data>
+  <data name="DidNotComeUp" xml:space="preserve">
+    <value>{name} did not come up: {said}</value>
+    <comment>A container run whose docker compose up failed, with the last words it said.</comment>
+  </data>
+  <data name="WouldReplace" xml:space="preserve">
+    <value>{name} was not run: it would replace {containers} of {project}, which Passenger did not make for this folder, and {why}; remove them first, or run it from the window</value>
+    <comment>A container run that would replace containers of its Compose project ({project}) Passenger did not make, where nobody can be asked ({why}, NobodyToAsk or AgentStartedRun).</comment>
+  </data>
+  <data name="LeftAsTheyAre" xml:space="preserve">
+    <value>{name} was not run: {containers} of {project}, which Passenger did not make for this folder, were left as they are</value>
+    <comment>A container run the person chose not to run rather than replace containers of its Compose project ({project}) Passenger did not make.</comment>
+  </data>
+  <data name="AgentStartedRun" xml:space="preserve">
+    <value>an agent's call started this run, and asks no one</value>
+    <comment>Why nobody is asked about a run (after “and” in WouldReplace and OverHttpUnasked): an agent started it.</comment>
+  </data>
+  <data name="NobodyToAsk" xml:space="preserve">
+    <value>nobody is at this IDE to ask (an agent's own)</value>
+    <comment>Why nobody is asked about a run (after “and” in WouldReplace and OverHttpUnasked): this Passenger is an agent's, with no person at it.</comment>
+  </data>
+  <data name="CheckingCertificate" xml:space="preserve">
+    <value>Checking the HTTPS development certificate…</value>
+    <comment>A run's stage, in the status bar, while dotnet dev-certs checks the HTTPS development certificate.</comment>
+  </data>
+  <data name="TrustingCertificate" xml:space="preserve">
+    <value>Making and trusting the HTTPS development certificate…</value>
+    <comment>A run's stage, in the status bar, while dotnet dev-certs makes and trusts the HTTPS development certificate.</comment>
+  </data>
+  <data name="ExportingCertificate" xml:space="preserve">
+    <value>Exporting the HTTPS development certificate…</value>
+    <comment>A run's stage, in the status bar, while dotnet dev-certs exports the HTTPS development certificate for its containers.</comment>
+  </data>
+  <data name="OverHttpUnasked" xml:space="preserve">
+    <value>{services} over HTTP for this run: {standing, select, missing {the development certificate is not there} other {the development certificate is not trusted}}, and {why}</value>
+    <comment>What serves HTTPS ({services}) served over HTTP for this run, the certificate missing or not trusted ({standing}), where nobody could be asked ({why}).</comment>
+  </data>
+  <data name="OverHttpChosen" xml:space="preserve">
+    <value>{services} over HTTP for this run: {standing, select, missing {the development certificate is not there} other {the development certificate is not trusted}}</value>
+    <comment>What serves HTTPS ({services}) served over HTTP for this run, the person having chosen not to make or trust the missing or untrusted certificate ({standing}).</comment>
+  </data>
+  <data name="OverHttp" xml:space="preserve">
+    <value>{services} over HTTP for this run: {why}</value>
+    <comment>What serves HTTPS ({services}) served over HTTP for this run, as a step of dev-certs failed ({why}).</comment>
+  </data>
+  <data name="ServesHttp" xml:space="preserve">
+    <value>{count, plural, one {{services} serves HTTP for this run: {why}} other {{services} serve HTTP for this run: {why}}}</value>
+    <comment>The run's console line for what serves HTTPS ({services}, {count} of them) served over HTTP for this run, as a step of dev-certs failed ({why}).</comment>
+  </data>
+  <data name="CertificateNotTrusted" xml:space="preserve">
+    <value>the development certificate was not trusted: {said}</value>
+    <comment>Why a run serves HTTP (OverHttp's why): dotnet dev-certs did not trust the certificate, with what it said.</comment>
+  </data>
+  <data name="CertificateNotExported" xml:space="preserve">
+    <value>the development certificate could not be exported: {said}</value>
+    <comment>Why a container run serves HTTP (OverHttp's why): dotnet dev-certs did not export the certificate, with what it said.</comment>
+  </data>
+  <data name="StillComingUp" xml:space="preserve">
+    <value>{name} is still coming up</value>
+    <comment>Detach of a container run whose services are still coming up.</comment>
+  </data>
+  <data name="ProfilerRecords" xml:space="preserve">
+    <value>The profiler records {service} of {name}: Stop ends the recording, and Detach lets go of a run nothing records</value>
+    <comment>Detach of a container run one of whose services the profiler records.</comment>
+  </data>
+  <data name="NoContainerRunUnderWay" xml:space="preserve">
+    <value>No container run is under way</value>
+    <comment>A Containers window action on the run's own Compose project where no container run is under way.</comment>
+  </data>
+  <data name="NoContainerRun" xml:space="preserve">
+    <value>No container run is under way: Run, Debug or Profile a container configuration first</value>
+    <comment>A service action, or Detach, where no container run is under way.</comment>
+  </data>
+  <data name="CouldNotAttach" xml:space="preserve">
+    <value>{verb, select, profile {Could not profile {service}: {why}} other {Could not debug {service}: {why}}}</value>
+    <comment>A service of a run (container or Aspire) the debugger or the profiler ({verb}: debug, profile) could not reach, and why.</comment>
+  </data>
+  <data name="RunsWithout" xml:space="preserve">
+    <value>{tool, select, profiler {{service} runs without the profiler: {why}} other {{service} runs without the debugger: {why}}}</value>
+    <comment>A service held for the debugger or the profiler ({tool}: debugger, profiler) that runs on without it, and why.</comment>
+  </data>
+  <data name="ProfilerUnavailable" xml:space="preserve">
+    <value>The profiler is not available</value>
+    <comment>Profile of a service where this window has no profiler to record it.</comment>
+  </data>
+  <data name="WithCaveat" xml:space="preserve">
+    <value>{why} ({caveat})</value>
+    <comment>Why a service could not be debugged, with what its kind says of such a service after it.</comment>
+  </data>
+  <data name="NoBrowserDebugs" xml:space="preserve">
+    <value>no browser debugs them</value>
+    <comment>Why a Blazor app's components in the browser are not debugged (BrowserNotDebugged's why): no browser that debugs them was found.</comment>
+  </data>
+  <data name="RestartedUnheld" xml:space="preserve">
+    <value>{why}; {services} restarted to run without the debugger</value>
+    <comment>Services restarted held for a debugger that could not attach ({why}), restarted again unheld.</comment>
+  </data>
+  <data name="NotRestartedUnheld" xml:space="preserve">
+    <value>{why}; {services} could not be restarted to run without it: {said}</value>
+    <comment>Services restarted held for a debugger that could not attach ({why}), which could not be restarted again unheld, and why.</comment>
+  </data>
+  <data name="ServicesNotRestarted" xml:space="preserve">
+    <value>{services} of {run} could not be restarted: {why}</value>
+    <comment>A restart of services of a run that its kind refused (a command refused, a time limit), and why.</comment>
+  </data>
+  <data name="NoServiceChosen" xml:space="preserve">
+    <value>No .NET service of {run} is chosen</value>
+    <comment>A service action where no service of the run is chosen.</comment>
+  </data>
+  <data name="ServiceOfNoProject" xml:space="preserve">
+    <value>{service} is not a .NET service of {run}: no project of the solution is known to run it; choose its project in a copy of {run} (Run &gt; Edit Configurations)</value>
+    <comment>A service action on a compose service no project of the solution is known to run; Run &gt; Edit Configurations is the menu's path.</comment>
+  </data>
+  <data name="NotDotnetService" xml:space="preserve">
+    <value>{service} is not a .NET service of {run}</value>
+    <comment>A service action on a service of the run that is no .NET service.</comment>
+  </data>
+  <data name="DoesNotStart" xml:space="preserve">
+    <value>{run} does not start {service}</value>
+    <comment>A service action on a service its run does not start.</comment>
+  </data>
+  <data name="RestartedUnrecorded" xml:space="preserve">
+    <value>{why}; {services} restarted to run without the profiler</value>
+    <comment>A service started held for the profiler, which could not record it ({why}), restarted again unheld.</comment>
+  </data>
+  <data name="NotAttached" xml:space="preserve">
+    <value>{service} could not be attached to</value>
+    <comment>Attach to a service of a run where the debugger did not attach and said nothing of why.</comment>
+  </data>
+  <data name="ServiceActing" xml:space="preserve">
+    <value>{action, select, debug {Restarting {service} to debug it…} attach {Attaching the debugger to {service}…} run {Running {service} without the debugger…} restart {Restarting {service}…} other {Attaching the profiler to {service}…}}</value>
+    <comment>A service action's stage in the status bar ({action}: debug, attach, run without the debugger, restart, profile).</comment>
+  </data>
+  <data name="ServiceActionStopped" xml:space="preserve">
+    <value>{action, select, debug {Restarting {service} to debug it was stopped} attach {Attaching the debugger to {service} was stopped} run {Running {service} without the debugger was stopped} restart {Restarting {service} was stopped} other {Attaching the profiler to {service} was stopped}}</value>
+    <comment>A service action ({action}: debug, attach, run without the debugger, restart, profile) that Stop ended.</comment>
+  </data>
+  <data name="ServiceActionFailed" xml:space="preserve">
+    <value>{action, select, debug {Restarting {service} to debug it failed: {why}} attach {Attaching the debugger to {service} failed: {why}} run {Running {service} without the debugger failed: {why}} restart {Restarting {service} failed: {why}} other {Attaching the profiler to {service} failed: {why}}}</value>
+    <comment>A service action ({action}: debug, attach, run without the debugger, restart, profile) its run refused, and why.</comment>
+  </data>
+  <data name="CannotDebugHere" xml:space="preserve">
+    <value>{configuration} cannot debug here: {why}</value>
+    <comment>Debug of a run configuration of several parts this machine cannot debug, and why.</comment>
+  </data>
+  <data name="CannotStartPart" xml:space="preserve">
+    <value>{configuration} cannot start {part}: {why}</value>
+    <comment>A run configuration of several parts one of whose parts ({part}) cannot start, and why.</comment>
+  </data>
+  <data name="GameStartsApart" xml:space="preserve">
+    <value>a Godot game starts from its own configuration, which follows its scenes and copies</value>
+    <comment>Why a part of a run configuration of several parts cannot start (CannotStartPart's why): it is a Godot game.</comment>
+  </data>
+  <data name="DeviceAppStartsApart" xml:space="preserve">
+    <value>an app on a device starts from its own configuration, which installs it there</value>
+    <comment>Why a part of a run configuration of several parts cannot start (CannotStartPart's why): it runs on a device.</comment>
+  </data>
+  <data name="CatalystAppStartsApart" xml:space="preserve">
+    <value>a Mac Catalyst app starts from its own configuration, which has the system open it</value>
+    <comment>Why a part of a run configuration of several parts cannot start (CannotStartPart's why): it is a Mac Catalyst app.</comment>
+  </data>
+  <data name="PackageStartsApart" xml:space="preserve">
+    <value>a packaged Windows app starts from its own configuration, which registers it with Windows</value>
+    <comment>Why a part of a run configuration of several parts cannot start (CannotStartPart's why): it is a Windows app package.</comment>
+  </data>
+  <data name="PartDidNotStart" xml:space="preserve">
+    <value>{count, plural, one {{part} did not start ({why}); {started} runs on} other {{part} did not start ({why}); {started} run on}}</value>
+    <comment>A part of a run configuration of several parts that did not start, and why, the parts started before it ({started}, {count} of them) running on.</comment>
+  </data>
+  <data name="NamesNoCommand" xml:space="preserve">
+    <value>it names no command to run</value>
+    <comment>Why a command part of a run configuration cannot start (CannotStartPart's why).</comment>
+  </data>
+  <data name="FolderGone" xml:space="preserve">
+    <value>its folder {folder} is gone</value>
+    <comment>Why a command part of a run configuration cannot start (CannotStartPart's why): the folder it runs in is gone.</comment>
+  </data>
+  <data name="ProgramNotFound" xml:space="preserve">
+    <value>{program} was not found</value>
+    <comment>Why a command part of a run configuration cannot start (CannotStartPart's why): the program it names by a path is not there.</comment>
+  </data>
+  <data name="ProgramNotOnPath" xml:space="preserve">
+    <value>{program} was not found on the PATH</value>
+    <comment>Why a command part of a run configuration cannot start (CannotStartPart's why): the program it names is on no folder of the PATH.</comment>
+  </data>
+  <data name="PackageUnread" xml:space="preserve">
+    <value>{file} is gone, or does not read as a package.json</value>
+    <comment>Why a Node.js part of a run configuration cannot start (CannotStartPart's why): its package.json is gone or unreadable.</comment>
+  </data>
+  <data name="NoScriptNamed" xml:space="preserve">
+    <value>{package}'s package.json has no script named {script}</value>
+    <comment>Why a Node.js script part of a run configuration cannot start (CannotStartPart's why).</comment>
+  </data>
+  <data name="PartNotRestarted" xml:space="preserve">
+    <value>{part} could not restart: {why}</value>
+    <comment>A part of a run of several parts, restarted from its tab in the Run window, that could not start again, and why; written in its console.</comment>
+  </data>
+  <data name="ReadingPackage" xml:space="preserve">
+    <value>Reading {name}'s package.json…</value>
+    <comment>A start's stage, in the status bar, while it reads a Node.js package's package.json.</comment>
+  </data>
+  <data name="RunningScript" xml:space="preserve">
+    <value>Running {name}: {command} in {folder}</value>
+    <comment>What Run says once a Node.js script runs: the command its package manager runs, and the folder it runs in.</comment>
+  </data>
+  <data name="DebugEndedAsStarted" xml:space="preserve">
+    <value>Debugging {name} ended as it started</value>
+    <comment>Debug of an app on a device, or a Mac Catalyst app, whose session ended as it started, saying nothing of why.</comment>
+  </data>
+  <data name="PuttingDebuggerIn" xml:space="preserve">
+    <value>Putting Passenger's debugger in {app}…</value>
+    <comment>A start's stage, in the status bar, while Passenger's debugger goes into an app on a device, or a Mac Catalyst app ({app}, its package).</comment>
+  </data>
+  <data name="StartingOnDevice" xml:space="preserve">
+    <value>{where, select, mac {Starting {name} on this Mac under the debugger…} other {Starting {name} on its device under the debugger…}}</value>
+    <comment>A start's stage, in the status bar, as an app starts under the debugger on its device, or on this Mac for a Mac Catalyst app ({where}: device, mac).</comment>
+  </data>
+  <data name="DeviceStartFailed" xml:space="preserve">
+    <value>{name} could not be started on its device: {why}</value>
+    <comment>Debug of an app on a device whose start command could not run, and the system's reason.</comment>
+  </data>
+  <data name="ChoosingAspireService" xml:space="preserve">
+    <value>An Aspire service is already being chosen</value>
+    <comment>Profile of an Aspire run while the question of which of its services to profile is open already.</comment>
+  </data>
+  <data name="NoAspireResourceChosen" xml:space="preserve">
+    <value>No Aspire project resource is selected</value>
+    <comment>A run icon's Run, Debug or Profile of an AppHost's resource where none is chosen.</comment>
+  </data>
+  <data name="AppHostSourceChanged" xml:space="preserve">
+    <value>The AppHost source changed; open its gutter action again</value>
+    <comment>A run icon's action on an AppHost's resource whose source changed since its menu opened.</comment>
+  </data>
+  <data name="AppHostResourceChanged" xml:space="preserve">
+    <value>The selected AppHost resource changed</value>
+    <comment>A run icon's action on an AppHost's resource that changed since its menu opened.</comment>
+  </data>
+  <data name="PlaysNoGodotGame" xml:space="preserve">
+    <value>{name} plays no Godot game</value>
+    <comment>A run configuration that plays in Godot's editor whose project is no Godot game's.</comment>
+  </data>
+  <data name="PlaysInPersonsEditor" xml:space="preserve">
+    <value>{name} plays in the person's own Godot editor, which an agent's own Passenger does not ask: choose a configuration that runs the game here</value>
+    <comment>An agent's own Passenger asked to play a game in the person's Godot editor, which it never asks.</comment>
+  </data>
+  <data name="NoSceneOpen" xml:space="preserve">
+    <value>{name} cannot run: it starts in the scene open in the editor, and none is (a .tscn, or a script a scene's node runs)</value>
+    <comment>A Godot run configuration that starts in the scene open in the editor, where none is open.</comment>
+  </data>
+  <data name="PlayNotTaken" xml:space="preserve">
+    <value>Godot's editor on {project} did not take the play within {within}</value>
+    <comment>Godot's editor, asked through Passenger's addon to play, that did not take the play in time ({within}, a while said).</comment>
+  </data>
+  <data name="PlaysThroughAddon" xml:space="preserve">
+    <value>{how, select, debugged {{project} plays in Godot's editor, built here and debugged by this Passenger} other {{project} plays in Godot's editor, built here}}</value>
+    <comment>A game playing in Godot's editor through Passenger's addon, debugged or not ({how}: debugged, run).</comment>
+  </data>
+  <data name="PlaysMainSceneOnly" xml:space="preserve">
+    <value>{older, select, older {Godot's editor on {project} plays only its main scene when asked without Passenger's addon: Install Passenger's Godot Addon… to play the scene chosen; Passenger's addon there is too old to play as asked, so Install Passenger's Godot Addon… updates it} other {Godot's editor on {project} plays only its main scene when asked without Passenger's addon: Install Passenger's Godot Addon… to play the scene chosen}}</value>
+    <comment>A scene asked to play in Godot's editor without Passenger's addon there, or with an older one ({older}: older, none); Install Passenger's Godot Addon… is a menu item.</comment>
+  </data>
+  <data name="EditorRefusedPlay" xml:space="preserve">
+    <value>Godot's editor on {project} {said}</value>
+    <comment>Godot's editor refusing a play asked through its IDE messaging, with what it said after its project's name.</comment>
+  </data>
+  <data name="PlaysThroughMessaging" xml:space="preserve">
+    <value>{how, select, debugged {{older, select, older {{project} plays in Godot's editor undebugged: Godot's IDE messaging gives no debugger a way in, and Passenger's addon does (Install Passenger's Godot Addon…); Passenger's addon there is too old to play as asked, so Install Passenger's Godot Addon… updates it} other {{project} plays in Godot's editor undebugged: Godot's IDE messaging gives no debugger a way in, and Passenger's addon does (Install Passenger's Godot Addon…)}}} other {{older, select, older {{project} plays in Godot's editor, built here; Passenger's addon there is too old to play as asked, so Install Passenger's Godot Addon… updates it} other {{project} plays in Godot's editor, built here}}}}</value>
+    <comment>A game playing in Godot's editor through its IDE messaging, without Passenger's addon there or with an older one ({older}: older, none), debugged or not ({how}: debugged, run).</comment>
+  </data>
+  <data name="GodotEditorNotOpen" xml:space="preserve">
+    <value>Godot's editor is not open on {project}: open it, then run {name} again</value>
+    <comment>A play in Godot's editor where it is not open on the project, and no configuration opens it.</comment>
+  </data>
+  <data name="GodotEditorNotOpenOpens" xml:space="preserve">
+    <value>Godot's editor is not open on {project}: {editor} opens it, then run {name} again</value>
+    <comment>A play in Godot's editor where it is not open on the project; {editor} is the run configuration that opens it.</comment>
+  </data>
+  <data name="OpenGodotEditorTitle" xml:space="preserve">
+    <value>Open Godot's Editor?</value>
+    <comment>The title of the question asked where a play in Godot's editor finds it not open.</comment>
+  </data>
+  <data name="OpenGodotEditorQuestion" xml:space="preserve">
+    <value>Godot's editor is not open on {project}, so it cannot play {name}. Open it now, then run {name} again once it is up.</value>
+    <comment>The question asked where a play in Godot's editor finds it not open.</comment>
+  </data>
+  <data name="OpenInGodotEditor" xml:space="preserve">
+    <value>Open in Godot Editor</value>
+    <comment>The button of the question asked where a play in Godot's editor finds it not open, which opens it.</comment>
+  </data>
+  <data name="GodotEditorOpens" xml:space="preserve">
+    <value>Godot's editor opens on {project}: run {name} again once it is up</value>
+    <comment>Godot's editor opening on the project after the person chose to open it for a play.</comment>
+  </data>
+  <data name="GodotEditorNotOpened" xml:space="preserve">
+    <value>Godot's editor could not open on {project}: {why}</value>
+    <comment>Godot's editor, which the person chose to open for a play, that could not open, and why.</comment>
+  </data>
 </root>

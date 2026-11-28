@@ -234,7 +234,7 @@ public partial class MainWindow
     /// <summary>Attach to a .NET service of an AppHost that runs outside Passenger, as it runs, never restarted: the debugger
     /// attached to the program its AppHost says it runs as (<paramref name="program"/>), as Attach to Process attaches, its
     /// session named for the resource and its AppHost. Null once attached, else why not (said too).</summary>
-    private async Task<string?> AttachElsewhereAsync(AspireSelection chosen, int program)
+    private async Task<Words?> AttachElsewhereAsync(AspireSelection chosen, int program)
     {
         string name = $"{chosen.Resource.DisplayName} of {Path.GetFileNameWithoutExtension(chosen.AppHostPath)}";
         DotnetProcess? found = await BackgroundWork.Run(() => DotnetProcesses.Find(program));
@@ -260,13 +260,13 @@ public partial class MainWindow
     }
 
     /// <summary>One of a service's actions on the container run under way: null once done, else why not (said too).</summary>
-    public Task<string?> ServiceActionAsync(string id, string? service)
+    public Task<Words?> ServiceActionAsync(string id, string? service)
     {
         if (buildRun.ServiceOfRun(service) is not ({ } running, null))
         {
-            string why = buildRun.ServiceOfRun(service).WhyNot!;
-            status.Text = why;
-            return Task.FromResult<string?>(why);
+            Words why = buildRun.ServiceOfRun(service).WhyNot!;
+            status.Text = why.Shown;
+            return Task.FromResult<Words?>(why);
         }
         return id switch
         {

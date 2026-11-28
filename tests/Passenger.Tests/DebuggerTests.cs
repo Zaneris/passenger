@@ -3206,10 +3206,10 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         List<OwnProcess> programs = [];
         try
         {
-            Task<string?> debugging = window.DebugAsync();
-            Task<string?> running = window.RunAsync();
+            Task<Words?> debugging = window.DebugAsync();
+            Task<Words?> running = window.RunAsync();
             Ui.Launched(window, running, "Run, pressed as Debug's start of the configuration began");
-            string? debugged = Ui.Await(debugging, "Debug's start, which Run was to stop");
+            string? debugged = Ui.Await(debugging, "Debug's start, which Run was to stop")?.English;
             int run = Processes.WrittenId(started, "Run's program to start");
             programs.Add(OwnProcess.Of(run));
             Assert.True(debugged is not null && !window.Debugger.IsDebugging && window.Runner.IsRunning,
@@ -3224,7 +3224,7 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             running = window.RunAsync();
             debugging = window.DebugAsync();
             Ui.Launched(window, debugging, "Debug, pressed as Run's start of the configuration began");
-            string? ran = Ui.Await(running, "Run's start, which Debug was to stop");
+            string? ran = Ui.Await(running, "Run's start, which Debug was to stop")?.English;
             int again = Running(window, started);
             programs.Add(OwnProcess.Of(again));
             Assert.True(ran is not null && window.Debugger.IsDebugging && !window.Runner.IsRunning,

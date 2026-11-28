@@ -98,7 +98,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     /// <summary>Attaches to a service held at its start as the start comes, once: the run of services' one attach
     /// (BuildRunController's), null once attached, else why not.</summary>
-    public Func<AspireAppRun, AspireResourceRun, RunStart, CancellationToken, Task<string?>>? AttachStart { get; set; }
+    public Func<AspireAppRun, AspireResourceRun, RunStart, CancellationToken, Task<Words?>>? AttachStart { get; set; }
 
     /// <summary>What a person chose for a service of a configuration's run as it ran (debugged, or not), which its first start
     /// in a run that brings the configuration up again keeps; null when nothing was chosen.</summary>
@@ -273,7 +273,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     /// own, <see cref="ProjectSession.WorkspaceOfAsync"/>), and once each is connected to answers null, else why not. <paramref name="https"/> is
     /// how its HTTPS is served, as the start worked out before: over HTTP, the AppHosts' own addresses and the services they
     /// start serve HTTP for this run.</summary>
-    public async Task<string?> StartAsync(RunConfiguration configuration, RunStart mode,
+    public async Task<Words?> StartAsync(RunConfiguration configuration, RunStart mode,
         Func<BuildStep, Action?, WorkspaceModel?, Task<BuildOutcome>> build, CancellationToken cancellation = default, HttpsChoice? https = null)
     {
         UiThread.Check();
@@ -286,13 +286,13 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             string[] paths = [configuration.Project, .. configuration.LinkedAppHosts];
             if (paths.Distinct(PathNames.Comparer).Count() != paths.Length)
             {
-                return "An Aspire configuration cannot link an AppHost more than once";
+                return LaunchWords.AppHostLinkedTwice;
             }
             foreach (string path in paths)
             {
                 if (startingPaths.Contains(path) || apps.Any(app => PathNames.Same(app.Configuration.Project, path)))
                 {
-                    return $"{Path.GetFileNameWithoutExtension(path)} is already running in this workspace";
+                    return LaunchWords.AppHostAlreadyRunning(Path.GetFileNameWithoutExtension(path));
                 }
             }
             foreach (string path in paths)
@@ -303,7 +303,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             string group = Guid.NewGuid().ToString("N");
             RunConfiguration[] configurations = paths.Select(path => PathNames.Same(path, configuration.Project) ? configuration
                 : workspace.Configurations.All.FirstOrDefault(candidate => candidate.Aspire && PathNames.Same(candidate.Project, path))
-                    ?? throw new LaunchException($"The linked AppHost {Path.GetFileName(path)} is not available")).ToArray();
+                    ?? throw new LaunchException(LaunchWords.LinkedAppHostUnavailable(Path.GetFileName(path)))).ToArray();
             (string AppHost, string Name)[] candidates = configurations.SelectMany(chosen => chosen.ServiceActions
                 .Where(pair => pair.Value == ServiceStart.Debug && chosen.ServiceProjects.ContainsKey(pair.Key))
                 .OrderBy(pair => pair.Key == chosen.LaunchService ? 0 : 1)
@@ -347,14 +347,14 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 }
                 if (started.FirstOrDefault(app => ReferenceEquals(asked, app.ProfileAsked.Task)) is not { } profiled)
                 {
-                    throw new LaunchException("The AppHost ended before a service could be profiled");
+                    throw new LaunchException(LaunchWords.AppHostEndedBeforeProfiling);
                 }
                 string service = await profiled.ProfileAsked.Task;
                 // The start's landing or its limit falling due, whichever came first where it came (ClaimsProfile), however late this looks.
                 Task winner = await Task.WhenAny(profiled.ProfileStarted.Task, profiled.Runner.Ended).WaitAsync(starting.Token);
                 if (!ReferenceEquals(winner, profiled.ProfileStarted.Task))
                 {
-                    throw new LaunchException($"The AppHost ended before {service} could be profiled");
+                    throw new LaunchException(LaunchWords.AppHostEndedBeforeProfiled(service));
                 }
                 if (await profiled.ProfileStarted.Task is { } failed)
                 {
@@ -370,7 +370,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             {
                 await StopAppAsync(app);
             }
-            return error is OperationCanceledException ? BuildRunController.StoppedStarting(configuration.Name) : error.Message;
+            return error is OperationCanceledException ? BuildRunController.StoppedStarting(configuration.Name) : RefusedException.Of(error);
         }
         finally
         {
@@ -390,7 +390,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         AspireAppRun app;
         LaunchPlan plan;
         // What the AppHost and the services it starts build and run as, its configuration's own build configuration where it names one.
-        (WorkspaceModel? configured, string? unconfigured) = await workspace.WorkspaceOfAsync(configuration);
+        (WorkspaceModel? configured, Words? unconfigured) = await workspace.WorkspaceOfAsync(configuration);
         if (unconfigured is not null)
         {
             throw new LaunchException(unconfigured);
@@ -430,7 +430,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         if (https.OverHttp is { } note)
         {
-            app.Notes.Add(note);
+            app.Notes.Add(note.Shown);
         }
         foreach (string line in said)
         {
@@ -938,7 +938,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         catch (Exception error) when (profiling)
         {
-            app.ProfileStarted.TrySetResult(app.PastProfileLimit() ?? (error is OperationCanceledException ? BuildRunController.StoppedStarting(app.Name) : error.Message));
+            app.ProfileStarted.TrySetResult(app.PastProfileLimit() ?? (error is OperationCanceledException ? BuildRunController.StoppedStarting(app.Name) : RefusedException.Of(error)));
             throw;
         }
     }
@@ -1654,7 +1654,7 @@ public sealed class AspireAppRun : ServiceRun
         }
         rebuiltEdits.Clear();
     }
-    internal TaskCompletionSource<string?> ProfileStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource<Words?> ProfileStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>DCP's request to start the service Profile records, by its name; the profile's time limit counts from it.</summary>
     internal TaskCompletionSource<string> ProfileAsked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -256,18 +256,18 @@ public sealed partial record LaunchPlan
     /// that the working folder is gone ("Could not run Hello: its working folder ... does not exist"), unless what starts it
     /// builds it there (<see cref="WorksWhereBuilt"/>), or that its windows would reach the person's screen from a Passenger
     /// nobody sees (<see cref="UnseenApps.WhyNot"/>).</summary>
-    public string? WhyNot(string verb, bool built = true)
+    public Words? WhyNot(string verb, bool built = true)
     {
         if (built && (Built is { } file && !File.Exists(file) ? file : ByAppHost && !File.Exists(Program) ? Program : null) is { } missing)
         {
-            return $"Could not {verb} {ProgramName}: {System.IO.Path.GetFileName(missing)} has not been built";
+            return LaunchWords.NotBuilt(verb, ProgramName, System.IO.Path.GetFileName(missing));
         }
         if (X86Dotnet is { } x86 && Built is { } assembly && X86Programs.Lacking(x86, assembly, Environment) is { Count: > 0 } lacking)
         {
-            return $"Could not {verb} {ProgramName}: {Refusals.X86RuntimeMissing(x86, lacking)}";
+            return LaunchWords.CouldNot(verb, ProgramName, Refusals.X86RuntimeMissing(x86, lacking));
         }
         return !Directory.Exists(WorkingDirectory) && (built || !WorksWhereBuilt)
-            ? $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist"
+            ? LaunchWords.NoWorkingFolder(verb, ProgramName, WorkingDirectory)
             : UnseenApps.WhyNot(this, verb, watched: !built);
     }
 
@@ -301,7 +301,7 @@ public sealed partial record LaunchPlan
         bool headless = unseen ?? PassengerApp.ShowsNoWindow;
         if (configuration.Unsupported is { } why)
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: {why}");
+            throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, why));
         }
         if (configuration.IsContainer)
         {
@@ -343,7 +343,7 @@ public sealed partial record LaunchPlan
             };
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
-            ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");
+            ?? throw new LaunchException(LaunchWords.ProjectNotLoaded(configuration.Name, System.IO.Path.GetFileName(configuration.Project)));
         // The target chosen to run on decides the framework built: its platform's, unless the configuration names one of it.
         Devices.KeptTarget? device = Devices.DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0 ? targets?.Invoke(project) : null;
         if (device is not null && Devices.DeviceTargets.FrameworkFor(project, device.Platform) is null)
@@ -370,7 +370,7 @@ public sealed partial record LaunchPlan
         // Before its build: the program would build here (EnableWindowsTargeting) and then fail to start for want of WindowsDesktop.
         if (configuration.Program.Length == 0 && project.RunsOnlyOnWindows(framework) is { } windows)
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
+            throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, windows));
         }
         HashSet<string> names = new([CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, .. AppHosts.Properties],
             StringComparer.OrdinalIgnoreCase);
@@ -411,13 +411,12 @@ public sealed partial record LaunchPlan
 
         string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
             ? path
-            : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
+            : throw new LaunchException(LaunchWords.BuildsUnknown(project.Name)));
         if ((configuration.Program.Length == 0 || configuration.NamesGodot) && project.GodotFolder is { } game)
         {
             if (properties.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } builtAs && !builtAs.Equals(GodotLaunch.RunsConfiguration, StringComparison.OrdinalIgnoreCase))
             {
-                throw new LaunchException($"{configuration.Name} cannot run: Godot loads a game's {GodotLaunch.RunsConfiguration} build alone, where the build configuration "
-                    + $"chosen builds {project.Name} as {builtAs} (as an export does): choose {GodotLaunch.RunsConfiguration} to run it");
+                throw new LaunchException(LaunchWords.GodotRunsOnly(configuration.Name, GodotLaunch.RunsConfiguration, project.Name, builtAs));
             }
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
                 properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand,
@@ -560,13 +559,11 @@ public sealed partial record LaunchPlan
     }
 
     /// <summary>Why a container configuration has no plan of this machine's: Run, Debug and Profile bring its containers up.</summary>
-    public static string InContainers(string name) =>
-        $"{name} runs in containers, which Run, Debug and Profile bring up: it starts no program on this computer";
+    public static Words InContainers(string name) => LaunchWords.InContainers(name);
 
     /// <summary>Why a multi-project configuration has no one plan: Run and Debug start each of its projects, and Profile records
     /// one program, which a project's own configuration starts.</summary>
-    public static string SeveralProjects(string name) =>
-        $"{name} starts several projects, each as its own configuration starts it: Run and Debug start them together, and Profile records one program, which one of their configurations starts";
+    public static Words SeveralProjects(string name) => LaunchWords.SeveralProjects(name);
 
     /// <summary>The state folder a Passenger launched from this one is given: sandbox/ in this one's, so the two never share
     /// settings, recent solutions, a folder's editors and breakpoints, the log or agents' sockets, and the one debugged
@@ -654,10 +651,10 @@ public sealed partial record LaunchPlan
         }
         catch (ProjectHostFailed failed)
         {
-            throw new LaunchException($"MSBuild could not say what {project.Name} builds: {failed.Reason}");
+            throw new LaunchException(LaunchWords.BuildsUnknownBecause(project.Name, failed.Reason));
         }
         return answer.Problem is { } problem
-            ? throw new LaunchException($"MSBuild could not say what {project.Name} builds: {problem}")
+            ? throw new LaunchException(LaunchWords.BuildsUnknownBecause(project.Name, problem))
             : new Dictionary<string, string>(answer.Values, StringComparer.OrdinalIgnoreCase);
     }
 

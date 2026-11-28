@@ -87,7 +87,7 @@ public sealed partial class PassengerTools
         GodotGame? before = Session.Game;
         if (await window.PlayInGodotEditorForAgentAsync(game, scene, cancel) is { } refused)
         {
-            throw new InvalidOperationException(refused);
+            throw new RefusedException(refused);
         }
         AgentCall.Say("Waiting for the game Godot's editor plays");
         await When(() => Session.Game is { Relayed: true } game && game != before, GodotPlayLimit, cancel, On(h => Session.LiveAppChanged += h, h => Session.LiveAppChanged -= h));

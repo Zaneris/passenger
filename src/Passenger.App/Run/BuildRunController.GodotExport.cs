@@ -78,11 +78,11 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is null || session.IsEnded)
         {
-            return Refused(Refusals.NoFolderTo("export").Shown);
+            return Refused(Refusals.NoFolderTo("export"));
         }
         if (IsBuilding)
         {
-            return Refused(Refusals.Building.Shown);
+            return Refused(Refusals.Building);
         }
         if (RunsInConsole)
         {
@@ -90,7 +90,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.Publish, $"Reading how {request.Preset} exports…") is not { } work)
         {
-            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!).Shown);
+            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!));
         }
         using (work)
         using (cancel.Register(work.Cancel))
@@ -174,7 +174,7 @@ public sealed partial class BuildRunController
             }
         }
 
-        BuildOutcome Refused(string why) => Said(new BuildOutcome(BuildStatus.Refused, why));
+        BuildOutcome Refused(Words why) => Said(new BuildOutcome(BuildStatus.Refused, why));
     }
 
     /// <summary>How an export ended: the game there once Godot ended well, else what Godot said first of its failure.</summary>

@@ -63,7 +63,7 @@ public sealed class ProjectTelemetryTests : McpRig
         string? project = null;
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
@@ -139,7 +139,7 @@ public sealed class ProjectTelemetryTests : McpRig
         Collect(window);
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run without a dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run without a dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             string? answered = null;
@@ -170,7 +170,7 @@ public sealed class ProjectTelemetryTests : McpRig
         OwnEnvironment.Set(OtelVariables.ExporterEndpoint, "http://collector.passenger-test.invalid:4318");
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run on its inherited endpoint", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run on its inherited endpoint", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             string? answered = null;
@@ -202,7 +202,7 @@ public sealed class ProjectTelemetryTests : McpRig
         string? project = null;
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             project = Assert.Single(window.Session.Dashboards).ProjectName;

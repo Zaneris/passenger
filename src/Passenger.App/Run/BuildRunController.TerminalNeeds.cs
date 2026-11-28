@@ -1,5 +1,6 @@
 using Passenger.App.Debugging;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 using Passenger.Dap;
 
 namespace Passenger.App.Run;
@@ -15,7 +16,7 @@ public sealed record TerminalNeed(string Configuration, string Call, bool Debugg
     public string Window => Debugged ? "Debug" : "Run";
 
     /// <summary>What it needs, in Refusals' words.</summary>
-    public string Said => Refusals.NeedsTerminal(Configuration, Call, Window).Shown;
+    public Words Said => Refusals.NeedsTerminal(Configuration, Call, Window);
 }
 
 public sealed partial class BuildRunController
@@ -46,7 +47,7 @@ public sealed partial class BuildRunController
     {
         ref NeedHearing? hearing = ref debugged ? ref debugNeeds : ref runNeeds;
         hearing?.LetGo();
-        if (hearing is { Need: { } forgotten } before && before.Console.Offered == forgotten.Said)
+        if (hearing is { Need: { } forgotten } before && before.Console.Offered == forgotten.Said.Shown)
         {
             before.Console.ShowOffer(null);
         }

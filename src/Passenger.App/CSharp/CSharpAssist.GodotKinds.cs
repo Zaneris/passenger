@@ -355,7 +355,7 @@ internal sealed partial class CSharpAssist
             }
             catch (LanguageServerFailed failed)
             {
-                return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Message));
+                return RefactorOutcome.Refused(Refusals.NotRenamed(old, RefusedException.Of(failed)));
             }
             foreach (GodotKindUse use in uses)
             {

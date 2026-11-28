@@ -359,7 +359,7 @@ public partial class MainWindow
             else if (await into.Debug.AttachAsync(process, game.Name, hotReload: true, edits: peer.Kept is { } kept ? into.Debug.Copied(kept) : null,
                 startedElsewhere: $"{game.Name} is played by Godot's editor, whose Output shows what it prints; Stop here lets it go on in Godot") is { } refused)
             {
-                undebugged = refused;
+                undebugged = refused.Shown;
             }
             else
             {

@@ -239,11 +239,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
 
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             CertificateQuestionDialog asked = Question(window, running);
             Assert.Equal("The HTTPS development certificate is not trusted", asked.Title);
             Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
-            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "the start to end once stopped"));
+            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "the start to end once stopped")?.English);
             Ui.WaitFor(() => window.CertificateQuestion is null && !asked.IsVisible, "Stop to close the question");
             Assert.Empty(window.AspireRuntime.Apps);
             Assert.False(File.Exists(project.KeyFile), "The AppHost started though its start was stopped as it asked");
@@ -301,13 +301,13 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         {
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.RunProgram)?.Stage.Shown.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || running.IsCompleted,
                 "Run to check the development certificate", TimeSpan.FromMinutes(2));
             Assert.False(running.IsCompleted, $"Run ended before it checked the certificate: {(running.IsCompleted ? running.Result : null)}");
             File.Delete(Path.Combine(standIn, "slow"));
-            Task<string?> debugging = window.DebugAsync();
-            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "Run's start to end as Debug takes its place"));
+            Task<Words?> debugging = window.DebugAsync();
+            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "Run's start to end as Debug takes its place")?.English);
             Ui.Launched(window, debugging, "the AppHost to come up debugged");
             Assert.Equal(RunStart.Debug, Assert.Single(window.AspireRuntime.Apps).Mode);
         }
@@ -434,7 +434,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     }
 
     /// <summary>The question a start asked of its certificate, held to the dialogs' rules.</summary>
-    internal static CertificateQuestionDialog Question(MainWindow window, Task<string?> running)
+    internal static CertificateQuestionDialog Question(MainWindow window, Task<Words?> running)
     {
         Ui.PumpUntil(() => window.CertificateQuestion is not null || running.IsCompleted, "the start to ask about the certificate", TimeSpan.FromMinutes(2));
         Assert.True(window.CertificateQuestion is not null, $"The start asked nothing of its certificate: {(running.IsCompleted ? running.Result : null)}");
@@ -1516,7 +1516,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             replicas.Arguments[instances[1]] = ["child"];
             File.AppendAllText(project.PathOf($"{StandInAppHost.Api}/Program.cs"), "// Changed for Rerun.\n");
             // The run's own Rerun, which the window's routes to Debug while a session is live.
-            string? reran = Ui.Await(window.Builds.RerunAsync(), "Rerun of the replicas, whose code changed", TimeSpan.FromMinutes(3));
+            string? reran = Ui.Await(window.Builds.RerunAsync(), "Rerun of the replicas, whose code changed", TimeSpan.FromMinutes(3))?.English;
             Assert.True(replicas.Of(instances[2]) is [{ ProcessId: int restarted, DebugTab.IsLive: true }] && restarted != first[instances[2]],
                 $"After the second replica's attach was refused, Rerun restarted the third without the debugger ({window.Status})");
             Assert.True(replicas.Of(instances[0]) is [{ ProcessId: int before, DebugTab.IsLive: true }] && before != first[instances[0]],
@@ -1843,7 +1843,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             {
                 window.AspireRuntime.HoldNextProfileLimit(late.Task);
             }
-            Task<string?> profiling = window.ProfileAsync();
+            Task<Words?> profiling = window.ProfileAsync();
             Ui.PumpUntil(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1 || profiling.IsCompleted,
                 "the AppHost to come up for Profile", TimeSpan.FromMinutes(2));
             Assert.False(profiling.IsCompleted, $"Profile ended before its AppHost asked for a service: {(profiling.IsCompleted ? profiling.Result : null)}");
@@ -1854,7 +1854,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode _) = project.AskToStartApi("apiservice");
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
-            string? why = Ui.Await(profiling, "Profile to give up on the API");
+            string? why = Ui.Await(profiling, "Profile to give up on the API")?.English;
             Assert.True(why is not null && System.Text.RegularExpressions.Regex.IsMatch(why, $"^apiservice did not start under the profiler within {SaidWhile.Pattern} of its AppHost asking for it$"),
                 $"Profile's time limit was said as '{why}': a service that reached the profiler past its time was recorded as one in time");
             Assert.Equal(why, window.Status);
@@ -1892,7 +1892,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             RunConfiguration other = api.Copied() with { Name = "The API again", Generated = false };
             window.SetConfigurations([other], other.Name);
-            Assert.Equal($"Already running: {api.Name} has the Run console; stop it first", Ui.Await(window.RunAsync(), "Run of another configuration"));
+            Assert.Equal($"Already running: {api.Name} has the Run console; stop it first", Ui.Await(window.RunAsync(), "Run of another configuration")?.English);
             Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
             Ui.WaitFor(() => !window.IsRunning, "Stop to end the API");
 

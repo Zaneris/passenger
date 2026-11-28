@@ -49,7 +49,7 @@ public sealed class X86ProgramTests
         {
             if (!OperatingSystem.IsWindows())
             {
-                string? elsewhere = Ui.Await(window.RunAsync(), "Run's refusal of an x86 program off Windows", TimeSpan.FromMinutes(2));
+                string? elsewhere = Ui.Await(window.RunAsync(), "Run's refusal of an x86 program off Windows", TimeSpan.FromMinutes(2))?.English;
                 Assert.True(elsewhere?.Contains(Refusals.X86OnWindowsAlone.Shown, StringComparison.Ordinal) == true,
                     $"Run of an x86 program off Windows was not refused saying .NET runs one only on Windows, so it would fail loading its assembly: {elsewhere ?? "it ran"}");
                 return;
@@ -137,7 +137,7 @@ public sealed class X86ProgramTests
         try
         {
             window.Debugger.Breakpoints.Toggle(Path.Combine(PathNames.Canonical(folder), "Program.cs"), Started);
-            string? refused = Ui.Await(window.DebugAsync(), "Debug's refusal of a 32-bit debugger whose download did not match", TimeSpan.FromMinutes(4));
+            string? refused = Ui.Await(window.DebugAsync(), "Debug's refusal of a 32-bit debugger whose download did not match", TimeSpan.FromMinutes(4))?.English;
             string mismatched = Refusals.Undebugged("Hello",
                 Refusals.X86DebuggerMissing($"{X86DebuggerSource.Named} downloaded from the {tag} release did not match its SHA256SUMS, and nothing of it was used")).Shown;
             Assert.True(refused == mismatched, $"Debug with a 32-bit debugger whose download did not match its SHA256SUMS answered\n{refused ?? "nothing: it debugged"}\nwhere it should say\n{mismatched}");
@@ -147,13 +147,13 @@ public sealed class X86ProgramTests
             // The download held half sent: the work says what it is doing, and Stop ends it, keeping nothing.
             github.Serve(tag, "SHA256SUMS", Encoding.UTF8.GetBytes($"{Convert.ToHexStringLower(SHA256.HashData(zip))}  {X86DebuggerSource.Asset}\n"));
             github.Hold(X86DebuggerSource.Asset);
-            Task<string?> held = window.DebugAsync();
+            Task<Words?> held = window.DebugAsync();
             Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Debug)?.Stage.Shown.StartsWith($"Downloading {X86DebuggerSource.Named}", StringComparison.Ordinal) == true
                 || held.IsCompleted, "Debug's work to say it is downloading the 32-bit debugger", TimeSpan.FromMinutes(4));
             Assert.False(held.IsCompleted, $"Debug ended before it downloaded the 32-bit debugger: {(held.IsCompleted ? held.Result : null)}");
             Ui.Run(window, AppActions.Stop, settle: false);
             github.Let();
-            string? stopped = Ui.Await(held, "Debug's start to end at Stop as it downloaded");
+            string? stopped = Ui.Await(held, "Debug's start to end at Stop as it downloaded")?.English;
             Assert.True(stopped == "Debugging Hello was stopped as it started", $"Stop as the 32-bit debugger downloaded ended Debug's start saying {stopped ?? "nothing: it debugged"}");
             Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(cache, Product.Version)));
 
@@ -348,7 +348,7 @@ public sealed class X86ProgramTests
                 Environment = new Dictionary<string, string> { [RuntimeVariables.RootFor(AppHosts.X86)] = none },
             };
             window.SetConfigurations([configuration], configuration.Name);
-            string? refused = Ui.Await(window.RunAsync(), "Run's refusal of an x86 program with no x86 .NET", TimeSpan.FromMinutes(4));
+            string? refused = Ui.Await(window.RunAsync(), "Run's refusal of an x86 program with no x86 .NET", TimeSpan.FromMinutes(4))?.English;
             string expected = $"Could not run Hello: {Refusals.X86RuntimeMissing(none, [(".NET Runtime", TestProjects.Framework["net".Length..])]).Shown}";
             Assert.True(refused == expected,
                 $"Run of an x86 program with no x86 .NET did not name the runtime to install, so the program would fail as it starts:\n{refused ?? "it ran"}\nwhere it should say\n{expected}");

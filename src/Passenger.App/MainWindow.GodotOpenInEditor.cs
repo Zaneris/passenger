@@ -106,7 +106,7 @@ public partial class MainWindow
         string kept = session.Configurations.Chosen?.Name ?? configuration.Name;
         session.Configurations.Select(configuration.Name);
         // Godot's command line opens a scene in its editor, which it names after --editor, and no node in it.
-        string? refusedRun = await buildRun.RunAsync(arguments: scene);
+        Words? refusedRun = await buildRun.RunAsync(arguments: scene);
         session.Configurations.Select(kept);
         if (refusedRun is not null)
         {

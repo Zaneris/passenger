@@ -150,7 +150,7 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
             try
             {
                 Task held = window.Builds.HoldNextLaunch(greeted.Task, opened: true);
-                Task<string?> debugging = window.DebugAsync();
+                Task<Words?> debugging = window.DebugAsync();
                 // Not settled: the start holds the window's background work until it has started every part.
                 Ui.PumpUntil(() => held.IsCompleted || debugging.IsCompleted, "Api's launch to be held once its program runs", TimeSpan.FromMinutes(3));
                 Ui.PumpUntil(() => Console(window, "Api: second").Contains("Api says second", StringComparison.Ordinal) || debugging.IsCompleted,

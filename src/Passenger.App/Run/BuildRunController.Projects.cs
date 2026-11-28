@@ -41,28 +41,28 @@ public sealed partial class BuildRunController
     /// debugged and the rest run; under Hot Reload as Settings says, or as <paramref name="hotReload"/> does, each run one held
     /// at its start and attached to quietly. Null once every one has started, else why the first that could not did not, those
     /// before it running on.</summary>
-    private async Task<string?> StartProjectsAsync(RunConfiguration chosen, bool debug, bool? hotReload, CancellationToken cancellation)
+    private async Task<Words?> StartProjectsAsync(RunConfiguration chosen, bool debug, bool? hotReload, CancellationToken cancellation)
     {
         string doing = debug ? "debug" : "run";
         string action = debug ? AppActions.Debug : AppActions.RunProgram;
         if (parts.Work.Begin(action, $"Working out how to {doing} {chosen.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(action)!).Shown);
+            return Said(ActionWork.Busy(parts.Work.Of(action)!));
         }
         using (work)
         using (cancellation.Register(work.Cancel))
         using (BackgroundWork.Scope())
         {
-            string? refused = await StartProjectsAsync(chosen, debug, hotReload ?? parts.Settings().HotReload, work);
+            Words? refused = await StartProjectsAsync(chosen, debug, hotReload ?? parts.Settings().HotReload, work);
             return refused is null ? null : Said(refused);
         }
     }
 
-    private async Task<string?> StartProjectsAsync(RunConfiguration chosen, bool debug, bool hotReload, Working work)
+    private async Task<Words?> StartProjectsAsync(RunConfiguration chosen, bool debug, bool hotReload, Working work)
     {
         if (session.Configurations.WhyNotHere(chosen) is { } why)
         {
-            return $"{chosen.Name} cannot {(debug ? "debug" : "run")} here: {why}";
+            return debug ? LaunchWords.CannotDebugHere(chosen.Name, why) : LaunchWords.CannotRunHere(chosen.Name, why);
         }
         // A start of it again ends its last, as a configuration's start does.
         if (IsRunningConfiguration(chosen.Name))
@@ -71,7 +71,7 @@ public sealed partial class BuildRunController
             await EndProjectsAsync(chosen.Name);
             if (session.IsEnded)
             {
-                return Refusals.SolutionClosed.Shown;
+                return Refusals.SolutionClosed;
             }
         }
         List<PartStart> starts = [];
@@ -88,14 +88,14 @@ public sealed partial class BuildRunController
             }
             if (part.Kind != RunPartKind.Project)
             {
-                (ProcessStartInfo? start, IReadOnlyList<string> notes, string? problem) = await PartStartAsync(part, work);
+                (ProcessStartInfo? start, IReadOnlyList<string> notes, Words? problem) = await PartStartAsync(part, work);
                 if (Checkpoint(work, chosen.Name) is { } left)
                 {
                     return left;
                 }
                 if (start is null)
                 {
-                    return $"{chosen.Name} cannot start {session.Configurations.NameOf(part)}: {problem}";
+                    return LaunchWords.CannotStartPart(chosen.Name, session.Configurations.NameOf(part), problem!);
                 }
                 string its = RunConfiguration.UniqueName(session.Configurations.NameOf(part), named);
                 named.Add(its);
@@ -105,27 +105,27 @@ public sealed partial class BuildRunController
             (RunConfiguration? configuration, string? unmade) = session.Configurations.ProjectOf(part);
             if (configuration is null)
             {
-                return $"{chosen.Name} cannot start {Path.GetFileNameWithoutExtension(part.Project)}: {unmade}";
+                return LaunchWords.CannotStartPart(chosen.Name, Path.GetFileNameWithoutExtension(part.Project), unmade!);
             }
-            (LaunchPlan? plan, string? unplanned) = await ResolvePlanAsync(configuration, null, work.Stopping);
+            (LaunchPlan? plan, Words? unplanned) = await ResolvePlanAsync(configuration, null, work.Stopping);
             if (Checkpoint(work, chosen.Name) is { } stopped)
             {
                 return stopped;
             }
             if (plan is null)
             {
-                return $"{chosen.Name} cannot start {configuration.Name}: {unplanned}";
+                return LaunchWords.CannotStartPart(chosen.Name, configuration.Name, unplanned!);
             }
             if (plan.Godot is not null)
             {
-                return $"{chosen.Name} cannot start {configuration.Name}: a Godot game starts from its own configuration, which follows its scenes and copies";
+                return LaunchWords.CannotStartPart(chosen.Name, configuration.Name, LaunchWords.GameStartsApart);
             }
             // What a start does before such a program runs is its own configuration's, never a part's plain start.
-            if ((plan.Device is not null ? "an app on a device starts from its own configuration, which installs it there"
-                : plan.MacCatalyst is not null ? "a Mac Catalyst app starts from its own configuration, which has the system open it"
-                : plan.Package is not null ? "a packaged Windows app starts from its own configuration, which registers it with Windows" : null) is { } apart)
+            if ((plan.Device is not null ? LaunchWords.DeviceAppStartsApart
+                : plan.MacCatalyst is not null ? LaunchWords.CatalystAppStartsApart
+                : plan.Package is not null ? LaunchWords.PackageStartsApart : null) is { } apart)
             {
-                return $"{chosen.Name} cannot start {configuration.Name}: {apart}";
+                return LaunchWords.CannotStartPart(chosen.Name, configuration.Name, apart);
             }
             // Its program goes by its own configuration's name (or the part's own), set apart where the run starts that one twice.
             string name = RunConfiguration.UniqueName(part.Name.Length > 0 ? part.Name : configuration.Name, named);
@@ -167,7 +167,7 @@ public sealed partial class BuildRunController
                     } : null, together.First().Workspace);
                 if (!built.Succeeded)
                 {
-                    return Checkpoint(work, chosen.Name) ?? built.Message.Shown;
+                    return Checkpoint(work, chosen.Name) ?? built.Message;
                 }
             }
             for (int i = 0; i < starts.Count; i++)
@@ -226,7 +226,7 @@ public sealed partial class BuildRunController
                 {
                     readiness.Hear(tab.Console);
                 }
-                string? notStarted;
+                Words? notStarted;
                 Task<int>? exit = null;
                 Task ended;
                 if (start.Debugged && start.Plan is not null)
@@ -311,14 +311,14 @@ public sealed partial class BuildRunController
             return null;
 
             // Why the run stopped short at a part, those before it running on.
-            string Unstarted(int at, string why)
+            Words Unstarted(int at, Words why)
             {
                 List<string> started = [.. starts.Take(at).Select(s => s.Name)];
                 foreach (PartRun waiting in tabs.Skip(at).OfType<PartRun>())
                 {
                     waiting.Set(PartState.Ended);
                 }
-                return started.Count == 0 || at >= starts.Count ? why : $"{starts[at].Name} did not start ({why}); {Plural.Listed(started)} {Plural.Agreeing(started.Count, "runs", "run")} on";
+                return started.Count == 0 || at >= starts.Count ? why : LaunchWords.PartDidNotStart(part: starts[at].Name, why: why, started: Plural.Listed(started), count: started.Count);
             }
         }
         finally
@@ -353,7 +353,7 @@ public sealed partial class BuildRunController
     /// <summary>How a part that is no .NET project starts: a script by its package's own manager, its package's install by it,
     /// a command as a terminal finds its program, in its folder (the open folder's where it names none); with what is said of
     /// its start, or why it cannot start.</summary>
-    private async Task<(ProcessStartInfo? Start, IReadOnlyList<string> Notes, string? Problem)> PartStartAsync(RunPart part, Working work)
+    private async Task<(ProcessStartInfo? Start, IReadOnlyList<string> Notes, Words? Problem)> PartStartAsync(RunPart part, Working work)
     {
         string top = session.Folder ?? Path.GetDirectoryName(part.Project) ?? string.Empty;
         if (part.Kind == RunPartKind.Command)
@@ -362,22 +362,22 @@ public sealed partial class BuildRunController
             string folder = part.Folder.Length > 0 ? part.Folder : top;
             if (words.Count == 0 || words[0].Length == 0)
             {
-                return (null, [], "it names no command to run");
+                return (null, [], LaunchWords.NamesNoCommand);
             }
             if (!Directory.Exists(folder))
             {
-                return (null, [], $"its folder {PathNames.Shown(folder, session.Folder)} is gone");
+                return (null, [], LaunchWords.FolderGone(PathNames.Shown(folder, session.Folder)));
             }
             string named = words[0];
             // A program named by a path is the folder's; one named alone is found as a terminal finds it.
             string? program = named.IndexOfAny(['/', '\\']) >= 0 ? Path.GetFullPath(named, folder) : Programs.Command(named);
             if (program is null || !File.Exists(program))
             {
-                return (null, [], $"{named} was not found{(named.IndexOfAny(['/', '\\']) >= 0 ? string.Empty : " on the PATH")}");
+                return (null, [], named.IndexOfAny(['/', '\\']) >= 0 ? LaunchWords.ProgramNotFound(named) : LaunchWords.ProgramNotOnPath(named));
             }
             return (ChildProcesses.Command(program, words.Skip(1), folder), [], null);
         }
-        work.Say($"Reading {session.Configurations.NameOf(part)}'s package.json…");
+        work.Say(LaunchWords.ReadingPackage(session.Configurations.NameOf(part)));
         string? configured = parts.Settings().NodeInterpreter;
         string? root = session.NodeFiles.Packages.FirstOrDefault(p => PathNames.Same(p.Manifest, part.Project))?.Root;
         (NodePackage? package, NodeRuntime node, IReadOnlyList<string> needs) = await BackgroundWork.Run(async () =>
@@ -390,11 +390,11 @@ public sealed partial class BuildRunController
         });
         if (package is null)
         {
-            return (null, [], $"{PathNames.Shown(part.Project, session.Folder)} is gone, or does not read as a package.json");
+            return (null, [], LaunchWords.PackageUnread(PathNames.Shown(part.Project, session.Folder)));
         }
         if (part.Kind == RunPartKind.Script && !package.Scripts.Any(s => s.Name == part.Script))
         {
-            return (null, [], $"{package.Name}'s package.json has no script named {part.Script}");
+            return (null, [], LaunchWords.NoScriptNamed(package.Name, part.Script));
         }
         (ProcessStartInfo? start, string? problem) = part.Kind == RunPartKind.Install
             ? ScriptRuns.Install(package, node)
@@ -509,7 +509,7 @@ public sealed partial class BuildRunController
                 await part.Ended;
             }
             part.Console.Clear();
-            string? refused;
+            Words? refused;
             if (part.IsContainers)
             {
                 refused = await StartContainersPartAsync(part, work, how);
@@ -522,7 +522,7 @@ public sealed partial class BuildRunController
             {
                 BuiltEdits? edits = null;
                 bool hotReload = parts.Settings().HotReload && configuration.NamesNoOtherProgram(session.Projects);
-                (LaunchPlan? plan, string? problem, _) = await PrepareAsync(configuration, null, work, reading: hotReload ? () =>
+                (LaunchPlan? plan, Words? problem, _) = await PrepareAsync(configuration, null, work, reading: hotReload ? () =>
                 {
                     edits?.Dispose();
                     edits = session.Debug.Building(hotReload: true);
@@ -533,12 +533,12 @@ public sealed partial class BuildRunController
             }
             else
             {
-                (ProcessStartInfo? start, _, string? problem) = await PartStartAsync(part.Part, work);
+                (ProcessStartInfo? start, _, Words? problem) = await PartStartAsync(part.Part, work);
                 refused = start is null ? problem : await part.StartAsync(start, part.Part.Environment);
             }
             if (refused is not null)
             {
-                part.Console.Append($"{part.Name} could not restart: {refused}\n", error: true);
+                part.Console.Append(LaunchWords.PartNotRestarted(part.Name, refused).Shown + "\n", error: true);
                 part.Set(PartState.Ended);
                 return false;
             }
@@ -557,7 +557,7 @@ public sealed partial class BuildRunController
     /// runs (or debugs, as <paramref name="how"/> says) them, the person's choices for it kept, its services those the part
     /// names, every one where it names none: null once they are up, healthy where they check, else why not. Debugged, a part
     /// starting no .NET service runs, as every part of a run's Debug but its .NET programs does.</summary>
-    private async Task<string?> StartContainersPartAsync(PartRun part, Working work, RunStart how)
+    private async Task<Words?> StartContainersPartAsync(PartRun part, Working work, RunStart how)
     {
         RunConfiguration composed = session.Configurations.All.FirstOrDefault(c => c.Kind == RunKind.Compose && RunConfiguration.SameFiles(c.ComposeFiles, part.Part.ComposeFiles)) is { } own
             ? own.Copied() with { Name = part.Name }
@@ -572,7 +572,7 @@ public sealed partial class BuildRunController
             return AlreadyRunning();
         }
         part.Set(PartState.Starting);
-        string? refused = await RunContainersAsync(composed, work, how, debugsOrRuns: true);
+        Words? refused = await RunContainersAsync(composed, work, how, debugsOrRuns: true);
         part.Set(refused is null ? PartState.Running : PartState.Ended);
         return refused;
     }
@@ -580,7 +580,7 @@ public sealed partial class BuildRunController
     /// <summary>Runs a .NET project of a run of several parts in its tab of the Run window, the browser opened where its
     /// configuration says once it listens; with <paramref name="reloaded"/>, held at its runtime's start and attached to quietly
     /// for Hot Reload with <paramref name="edits"/>, which it takes. Null once it runs, else why not.</summary>
-    private async Task<string?> RunProjectInTabAsync(PartRun tab, LaunchPlan plan, bool reloaded, Working work, BuiltEdits? edits)
+    private async Task<Words?> RunProjectInTabAsync(PartRun tab, LaunchPlan plan, bool reloaded, Working work, BuiltEdits? edits)
     {
         if (plan.WhyNot("run") is { } why)
         {
@@ -613,7 +613,7 @@ public sealed partial class BuildRunController
     /// configuration runs in the terminal, the browser opened where its configuration says once it listens; with
     /// <paramref name="reloaded"/>, held at its runtime's start and attached to quietly for Hot Reload with
     /// <paramref name="edits"/>, which it takes. Null once it runs, else why not.</summary>
-    private async Task<string?> RunProjectAsync(RunConfiguration profile, RunConfiguration configuration, LaunchPlan plan, int place, bool reloaded, Working work,
+    private async Task<Words?> RunProjectAsync(RunConfiguration profile, RunConfiguration configuration, LaunchPlan plan, int place, bool reloaded, Working work,
         BuiltEdits? edits, List<INamedRun> started)
     {
         if (plan.WhyNot("run") is { } why)
@@ -635,7 +635,7 @@ public sealed partial class BuildRunController
         catch (LaunchException failed)
         {
             edits?.Dispose();
-            return failed.Message;
+            return failed.Why;
         }
         run.StartedBy = Mcp.AgentCall.Current?.Connection;
         copyRuns.Add((profile.Name, place, run));
@@ -679,7 +679,7 @@ public sealed partial class BuildRunController
             running.Stop();
             await running.Ended;
             BuiltEdits? edits = null;
-            (LaunchPlan? plan, string? problem, _) = await PrepareAsync(its.Project, null, work, reading: () =>
+            (LaunchPlan? plan, Words? problem, _) = await PrepareAsync(its.Project, null, work, reading: () =>
             {
                 edits?.Dispose();
                 edits = session.Debug.Building(hotReload: true);
@@ -687,7 +687,7 @@ public sealed partial class BuildRunController
             if (plan is null)
             {
                 edits?.Dispose();
-                parts.Say($"Hot Reload could not restart {running.Name}: {problem}");
+                parts.Say(LaunchWords.CouldNotRestart(running.Name, problem!));
                 return false;
             }
             List<INamedRun> again = [];
@@ -724,11 +724,11 @@ public sealed partial class BuildRunController
     /// <summary>Hot Reload's restart of one project a multi-project configuration debugs, for an edit it cannot apply: its
     /// session stopped, its project built again, and it launched in its tab's place among the others, which debug on. Null once
     /// its session is open, else why not.</summary>
-    private async Task<string?> RestartProfileTabAsync(string name, RunConfiguration profile, RunConfiguration configuration, int place)
+    private async Task<Words?> RestartProfileTabAsync(string name, RunConfiguration profile, RunConfiguration configuration, int place)
     {
         if (parts.Work.Begin(AppActions.Debug, $"Restarting {name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!).Shown;
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
         }
         using (work)
         using (BackgroundWork.Scope())
@@ -737,7 +737,7 @@ public sealed partial class BuildRunController
             BuiltEdits? edits = null;
             try
             {
-                (LaunchPlan? plan, string? problem, _) = await PrepareAsync(configuration, null, work, reading: () =>
+                (LaunchPlan? plan, Words? problem, _) = await PrepareAsync(configuration, null, work, reading: () =>
                 {
                     edits?.Dispose();
                     edits = session.Debug.Building(session.Debug.HotReloadOn());
@@ -747,7 +747,7 @@ public sealed partial class BuildRunController
                     return problem;
                 }
                 profileTabs[name] = (profile, configuration, place);
-                string? refused = await LaunchDebuggedAsync(configuration, plan with { Name = name, Copy = new GameCopy(profile.Name, place) }, work, Take(ref edits), copies: profile.Name);
+                Words? refused = await LaunchDebuggedAsync(configuration, plan with { Name = name, Copy = new GameCopy(profile.Name, place) }, work, Take(ref edits), copies: profile.Name);
                 if (refused is null && session.Debug.Tabs.FirstOrDefault(t => t.Name == name && t.Plan?.Dashboard == plan.Dashboard) is { } tab)
                 {
                     Keep(plan.Dashboard, DebugEnded(session.Debug.SessionNamed(name)), () => false, said => tab.Console.Append($"{said}\n"));

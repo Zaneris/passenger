@@ -28,4 +28,76 @@
     <value>Restarted in {took} to apply changes: {said}</value>
     <comment>A program restarted to apply edits Hot Reload could not apply as it ran: how long the restart took, and what Hot Reload said of the edits.</comment>
   </data>
+  <data name="DebuggingStopped" xml:space="preserve">
+    <value>Debugging {name} was stopped as it started</value>
+    <comment>Debug of a program that Stop ended as it started.</comment>
+  </data>
+  <data name="AttachingStopped" xml:space="preserve">
+    <value>Attaching to {name} was stopped</value>
+    <comment>Attach to a program that Stop ended before the debugger had it.</comment>
+  </data>
+  <data name="CannotLetGo" xml:space="preserve">
+    <value>{name} cannot be let go: Hot Reload changed its code, after which its runtime lets no debugger go; restart it to run it without the debugger</value>
+    <comment>Detach, or a tab's close, of a program Hot Reload changed, whose runtime would hold it for good once let go.</comment>
+  </data>
+  <data name="FolderClosed" xml:space="preserve">
+    <value>Could not debug {name}: its folder was closed</value>
+    <comment>A debugger's start that came after its folder was closed.</comment>
+  </data>
+  <data name="EndedDuringLaunch" xml:space="preserve">
+    <value>The workspace ended during launch</value>
+    <comment>A debugger's start whose folder ended as it started.</comment>
+  </data>
+  <data name="EndedBeforeLaunch" xml:space="preserve">
+    <value>Debugging {name} ended before launch completed</value>
+    <comment>A debugger's start whose session or tab ended before its launch completed.</comment>
+  </data>
+  <data name="StoppedAsAttached" xml:space="preserve">
+    <value>Debugging {name} was stopped as the debugger attached, and it runs on</value>
+    <comment>An attach that Stop ended as the debugger attached, the program running on.</comment>
+  </data>
+  <data name="CouldNotDebug" xml:space="preserve">
+    <value>Could not debug {name}: {why}</value>
+    <comment>A debugger's start that failed, and why (the debug adapter's reason, or the system's).</comment>
+  </data>
+  <data name="StarterUnstarted" xml:space="preserve">
+    <value>{starter} could not start</value>
+    <comment>Debug of a program another starts (func, Windows) where that starter could not start.</comment>
+  </data>
+  <data name="StarterEnded" xml:space="preserve">
+    <value>{starter} ended before it started {name}</value>
+    <comment>Debug of a program another starts (func, Windows) where that starter ended before starting it.</comment>
+  </data>
+  <data name="StarterEnds" xml:space="preserve">
+    <value>{why}; {starter} and all it started end, as {name} would wait for the debugger</value>
+    <comment>Debug of a program another starts that failed ({why}): the starter is ended, as what it started would wait for good.</comment>
+  </data>
+  <data name="NotRestartedToApply" xml:space="preserve">
+    <value>Could not restart to apply changes: {why}</value>
+    <comment>Hot Reload's restart of a debugged program, to apply edits it could not apply as it ran, that could not start it again, and why.</comment>
+  </data>
+  <data name="AttachedTo" xml:space="preserve">
+    <value>Attached to {program}</value>
+    <comment>What Attach to Process came to once the debugger has the program, as an agent's ide_action answers.</comment>
+  </data>
+  <data name="NotRunWithHotReload" xml:space="preserve">
+    <value>{program} is not run with Hot Reload</value>
+    <comment>Debug of a program through its Hot Reload session where it runs with none.</comment>
+  </data>
+  <data name="HotReloadFolderClosed" xml:space="preserve">
+    <value>Could not attach to {name} for Hot Reload: its folder was closed</value>
+    <comment>Hot Reload's quiet attach to a program that came after its folder was closed.</comment>
+  </data>
+  <data name="HotReloadUnattached" xml:space="preserve">
+    <value>Could not attach to {name} for Hot Reload: {why}</value>
+    <comment>Hot Reload's quiet attach to a program that failed, and why (the debug adapter's reason, or the system's).</comment>
+  </data>
+  <data name="DebuggerStartedIt" xml:space="preserve">
+    <value>The debugger started this program: Stop ends it, and Detach lets go only of a program attached to</value>
+    <comment>Detach of a program the debugger started, which Detach never lets go.</comment>
+  </data>
+  <data name="StarterStartedIt" xml:space="preserve">
+    <value>Passenger started this program through the one that starts it, which ends with it: Stop ends both, and Detach lets go only of a program attached to as it ran</value>
+    <comment>Detach of a program Passenger started through another (func, Windows), which ends with it.</comment>
+  </data>
 </root>

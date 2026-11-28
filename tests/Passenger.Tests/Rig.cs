@@ -1638,6 +1638,16 @@ public static class Ui
         }
     }
 
+    /// <summary>Waits for a launch whose refusal is words (Run's, Debug's, Profile's), as the other does, failing with them
+    /// in English.</summary>
+    public static void Launched(Passenger.App.MainWindow window, Task<Passenger.Core.Words?> launch, string what, TimeSpan? limit = null)
+    {
+        if (Await(launch, what, limit) is { } refused)
+        {
+            throw new Xunit.Sdk.XunitException($"Waiting for {what}, the window refused: {refused.English}{BuildErrors(window)}{Limits.WhereTheTimeWent()}");
+        }
+    }
+
     /// <summary>The status bar's words and the last build's own errors after them, for a failure message: of a build that
     /// failed the status bar says only how many errors it had, and CI's runs keep only what the message says.</summary>
     public static string Said(Passenger.App.MainWindow window) => $"{window.Status}{BuildErrors(window)}";

@@ -1067,7 +1067,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
             Ui.WaitFor(() => window.Configurations.Any(c => c.Kind == Passenger.App.Run.RunKind.Compose),
                 () => $"compose.yaml's run configuration: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
             Assert.True(window.SelectConfiguration(window.Configurations.First(c => c.Kind == Passenger.App.Run.RunKind.Compose).Name));
-            string? refused = Ui.Await(window.RunAsync(), "the run of SQL Server to be refused", TimeSpan.FromMinutes(2));
+            string? refused = Ui.Await(window.RunAsync(), "the run of SQL Server to be refused", TimeSpan.FromMinutes(2))?.English;
             Assert.Equal($"Compose: compose.yaml cannot run sqlserver: {never}", refused);
             string[] asked = File.ReadAllLines(Path.Combine(engine, "calls"));
             Assert.True(!asked.Any(c => c.Split(' ').Contains("up")),
@@ -1194,7 +1194,7 @@ public sealed class DockerFilesTests : IClassFixture<DockerFilesTests.Shop>
         // Its postgres container once the run is up and its healthcheck passes, failing with what it and the run said.
         static string Healthy(MainWindow window, string what)
         {
-            string? refused = Ui.Await(window.RunAsync(), what, TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), what, TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}\n{ContainerRunsTests.Run(window)}");
             string container = ContainerRunsTests.Container(window.Builds.Containers!.Plan.ProjectName, "postgres");
             Ui.WaitFor(() => Docker.Said("inspect", "-f", "{{.State.Health.Status}}", container) == "healthy",

@@ -263,7 +263,7 @@ internal sealed partial class CodeActions
         }
         catch (WorkspaceEditFailed failed)
         {
-            return RefactorOutcome.Refused(failed.Message);
+            return RefactorOutcome.Refused(RefusedException.Of(failed));
         }
     }
 
@@ -282,7 +282,7 @@ internal sealed partial class CodeActions
         }
         catch (WorkspaceEditFailed failed)
         {
-            return RefactorOutcome.Refused(failed.Message);
+            return RefactorOutcome.Refused(RefusedException.Of(failed));
         }
     }
 

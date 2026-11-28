@@ -217,7 +217,7 @@ public sealed class WinUITests : IClassFixture<WinUITests.Gallery>
             if (Ui.Await(window.RunAsync(), "the package's build, registration and start", Slow) is { } refused)
             {
                 // A runner without the Windows App SDK's runtime of the template's version runs no packaged app of it.
-                Assert.SkipWhen(refused.Contains("which is not installed for this user", StringComparison.Ordinal), refused);
+                Assert.SkipWhen(refused.English.Contains("which is not installed for this user", StringComparison.Ordinal), refused.English);
                 string solution = Directory.GetFiles(folder, "Packed.sln*", SearchOption.AllDirectories).FirstOrDefault() is { } made2 ? File.ReadAllText(made2) : "(no solution)";
                 Assert.Fail($"Run refused the package: {refused}{Ui.Said(window)}\nThe build chosen: {window.Session.BuildChoices.Chosen?.Key ?? "none"}, "
                     + $"offered [{string.Join(", ", window.Session.BuildChoices.Offered.Select(o => o.Key))}]; the solution:\n{solution}");

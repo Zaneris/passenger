@@ -213,7 +213,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Assert.False(File.Exists(Path.Combine(engine, "fail-restart")), "The Rerun did not ask the engine to restart web");
             Assert.Equal("web 1", Served(window, project, "web"));
 
-            string? reran = Ui.Await(window.Builds.RerunAsync(), "the Rerun after the failed restart", TimeSpan.FromMinutes(3));
+            string? reran = Ui.Await(window.Builds.RerunAsync(), "the Rerun after the failed restart", TimeSpan.FromMinutes(3))?.English;
             Assert.True(reran?.StartsWith($"{Name}: restarted web with the new build", StringComparison.Ordinal) == true,
                 $"The Rerun after web's failed restart did not restart web, which still ran its old build: {reran}");
             int webPort = Published(project, "web");
@@ -246,12 +246,12 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Launched(window, "web and the cache to come up");
             Assert.False(States(project).ContainsKey("api"), "The run started api, which it was to leave unstarted");
             File.WriteAllText(Path.Combine(engine, "hold-up"), string.Empty);
-            Task<string?> starting = window.Builds.RunServiceAsync("api");
+            Task<Words?> starting = window.Builds.RunServiceAsync("api");
             // api's start holds the window's work while its up is held, so the wait runs the window's loop without waiting it out.
             Ui.PumpUntil(() => starting.IsCompleted || File.Exists(Path.Combine(engine, "held")), "api's start to reach its up", TimeSpan.FromMinutes(4));
             Assert.False(starting.IsCompleted, $"api's start ended before its up: {(starting.IsCompleted ? starting.Result : null)}");
             Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
-            Assert.Equal("Later's restart was stopped", Ui.Await(starting, "api's start to end with Stop", TimeSpan.FromMinutes(1)));
+            Assert.Equal("Later's restart was stopped", Ui.Await(starting, "api's start to end with Stop", TimeSpan.FromMinutes(1))?.English);
             Docker.TakenDown(project, "Stop to take every container of the run down, the one the engine finished after Compose ended too");
             Assert.True(File.Exists(Path.Combine(engine, "late")), "No container was made as the take-down listed them, so the test showed nothing");
         }
@@ -280,8 +280,8 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             }
             string webProject = Path.Combine(folder, "Web", "Web.csproj");
             RunConfiguration web = window.Configurations.First(c => c.Kind == RunKind.Project && PathNames.Same(c.Project, webProject));
-            (LaunchPlan? plan, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(web, null), $"{web.Name}'s plan with the run up", TimeSpan.FromMinutes(1));
-            Assert.True(plan is not null, problem);
+            (LaunchPlan? plan, Words? problem) = Ui.Await(window.Builds.ResolvePlanAsync(web, null), $"{web.Name}'s plan with the run up", TimeSpan.FromMinutes(1));
+            Assert.True(plan is not null, problem?.English);
             Assert.All(States(project).Values, state => Assert.Equal("running", state));
         }
         finally
@@ -402,7 +402,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         try
         {
             Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
-            string? refused = Ui.Await(window.RunAsync(), "the run whose services do not build", TimeSpan.FromMinutes(3));
+            string? refused = Ui.Await(window.RunAsync(), "the run whose services do not build", TimeSpan.FromMinutes(3))?.English;
             Assert.True(refused?.StartsWith("Build failed in Api and Web: 2 errors", StringComparison.Ordinal) == true,
                 $"A run whose services both fail to build answered: {refused}");
             string[] built = Builds();
@@ -986,15 +986,15 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         {
             File.WriteAllText(Path.Combine(standIn, "check"), "0");
             File.WriteAllText(Path.Combine(standIn, "slow"), string.Empty);
-            foreach ((string action, Func<Task<string?>> start) in (ReadOnlySpan<(string, Func<Task<string?>>)>)[(AppActions.RunProgram, () => window.RunAsync()),
+            foreach ((string action, Func<Task<Words?>> start) in (ReadOnlySpan<(string, Func<Task<Words?>>)>)[(AppActions.RunProgram, () => window.RunAsync()),
                 (AppActions.Profile, () => window.ProfileAsync())])
             {
-                Task<string?> starting = start();
+                Task<Words?> starting = start();
                 Ui.PumpUntil(() => window.Actions.Work.Of(action)?.Stage.Shown.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || starting.IsCompleted,
                     $"{action} to check the development certificate", TimeSpan.FromMinutes(5));
                 Assert.False(starting.IsCompleted, $"{action} ended before it checked the certificate: {(starting.IsCompleted ? starting.Result : null)}");
                 Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
-                Assert.Equal("Web over HTTPS was stopped as it started", Ui.Await(starting, $"{action} to end once stopped", TimeSpan.FromMinutes(1)));
+                Assert.Equal("Web over HTTPS was stopped as it started", Ui.Await(starting, $"{action} to end once stopped", TimeSpan.FromMinutes(1))?.English);
             }
             Assert.False(window.ProfilerView.Status.StartsWith("Starting", StringComparison.Ordinal), $"The profiler still says {window.ProfilerView.Status}");
             Assert.Equal(string.Empty, Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}"));
@@ -1002,7 +1002,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             File.Delete(Path.Combine(standIn, "asked"));
 
             File.WriteAllText(Path.Combine(standIn, "check"), "7");
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             CertificateQuestionDialog asked = Question(window, running);
             Assert.Equal("The HTTPS development certificate is not trusted", asked.Title);
             Press(asked.HttpButton);
@@ -1102,16 +1102,16 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             }
         }
 
-        static CertificateQuestionDialog Question(MainWindow window, Task<string?> running)
+        static CertificateQuestionDialog Question(MainWindow window, Task<Words?> running)
         {
             Ui.PumpUntil(() => window.CertificateQuestion is not null || running.IsCompleted, "the run to ask about the certificate", TimeSpan.FromMinutes(5));
             Assert.True(window.CertificateQuestion is not null, $"The run asked nothing of its certificate: {(running.IsCompleted ? running.Result : null)}");
             return DialogButtonsTests.Check(window.CertificateQuestion!);
         }
 
-        static void Launched(MainWindow window, Task<string?> running, string what)
+        static void Launched(MainWindow window, Task<Words?> running, string what)
         {
-            string? refused = Ui.Await(running, what, TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(running, what, TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{Run(window)}");
         }
 
@@ -1220,19 +1220,19 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
         window.SetConfigurations([cache], cache.Name);
         try
         {
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             ReplaceContainersDialog asked = Question(window, running);
             string listed = string.Join('\n', asked.GetVisualDescendants().OfType<Avalonia.Controls.TextBlock>().Select(t => t.Text));
             Assert.Contains($"{project}-cache-1", listed, StringComparison.Ordinal);
             Assert.DoesNotContain(own, listed, StringComparison.Ordinal);
             Press(asked.CancelButton);
-            Assert.Equal($"Cache was not run: {project}-cache-1 of {project}, which Passenger did not make for this folder, were left as they are", Ui.Await(running, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1)));
+            Assert.Equal($"Cache was not run: {project}-cache-1 of {project}, which Passenger did not make for this folder, were left as they are", Ui.Await(running, "Run to end once Cancel was answered", TimeSpan.FromMinutes(1))?.English);
             Assert.Equal(theirs, Container(project, "cache"));
             Assert.Equal("running", Docker.State(theirs));
 
             running = window.RunAsync();
             Press(Question(window, running).ReplaceButton);
-            string? refused = Ui.Await(running, "cache to come up in place of the person's", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(running, "cache to come up in place of the person's", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{Run(window)}");
             string ours = Container(project, "cache");
             Assert.NotEqual(theirs, ours);
@@ -1252,7 +1252,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             window.Close();
         }
 
-        static ReplaceContainersDialog Question(MainWindow window, Task<string?> running)
+        static ReplaceContainersDialog Question(MainWindow window, Task<Words?> running)
         {
             Ui.PumpUntil(() => window.ReplaceQuestion is not null || running.IsCompleted, "the run to ask about the containers it would replace", TimeSpan.FromMinutes(2));
             Assert.True(window.ReplaceQuestion is not null, $"The run asked nothing of the person's own container: {(running.IsCompleted ? running.Result : null)}");
@@ -1416,7 +1416,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Launched(running, "the first folder's Compose run to come up");
             string theirs = Container(project, "cache");
             Assert.True(taking.SelectConfiguration("Compose: compose.yaml"));
-            Task<string?> started = taking.RunAsync();
+            Task<Words?> started = taking.RunAsync();
             Ui.PumpUntil(() => taking.ReplaceQuestion is not null || started.IsCompleted, "the run to ask about the other window's container", TimeSpan.FromMinutes(2));
             Assert.True(taking.ReplaceQuestion is not null,
                 $"The run took {project}-cache-1 from the other window's run asking nothing: {(started.IsCompleted ? started.Result : null)}");
@@ -1691,7 +1691,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
     /// <summary>Runs the chosen configuration, failing with what its services said when it does not come up.</summary>
     private static void Launched(MainWindow window, string what)
     {
-        string? refused = Ui.Await(window.RunAsync(), what, TimeSpan.FromMinutes(5));
+        string? refused = Ui.Await(window.RunAsync(), what, TimeSpan.FromMinutes(5))?.English;
         Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{Run(window)}");
     }
 
@@ -1743,9 +1743,9 @@ public sealed class ContainerRunsBytesTests
             (long, long) Ran(int count)
             {
                 File.WriteAllText(Path.Combine(folder, "lines"), count.ToString(CultureInfo.InvariantCulture));
-                Task<string?> running = Task.FromResult<string?>(null);
+                Task<Words?> running = Task.FromResult<Words?>(null);
                 (long, long) allocated = AspireConsoleBytesTests.Streamed(window.BottomPanel.Run, [$"wrote {count} lines\n", $"wrote {count} lines\n"], () => running = window.RunAsync());
-                string? refused = Ui.Await(running, "the service to come up", TimeSpan.FromMinutes(5));
+                string? refused = Ui.Await(running, "the service to come up", TimeSpan.FromMinutes(5))?.English;
                 Assert.True(refused is null, $"{refused}\n{ContainerRunsTests.Run(window)}");
                 // The console keeps the last megabyte of what came, which after 10,000 lines of each is past the build's first lines.
                 string shown = ContainerRunsTests.Run(window);

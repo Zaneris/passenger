@@ -35,7 +35,7 @@ public sealed record ProfilerParts(
     Func<DotnetProcess, ContainerPaths, Action<string>, CancellationToken, Task<(DotnetProcess Target, ProfilePlace Place)>> InContainer,
     Action<string> ShowInFileManager,
     Func<string, string, string, Task<bool>> Confirm,
-    Func<RunConfiguration, string?, Task<string?>>? ProfileAspire = null,
+    Func<RunConfiguration, string?, Task<Words?>>? ProfileAspire = null,
     Func<string, System.Diagnostics.ProcessStartInfo, Task<TerminalRun>>? InTerminal = null);
 
 /// <summary>The window's profiler: Profile builds and starts the chosen configuration under the sampling profiler (an
@@ -219,7 +219,7 @@ public sealed class ProfilerCommands
     /// <summary>Resolves and builds the chosen configuration, then starts its plan under the profiler from its first
     /// instruction, with these arguments in place of its own if given. Null once it runs, or what stopped it, which the
     /// profiler window says too (all but a failed build, which the Build window shows).</summary>
-    public async Task<string?> ProfileAsync(string? arguments = null, RunConfiguration? configuration = null)
+    public async Task<Words?> ProfileAsync(string? arguments = null, RunConfiguration? configuration = null)
     {
         ProjectSession profiled = Session;
         if (WhyNotProfile(profiled, configuration) is { } busy)
@@ -233,12 +233,12 @@ public sealed class ProfilerCommands
         string name = (configuration ?? profiled.Configurations.Chosen)?.Name ?? "the program";
         if (parts.Actions.Work.Begin(AppActions.Profile, $"Working out how to profile {name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.Profile)!).Shown;
+            return ActionWork.Busy(parts.Actions.Work.Of(AppActions.Profile)!);
         }
         launching = profiled;
         try
         {
-            string? problem = await LaunchAsync(profiled, arguments, work, configuration);
+            Words? problem = await LaunchAsync(profiled, arguments, work, configuration);
             if (problem is not null)
             {
                 work.Tell(false, problem);
@@ -287,7 +287,7 @@ public sealed class ProfilerCommands
             : GoesOn(folder) ?? (chosen?.Console == ConsoleKind.Terminal ? null : RunConsoleTaken(folder, chosen))))?.Shown;
     }
 
-    private async Task<string?> LaunchAsync(ProjectSession profiled, string? arguments, Working work, RunConfiguration? configuration)
+    private async Task<Words?> LaunchAsync(ProjectSession profiled, string? arguments, Working work, RunConfiguration? configuration)
     {
         BuildRunController builds = parts.Builds();
         if ((configuration ?? profiled.Configurations.Chosen) is not { } chosen)
@@ -302,7 +302,7 @@ public sealed class ProfilerCommands
         {
             return left;
         }
-        (LaunchPlan? plan, string? problem, bool unresolved) = await builds.PrepareAsync(chosen, arguments, work, collects: true);
+        (LaunchPlan? plan, Words? problem, bool unresolved) = await builds.PrepareAsync(chosen, arguments, work, collects: true);
         // A failed build is the Build window's to show, a stop or the folder's end nobody's.
         if (plan is null && !unresolved)
         {
@@ -437,7 +437,7 @@ public sealed class ProfilerCommands
             game?.Dispose();
             profiled.Profiling = null;
             View.Stopped(error.Message);
-            return error.Message;
+            return RefusedException.Of(error);
         }
         finally
         {
@@ -498,7 +498,7 @@ public sealed class ProfilerCommands
     /// (<see cref="RecordServiceAsync"/>), which lets it go, so the run has it from its first instruction; the rest run as Run
     /// runs them. The program is the container's, not Kill's: Get Snapshot ends the recording and the run goes on, and Stop
     /// reads the snapshot before the containers go.</summary>
-    private async Task<string?> LaunchInContainersAsync(ProjectSession profiled, RunConfiguration chosen, Working work)
+    private async Task<Words?> LaunchInContainersAsync(ProjectSession profiled, RunConfiguration chosen, Working work)
     {
         BuildRunController builds = parts.Builds();
         using CancellationTokenSource stop = new();
@@ -508,7 +508,7 @@ public sealed class ProfilerCommands
         profiled.ProfileStarting = stop;
         parts.Dock.Show(ToolWindowIds.Profiler);
         View.Starting(chosen.Name);
-        string? failed;
+        Words? failed;
         try
         {
             failed = await builds.ProfileContainersAsync(chosen, work);
@@ -526,14 +526,14 @@ public sealed class ProfilerCommands
         }
         if (profiled.IsEnded)
         {
-            return Refusals.SolutionClosed.Shown;
+            return Refusals.SolutionClosed;
         }
         // A start that failed once recording had begun read its snapshot as it took its containers down, which the window shows.
         bool recorded = profiled.ContainerRun?.Profiled is not null;
-        string? why = failed ?? (recorded ? null : NoneProfiled(chosen.Name, profiled.ContainerRun));
+        Words? why = failed ?? (recorded ? null : NoneProfiled(chosen.Name, profiled.ContainerRun));
         if (why is not null && !recorded)
         {
-            View.Stopped(why);
+            View.Stopped(why.Shown);
         }
         return why;
     }
@@ -634,23 +634,23 @@ public sealed class ProfilerCommands
     /// container (the one debugged there, <paramref name="inContainer"/>, or, with <paramref name="choose"/> and nothing of
     /// the folder's running, one chosen among the running containers' .NET programs) is recorded there by Passenger's tools,
     /// a program held at its start let go once recording. Null once it is profiled, else why not.</summary>
-    public Task<string?> AttachAsync(DotnetProcess? inContainer = null, bool choose = false)
+    public Task<Words?> AttachAsync(DotnetProcess? inContainer = null, bool choose = false)
     {
         UiThread.Check();
         if (inContainer is not null)
         {
             AttachTarget there = InContainer(inContainer, ContainerPaths.None, resume: true);
-            return Paused(there) is { } held ? Task.FromResult<string?>(held) : AttachTargetAsync(there);
+            return Paused(there) is { } held ? Task.FromResult<Words?>(held) : AttachTargetAsync(there);
         }
         AttachTarget? target = Attachable(out string? problem);
         if ((problem ?? (target is null ? null : Paused(target))) is { } refused)
         {
-            return Task.FromResult<string?>(refused);
+            return Task.FromResult<Words?>(refused);
         }
         // A service of a run of services, recorded through its run, which Stop reads first.
         if (target?.Run is { } run)
         {
-            return Busy(Session) is { } busy ? Task.FromResult<string?>(busy.Shown) : parts.Builds().ProfileServiceAsync(run, target.Name);
+            return Busy(Session) is { } busy ? Task.FromResult<Words?>(busy) : parts.Builds().ProfileServiceAsync(run, target.Name);
         }
         return AttachTargetAsync(target, choose);
     }
@@ -660,7 +660,7 @@ public sealed class ProfilerCommands
     /// (<see cref="ServiceProgram.Recorded"/>, else on this machine), a program held at its start let go once recording, the
     /// profiler window following it, and the run told what Stop, a restart and Rerun end first
     /// (<see cref="ServiceRun.Profiled"/>, <see cref="ServiceRun.EndProfiling"/>). Null once it records, else why not.</summary>
-    public async Task<string?> RecordServiceAsync(ServiceRun run, IRunService service, ServiceProgram program, bool asItRuns, CancellationToken stop)
+    public async Task<Words?> RecordServiceAsync(ServiceRun run, IRunService service, ServiceProgram program, bool asItRuns, CancellationToken stop)
     {
         UiThread.Check();
         ProjectSession profiled = Session;
@@ -720,7 +720,7 @@ public sealed class ProfilerCommands
         return null;
     }
 
-    private async Task<string?> AttachTargetAsync(AttachTarget? target, bool choose = false)
+    private async Task<Words?> AttachTargetAsync(AttachTarget? target, bool choose = false)
     {
         UiThread.Check();
         ProjectSession profiled = Session;
@@ -758,7 +758,7 @@ public sealed class ProfilerCommands
 
     /// <summary>The attach itself, its work said in the status bar from the first moment to the run's hand-over, Stop ending
     /// it; a program the debugger pauses as it waits is said to hold it.</summary>
-    private async Task<string?> AttachTargetAsync(ProjectSession profiled, AttachTarget target, string snapshotFolder)
+    private async Task<Words?> AttachTargetAsync(ProjectSession profiled, AttachTarget target, string snapshotFolder)
     {
         parts.Dock.Show(ToolWindowIds.Profiler);
         if (parts.Actions.Work.Begin(AppActions.AttachProfiler, $"Attaching the profiler to {target.Name}…") is not { } work)
@@ -1264,7 +1264,7 @@ public sealed class ProfilerCommands
     {
         if (await ProfileAsync() is { } problem)
         {
-            parts.Say(problem);
+            parts.Say(problem.Shown);
         }
     }
 
@@ -1272,7 +1272,7 @@ public sealed class ProfilerCommands
     {
         if (await AttachAsync(choose: true) is { } problem)
         {
-            parts.Say(problem);
+            parts.Say(problem.Shown);
         }
     }
 

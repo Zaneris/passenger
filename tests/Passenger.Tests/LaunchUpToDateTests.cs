@@ -159,7 +159,7 @@ public sealed class LaunchUpToDateTests
             File.WriteAllText(Path.Combine(folder, "hold"), string.Empty);
             Assert.True(window.Perform(AppActions.Build));
             Ui.PumpUntil(() => File.Exists(Path.Combine(folder, "held")), "the build to reach its hold", Slow);
-            Task<string?> run = window.RunAsync();
+            Task<Words?> run = window.RunAsync();
             Ui.PumpUntil(() => stages.Contains(waiting) || run.IsCompleted, "the run to wait for the build under way", Slow);
             File.WriteAllText(Path.Combine(folder, "go"), string.Empty);
             Ui.Launched(window, run, "the run begun while the build worked", Slow);

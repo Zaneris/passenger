@@ -97,7 +97,7 @@ public partial class MainWindow
         }
         RunConfiguration selected = Targeting(configuration, resources.Select(resource => (resource.Name, resource.Project)), name, debug: mode != RunStart.Run);
         // The target marked Debug alone keeps unproven, dynamically added projects out of the debugger, under Debug's work too.
-        string? problem = mode == RunStart.Profile
+        Words? problem = mode == RunStart.Profile
             ? await buildRun.ProfileAspireAsync(selected, arguments, cancel)
             : await buildRun.RunAspireAsync(selected, arguments, mode == RunStart.Debug ? RunStart.Debug : RunStart.Run, cancel);
         if (session != current || current.IsEnded)
@@ -106,7 +106,7 @@ public partial class MainWindow
         }
         if (problem is not null)
         {
-            throw new InvalidOperationException(problem);
+            throw new RefusedException(problem);
         }
         AspireAppRun app = current.Aspire.OwnedApp(configuration.Project);
         try
@@ -259,7 +259,7 @@ public partial class MainWindow
                 // Refused below as it stands, naming the command it lacks.
             }
         }
-        string? problem = action switch
+        Words? problem = action switch
         {
             "run" => await RestartAspireServiceAsync(current, fresh, debugging: false, cancel),
             "debug" => await RestartAspireServiceAsync(current, fresh, debugging: true, cancel),
@@ -275,7 +275,7 @@ public partial class MainWindow
             await WaitForAspireToolServiceAsync(current, app, name, project, cancel, previous, debugging: action == "debug",
                 resourceName: fresh.Resource.Name);
         }
-        return problem;
+        return problem?.English;
     }
 
     private void CheckAspireToolTarget(ProjectSession current, AspireAppRun app)

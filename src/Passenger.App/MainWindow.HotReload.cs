@@ -534,7 +534,7 @@ public partial class MainWindow
             return restarted && session == next && !next.IsEnded;
         }
         Stopwatch took = Stopwatch.StartNew();
-        string? refused = await buildRun.RestartDebugAsync(tab.Name);
+        Words? refused = await buildRun.RestartDebugAsync(tab.Name);
         if (session != next || next.IsEnded)
         {
             return false;
@@ -542,7 +542,7 @@ public partial class MainWindow
         LastHotReloadRestart = took.Elapsed;
         if (refused is not null)
         {
-            status.Text = $"Could not restart to apply changes: {refused}";
+            status.Text = DebuggingWords.NotRestartedToApply(refused).Shown;
             return false;
         }
         // The restart's build took Problems to its own tab; the edits that needed the restart are what to see.

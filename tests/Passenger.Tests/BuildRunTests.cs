@@ -316,7 +316,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Assert.Equal(new TextPosition(1, 12), window.EditorArea.CodeEditor.CaretPosition);
 
         window.ShowToolWindow(ToolWindowIds.Problems);
-        string? refused = Ui.Await(window.RunAsync(), "the run's build", TimeSpan.FromMinutes(2));
+        string? refused = Ui.Await(window.RunAsync(), "the run's build", TimeSpan.FromMinutes(2))?.English;
         Assert.StartsWith("Build failed: 1 error", refused, StringComparison.Ordinal);
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "The build before the run failed, but the Build window did not come forward with its error as Rider's does");
         Assert.Contains("Program.cs(2,13): error CS0029", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);

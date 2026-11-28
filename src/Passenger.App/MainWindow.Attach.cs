@@ -90,7 +90,7 @@ public partial class MainWindow
         {
             if (await dialog.ShowDialog<DotnetProcess?>(this) is { } chosen && await AttachAsync(chosen) is { } problem)
             {
-                status.Text = problem;
+                status.Text = problem.Shown;
             }
         }
     }
@@ -100,7 +100,7 @@ public partial class MainWindow
     /// bar says. Its last session, still attached (Reattach), is let go of first. A container's program is attached to inside
     /// its container, Passenger's tools copied in first where they are not; a 32-bit program by the debugger's 32-bit host,
     /// downloaded first where this build has none (<see cref="DebugController.X86HostAsync"/>).</summary>
-    public async Task<string?> AttachAsync(DotnetProcess process, string? named = null)
+    public async Task<Words?> AttachAsync(DotnetProcess process, string? named = null)
     {
         UiThread.Check();
         if (process.WhyNot is { } why)
@@ -137,11 +137,11 @@ public partial class MainWindow
         attachedTo.Add(target);
         ShowToolWindow(ToolWindowIds.Debug);
         Bottom.Debug.ShowTab(console: false);
-        string? refused = await session.Debug.AttachAsync(target.Id, name, hotReload: place is not null && target.HotReload, place: place, work: held);
+        Words? refused = await session.Debug.AttachAsync(target.Id, name, hotReload: place is not null && target.HotReload, place: place, work: held);
         attachSession = session.Debug.SessionNamed(name);
         if (refused is not null && target.Note is { } note && place is not null)
         {
-            return $"{refused} ({note})";
+            return Run.LaunchWords.WithCaveat(refused, note);
         }
         if (refused is null && target.Note is { } known)
         {
@@ -243,12 +243,12 @@ public partial class MainWindow
             : [.. running.Where(p => p.Program == last.Program && p.Container == last.Container)];
         if (candidates is [{ } only])
         {
-            string? problem = await AttachAsync(only);
+            Words? problem = await AttachAsync(only);
             if (problem is not null)
             {
-                status.Text = problem;
+                status.Text = problem.Shown;
             }
-            looking.Tell(problem is null, problem ?? $"Attached to {only.Program}");
+            looking.Tell(problem is null, problem ?? DebuggingWords.AttachedTo(only.Program));
             return;
         }
         status.Text = candidates.Count == 0

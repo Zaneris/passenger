@@ -701,7 +701,7 @@ public sealed class NewServiceSetupTests : IDisposable
 
             Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
             Ui.WaitFor(() => !window.IsBuilding, "the new solution's build", TimeSpan.FromMinutes(3));
-            string? refused = Ui.Await(window.RunAsync(), "the first Run to bring the web API up", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the first Run to bring the web API up", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             Assert.True(window.IsRunning, $"The first Run did not bring the service up: {window.Status}");
             Assert.StartsWith("Running Compose: compose.yaml", window.Status, StringComparison.Ordinal);

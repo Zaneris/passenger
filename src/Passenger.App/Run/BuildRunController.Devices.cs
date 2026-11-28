@@ -88,7 +88,7 @@ public sealed partial class BuildRunController
         string running, LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers)
     {
         work.Say($"Attaching to {name} on its device for Hot Reload…");
-        string? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
+        Words? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
         {
             console?.Append($"{line}\n", error);
             parts.Say(line);
@@ -104,7 +104,7 @@ public sealed partial class BuildRunController
     /// log is the session's console), and the session attached through the relay as the app's runtime waits for it. Once the
     /// session ends, however it ends, the app ends there and the relay comes out; Stop and the folder's end wait for it from
     /// the start's first step there (<see cref="DeviceStart"/>). Null once the session is open, else why not.</summary>
-    private async Task<string?> DebugOnDeviceAsync(LaunchPlan plan, IDeviceApp app, Working work, BuiltEdits? edits) =>
+    private async Task<Words?> DebugOnDeviceAsync(LaunchPlan plan, IDeviceApp app, Working work, BuiltEdits? edits) =>
         (await DebuggedOnDeviceAsync(plan, app, said => work.Say(said), work.Stopping, edits, null, null)).Refused;
 
     /// <summary>A device test project's app debugged for a test run as Debug debugs an app there, its plan's program the test
@@ -114,17 +114,17 @@ public sealed partial class BuildRunController
     public async Task<Task> DebugTestsOnDeviceAsync(LaunchPlan plan, Action<DebugTab> opened, Action<string>? heard, CancellationToken stopping)
     {
         IDeviceApp app = plan.Device?.App ?? plan.MacCatalyst?.App ?? throw new InvalidOperationException($"{plan.Name} has no app on a device to debug");
-        (string? refused, Task? ended) = await DebuggedOnDeviceAsync(plan, app, _ => { }, stopping, null, heard, opened);
-        return ended ?? throw new InvalidOperationException(refused ?? $"Debugging {plan.Name} ended as it started");
+        (Words? refused, Task? ended) = await DebuggedOnDeviceAsync(plan, app, _ => { }, stopping, null, heard, opened);
+        return ended ?? throw new RefusedException(refused ?? LaunchWords.DebugEndedAsStarted(plan.Name));
     }
 
     /// <summary>What <see cref="DebugOnDeviceAsync"/> does, each stage told to <paramref name="say"/>, stopped by
     /// <paramref name="stopping"/>: the session's end once it is open (and the start's output read to its end, where each of
     /// its lines is told to <paramref name="heard"/>), its tab told to <paramref name="opened"/>; else why not.</summary>
-    private async Task<(string? Refused, Task? Ended)> DebuggedOnDeviceAsync(LaunchPlan plan, IDeviceApp app, Action<string> say, CancellationToken stopping,
+    private async Task<(Words? Refused, Task? Ended)> DebuggedOnDeviceAsync(LaunchPlan plan, IDeviceApp app, Action<Words> say, CancellationToken stopping,
         BuiltEdits? edits, Action<string>? heard, Action<DebugTab>? opened)
     {
-        say($"Putting Passenger's debugger in {app.Package}…");
+        say(LaunchWords.PuttingDebuggerIn(app.Package));
         // An Avalonia or MAUI app's inspector goes in beside the relay, which the Live Visual Tree reaches.
         LiveApp? inspected = session.Inspected(plan).App;
         // With Hot Reload, the hook that calls its update handlers after each update goes in too.
@@ -139,7 +139,7 @@ public sealed partial class BuildRunController
             await onDevice.TakeOutAsync();
             return (relay is null ? unrelayed : Canceled(plan.Name), null);
         }
-        say($"Starting {plan.Name} {(app is MacCatalystApp ? "on this Mac" : "on its device")} under the debugger…");
+        say(LaunchWords.StartingOnDevice(app is MacCatalystApp ? "mac" : "device", plan.Name));
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
         DebugProject = Path.GetDirectoryName(plan.Project);
@@ -168,16 +168,16 @@ public sealed partial class BuildRunController
             handlers?.Dispose();
             inspected?.Dispose();
             await onDevice.TakeOutAsync();
-            return ($"{plan.Name} could not be started on its device: {unstarted.Message}", null);
+            return (LaunchWords.DeviceStartFailed(plan.Name, RefusedException.Of(unstarted)), null);
         }
         DebugController debug = session.Debug;
-        string? refused = await debug.AttachThroughRelayAsync(plan, relay, edits, inspected, handlers);
+        Words? refused = await debug.AttachThroughRelayAsync(plan, relay, edits, inspected, handlers);
         if (refused is not null || debug.Tabs.FirstOrDefault(t => t.Name == plan.Name && t.IsLive) is not { } tab)
         {
             ChildProcesses.Kill(shell);
             inspected?.Dispose();
             await onDevice.TakeOutAsync();
-            return (refused ?? $"Debugging {plan.Name} ended as it started", null);
+            return (refused ?? LaunchWords.DebugEndedAsStarted(plan.Name), null);
         }
         opened?.Invoke(tab);
         // The app has read its environment as its runtime started, which the relay's hello says.

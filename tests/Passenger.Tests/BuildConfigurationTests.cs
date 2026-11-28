@@ -96,7 +96,7 @@ public sealed class BuildConfigurationTests
         {
             Ui.WaitFor(() => Offered(window) == "Debug, Release", () => $"Debug and Release offered, where the widget offers {Offered(window)}");
             Choose(window, "Release");
-            string? refused = Ui.Await(window.RunAsync(), "the run", TimeSpan.FromMinutes(2));
+            string? refused = Ui.Await(window.RunAsync(), "the run", TimeSpan.FromMinutes(2))?.English;
             Assert.True(refused is null, $"Run under Release did not start: {refused}");
             Ui.WaitFor(() => !window.Runner.IsRunning, "the program to end");
             string output = window.BottomPanel.Run.Document.Snapshot.ToString();

@@ -1132,7 +1132,7 @@ public sealed class ContainersTests
         Ui.Settle();
         try
         {
-            string? refused = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = bare }), "the attach's answer");
+            string? refused = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = bare }), "the attach's answer")?.English;
             Assert.True(refused?.Contains("is version", StringComparison.Ordinal) == true && refused.Contains($"not this Passenger's {Product.Version}", StringComparison.Ordinal),
                 $"Attaching with only another version's tools here answered: {refused}");
             Assert.Contains("absent", Docker.Run("exec", bare, "sh", "-c", $"test -e {ContainerTools.Copied} && echo there || echo absent"), StringComparison.Ordinal);
@@ -1141,14 +1141,14 @@ public sealed class ContainersTests
             string listing = Docker.Container("listing", "sleep 600");
             made.Add(listing);
             Docker.Run("cp", Path.Combine(StandInTools("[{\"name\":\"Spins\",\"commandLine\":\"dotnet /app/Spins.dll\"},{\"id\":\"seven\"},3]"), "."), $"{listing}:{ContainerTools.Copied}");
-            string? none = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = listing }), "the attach's answer");
+            string? none = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = listing }), "the attach's answer")?.English;
             Assert.True(none?.Contains($"no longer runs in {listing}", StringComparison.Ordinal) == true, $"Attaching to a program the tools named by no id answered: {none}");
 
             // Tools whose list runs on past what any list takes: refused, never read into the IDE whole.
             string flooding = Docker.Container("flooding", "sleep 600");
             made.Add(flooding);
             Docker.Run("cp", Path.Combine(StandInTools("[]", "head -c 6000000 /dev/zero | tr '\\0' ' '; echo '[]'"), "."), $"{flooding}:{ContainerTools.Copied}");
-            string? flood = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = flooding }), "the attach's answer");
+            string? flood = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = flooding }), "the attach's answer")?.English;
             Assert.True(flood?.Contains("more than the 4 MB a list of programs takes", StringComparison.Ordinal) == true, $"Attaching where the tools' list ran on answered: {flood}");
         }
         finally
@@ -1182,7 +1182,7 @@ public sealed class ContainersTests
         Ui.Settle();
         try
         {
-            string? refused = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = container }), "the attach's answer");
+            string? refused = Ui.Await(window.AttachAsync(new DotnetProcess(0, "Spins", "dotnet /app/Spins.dll", "root", true) { Container = container }), "the attach's answer")?.English;
             Assert.True(refused?.Contains(ContainerTools.Emulation(image, engine), StringComparison.Ordinal) == true,
                 $"Attaching in a container of an {image} image on an {engine} engine did not say it runs under emulation: {refused}");
             Assert.Contains(ContainerTools.ReleaseBuild, refused, StringComparison.Ordinal);

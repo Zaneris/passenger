@@ -433,7 +433,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
                 TimeSpan.FromMinutes(2));
             Assert.True(window.SelectConfiguration("Wasm: http"));
             port.LetGo();
-            Task<string?> launch = window.DebugAsync();
+            Task<Words?> launch = window.DebugAsync();
             string Said() => $"{Ui.Said(window)}\n{Consoles(window)}";
             // Its build and its development server's start first; the browser's end then ends the session at once.
             Ui.WaitFor(() => launch.IsCompleted && Said().Contains("ended as it started", StringComparison.Ordinal),

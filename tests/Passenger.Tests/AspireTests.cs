@@ -351,7 +351,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             RunConfiguration discovered = window.Configurations.Single(configuration => PathNames.Same(configuration.Project, single));
             Assert.Contains("requires apphost.cs", window.WhyNotHere(discovered), StringComparison.Ordinal);
             Assert.True(window.SelectConfiguration(discovered.Name));
-            Assert.Contains("requires apphost.cs", Ui.Await(window.RunAsync(), "the noncanonical single-file refusal"), StringComparison.Ordinal);
+            Assert.Contains("requires apphost.cs", Ui.Await(window.RunAsync(), "the noncanonical single-file refusal")?.English, StringComparison.Ordinal);
             Assert.Empty(window.AspireRuntime.Apps);
             Assert.True(window.SelectConfiguration(linked.Name));
             Assert.Equal([PathNames.Canonical(project.CompanionHost)], window.Configuration!.LinkedAppHosts);
@@ -688,7 +688,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
                 && window.Configurations.Any(configuration => PathNames.Same(configuration.Project, file)), "both single-file AppHosts' configurations");
 
             Assert.True(window.SelectConfiguration(window.Configurations.Single(configuration => PathNames.Same(configuration.Project, loose)).Name));
-            string? beside = Ui.Await(window.RunAsync(), "the pinned CLI's sibling-project refusal");
+            string? beside = Ui.Await(window.RunAsync(), "the pinned CLI's sibling-project refusal")?.English;
             Assert.Contains("13.x (13.6.0 or newer) or 17.x", beside, StringComparison.Ordinal);
             Assert.Contains("sibling .csproj", beside, StringComparison.Ordinal);
             Assert.Empty(window.AspireRuntime.Apps);
@@ -709,7 +709,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
             };
             window.SetConfigurations([configured], configured.Name);
             window.ApplySettings(window.Settings with { HotReload = false });
-            string? refused = Ui.Await(window.RunAsync(), "the actual single-file Aspire AppHost", TimeSpan.FromMinutes(3));
+            string? refused = Ui.Await(window.RunAsync(), "the actual single-file Aspire AppHost", TimeSpan.FromMinutes(3))?.English;
             if (refused is not null)
             {
                 Assert.Fail($"The single-file AppHost did not launch: {refused}{Ui.BuildErrors(window)}\nAppHost output:\n{Redacted(AppHostSaid(window))}");
@@ -1024,7 +1024,7 @@ public sealed class AspireTests : IClassFixture<AspireApp>, IDisposable
         using CancellationTokenSource cancel = new();
         HashSet<int> observed = [];
         window.AspireRuntime.Changed += (_, _) => observed.UnionWith(OwnedPids(window));
-        Task<string?> starting = window.Builds.RunAsync(cancellation: cancel.Token);
+        Task<Words?> starting = window.Builds.RunAsync(cancellation: cancel.Token);
         Ui.PumpUntil(() => window.AspireRuntime.Apps.FirstOrDefault() is { Runner.IsRunning: true }
             && File.Exists(AspireApp.ConnectionInfoPath(project.Host)), "the real AppHost process to record its inherited connection before startup completes", TimeSpan.FromMinutes(3));
         Assert.Single(window.AspireRuntime.Apps);

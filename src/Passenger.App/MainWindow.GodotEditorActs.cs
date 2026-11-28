@@ -57,21 +57,21 @@ public partial class MainWindow
 
     /// <summary>Plays a scene of the folder's Godot game (res://; null for its main scene) in the person's Godot editor,
     /// debugged here, as Run in Godot Editor plays it: null once the editor took it, else why not.</summary>
-    internal Task<string?> PlayInGodotEditorForAgentAsync(string folder, string? scene, CancellationToken cancel)
+    internal Task<Words?> PlayInGodotEditorForAgentAsync(string folder, string? scene, CancellationToken cancel)
     {
         UiThread.Check();
         if (AgentsOwn)
         {
-            return Task.FromResult<string?>(Refusals.GodotEditorOfPerson.Shown);
+            return Task.FromResult<Words?>(Refusals.GodotEditorOfPerson);
         }
         ProjectModel? project = session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder));
         if (project is null)
         {
-            return Task.FromResult<string?>(Refusals.NoGodotProject.Shown);
+            return Task.FromResult<Words?>(Refusals.NoGodotProject);
         }
         RunConfiguration? game = session.Configurations.Chosen is { GodotInEditor: true } chosen && PathNames.Same(chosen.Project, project.Path) ? chosen
             : session.Configurations.All.FirstOrDefault(c => c.Generated && !c.GodotEditor && PathNames.Same(c.Project, project.Path));
-        return game is null ? Task.FromResult<string?>($"{project.Name} has no configuration that runs its game")
+        return game is null ? Task.FromResult<Words?>(LaunchWords.NoGameConfiguration(project.Name))
             : PlayInGodotEditorAsync(game with { GodotInEditor = true, GodotScene = scene }, debug: true, cancel);
     }
 }

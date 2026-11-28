@@ -730,13 +730,13 @@ public sealed partial class PassengerTools
         AgentCall.Follow(window.Actions.Work, AppActions.Profile, AppActions.Build, AppActions.AttachProfiler, AppActions.RunProgram, AppActions.MemorySnapshot);
         using (LaunchBuild built = new(Builds))
         {
-            Task<string?> started = resource is not null ? ProfileResource()
+            Task<Words?> started = resource is not null ? ProfileResource()
                 : !attach ? window.ProfileAsync(arguments)
                 : container is null ? window.AttachProfilerAsync()
                 : window.AttachProfilerAsync(await ProfiledIn(container));
             if (await started.WaitAsync(cancel) is { } problem)
             {
-                throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(problem.English, built.Ended));
             }
         }
         choice?.Began = true;
@@ -833,7 +833,7 @@ public sealed partial class PassengerTools
         }
 
         // A compose service as it runs, else its configuration started for it profiled; else an Aspire resource.
-        async Task<string?> ProfileResource()
+        async Task<Words?> ProfileResource()
         {
             if (await ComposeTargetAsync(resource!, configuration, starts: !attach, cancel) is { } compose)
             {
@@ -844,7 +844,7 @@ public sealed partial class PassengerTools
             return await ProfileAspireTarget();
         }
 
-        Task<string?> ProfileRunningServiceAsync(ComposeTarget compose)
+        Task<Words?> ProfileRunningServiceAsync(ComposeTarget compose)
         {
             Debuggable(compose, global::Passenger.App.Run.RunStart.Profile);
             return window.ServiceActionAsync(AppActions.ServiceProfile, compose.Service);

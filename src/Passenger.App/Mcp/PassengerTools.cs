@@ -1727,7 +1727,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             if (await Started(builds.RunAsync(arguments, hotReload), AppActions.RunProgram, cancel) is { } refused)
             {
-                throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(refused.English, built.Ended));
             }
         }
         choice.Began = true;
@@ -1828,7 +1828,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             if (await Started(builds.RunAsync(null, hotReload), AppActions.RunProgram, cancel) is { } refused)
             {
-                throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(refused.English, built.Ended));
             }
         }
         choice.Began = true;
@@ -2655,7 +2655,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             if (await Started(Builds.DebugAsync(arguments), AppActions.Debug, cancel) is { } problem)
             {
-                throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(problem.English, built.Ended));
             }
             choice.Began = true;
             // What a multi-project start started, the answer's own being the program the debugger shows.
@@ -2671,7 +2671,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
 
     /// <summary>A start an agent waits on (Run's, Debug's), ended as Stop ends one when the agent gives up on the call before
     /// it has started: a container run comes down rather than coming up for no one. One started is the person's to end.</summary>
-    private async Task<string?> Started(Task<string?> start, string action, CancellationToken cancel)
+    private async Task<Words?> Started(Task<Words?> start, string action, CancellationToken cancel)
     {
         using CancellationTokenRegistration givenUp = cancel.Register(() => UiThread.Post(() => window.Actions.Work.Of(action)?.Cancel()));
         return await start.WaitAsync(cancel);
@@ -2995,7 +2995,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         };
         if (await window.AttachAsync(chosen) is { } problem)
         {
-            throw new InvalidOperationException(problem);
+            throw new RefusedException(problem);
         }
         return await AfterResume(TimeSpan.FromSeconds(waitSeconds), cancel);
     });
@@ -3003,7 +3003,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     private Task<string> DebugDetach(string? session, CancellationToken cancel) => OnUi(cancel, async () =>
     {
         DebugSession attached = await Debugged(session);
-        return await Session.Debug.DetachAsync(attached) is { } problem ? throw new InvalidOperationException(problem)
+        return await Session.Debug.DetachAsync(attached) is { } problem ? throw new RefusedException(problem)
             : Session.Debug.SummaryOf(attached) ?? "Detached";
     });
 
@@ -3114,7 +3114,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         int before = paused.Stops;
         if (await Session.Debug.SetNextStatementAsync(paused, Named(path), line - 1) is { } problem)
         {
-            throw new InvalidOperationException(problem);
+            throw new RefusedException(problem);
         }
         await When(() => paused.Stops > before || paused.State != DebugState.Paused, TimeSpan.FromSeconds(10), cancel, StateOf(paused));
         await StopReadAsync(paused, cancel);

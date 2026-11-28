@@ -98,12 +98,12 @@ public sealed class WindowsOnlyProjectsTests : IClassFixture<WindowsOnlyProjects
             chooser.Close();
             Assert.Equal("Forms", window.Configuration?.Name);
 
-            Assert.Equal("Forms cannot run here: Windows Forms runs only on Windows", Ui.Await(window.RunAsync(), "Run's refusal"));
+            Assert.Equal("Forms cannot run here: Windows Forms runs only on Windows", Ui.Await(window.RunAsync(), "Run's refusal")?.English);
             Assert.Equal("Forms cannot run here: Windows Forms runs only on Windows", window.Status);
             Assert.True(window.SelectConfiguration("Gallery"));
-            Assert.Equal("Gallery cannot run here: WPF runs only on Windows", Ui.Await(window.RunAsync(), "Run's refusal"));
-            Assert.Equal("Gallery cannot run here: WPF runs only on Windows", Ui.Await(window.DebugAsync(), "Debug's refusal"));
-            Assert.Equal("Gallery cannot run here: WPF runs only on Windows", Ui.Await(window.ProfileAsync(), "Profile's refusal"));
+            Assert.Equal("Gallery cannot run here: WPF runs only on Windows", Ui.Await(window.RunAsync(), "Run's refusal")?.English);
+            Assert.Equal("Gallery cannot run here: WPF runs only on Windows", Ui.Await(window.DebugAsync(), "Debug's refusal")?.English);
+            Assert.Equal("Gallery cannot run here: WPF runs only on Windows", Ui.Await(window.ProfileAsync(), "Profile's refusal")?.English);
             Assert.True(window.BottomPanel.Build.Document.Snapshot.Length == 0, "Run, Debug or Profile built an app that cannot run here before saying so");
 
             Assert.True(window.Perform(AppActions.EditConfigurations));

@@ -47,7 +47,7 @@ public sealed class ContainerTelemetryTests : McpRig
         McpClient? client = null;
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the Compose application to come up with its dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the Compose application to come up with its dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             string dashboard = ContainerRunsTests.Container(project, ContainerTelemetry.Service);
             Assert.Equal(ContainerLabels.StateValue, Docker.Run("inspect", "-f", "{{index .Config.Labels \"net.passenger-ide.state\"}}", dashboard));

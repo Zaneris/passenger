@@ -386,7 +386,7 @@ public partial class MainWindow
     {
         CheckTestSession(running);
         CancellationToken cancel = running.Tests.RunCancellation;
-        string? unattached;
+        Words? unattached;
         try
         {
             (_, unattached) = await running.Debug.X86HostAsync(DotnetProcesses.Runs32Bit(processId), work.Of(AppActions.RunTests), cancel);
@@ -496,7 +496,7 @@ public partial class MainWindow
             if (await running.Debug.LaunchScriptsAsync(listened, listening) is { } refused)
             {
                 listening.Dispose();
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             debugged = running.Debug.SessionNamed(listened.Name);
             listening.Debugged = debugged;

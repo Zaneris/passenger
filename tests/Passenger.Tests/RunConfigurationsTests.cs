@@ -330,7 +330,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Assert.True(given.Contains("Hi [one|two three]", StringComparison.Ordinal), $"The arguments given for one run did not replace the profile's:\n{given}");
             // This project, with a Docker profile and no Dockerfile, cannot make a container, so Profile says so.
             Assert.True(window.SelectConfiguration("Hello: Docker"));
-            Assert.Equal("Hello: Docker cannot run: Hello has no Dockerfile", Ui.Await(window.ProfileAsync(), "the profiler's refusal"));
+            Assert.Equal("Hello: Docker cannot run: Hello has no Dockerfile", Ui.Await(window.ProfileAsync(), "the profiler's refusal")?.English);
             Assert.True(window.SelectConfiguration("Hello: Greet"));
 
             Assert.True(window.Perform(AppActions.EditConfigurations));

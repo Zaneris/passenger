@@ -148,7 +148,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
             RunConfiguration edited = Generated(window, $"Spinner: {RunConfiguration.GodotEditorName}");
             Assert.False(played.GodotEditor, "The game's configuration starts Godot's editor");
             Assert.True(edited.GodotEditor, "The editor's configuration starts the game, not Godot's editor");
-            (LaunchPlan? editor, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(edited, null), "the editor's plan", TimeSpan.FromMinutes(1));
+            (LaunchPlan? editor, Words? problem) = Ui.Await(window.Builds.ResolvePlanAsync(edited, null), "the editor's plan", TimeSpan.FromMinutes(1));
             Assert.True(editor is not null, $"Godot's editor has no plan: {problem}");
             Assert.Equal(game.Godot!.Executable, editor.Program);
             Assert.Equal([GodotExecutables.Headless, "--path", folder, "--editor"], editor.Arguments);

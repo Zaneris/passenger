@@ -3,6 +3,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.Core;
 using Passenger.App.Containers;
 using Passenger.App.Telemetry;
 
@@ -40,7 +41,7 @@ public sealed class ProjectTelemetryStartsTests
         try
         {
             string? refused = Ui.Await(start == AppActions.Debug ? window.DebugAsync() : window.ProfileAsync(), $"{start} to start the project with its dashboard",
-                TimeSpan.FromMinutes(5));
+                TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
