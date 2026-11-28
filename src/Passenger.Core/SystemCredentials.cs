@@ -6,13 +6,16 @@ namespace Passenger.Core;
 
 /// <summary>The system's own store of secrets, each kept under a service and an account: the login Keychain on macOS, the
 /// Credential Manager on Windows, the Secret Service (GNOME Keyring, KWallet) on Linux. A test run, or a system with no
-/// such store, keeps them in this process's memory alone (<see cref="Variable"/>), never in a file. Called on any thread.</summary>
+/// such store, keeps them in this process's memory alone (<see cref="Variable"/>), never in a file. A secret the store keeps
+/// is read from it each time, so a change made there (by another Passenger, or the person) is the one used; one it refused
+/// is kept in memory for this session. Called on any thread.</summary>
 public static partial class SystemCredentials
 {
     /// <summary>The variable that, set to <c>memory</c>, keeps every secret in this process alone, as a test run does.</summary>
     [IdentifierHome]
     public const string Variable = "PASSENGER_CREDENTIALS";
 
+    /// <summary>The secrets kept in memory: every one where no store is used, else those the store refused.</summary>
     private static readonly ConcurrentDictionary<(string Service, string Account), string> Held = new();
 
     /// <summary>Whether secrets go to the system's store; false where they stay in memory.</summary>
@@ -27,41 +30,47 @@ public static partial class SystemCredentials
     /// which keeps it in memory instead, for this session.</summary>
     public static bool Store(string service, string account, string secret)
     {
-        Held[(service, account)] = secret;
         if (!Kept)
         {
+            Held[(service, account)] = secret;
             return true;
         }
+        bool stored;
         try
         {
-            return OperatingSystem.IsMacOS() ? MacKeychain.Store(service, account, secret)
+            stored = OperatingSystem.IsMacOS() ? MacKeychain.Store(service, account, secret)
                 : OperatingSystem.IsWindows() ? WindowsCredentials.Store(service, account, secret)
                 : LinuxSecrets.Store(service, account, secret);
         }
         catch (Exception failed) when (failed is ExternalException or DllNotFoundException or EntryPointNotFoundException)
         {
             PassengerLog.Write($"Credentials: the system's store refused {service}: {failed.Message}");
-            return false;
+            stored = false;
         }
+        if (stored)
+        {
+            Held.TryRemove((service, account), out _);
+        }
+        else
+        {
+            Held[(service, account)] = secret;
+        }
+        return stored;
     }
 
     /// <summary>The secret kept under the service and account, or null where none is.</summary>
     public static string? Read(string service, string account)
     {
+        // One the store refused this session is the newest there is.
         if (Held.TryGetValue((service, account), out string? held) || !Kept)
         {
             return held;
         }
         try
         {
-            string? read = OperatingSystem.IsMacOS() ? MacKeychain.Read(service, account)
+            return OperatingSystem.IsMacOS() ? MacKeychain.Read(service, account)
                 : OperatingSystem.IsWindows() ? WindowsCredentials.Read(service, account)
                 : LinuxSecrets.Read(service, account);
-            if (read is not null)
-            {
-                Held[(service, account)] = read;
-            }
-            return read;
         }
         catch (Exception failed) when (failed is ExternalException or DllNotFoundException or EntryPointNotFoundException)
         {
