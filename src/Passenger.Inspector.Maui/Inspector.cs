@@ -74,8 +74,8 @@ internal sealed class Inspector : Inspecting<MauiElement>
     protected override XamlReloaded Reload(XamlChange change) => throw new Refusal("A MAUI app's XAML reaches it as code, through the debugger");
 
     /// <summary>The open instances of a type, each as Passenger names an element (Type#Name), each made again from the XAML
-    /// of <paramref name="remade"/> where given: the app, its windows and what each window holds. Why one could not be made
-    /// again stops the rest.</summary>
+    /// of <paramref name="remade"/> where given, a page of a type derived from it too: the app, its windows and what each
+    /// window holds. Why one could not be made again stops the rest.</summary>
     public (IReadOnlyList<string> Objects, string? Refused) Took(Type type, XamlChange? remade)
     {
         List<MauiElement> open = [];
@@ -88,7 +88,8 @@ internal sealed class Inspector : Inspecting<MauiElement>
         {
             MauiElement next = pending[0];
             pending.RemoveAt(0);
-            if (next.GetType() == type)
+            // A page whose class derives from the XAML's is made by its initializer too.
+            if (next.GetType() == type || remade is not null && type.IsAssignableFrom(next.GetType()))
             {
                 open.Add(next);
             }
@@ -101,7 +102,7 @@ internal sealed class Inspector : Inspecting<MauiElement>
         List<string> objects = [];
         foreach (MauiElement made in open)
         {
-            if (remade is not null && XamlRemakes.Remake(made, remade) is { } why)
+            if (remade is not null && XamlRemakes.Remake(made, type, remade) is { } why)
             {
                 return (objects, why);
             }
