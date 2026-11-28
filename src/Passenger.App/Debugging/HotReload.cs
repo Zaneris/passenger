@@ -214,7 +214,7 @@ public sealed class HotReload
         string? why = WhyNot?.Shown;
         if (why is not null || debug is not { } program)
         {
-            return new HotReloadOutcome(HotReloadResult.Failed, (why ?? Refusals.ProgramNotRunning).Shown);
+            return new HotReloadOutcome(HotReloadResult.Failed, why ?? Refusals.ProgramNotRunning);
         }
         starting ??= StartAsync();
         if (await starting is not null)

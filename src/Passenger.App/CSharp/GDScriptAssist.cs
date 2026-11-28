@@ -380,7 +380,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         if (declared is null)
         {
             AskGodot(shown);
-            context.Say(Refusals.NoDeclaration.Shown);
+            context.Say(Refusals.NoDeclaration);
         }
         else if (context.Editors.Active == shown)
         {

@@ -1367,11 +1367,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             BuildOutcome first = await builds.BuildForAsync(new BuildStep(project.Path, null), work);
             if (!first.Succeeded)
             {
-                return first.Message;
+                return first.Message.Shown;
             }
         }
         BuildOutcome built = await builds.BuildForAsync(new BuildStep(startup.Path, framework), work);
-        return built.Succeeded ? null : built.Message;
+        return built.Succeeded ? null : built.Message.Shown;
     }
 
     /// <summary>What the run of the startup project would have: the framework, working folder (which a build may make) and

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="HotReloadOf" xml:space="preserve">
+    <value>{program}: {said}</value>
+    <comment>What Hot Reload came to for one program of several applied at once (a run's services, the Debug window's programs), after its name.</comment>
+  </data>
+  <data name="RunsServices" xml:space="preserve">
+    <value>the run's services</value>
+    <comment>Names a container or Aspire run's services together, as what Hot Reload applied to (HotReloadOf's program).</comment>
+  </data>
+  <data name="HotReloadSaid" xml:space="preserve">
+    <value>Hot Reload: {said}</value>
+    <comment>What Hot Reload came to, as a program's console and the status bar say it.</comment>
+  </data>
+  <data name="RestartedToApply" xml:space="preserve">
+    <value>Restarted in {took} to apply changes: {said}</value>
+    <comment>A program restarted to apply edits Hot Reload could not apply as it ran: how long the restart took, and what Hot Reload said of the edits.</comment>
+  </data>
+</root>

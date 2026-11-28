@@ -25,7 +25,7 @@ public sealed partial class AspireController
         starting.Token.ThrowIfCancellationRequested();
         if (workspace.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed.English);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         if (startingPaths.Contains(hosts[0].Path) || apps.Any(app => PathNames.Same(app.Configuration.Project, hosts[0].Path)))
         {
@@ -41,7 +41,7 @@ public sealed partial class AspireController
             {
                 await execution.DisposeAsync();
                 starting.Token.ThrowIfCancellationRequested();
-                throw new InvalidOperationException(Refusals.SolutionClosed.English);
+                throw new RefusedException(Refusals.SolutionClosed);
             }
             Dictionary<string, string> environment = new(execution.Environment, StringComparer.Ordinal)
             {

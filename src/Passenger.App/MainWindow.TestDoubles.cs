@@ -100,7 +100,7 @@ public partial class MainWindow
             place.Exists ? $"Fakes/{Path.GetFileName(place.File)} is there already" : kept, here, string.Empty)
         {
             Elsewhere = (range, patience) => place.Exists
-                ? Task.FromResult(RefactorOutcome.Refused(Refusals.FakeThere(Path.GetFileName(place.File), place.Name).Shown))
+                ? Task.FromResult(RefactorOutcome.Refused(Refusals.FakeThere(Path.GetFileName(place.File), place.Name)))
                 : Assist.Actions.MakeAsync(title, file, range.Start,
                     now => now.ExtensionAsync<Refactored>(Handlers.CreateFake, new FakeAsked(now.PlaceOf(range.Start), place.Project)),
                     _ => $"Made Fakes/{Path.GetFileName(place.File)} in {place.Name}", patience),

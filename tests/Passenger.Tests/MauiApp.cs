@@ -87,7 +87,7 @@ internal static class MauiApp
         window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml"));
         Typing.Replace(window, "Text=\"Hello, World!\"", "Text=\"Hello, Passenger!\"");
         XamlApplied(window, "a property's edit", limit);
-        Assert.False(window.Debugger.LastApplied!.Said.Contains("made again", StringComparison.Ordinal),
+        Assert.False(window.Debugger.LastApplied!.Said.English.Contains("made again", StringComparison.Ordinal),
             $"The page was made again for a property's edit, which MAUI patches: {window.Debugger.LastApplied.Said}");
         Shows(window, app, "Hello, Passenger!", "the edited label's text");
 
@@ -108,7 +108,7 @@ internal static class MauiApp
             (set.Hello, "InitializeComponent", "the Hello label's line, where the page made again makes it"),
             (added, "InitializeComponent", "the added label's line, where the page made again makes it"),
             (set.ClickMe + 2, "InitializeComponent", "the button's Text attribute, where the page made again sets it"));
-        Assert.True(window.Debugger.LastApplied!.Said.Contains("MainPage made again", StringComparison.Ordinal),
+        Assert.True(window.Debugger.LastApplied!.Said.English.Contains("MainPage made again", StringComparison.Ordinal),
             $"The page was not made again for a C# expression, which MAUI's patch passes over: {window.Debugger.LastApplied.Said}");
         ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
     }
@@ -263,7 +263,7 @@ internal static class MauiApp
         }
         Ui.WaitFor(() => window.Debugger.LastApplied != before, () => $"Hot Reload to say what it made of {what}: {Ui.Said(window)}", limit);
         HotReloadOutcome applied = window.Debugger.LastApplied!;
-        Assert.True(applied.Result == HotReloadResult.Applied && applied.Said.Contains("XAML changes applied: MainPage.xaml (MainPage", StringComparison.Ordinal),
+        Assert.True(applied.Result == HotReloadResult.Applied && applied.Said.English.Contains("XAML changes applied: MainPage.xaml (MainPage", StringComparison.Ordinal),
             $"The app did not take {what}: {applied.Result}, {applied.Said}");
     }
 

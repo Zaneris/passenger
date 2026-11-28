@@ -89,7 +89,7 @@ public sealed class WpfXamlHotReloadTests : IClassFixture<RestoredFolders>, IDis
             Ui.Run(window, AppActions.SaveAll);
             HotReloadOutcome applied = Said(window, before);
             Assert.True(applied.Result == HotReloadResult.Applied, $"The saved XAML did not apply: {applied.Said}");
-            Assert.Contains("MainWindow.xaml (MainWindow)", applied.Said, StringComparison.Ordinal);
+            Assert.Contains("MainWindow.xaml (MainWindow)", applied.Said.English, StringComparison.Ordinal);
             Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element is { Type: "Button", Name: "Added" }), "the Live Visual Tree to show the button added");
             Shows(app, shell);
 

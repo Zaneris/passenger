@@ -105,7 +105,7 @@ internal static class CloudSignIns
     private static async Task<string> AwsAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
     {
         (string host, int port) = DatabaseKinds.Endpoint(kind, connection);
-        string region = RegionOf(signIn, host) ?? throw new InvalidOperationException(Refusals.NoAwsRegion(host).English);
+        string region = RegionOf(signIn, host) ?? throw new RefusedException(Refusals.NoAwsRegion(host));
         AWSCredentials credentials = await AwsProfiles.CredentialsAsync(signIn.Profile, cancel);
         DbConnectionStringBuilder laid = DatabaseKinds.Builder(kind, connection);
         if (signIn.Kind == CloudSignInKind.AwsIam && kind == DatabaseKind.Redshift)
@@ -118,7 +118,7 @@ internal static class CloudSignIns
         }
         if (signIn.Kind == CloudSignInKind.AwsIam)
         {
-            string user = DatabaseKinds.Value(connection, "Username", "User ID", "UserID", "User", "Uid") ?? throw new InvalidOperationException(Refusals.NoIamUser.English);
+            string user = DatabaseKinds.Value(connection, "Username", "User ID", "UserID", "User", "Uid") ?? throw new RefusedException(Refusals.NoIamUser);
             string token = await RDSAuthTokenGenerator.GenerateAuthTokenAsync(credentials, RegionEndpoint.GetBySystemName(region), host, port, user);
             ContainerSecrets.Mark(token);
             laid["Password"] = token;
@@ -159,7 +159,7 @@ internal static class CloudSignIns
         const string Workgroup = "workgroup/";
         string named = signIn.Cluster is { Length: > 0 } own ? own
             : DatabaseKinds.IsRedshiftHost(host) ? (host.Contains(".redshift-serverless.", StringComparison.OrdinalIgnoreCase) ? Workgroup : string.Empty) + host.Split('.')[0]
-            : throw new InvalidOperationException(Refusals.NoRedshiftCluster(host).English);
+            : throw new RefusedException(Refusals.NoRedshiftCluster(host));
         try
         {
             if (named.StartsWith(Workgroup, StringComparison.Ordinal))

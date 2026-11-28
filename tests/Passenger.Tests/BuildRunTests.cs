@@ -1991,7 +1991,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.True(window.EditorArea.Active is { Name: "Program.cs", IsModified: true }, "The edit of the read-only Program.cs was not kept unsaved");
 
             BuildOutcome built = Ui.Landed(window.BuildAsync(), "the build's outcome");
-            Assert.True(built.Status == BuildStatus.NotStarted && built.Message == Refused,
+            Assert.True(built.Status == BuildStatus.NotStarted && built.Message.English == Refused,
                 $"A build with Program.cs's edit unsaved ended {built.Status}, saying \"{built.Message}\": it built the disk's older text");
             Assert.Equal(Refused, window.Status);
 

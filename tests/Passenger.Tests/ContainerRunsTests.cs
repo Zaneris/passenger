@@ -140,7 +140,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             // web alone restarted after api's change built: api still runs its old build, so Rerun restarts it.
             File.WriteAllText(Path.Combine(folder, "Api", "Message.cs"), "public static class Message\n{\n    public const string Text = \"api 2\";\n}\n");
             BuildOutcome built = Ui.Await(window.BuildAsync(), "the solution's build", TimeSpan.FromMinutes(3));
-            Assert.True(built.Succeeded, built.Message);
+            Assert.True(built.Succeeded, built.Message.English);
             apiStarted = Started(project, "api");
             ContainerServicesTests.Act(window, ContainerServicesTests.Shown(window), project, "web", AppActions.ContainerRestart);
             Ui.WaitFor(() => window.Status?.Contains(": restarted web", StringComparison.Ordinal) == true, "web's restart from the Containers window", TimeSpan.FromMinutes(2));
@@ -276,7 +276,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             for (int turn = 1; turn <= 2; turn++)
             {
                 BuildOutcome built = Ui.Await(window.BuildAsync(), $"build {turn} with the run up", TimeSpan.FromMinutes(2));
-                Assert.True(built.Succeeded, built.Message);
+                Assert.True(built.Succeeded, built.Message.English);
             }
             string webProject = Path.Combine(folder, "Web", "Web.csproj");
             RunConfiguration web = window.Configurations.First(c => c.Kind == RunKind.Project && PathNames.Same(c.Project, webProject));

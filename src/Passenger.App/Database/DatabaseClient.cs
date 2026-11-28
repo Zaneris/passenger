@@ -26,7 +26,7 @@ internal static partial class DatabaseClient
     {
         if (!DatabaseKinds.SpeaksSql(source.Kind))
         {
-            throw new InvalidOperationException(Refusals.NotSql(DatabaseKinds.Title(source.Kind)).English);
+            throw new RefusedException(Refusals.NotSql(DatabaseKinds.Title(source.Kind)));
         }
         if (source.Kind == DatabaseKind.DuckDb)
         {
@@ -813,7 +813,7 @@ internal static partial class DatabaseClient
         string Said(int row, int column) => Convert.ToString(rows.Rows[row][column], CultureInfo.InvariantCulture) ?? string.Empty;
         if (rows.RowCount == 0)
         {
-            throw new InvalidOperationException(Refusals.NoPlan.English);
+            throw new RefusedException(Refusals.NoPlan);
         }
         return source.Kind switch
         {
@@ -854,7 +854,7 @@ internal static partial class DatabaseClient
         string[] keys = [.. schema.Columns.Where(c => c.Primary).Select(c => c.Name)];
         if (keys.Length == 0 && !(edits.Changed.IsEmpty && edits.Deleted.IsEmpty))
         {
-            throw new InvalidOperationException(Refusals.NoPrimaryKey(schema.Table.ToString()).English);
+            throw new RefusedException(Refusals.NoPrimaryKey(schema.Table.ToString()));
         }
         string table = Full(source.Kind, schema.Table);
         await using DbConnection connection = await OpenAsync(source, cancel);
@@ -924,13 +924,13 @@ internal static partial class DatabaseClient
             }
             if (now.RowCount != 1)
             {
-                throw new InvalidOperationException(Refusals.RowGone(schema.Table.ToString(), key.ToString()).English);
+                throw new RefusedException(Refusals.RowGone(schema.Table.ToString(), key.ToString()));
             }
             for (int i = 0; i < columns.Length; i++)
             {
                 if (Array.IndexOf(now.Columns, columns[i]) is not (>= 0 and int at) || !PendingEdits.Same(now.Rows[0][at], read[i]))
                 {
-                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()).English);
+                    throw new RefusedException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()));
                 }
             }
         }
@@ -947,7 +947,7 @@ internal static partial class DatabaseClient
             int affected = await command.ExecuteNonQueryAsync(cancel);
             if (affected != 1)
             {
-                throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()).English);
+                throw new RefusedException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()));
             }
         }
 

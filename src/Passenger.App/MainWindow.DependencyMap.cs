@@ -50,7 +50,7 @@ public partial class MainWindow
 
     /// <summary>Opens the Dependency Map window on the place a context names: the Explorer's project or C# file, the editor's
     /// symbol at the caret, else the projects alone; null once shown, else why not, said in the status bar.</summary>
-    public async Task<string?> ShowDependencyMapAsync(ActionContext context)
+    public async Task<Words?> ShowDependencyMapAsync(ActionContext context)
     {
         if (session.CSharp is not { } csharp)
         {
@@ -99,7 +99,7 @@ public partial class MainWindow
     {
         if (session.CSharp is not { IsReady: true } csharp)
         {
-            throw new InvalidOperationException((session.CSharp?.Unready("The dependency map") ?? Refusals.CSharpNotRunningSentence).English);
+            throw new RefusedException(session.CSharp?.Unready("The dependency map") ?? Refusals.CSharpNotRunningSentence);
         }
         return await csharp.DependenciesAsync(of);
     }

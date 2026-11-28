@@ -89,7 +89,7 @@ public static class AwsProfiles
     {
         if (through.Contains(name, StringComparer.Ordinal) || through.Count > 8)
         {
-            throw new InvalidOperationException(Refusals.AwsProfileUnusable(name, "a role whose source profiles lead back to it").English);
+            throw new RefusedException(Refusals.AwsProfileUnusable(name, "a role whose source profiles lead back to it"));
         }
         if (Held.TryGetValue(name, out (AWSCredentials Credentials, DateTimeOffset Expires) held) && held.Expires - DateTimeOffset.UtcNow > TimeSpan.FromMinutes(5))
         {
@@ -97,7 +97,7 @@ public static class AwsProfiles
         }
         if (!Store().TryGetProfile(name, out CredentialProfile? profile))
         {
-            throw new InvalidOperationException(Refusals.NoAwsProfile(name).English);
+            throw new RefusedException(Refusals.NoAwsProfile(name));
         }
         CredentialProfileOptions options = profile.Options;
         if (options.RoleArn is { Length: > 0 } role)
@@ -118,8 +118,8 @@ public static class AwsProfiles
         {
             return options.Token is { Length: > 0 } token ? new SessionAWSCredentials(options.AccessKey, options.SecretKey, token) : new BasicAWSCredentials(options.AccessKey, options.SecretKey);
         }
-        throw new InvalidOperationException((Refusals.AwsProfileUnusable(name, options.WebIdentityTokenFile is { Length: > 0 } ? "a web identity's token file"
-            : options.LoginSession is { Length: > 0 } ? "aws login's console session" : "no credentials")).English);
+        throw new RefusedException(Refusals.AwsProfileUnusable(name, options.WebIdentityTokenFile is { Length: > 0 } ? "a web identity's token file"
+            : options.LoginSession is { Length: > 0 } ? "aws login's console session" : "no credentials"));
     }
 
     /// <summary>The role a profile names, assumed through STS with its source profile's credentials, or the environment's.</summary>
@@ -128,11 +128,11 @@ public static class AwsProfiles
         CredentialProfileOptions options = profile.Options;
         if (options.MfaSerial is { Length: > 0 })
         {
-            throw new InvalidOperationException(Refusals.AwsProfileUnusable(profile.Name, "a role that asks for an MFA code").English);
+            throw new RefusedException(Refusals.AwsProfileUnusable(profile.Name, "a role that asks for an MFA code"));
         }
         AWSCredentials source = options.SourceProfile is { Length: > 0 } from ? await OfAsync(from, [.. through, profile.Name], cancel)
             : options.CredentialSource == "Environment" && EnvironmentKeys() is { } keys ? keys
-            : throw new InvalidOperationException(Refusals.AwsProfileUnusable(profile.Name, $"a role whose credentials come from {options.CredentialSource ?? "nowhere"}").English);
+            : throw new RefusedException(Refusals.AwsProfileUnusable(profile.Name, $"a role whose credentials come from {options.CredentialSource ?? "nowhere"}"));
         using AmazonSecurityTokenServiceClient sts = new(source, Config<AmazonSecurityTokenServiceConfig>(profile.Region?.SystemName ?? "us-east-1"));
         AssumeRoleResponse assumed = await sts.AssumeRoleAsync(new AssumeRoleRequest
         {
@@ -155,14 +155,14 @@ public static class AwsProfiles
         IReadOnlyList<string> words = CommandLine.Split(line);
         if (words.Count == 0 || words[0].Length == 0)
         {
-            throw new InvalidOperationException(Refusals.AwsProfileUnusable(profile, "a credential_process that names no program").English);
+            throw new RefusedException(Refusals.AwsProfileUnusable(profile, "a credential_process that names no program"));
         }
         string program = Path.IsPathRooted(words[0]) ? words[0] : Programs.Command(words[0])
-            ?? throw new InvalidOperationException(Refusals.AwsProcessFailed(profile, $"{words[0]} is not on PATH").English);
+            ?? throw new RefusedException(Refusals.AwsProcessFailed(profile, $"{words[0]} is not on PATH"));
         ChildResult ran = await ChildProcesses.RunAsync(ChildProcesses.Command(program, words.Skip(1), Home), limit: ProcessLimit, cancel: cancel);
         if (!ran.Succeeded)
         {
-            throw new InvalidOperationException(Refusals.AwsProcessFailed(profile, ContainerSecrets.InSaid(ran.Error.Trim() is { Length: > 0 } said ? said : $"it ended with {ran.ExitCode}")).English);
+            throw new RefusedException(Refusals.AwsProcessFailed(profile, ContainerSecrets.InSaid(ran.Error.Trim() is { Length: > 0 } said ? said : $"it ended with {ran.ExitCode}")));
         }
         try
         {

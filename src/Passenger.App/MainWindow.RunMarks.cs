@@ -600,7 +600,7 @@ public partial class MainWindow
         {
             // Up since the menu opened: the service actions on its run, as the menu offers them now.
             string id = how switch { RunStart.Debug => AppActions.ServiceDebug, RunStart.Profile => AppActions.ServiceProfile, _ => AppActions.ServiceRun };
-            return await ServiceActionAsync(id, new ServiceAim(app, name, app.ServiceNamed(name) is not null, null, null));
+            return (await ServiceActionAsync(id, new ServiceAim(app, name, app.ServiceNamed(name) is not null, null, null)))?.Shown;
         }
         if (session != current || current.IsEnded || declared.Count(resource => resource.Name == name) != 1)
         {

@@ -193,7 +193,7 @@ internal static class RedisClient
                 case RedisType.String:
                     if (!edits.Deleted.IsEmpty || !edits.Added.IsEmpty)
                     {
-                        throw new InvalidOperationException(Refusals.RowsFixed.English);
+                        throw new RefusedException(Refusals.RowsFixed);
                     }
                     foreach ((RowKey _, ChangedRow row) in edits.Changed)
                     {
@@ -273,7 +273,7 @@ internal static class RedisClient
                 case RedisType.Stream:
                     if (!edits.Changed.IsEmpty)
                     {
-                        throw new InvalidOperationException(Refusals.StreamEntriesFixed.English);
+                        throw new RefusedException(Refusals.StreamEntriesFixed);
                     }
                     foreach (RowKey entry in edits.Deleted.Keys)
                     {
@@ -291,7 +291,7 @@ internal static class RedisClient
             // Once EXEC ran, its writes are the database's whatever Stop asks after: the changes are said written.
             if (!await transaction.ExecuteAsync())
             {
-                throw new InvalidOperationException(Refusals.KeyChanged(schema.Table.Name).English);
+                throw new RefusedException(Refusals.KeyChanged(schema.Table.Name));
             }
             await Task.WhenAll(writes);
             return true;

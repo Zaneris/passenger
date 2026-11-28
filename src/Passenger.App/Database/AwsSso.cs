@@ -78,7 +78,7 @@ public static class AwsSso
     {
         if (!AwsProfiles.Store().TryGetProfile(profile, out CredentialProfile? found) || Of(found) is not { } sso)
         {
-            throw new InvalidOperationException(Refusals.AwsProfileUnusable(profile, "no IAM Identity Center sign-in").English);
+            throw new RefusedException(Refusals.AwsProfileUnusable(profile, "no IAM Identity Center sign-in"));
         }
         using AmazonSSOOIDCClient oidc = new(new AnonymousAWSCredentials(), AwsProfiles.Config<AmazonSSOOIDCConfig>(sso.Region));
         RegisterClientResponse client = await oidc.RegisterClientAsync(new RegisterClientRequest
@@ -120,7 +120,7 @@ public static class AwsSso
             }
             if (until.Passed)
             {
-                throw new InvalidOperationException(Refusals.AwsSignInNotApproved(profile).English);
+                throw new RefusedException(Refusals.AwsSignInNotApproved(profile));
             }
             await Task.Delay(every, cancel);
         }

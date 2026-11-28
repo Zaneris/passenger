@@ -245,7 +245,7 @@ public sealed partial class BuildRunController
             BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(sessions), configured: plan.Workspace);
             if (!built.Succeeded)
             {
-                return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message;
+                return Checkpoint(work, chosen.Name) is { } stopped ? Said(stopped) : built.Message.Shown;
             }
             if (plan.Running.FirstOrDefault(d => !File.Exists(Path.Combine(d.Output, d.Assembly + ".dll"))) is { } unbuilt)
             {
@@ -612,7 +612,7 @@ public sealed partial class BuildRunController
                     configured: run.Plan.Workspace);
                 if (!built.Succeeded)
                 {
-                    return Said(built.Message);
+                    return Said(built.Message.Shown);
                 }
                 IReadOnlyList<DotnetService> changed = run.Changed();
                 work.Say(changed.Count == 0 ? "No service's build changed" : $"Restarting {string.Join(", ", changed.Select(c => c.Service))}…");

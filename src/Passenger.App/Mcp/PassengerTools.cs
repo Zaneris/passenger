@@ -77,12 +77,12 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 cancel.ThrowIfCancellationRequested();
                 if (said != Admission.Allowed)
                 {
-                    throw new InvalidOperationException((said switch
+                    throw new RefusedException(said switch
                     {
                         Admission.NotAllowed => $"The person at this Passenger window did not let {connection.Agent} open {full} in place of {open}. Ask them, or work in {open}.",
                         Admission.FolderChanged => Refusals.FolderChanged(open),
                         _ => $"Nobody at {AgentConnection.Where(window)} answered within {AgentConnection.Limit(window)} whether {connection.Agent} may open {full} in place of {open}. A later call asks again.",
-                    }).English);
+                    });
                 }
             }
             await window.OpenFolder(full, connection).WaitAsync(cancel);
@@ -747,10 +747,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         RefactorOutcome made = await window.Assist.Languages.CSharp.RenameNodesAsync(read, nodes ?? [node], name, newName, patience);
         if (made.Problem is { } refused)
         {
-            throw new InvalidOperationException(refused);
+            throw new RefusedException(refused);
         }
         await SaveLandedAsync(cancel);
-        return $"{made.Said}: {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
+        return $"{made.Said.English}: {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
     }
 
     [McpServerTool(Name = McpTools.Hierarchy, Title = "Call or type hierarchy", ReadOnly = true), Description(
@@ -774,7 +774,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     public Task<DependencyLevel> Dependencies(string? node = null, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
         await SettledServer(cancel);
-        CSharp.CSharpService csharp = Session.CSharp ?? throw new InvalidOperationException(Refusals.CSharpNotRunningSentence.English);
+        CSharp.CSharpService csharp = Session.CSharp ?? throw new RefusedException(Refusals.CSharpNotRunningSentence);
         if (node is not null && Roslyn.Extension.DependencyIds.Read(node) is null)
         {
             throw new ArgumentException($"No node '{node}': a node's id is one a dependencies answer gave", nameof(node));
@@ -888,10 +888,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             {
                 if (scriptRenamed.Problem is { } refused)
                 {
-                    throw new InvalidOperationException(scriptRenamed.Anyway is null ? refused : $"{refused}; force: true renames it anyway, leaving them");
+                    throw new RefusedException(scriptRenamed.Anyway is null ? refused : $"{refused.English}; force: true renames it anyway, leaving them");
                 }
                 await SaveLandedAsync(cancel);
-                return $"{scriptRenamed.Said}: {AgentAnswers.Named([.. scriptRenamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
+                return $"{scriptRenamed.Said.English}: {AgentAnswers.Named([.. scriptRenamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
             }
         }
         Served served = await Serve(at.Path, cancel);
@@ -908,10 +908,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             RefactorOutcome step = await window.Assist.Languages.Gherkin.RenameStepAsync(stepped, newName);
             if (step.Problem is { } refused)
             {
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             await SaveLandedAsync(cancel);
-            return $"{step.Said}: {AgentAnswers.Named([.. step.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
+            return $"{step.Said.English}: {AgentAnswers.Named([.. step.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
         }
         if (served is ServerServed { Web.Kind: WebServerKind.Yaml } yaml && global::Passenger.App.Containers.ComposeFiles.IsCompose(yaml.Document.Path)
             && await ComposeAssist.ComposeRenamingAsync(yaml.Lsp, yaml.Document, offset) is { } composed)
@@ -923,10 +923,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             RefactorOutcome compose = await window.Assist.Languages.Compose.RenameComposeAsync(yaml.Document, offset, composed.Name, newName);
             if (compose.Problem is { } refused)
             {
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             await SaveLandedAsync(cancel);
-            return $"{compose.Said}: {AgentAnswers.Named([.. compose.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
+            return $"{compose.Said.English}: {AgentAnswers.Named([.. compose.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
         }
         // A Godot name a string gives (an input action, a group, an autoload…) is renamed where the project defines it, as from the window.
         if (served is ServerServed { Web: null } named && named.Document.Language == Languages.Language.CSharp
@@ -939,10 +939,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             RefactorOutcome kindRenamed = await window.Assist.Languages.CSharp.RenameKindAsync(kind, newName, patience);
             if (kindRenamed.Problem is { } refused)
             {
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             await SaveLandedAsync(cancel);
-            return $"{kindRenamed.Said}: {AgentAnswers.Named([.. kindRenamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
+            return $"{kindRenamed.Said.English}: {AgentAnswers.Named([.. kindRenamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
         }
         // A Godot node a GetNode path names is renamed in its scenes, as from its scene.
         if (served is ServerServed { Web: null } code && code.Document.Language == Languages.Language.CSharp
@@ -994,16 +994,16 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             RefactorOutcome made = await window.Assist.Languages.CSharp.RenameResourceAsync(served.Document, offset, resource, newName, patience);
             if (made.Problem is { } problem)
             {
-                throw new InvalidOperationException(problem);
+                throw new RefusedException(problem);
             }
             await SaveLandedAsync(cancel);
-            return $"{made.Said}: {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
+            return $"{made.Said.English}: {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
         }
         RefactorOutcome renaming = await window.Assist.Actions.RenameSymbolAsync(served.Document, offset, newName, renameFiles, patience);
         // A C# string naming a GDScript member renames it as from its script, uses Passenger can't see held back the same.
         if (renaming.Anyway is { } anyway)
         {
-            renaming = force ? await anyway.Make(patience) : renaming with { Problem = $"{renaming.Problem}; force: true renames it anyway, leaving them" };
+            renaming = force ? await anyway.Make(patience) : renaming with { Problem = $"{renaming.Problem?.English}; force: true renames it anyway, leaving them" };
         }
         return await SymbolRenamed(renaming, cancel);
     }, AgentCall.Say, cancel));
@@ -1018,17 +1018,17 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (renaming.Problem is { } notRenamed)
         {
-            throw new InvalidOperationException(notRenamed);
+            throw new RefusedException(notRenamed);
         }
         if (renaming.Files.Count == 0 && renaming.Left.Count == 0)
         {
-            return renaming.Said;
+            return renaming.Said.English;
         }
         await SaveLandedAsync(cancel);
         List<string> changed = [.. renaming.Files.Where(f => f.Change == RefactoredChange.Changed).Select(f => Relative(f.Path))];
         List<string> moved = [.. renaming.Files.Where(f => f.Change == RefactoredChange.Moved).Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string renamed = moved.Count > 0 ? $"; renamed {string.Join(", ", moved)}" : string.Empty;
-        return $"{Refusals.EditedMeanwhile($"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}", renaming.Left).English}{(renaming.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
+        return $"{Refusals.EditedMeanwhile($"Renamed in {Plural.Of(changed.Count, "file")}: {string.Join(", ", changed)}{renamed}", renaming.Left).English}{(renaming.Unmoved is { } unmoved ? $"; but {unmoved.English}" : string.Empty)}";
     }
 
     [McpServerTool(Name = McpTools.CodeActions, Title = "Fixes and refactorings", ReadOnly = true), Description(
@@ -1198,7 +1198,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         RefactorOutcome made = await window.Assist.Actions.ApplyEditAsync(edit, asked, title, what);
         if (made.Problem is { } problem)
         {
-            throw new InvalidOperationException(problem);
+            throw new RefusedException(problem);
         }
         await SaveLandedAsync(cancel);
         return ActionApplied(what, made, unrun);
@@ -1223,7 +1223,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<string> moved = [.. made.Files.Where(f => f.Change == RefactoredChange.Moved).Select(f => $"{Relative(f.Path)} to {Relative(f.To!)}")];
         string to = changed > 0 || moved.Count == 0 ? $" to {Plural.Of(changed, "file")}" : string.Empty;
         string renaming = moved.Count > 0 ? $", renaming {string.Join(", ", moved)}" : string.Empty;
-        return $"{Refusals.EditedMeanwhile($"Applied {what}{to}{renaming}{unrun}", made.Left).English}{(made.Unmoved is { } unmoved ? $"; but {unmoved}" : string.Empty)}";
+        return $"{Refusals.EditedMeanwhile($"Applied {what}{to}{renaming}{unrun}", made.Left).English}{(made.Unmoved is { } unmoved ? $"; but {unmoved.English}" : string.Empty)}";
     }
 
     /// <summary>A code action whose change its server makes by its own command, made as the window makes it
@@ -1234,7 +1234,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         RefactorOutcome made = await ServerCommands.RunAsync(Editors, title, what, chosen.Edit, taking => lsp.ExecuteCommandAsync(run, taking, cancel), asked, patience, null);
         if (made.Problem is not null)
         {
-            throw new InvalidOperationException(made.Problem);
+            throw new RefusedException(made.Problem);
         }
         if (made.Files.Count == 0 && made.Left.Count == 0)
         {
@@ -1360,7 +1360,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         List<SymbolInformation> kept = [.. matching.Take(Math.Max(0, limit - indexers.Count))];
         if (indexers.Count == 0 && kept.Count == 0 && FailedLoads() is { Count: > 0 } failed)
         {
-            throw new InvalidOperationException(Refusals.NoneWhileUnloaded($"No {kind ?? "symbol"} of the solution's own code matches {query}", failed).English);
+            throw new RefusedException(Refusals.NoneWhileUnloaded($"No {kind ?? "symbol"} of the solution's own code matches {query}", failed));
         }
         // A Razor file's C# at its place in the Razor file, another generator's in a copy of its code.
         IReadOnlyList<Place> places = await Places(await session.WrittenAsync([.. kept.Select(s => s.Location)], cancel), cancel);
@@ -1441,8 +1441,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         if (kept.Count == 0 && noneRefused)
         {
             string none = $"No {kind ?? "symbol"} of the solution's own code is named {name}";
-            throw new InvalidOperationException((FailedLoads() is { Count: > 0 } failed ? Refusals.NoneWhileUnloaded(none, failed)
-                : $"{none}: find_symbol finds names like it{(WentWithout(untaken) is { } without ? $". {without}" : string.Empty)}").English);
+            throw new RefusedException(FailedLoads() is { Count: > 0 } failed ? Refusals.NoneWhileUnloaded(none, failed)
+                : $"{none}: find_symbol finds names like it{(WentWithout(untaken) is { } without ? $". {without}" : string.Empty)}");
         }
         // A symbol only a source generator declares is at its place in a copy of the generator's code.
         IReadOnlyList<Place> places = await Places([.. kept.Select(s => new LspLocation(s.Path is { } path ? DocumentUris.FromPath(path) : s.Generated!,
@@ -1649,7 +1649,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"{preset} is a Godot export preset: omit publish, a .NET project's");
         }
-        string? game = preset is null ? null : window.GodotExportFolder() ?? throw new InvalidOperationException(Refusals.NoGodotProject.English);
+        string? game = preset is null ? null : window.GodotExportFolder() ?? throw new RefusedException(Refusals.NoGodotProject);
         // An export the agent places is written where it may change files.
         string? exported = game is null || exportPath is null ? null : Resolve(global::Passenger.Workspace.GodotResPaths.Globalized(game, exportPath), changes: true);
         ProjectModel? published = publish is null ? null : Project(publish);
@@ -1662,7 +1662,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         await (Session.CSharp?.ReferencesHeld ?? Task.CompletedTask).WaitAsync(cancel);
         IReadOnlyList<Finding> problems = [.. built.Problems.Select(p => new Finding(
             p.Severity == ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message, p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1))];
-        BuildResult result = new(built.Succeeded, built.Message, problems.Count(p => p.Severity == "error"), problems.Count(p => p.Severity == "warning"), [],
+        BuildResult result = new(built.Succeeded, built.Message.English, problems.Count(p => p.Severity == "error"), problems.Count(p => p.Severity == "warning"), [],
             built.Succeeded || built.Output.Count == 0 ? null : Masked(string.Join('\n', built.Output))) { Folder = built.Published, Image = built.Image };
         (IReadOnlyList<Finding>[] kept, int[] left) = AgentAnswers.Severest<Finding>([problems], p => Rank(p.Severity) ?? 2, 4, AgentAnswers.MostFindings, Size, Room(result));
         return result with
@@ -2027,7 +2027,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 global::Passenger.App.Containers.ContainerRow row = await NamedContainer($"{Builds.Containers!.Plan.ProjectName}/{service}", cancel);
                 if (await window.ContainerActAsync(AppActions.ContainerStop, "stop", row) is { } refused)
                 {
-                    throw new InvalidOperationException(refused);
+                    throw new RefusedException(refused);
                 }
                 return $"Stopped {service}";
             }
@@ -2065,7 +2065,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         bool debug = false,
         bool coverage = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
-        string folder = Session.Folder ?? throw new InvalidOperationException(Refusals.NoFolder.English);
+        string folder = Session.Folder ?? throw new RefusedException(Refusals.NoFolder);
         if (coverage && debug)
         {
             throw new ArgumentException(Refusals.CoverageDebugged.English);
@@ -2509,7 +2509,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         if (!Reaches(path, changes: false))
         {
-            throw new InvalidOperationException(Refusals.OutOfReach(path, Session.Folder, changes: false).English);
+            throw new RefusedException(Refusals.OutOfReach(path, Session.Folder, changes: false));
         }
         Passenger.Languages.CSharp.ParsedText parsed = await LambdaBreakpoints.ParsedAsync(Editors, path)
             ?? throw new ArgumentException($"A column names a lambda's breakpoint in a C# file, which {Relative(path)} is not");
@@ -3153,11 +3153,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (tab.InputFrom is { } from)
         {
-            throw new InvalidOperationException(Refusals.InputFromStarter(tab.Name, from).English);
+            throw new RefusedException(Refusals.InputFromStarter(tab.Name, from));
         }
         if (tab.Console.InputEnded)
         {
-            throw new InvalidOperationException(Refusals.InputEnded(tab.Name).English);
+            throw new RefusedException(Refusals.InputEnded(tab.Name));
         }
         await debugged.InputAsync(newline ? text + "\n" : text);
         return "Sent";
@@ -4063,7 +4063,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (document.Syntax is { } syntax && (await syntax.CurrentAsync()).DeepAt is not null)
         {
-            throw new InvalidOperationException(Refusals.TooDeep(Path.GetFileName(document.Path)).English);
+            throw new RefusedException(Refusals.TooDeep(Path.GetFileName(document.Path)));
         }
         await ServerSettledAsync(document.Path, csharp => csharp.For(document)?.Lsp is not null, cancel);
         if (!takenIn)
@@ -4210,7 +4210,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         string full = Resolve(path);
         if (GeneratedCode.IsCopy(full))
         {
-            throw new InvalidOperationException(Refusals.Generated(Path.GetFileName(full), Session.CSharp?.Generated.OriginOf(full)).English);
+            throw new RefusedException(Refusals.Generated(Path.GetFileName(full), Session.CSharp?.Generated.OriginOf(full)));
         }
     }
 
@@ -4621,8 +4621,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         string full = Named(path);
         return Reaches(full, changes) ? full
-            : throw new InvalidOperationException((changes && Reaches(full, changes: false) ? $"{ReadOnlyHere(full, Relative(full))}, so nothing changed"
-                : Refusals.OutOfReach(full, Session.Folder, changes)).English);
+            : throw new RefusedException(changes && Reaches(full, changes: false) ? $"{ReadOnlyHere(full, Relative(full))}, so nothing changed"
+                : Refusals.OutOfReach(full, Session.Folder, changes));
     }
 
     /// <summary>A change refused of a file (a canonical path) an agent reads but may not change, the file called
@@ -4642,7 +4642,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         string given = Path.IsPathRooted(path) || Session.Folder is not { } folder ? path : Path.Combine(folder, path);
         return FoundPaths.Askable(given, Session.Folder is { } open ? [open] : []) ? PathNames.Canonical(given)
-            : throw new InvalidOperationException(Refusals.NeverAsked(given).English);
+            : throw new RefusedException(Refusals.NeverAsked(given));
     }
 
     private string Relative(string path) => Relative(Session.Folder, path);

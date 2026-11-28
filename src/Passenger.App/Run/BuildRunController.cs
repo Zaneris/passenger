@@ -393,7 +393,7 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is null || IsBuilding || session.IsEnded)
         {
-            BuildOutcome refused = new(BuildStatus.Refused, (session.Folder is null || session.IsEnded ? Refusals.NoFolderTo("build") : Refusals.Building).Shown);
+            BuildOutcome refused = new(BuildStatus.Refused, (session.Folder is null || session.IsEnded ? Refusals.NoFolderTo("build") : Refusals.Building));
             work?.Dispose();
             parts.Say(refused.Message);
             then?.Invoke(refused);
@@ -421,7 +421,7 @@ public sealed partial class BuildRunController
         }
         if (buildQueue.Count == 0)
         {
-            BuildOutcome nothing = new(BuildStatus.Refused, (whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : "Nothing to build: every project is unloaded").Shown);
+            BuildOutcome nothing = new(BuildStatus.Refused, (whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : "Nothing to build: every project is unloaded"));
             publishing = null;
             together = null;
             work?.Tell(false, nothing.Message);
@@ -494,7 +494,7 @@ public sealed partial class BuildRunController
         }
         else if (session.IsEnded)
         {
-            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, Refusals.NoFolderTo("build").Shown));
+            FinishBuild(new BuildOutcome(BuildStatus.NotStarted, Refusals.NoFolderTo("build")));
         }
         else
         {
@@ -786,8 +786,8 @@ public sealed partial class BuildRunController
             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList());
         if (uncompiled.Count > 0 && !session.IsEnded)
         {
-            ended = new BuildOutcome(BuildStatus.Failed, Refusals.XamlUncompiled(uncompiled).Shown);
-            parts.OfferRebuild?.Invoke(ended.Message);
+            ended = new BuildOutcome(BuildStatus.Failed, Refusals.XamlUncompiled(uncompiled));
+            parts.OfferRebuild?.Invoke(ended.Message.Shown);
         }
         Keep(ended);
     }
@@ -972,7 +972,7 @@ public sealed partial class BuildRunController
         {
             await collecting.CancelAsync();
             await AbandonAsync(told);
-            return (null, Checkpoint(work, chosen.Name) ?? unbuilt.Message, false);
+            return (null, Checkpoint(work, chosen.Name) ?? unbuilt.Message.Shown, false);
         }
         if (build && plan.Device is { App: null } && session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, plan.Project!)) is { } device)
         {

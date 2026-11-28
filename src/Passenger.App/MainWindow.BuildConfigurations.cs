@@ -84,7 +84,7 @@ public partial class MainWindow
         UiThread.Check();
         if (session.Folder is not { } folder || session.Workspace is not { } workspace)
         {
-            throw new InvalidOperationException(Refusals.NoFolderTo("build").English);
+            throw new RefusedException(Refusals.NoFolderTo("build"));
         }
         using Working? work = actions!.Work.Begin(A.ChooseBuildConfiguration, $"Reading what {Path.GetFileName(workspace.Solution?.Path ?? folder)} builds as {configuration.Shown(session.BuildChoices.Offered)}…");
         if (await session.BuildChoices.ChooseAsync(folder, workspace, configuration) is { } why)

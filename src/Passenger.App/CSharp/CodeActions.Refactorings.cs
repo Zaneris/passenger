@@ -354,7 +354,7 @@ internal sealed partial class CodeActions
                     return RefactorOutcome.Refused($"Safe Delete was not applied: {Path.GetFileName(doomed.Path)} changed meanwhile");
                 }
                 recording.Wrote(doomed.Path, doomed.Text, after);
-                if (await recording.LandedAsync(context.Say) is [(_, Exception refused), ..])
+                if (await recording.LandedAsync(said => context.Say(said)) is [(_, Exception refused), ..])
                 {
                     return RefactorOutcome.Refused($"Safe Delete failed: {refused.Message}");
                 }

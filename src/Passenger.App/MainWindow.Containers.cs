@@ -327,7 +327,7 @@ public partial class MainWindow
 
     /// <summary>Remove: a container, image or network at once, a Compose project taken down with its volumes kept, and a
     /// volume only once asked, since its data goes with it.</summary>
-    private async Task<string?> RemoveAsync(ContainerRow row)
+    private async Task<Words?> RemoveAsync(ContainerRow row)
     {
         if (row.Object is { Kind: "volume" } volume)
         {
@@ -466,7 +466,7 @@ public partial class MainWindow
         }
         catch (LaunchException failed)
         {
-            status.Text = failed.Message;
+            status.Text = failed.Why.Shown;
             return null;
         }
     }

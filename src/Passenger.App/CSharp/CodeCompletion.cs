@@ -453,7 +453,7 @@ internal sealed partial class CodeCompletion
                 if (fits.Expected is not { } expected || fit.Length == 0)
                 {
                     Close();
-                    context.Say((fits.Expected is { } type ? Refusals.NothingFits(type) : Refusals.NoTypeExpected).Shown);
+                    context.Say(fits.Expected is { } type ? Refusals.NothingFits(type) : Refusals.NoTypeExpected);
                     return;
                 }
                 Made(lsp, list, [fit], null, null, asked, caret, incomplete: false, before: null, fitting: true);

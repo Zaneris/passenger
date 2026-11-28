@@ -57,7 +57,7 @@ public partial class MainWindow
     /// its actions start) or an AppHost's project resource that does not run, which Debug and Run without Debugger start
     /// (<paramref name="Resource"/> as the Aspire window chose it, else found by its name as the action runs); or why there is
     /// none. <see cref="Start"/> is the start the Aspire window chose (one replica of several), else null.</summary>
-    private sealed record ServiceAim(ServiceRun? Run, string? Name, bool Runs, AspireSelection? Resource, string? WhyNot)
+    private sealed record ServiceAim(ServiceRun? Run, string? Name, bool Runs, AspireSelection? Resource, Words? WhyNot)
     {
         public AspireResourceRun? Start { get; init; }
 
@@ -65,7 +65,7 @@ public partial class MainWindow
         /// started it), which Attach attaches to as it runs; null for a service of a run of Passenger's.</summary>
         public int? Elsewhere { get; init; }
 
-        public static ServiceAim Refused(string why) => new(null, null, false, null, why);
+        public static ServiceAim Refused(Words why) => new(null, null, false, null, why);
     }
 
     /// <summary>The service actions, one set for every kind of run (a container run's services, an AppHost's), from the
@@ -100,7 +100,7 @@ public partial class MainWindow
     {
         if (context.Service is { } named)
         {
-            return named.Run.IsStopped ? ServiceAim.Refused(Refusals.NotRunning(named.Run.Name).Shown)
+            return named.Run.IsStopped ? ServiceAim.Refused(Refusals.NotRunning(named.Run.Name))
                 : new(named.Run, named.Name, named.Run.ServiceNamed(named.Name) is not null, null, null);
         }
         bool aspireShown = Dock.IsShown(ToolWindowIds.Aspire);
@@ -134,7 +134,7 @@ public partial class MainWindow
         if (!chosen.Resource.IsProject)
         {
             return ServiceAim.Refused((chosen.Resource.IsGoProgram ? Refusals.NoGoDebugger(chosen.Resource.DisplayName)
-                : $"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}").Shown);
+                : $"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}"));
         }
         return session.Aspire.FindService(chosen) is { } running ? new(app, ((IRunService)running).Name, true, chosen, null) { Start = running }
             : new(app, app.UnstartedName(chosen.Resource) ?? chosen.Resource.DisplayName, false, chosen, null);
@@ -151,9 +151,9 @@ public partial class MainWindow
     {
         AspireResource resource = chosen.Resource;
         string host = Path.GetFileNameWithoutExtension(chosen.AppHostPath);
-        return resource.IsGoProgram ? ServiceAim.Refused(Refusals.NoGoDebugger(resource.DisplayName).Shown)
+        return resource.IsGoProgram ? ServiceAim.Refused(Refusals.NoGoDebugger(resource.DisplayName))
             : !resource.IsProject ? ServiceAim.Refused($"{resource.DisplayName} is not a .NET service of {host}")
-            : resource.State != AspireStates.Running ? ServiceAim.Refused(Refusals.NotRunning(resource.DisplayName, host).Shown)
+            : resource.State != AspireStates.Running ? ServiceAim.Refused(Refusals.NotRunning(resource.DisplayName, host))
             : AspireController.ProgramOf(resource) is not int program ? ServiceAim.Refused($"{host} says no program {resource.DisplayName} runs as")
             : new ServiceAim(null, resource.DisplayName, true, chosen, null) { Elsewhere = program };
     }
@@ -161,7 +161,7 @@ public partial class MainWindow
     /// <summary>Why a service action cannot act on what it aims at, or null: a service that runs as its run says
     /// (<see cref="BuildRunController.ServiceOf"/>); an AppHost's resource that does not run, Debug and Run without Debugger
     /// starting it where it advertises a start, Attach and Profile needing it running.</summary>
-    private string? WhyNotOn(string id, ServiceAim aim) =>
+    private Words? WhyNotOn(string id, ServiceAim aim) =>
         aim.WhyNot ?? (aim.Elsewhere is not null ? id == AppActions.ServiceAttach ? null
                 : $"{NotRunHere(aim.Resource!.AppHostPath)}, or Attach to Service debugs {aim.Name} as it runs"
             : aim.Runs ? buildRun.WhyNotOnService(id, aim.Name, aim.Run)
@@ -179,11 +179,11 @@ public partial class MainWindow
     /// where it has one: Debug of an AppHost's service debugged already chooses its tab); an AppHost's project resource that
     /// does not run now started by its AppHost, Debug held for the debugger and Run without Debugger unheld, as an agent's
     /// <c>debug_start</c> and <c>run</c> start one. Null once done, else why not (said too).</summary>
-    private async Task<string?> ServiceActionAsync(string id, ServiceAim aim)
+    private async Task<Words?> ServiceActionAsync(string id, ServiceAim aim)
     {
         if (WhyNotOn(id, aim) is { } why)
         {
-            status.Text = why;
+            status.Text = why.Shown;
             return why;
         }
         if (aim is { Elsewhere: int program, Resource: { } elsewhere })
@@ -281,7 +281,7 @@ public partial class MainWindow
     /// session (and the profiler's recording) ended before Stop or Remove takes its container, and Restart restarting it as
     /// the run does, held again and attached to again where it was debugged; and on the run's own project, its Restart, Stop
     /// and Remove the run's (<see cref="BuildRunController.ProjectActionAsync"/>). Null once done, else why not.</summary>
-    public async Task<string?> ContainerActAsync(string id, string action, ContainerRow row)
+    public async Task<Words?> ContainerActAsync(string id, string action, ContainerRow row)
     {
         // The run's own project: its Restart, Stop and Remove are the run's, its sessions ended first.
         if (row is { Kind: ContainerRowKind.Project, Project: { } project } && buildRun.Containers?.Plan.ProjectName == project.Name && action is "restart" or "stop" or "remove")

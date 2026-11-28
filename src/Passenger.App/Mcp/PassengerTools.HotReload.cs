@@ -30,7 +30,7 @@ public sealed partial class PassengerTools
             return said is null
                 ? new HotReloadInfo("unanswered", "The files were saved, and dotnet watch said nothing of them before 30 s, its run's end or another save: output or the Run window shows what it printed",
                     [], [], 0, [], false, false)
-                : new HotReloadInfo(Result(said.Result), said.Said, [], [], 0, [], said.Result == HotReloadResult.RestartNeeded,
+                : new HotReloadInfo(Result(said.Result), said.Said.English, [], [], 0, [], said.Result == HotReloadResult.RestartNeeded,
                     said.Result == HotReloadResult.RestartNeeded);
         }
         if (window.UnsavedGameScripts() is { Count: > 0 } unsaved)
@@ -62,10 +62,10 @@ public sealed partial class PassengerTools
                 AgentCall.Follow(window.Actions.Work, AppActions.Debug, AppActions.Build);
             }
             return await window.RestartForAgentAsync(rude, running);
-        }).WaitAsync(cancel) ?? throw new InvalidOperationException((window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is { } under
-            ? ActionWork.Busy(under) : "Apply Hot Reload Changes is under way").English);
+        }).WaitAsync(cancel) ?? throw new RefusedException(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is { } under
+            ? ActionWork.Busy(under) : "Apply Hot Reload Changes is under way");
         HotReloadOutcome outcome = applied.Outcome;
-        HotReloadInfo answer = new(Result(outcome.Result), outcome.Said, [.. outcome.Files.Select(Relative)], outcome.Modules, outcome.Methods,
+        HotReloadInfo answer = new(Result(outcome.Result), outcome.Said.English, [.. outcome.Files.Select(Relative)], outcome.Modules, outcome.Methods,
             [.. outcome.Problems.Select(p => new Finding(p.Severity == Passenger.App.Run.ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message,
                 p.Path is { } at ? Relative(at) : p.Project, p.Position.Line + 1, p.Position.Column + 1))],
             outcome.Result == HotReloadResult.RestartNeeded, applied.Restarted);

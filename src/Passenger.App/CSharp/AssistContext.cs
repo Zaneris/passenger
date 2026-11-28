@@ -3,6 +3,7 @@ using Passenger.App.MSBuild;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.App.Xaml;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Lsp;
@@ -197,7 +198,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <paramref name="refused"/> tells a refusal of.</summary>
     public Task<T> PatientlyAsync<T>(string action, Func<Patience, Task<T>> attempt, Func<T, bool> refused)
     {
-        Action<string?> waits = Work?.Waits(action, Say) ?? (stage =>
+        Action<string?> waits = Work?.Waits(action, said => Say(said)) ?? (stage =>
         {
             if (stage is not null)
             {
@@ -215,8 +216,8 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;
 
-    /// <summary>Something to say in the status bar ("No usages found").</summary>
-    public void Say(string message) => Message?.Invoke(this, message);
+    /// <summary>Something to say in the status bar ("No usages found"), in the person's language.</summary>
+    public void Say(Words message) => Message?.Invoke(this, message.Shown);
 
     /// <summary>Says in the status bar why a command got nothing from the server.</summary>
     public void Failed(string what, LanguageServerFailed failed) => Say($"{what} failed: {failed.Reason}");

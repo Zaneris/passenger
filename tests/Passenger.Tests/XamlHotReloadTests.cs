@@ -88,7 +88,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.Run(window, AppActions.SaveAll);
             HotReloadOutcome applied = Said(window, before);
             Assert.True(applied.Result == HotReloadResult.Applied, $"The saved XAML did not apply: {applied.Said}");
-            Assert.Contains("MainWindow.axaml (MainWindow)", applied.Said, StringComparison.Ordinal);
+            Assert.Contains("MainWindow.axaml (MainWindow)", applied.Said.English, StringComparison.Ordinal);
             Ui.WaitFor(() => window.LiveTree.Rows.Any(r => r.Element is { Type: "Button", Name: "Added" }), "the Live Visual Tree to show the button added");
             Shows(app, shell);
 
@@ -245,8 +245,8 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.Run(window, AppActions.ApplyHotReloadChanges);
             HotReloadOutcome applied = Said(window, before);
             Assert.True(applied.Result == HotReloadResult.Applied, $"The C# and XAML edits did not apply together: {applied.Said}");
-            Assert.True(applied.Said.IndexOf("C# changes applied", StringComparison.Ordinal) is int code and >= 0
-                && applied.Said.IndexOf("XAML changes applied", StringComparison.Ordinal) > code, $"C#'s apply was not said first: {applied.Said}");
+            Assert.True(applied.Said.English.IndexOf("C# changes applied", StringComparison.Ordinal) is int code and >= 0
+                && applied.Said.English.IndexOf("XAML changes applied", StringComparison.Ordinal) > code, $"C#'s apply was not said first: {applied.Said}");
 
             Element added = Find(Ui.Await(app.TreeAsync(), "the app's tree").Roots, "Added") ?? throw new InvalidOperationException("The app has no button Added");
             Ui.Await(app.InputAsync(new InputAction(InputKinds.Click) { Element = added.Id }), "the click on the button added");
@@ -414,7 +414,7 @@ public sealed class XamlHotReloadTests : IClassFixture<RestoredFolders>, IDispos
             Ui.Run(window, AppActions.ApplyHotReloadChanges);
             HotReloadOutcome applied = Said(window, before);
             Assert.True(applied.Result == HotReloadResult.Errors, $"The misspelt element was not refused as an error: {applied.Said}");
-            Assert.Contains("C# changes applied", applied.Said, StringComparison.Ordinal);
+            Assert.Contains("C# changes applied", applied.Said.English, StringComparison.Ordinal);
 
             window.OpenFile(code);
             CodeEditor editor = window.EditorArea.CodeEditor;

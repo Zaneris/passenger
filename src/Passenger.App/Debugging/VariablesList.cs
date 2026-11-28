@@ -231,7 +231,7 @@ public sealed class VariablesList : TreeList
         if (DataWatch is { } offer)
         {
             // Greyed until the debugger answers what can be done with the row.
-            MenuItem watch = ListMenus.Item(DataWatchOffer.Set, () => DataBreakpointRequested?.Invoke(this, node), Refusals.AskingDebugger.Shown);
+            MenuItem watch = ListMenus.Item(DataWatchOffer.Set, () => DataBreakpointRequested?.Invoke(this, node), Refusals.AskingDebugger);
             items.Add(new Separator());
             items.Add(watch);
             IdeErrors.Observe(Offer(watch, offer(node)));

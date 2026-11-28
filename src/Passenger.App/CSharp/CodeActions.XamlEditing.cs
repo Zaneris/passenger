@@ -158,7 +158,7 @@ internal sealed partial class CodeActions
         {
             return refused;
         }
-        return await recording.LandedAsync(context.Say) is [(string path, Exception why), ..] ? await recording.TakenBackAsync(WorkspaceEdits.Unwritten(path, why)) : null;
+        return await recording.LandedAsync(said => context.Say(said)) is [(string path, Exception why), ..] ? await recording.TakenBackAsync(WorkspaceEdits.Unwritten(path, why)) : null;
     }
 
     /// <summary>The refactorings offered at the caret of a XAML file (Refactor This, and after the fixes in Show

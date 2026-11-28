@@ -74,7 +74,7 @@ public sealed partial class BuildRunController
         if (session.IsEnded || work.IsStopped || resolved is null)
         {
             work.Dispose();
-            return Said(session.IsEnded ? new BuildOutcome(BuildStatus.Refused, Refusals.SolutionClosed.Shown) : work.IsStopped ? new BuildOutcome(BuildStatus.Stopped, "Publish stopped")
+            return Said(session.IsEnded ? new BuildOutcome(BuildStatus.Refused, Refusals.SolutionClosed) : work.IsStopped ? new BuildOutcome(BuildStatus.Stopped, "Publish stopped")
                 : new BuildOutcome(BuildStatus.NotStarted, unread!));
         }
         if (resolved.Kind == PublishKind.Container)
@@ -144,7 +144,7 @@ public sealed partial class BuildRunController
         string begun = request.Deploys ? $"Running {request.Step} of {request.Name}…" : $"Publishing {request.Name} through its publishers…";
         if (parts.Work.Begin(AppActions.Publish, begun) is not { } work)
         {
-            return Said(new BuildOutcome(BuildStatus.Refused, ActionWork.Busy(parts.Work.Of(AppActions.Publish)!).Shown));
+            return Said(new BuildOutcome(BuildStatus.Refused, ActionWork.Busy(parts.Work.Of(AppActions.Publish)!)));
         }
         if (request.Needs != Aspire.DeployNeeds.None)
         {

@@ -368,7 +368,7 @@ public partial class MainWindow
             }
             shown.Design.Inspect(name);
             shown.Pane.Choose(name);
-            announcer.Tell(renamed.Said, Urgency.Polite, shown.Pane);
+            announcer.Tell(renamed.Said.Shown, Urgency.Polite, shown.Pane);
         }
         finally
         {

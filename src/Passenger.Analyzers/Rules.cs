@@ -149,7 +149,8 @@ internal static class Rules
         isEnabledByDefault: false,
         description: "Every word a person reads comes from a resource, so it can be read in their language: a literal given "
             + "where Words go or to a control's words would stay English, and Words joined into a string are said in one "
-            + "language and break the sentence a translation keeps whole. Turned on folder by folder in .editorconfig as "
+            + "language and break the sentence a translation keeps whole, as Words said in one language and made Words again keep "
+            + "that language for every reader. Turned on folder by folder in .editorconfig as "
             + "each area's words move into resources.");
 
     public static readonly DiagnosticDescriptor KeysUnread = new(

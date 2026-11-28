@@ -10,7 +10,7 @@ namespace Passenger.UnitTests.Analyzers;
 
 /// <summary>PSG0012 (<see cref="UnextractedWords"/>) over code compiled in memory, turned on as a folder's .editorconfig turns
 /// it on: words written in the code and made Words or given to a control's words are flagged, and so are Words made a
-/// string; a name, words with no letter and Words given whole pass.</summary>
+/// string or said in one language and made Words again; a name, words with no letter and Words given whole pass.</summary>
 public class UnextractedWordsTests
 {
     [Fact]
@@ -24,6 +24,7 @@ public class UnextractedWordsTests
         ("string s = $\"{Words.Verbatim(name)}!\";", "Words are joined into a string"),
         ("string s = \"in \" + Words.Verbatim(name);", "Words are joined into a string"),
         ("string s = Words.Verbatim(name).ToString();", "Words are made a string"),
+        ("Words w = Words.Verbatim(name).English;", "Words said in one language (English) are made Words again"),
         ("Words w = name;", null),
         ("Words w = \"…\";", null),
         ("TextBlock t = new() { Text = name };", null),
@@ -37,7 +38,7 @@ public class UnextractedWordsTests
 
     /// <summary>Stand-ins for Core's Words, Avalonia's controls and the door.</summary>
     private const string Home = """
-        namespace Passenger.Core { public sealed class Words { public static Words Verbatim(string s) => null!; public static implicit operator Words(string s) => null!; } }
+        namespace Passenger.Core { public sealed class Words { public static Words Verbatim(string s) => null!; public static implicit operator Words(string s) => null!; public string Shown => null!; public string English => null!; } }
         namespace Avalonia { public class AvaloniaObject { } }
         namespace Avalonia.Controls
         {

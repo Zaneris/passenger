@@ -296,7 +296,7 @@ public partial class MainWindow
     public Task<IReadOnlyList<AspireResource>> ReadAspireResourcesAsync(string appHost, CancellationToken cancel = default) =>
         session.Aspire.FindApp(appHost) is { IsTest: false } app
             ? app.Interactions?.GetResourcesAsync(cancel)
-                ?? Task.FromException<IReadOnlyList<AspireResource>>(new InvalidOperationException(Refusals.AppHostStarting.English))
+                ?? Task.FromException<IReadOnlyList<AspireResource>>(new RefusedException(Refusals.AppHostStarting))
             : AspireCli().GetResourcesAsync(appHost, cancel);
 
     private async Task<AspireSelection> ReadAspireSelectionAsync(string appHost, string resource, CancellationToken cancel)
@@ -316,7 +316,7 @@ public partial class MainWindow
         AspireSelection selection = await ReadAspireSelectionAsync(appHost, resource, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed.English);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         return await ResourceCommandAsync(current, selection, command, () => true, cancel, forAgent: true);
     }
@@ -400,7 +400,7 @@ public partial class MainWindow
         {
             if (session == current)
             {
-                Say(error.Message);
+                Say(RefusedException.Of(error));
             }
             return error.Message;
         }
@@ -412,7 +412,7 @@ public partial class MainWindow
         AspireAppRun app = current.Aspire.FindApp(selection.AppHostPath) is { IsTest: false } owned ? owned
             : throw new InvalidOperationException(NotRunHere(selection.AppHostPath));
         AspireResourceRun service = current.Aspire.FindService(selection)
-            ?? throw new InvalidOperationException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name).English);
+            ?? throw new RefusedException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name));
         return (app, service);
     }
 
@@ -456,7 +456,7 @@ public partial class MainWindow
         {
             if (session == current)
             {
-                Say(error.Message);
+                Say(RefusedException.Of(error));
             }
             return error.Message;
         }
@@ -510,7 +510,7 @@ public partial class MainWindow
         {
             if (session == current)
             {
-                Say(error.Message);
+                Say(RefusedException.Of(error));
             }
             return error.Message;
         }
@@ -565,7 +565,7 @@ public partial class MainWindow
         }
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed.English);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         foreach (AspireResourceRun start in starts.DistinctBy(start => (start.Project, start.Plan.Framework)))
         {
@@ -575,7 +575,7 @@ public partial class MainWindow
             if (await buildRun.BuildForAsync(new BuildStep(start.Project, start.Plan.Framework), cancel, () => app.Rebuilding(start.Project, current.Debug.Kept()), app.Workspace)
                 is { Succeeded: false } failed)
             {
-                throw new InvalidOperationException(failed.Message);
+                throw new RefusedException(failed.Message);
             }
         }
         IReadOnlyList<AspireResource> built = await ReadAspireResourcesAsync(app.Configuration.Project, cancel);

@@ -142,7 +142,7 @@ public static class ContainerPlans
     public static async Task<ContainerPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace,
         string stateFolder, ContainerEngine engine, IReadOnlyList<string> labels, CancellationToken cancel)
     {
-        string folder = workspace?.Folder ?? throw new LaunchException(Refusals.NoFolderTo("run").English);
+        string folder = workspace?.Folder ?? throw new LaunchException(Refusals.NoFolderTo("run"));
         string state = StateOf(stateFolder, folder);
         Directory.CreateDirectory(state);
         string file = Slug(configuration.Name);
@@ -289,7 +289,7 @@ public static class ContainerPlans
         if (engineState.Amd64 is Amd64Runs.Emulated or Amd64Runs.Never
             && touched.Select(s => (Service: s, Is: BackingService.OfImage(model[s]?.Image)?.X64Only)).FirstOrDefault(s => s.Is is not null) is ({ } unrunnable, { } what))
         {
-            throw new LaunchException($"{configuration.Name} cannot run {unrunnable}: {Refusals.X64OnlyUnrunnable(what, engineState)}");
+            throw new LaunchException(LaunchWords.CannotRunService(configuration.Name, unrunnable, Refusals.X64OnlyUnrunnable(what, engineState)));
         }
         string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
         // As deployed, the image's own user could not read what is kept for the person alone (RunsAs).

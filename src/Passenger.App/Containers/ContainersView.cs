@@ -824,7 +824,7 @@ public sealed class ContainersView : DockPanel
 
     /// <summary>Runs an action's command on a row as the window's one action of that id under way, the status bar saying
     /// its stage and then what came of it; the lists read again after. Null once done, else why it failed or did not run.</summary>
-    public async Task<string?> ActAsync(string id, string action, ContainerRow row, IReadOnlyList<string>? given = null)
+    public async Task<Words?> ActAsync(string id, string action, ContainerRow row, IReadOnlyList<string>? given = null)
     {
         UiThread.Check();
         (IReadOnlyList<string>? words, string? whyNot) = given is null ? ContainerCommands.For(action, row, EngineOf(row).Known) : (given, null);
@@ -834,7 +834,7 @@ public sealed class ContainersView : DockPanel
         }
         if (parts.Work.Begin(id, ContainerCommands.Stage(action, row)) is not { } working)
         {
-            return ActionWork.Busy(parts.Work.Of(id)!).Shown;
+            return ActionWork.Busy(parts.Work.Of(id)!);
         }
         using (working)
         {

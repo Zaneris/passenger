@@ -121,7 +121,7 @@ internal sealed partial class CodeActions
         {
             stage?.Invoke("Waiting for the C# language server");
             untaken = await settled(stop);
-            CSharpService service = context.CSharp ?? throw new InvalidOperationException(Refusals.NoCSharp.English);
+            CSharpService service = context.CSharp ?? throw new RefusedException(Refusals.NoCSharp);
             generated = await service.Generated.GeneratedAmongAsync(code, stop);
         }
         bool stopped = false;
@@ -266,7 +266,7 @@ internal sealed partial class CodeActions
         string name = TitleOf(kind);
         if (context.Work?.Of(ActionOf(kind)) is { } busy)
         {
-            context.Say(ActionWork.Busy(busy).Shown);
+            context.Say(ActionWork.Busy(busy));
             return;
         }
         using Working? working = context.Work?.Begin(ActionOf(kind), $"{name}: finding the files {chosen.Of}…");

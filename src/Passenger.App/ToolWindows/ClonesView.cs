@@ -95,7 +95,7 @@ public sealed class ClonesView : DockPanel
     public event EventHandler? ChosenChanged;
 
     /// <summary>Why a group's clones can't share one method, where that is known; null where they can or it is not known yet.</summary>
-    public Func<CloneSet, string?>? WhyNotExtracted { get; set; }
+    public Func<CloneSet, Words?>? WhyNotExtracted { get; set; }
 
     private void Request(string action) => ActionRequested?.Invoke(this, action);
 

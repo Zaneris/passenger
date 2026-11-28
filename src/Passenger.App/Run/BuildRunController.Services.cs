@@ -346,7 +346,7 @@ public sealed partial class BuildRunController
                 work.Stopping.ThrowIfCancellationRequested();
                 if (!built.Succeeded)
                 {
-                    return built.Message;
+                    return built.Message.Shown;
                 }
             }
             if (run is ContainerRun containers

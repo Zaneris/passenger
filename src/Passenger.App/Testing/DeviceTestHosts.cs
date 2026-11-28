@@ -74,7 +74,7 @@ public sealed class DeviceTestHosts(Func<ProjectModel, KeptTarget?> targets, Fun
         {
             if (!OperatingSystem.IsMacOS())
             {
-                return (null, $"{project.Name} cannot run here: {Refusals.MacCatalystOnMacAlone}");
+                return (null, LaunchWords.CannotRunHere(project.Name, Refusals.MacCatalystOnMacAlone).Shown);
             }
             (LaunchPlan? opened, string? unopened) = await MacCatalystApps.ReadyAsync(plan with { MacCatalyst = new MacCatalystLaunch(assembly.Framework) }, properties, cancel);
             return opened?.MacCatalyst?.App is not null ? (new DeviceTestApp(opened, unseen), null) : (null, unopened);

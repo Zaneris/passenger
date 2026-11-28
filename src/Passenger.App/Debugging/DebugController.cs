@@ -623,8 +623,8 @@ public sealed partial class DebugController : IDisposable
         using IDisposable held = BackgroundWork.Scope();
         if (targets.Count == 0)
         {
-            HotReloadOutcome refused = new(HotReloadResult.Failed, (WhyNotApply() ?? Refusals.NothingDebugged).Shown);
-            Message?.Invoke(this, refused.Said);
+            HotReloadOutcome refused = new(HotReloadResult.Failed, WhyNotApply() ?? Refusals.NothingDebugged);
+            Message?.Invoke(this, refused.Said.Shown);
             return new Applying(refused, null, null, null);
         }
         Message?.Invoke(this, "Applying Hot Reload changes…");
@@ -659,11 +659,11 @@ public sealed partial class DebugController : IDisposable
         HotReloadOutcome? services = quiet.Count > 0 ? Together([.. quiet.Select(q => (q.Target.Name, q.Outcome))]) : null;
         HotReloadOutcome? program = tabs is [var lone] ? lone.Outcome : tabs.Count > 0 ? Together([.. tabs.Select(t => (t.Tab.Name, t.Outcome))]) : null;
         HotReloadOutcome outcome = services is { } both && program is { } and
-            ? Together([("the run's services", both), (tabs[0].Tab.Name, and)])
+            ? Together([(DebuggingWords.RunsServices, both), (tabs[0].Tab.Name, and)])
             : services ?? program!;
         foreach ((IHotReloadTarget target, HotReloadOutcome its) in quiet)
         {
-            target.Say($"Hot Reload: {its.Said}", Unapplied(its));
+            target.Say(DebuggingWords.HotReloadSaid(its.Said).Shown, Unapplied(its));
             if (its.Code is { Result: HotReloadResult.Applied, HandlersTold: false } && target is RunningReload run)
             {
                 ToldHandlers(run, its.Code);
@@ -674,12 +674,12 @@ public sealed partial class DebugController : IDisposable
         bool gone = applied is not null && (disposed || applied.Session != tabs[0].Session || !applied.IsLive);
         if (applied is IHotReloadTarget own && program is { } said && !gone)
         {
-            own.Say($"Hot Reload: {said.Said}", Unapplied(said));
+            own.Say(DebuggingWords.HotReloadSaid(said.Said).Shown, Unapplied(said));
         }
         if (!gone || quiet.Count > 0)
         {
             LastApplied = outcome;
-            Message?.Invoke(this, outcome.Said);
+            Message?.Invoke(this, outcome.Said.Shown);
             Applied?.Invoke(this, outcome);
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -1195,7 +1195,7 @@ public sealed partial class DebugController : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (ending)
         {
-            throw new InvalidOperationException(Refusals.WorkspaceEnding.English);
+            throw new RefusedException(Refusals.WorkspaceEnding);
         }
         cancellation.ThrowIfCancellationRequested();
         DebugTab tab = Place(name, replace: false);
@@ -1759,7 +1759,7 @@ public sealed partial class DebugController : IDisposable
 
     /// <summary>What several programs' Apply Changes came to, as one: the gravest result, each one's words that say more than
     /// that nothing changed, and the programs that need a restart.</summary>
-    internal static HotReloadOutcome Together(IReadOnlyList<(string Name, HotReloadOutcome Outcome)> each)
+    internal static HotReloadOutcome Together(IReadOnlyList<(Words Name, HotReloadOutcome Outcome)> each)
     {
         if (each is [(_, var only)] && only.Result != HotReloadResult.RestartNeeded)
         {
@@ -1767,15 +1767,15 @@ public sealed partial class DebugController : IDisposable
         }
         HotReloadResult result = each.Select(e => e.Outcome.Result).Aggregate(HotReloadOutcome.Worse);
         // Nothing applied says more when Roslyn said why (a stale project's file).
-        List<string> said = [.. each.Where(e => e.Outcome.Result != HotReloadResult.NothingToApply || e.Outcome.Problems.Count > 0).Select(e => $"{e.Name}: {e.Outcome.Said}")];
-        return new HotReloadOutcome(result, said.Count == 0 ? HotReload.NothingApplied([]) : string.Join("; ", said))
+        List<Words> said = [.. each.Where(e => e.Outcome.Result != HotReloadResult.NothingToApply || e.Outcome.Problems.Count > 0).Select(e => DebuggingWords.HotReloadOf(e.Name, e.Outcome.Said))];
+        return new HotReloadOutcome(result, said.Count == 0 ? HotReload.NothingApplied([]) : said.Aggregate(Clauses.Then))
         {
             Problems = [.. each.SelectMany(e => e.Outcome.Problems).Distinct()],
             Files = [.. each.SelectMany(e => e.Outcome.Files).Distinct(StringComparer.Ordinal)],
             Modules = [.. each.SelectMany(e => e.Outcome.Modules).Distinct(StringComparer.Ordinal)],
             Methods = each.Sum(e => e.Outcome.Methods),
             Took = each.Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Outcome.Took),
-            Restart = [.. each.Where(e => e.Outcome.Result == HotReloadResult.RestartNeeded).Select(e => e.Name)],
+            Restart = [.. each.Where(e => e.Outcome.Result == HotReloadResult.RestartNeeded).Select(e => e.Name.English)],
         };
     }
 

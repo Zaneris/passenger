@@ -101,7 +101,7 @@ public sealed partial class PassengerTools
         };
         AgentCall.Say(ContainerCommands.Stage(action, row));
         return await window.ContainerActAsync(id, action, row) is { } problem
-            ? throw new InvalidOperationException($"{action} {row.Name} failed: {problem}")
+            ? throw new InvalidOperationException($"{action} {row.Name} failed: {problem.English}")
             : $"{row.Name}: {action} done";
     });
 

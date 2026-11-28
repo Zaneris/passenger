@@ -96,7 +96,7 @@ public sealed class MauiCatalystTests : McpRig
             // A binding's and a C# expression's edits, which MAUI's patch may pass over: the page is made again from its XAML.
             Typing.Replace(window, "<Label Text=\"Added by Hot Reload\" />", "<Label Text=\"{Binding Text, Source={x:Reference CounterBtn}}\" />");
             MauiApp.XamlApplied(window, "a binding to the button's text", Slow);
-            Assert.True(window.Debugger.LastApplied!.Said.Contains("MainPage made again", StringComparison.Ordinal),
+            Assert.True(window.Debugger.LastApplied!.Said.English.Contains("MainPage made again", StringComparison.Ordinal),
                 $"The page was not made again for a binding's edit: {window.Debugger.LastApplied.Said}");
             MauiApp.ShowsButtonsText(window, app, string.Empty, "the label bound to the button's text, made again with the page", "Click me");
             Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = MauiApp.Button(app).Id }), "a tap on the page's button made again", TimeSpan.FromMinutes(1));

@@ -197,7 +197,7 @@ internal static class DatabaseDdl
         };
         if (parts.Count == 0)
         {
-            throw new InvalidOperationException(Refusals.NoDefinition(target.ToString()).English);
+            throw new RefusedException(Refusals.NoDefinition(target.ToString()));
         }
         string end = End(source.Kind);
         StringBuilder text = new();
@@ -219,7 +219,7 @@ internal static class DatabaseDdl
             DatabaseObjectKind.View => "view",
             DatabaseObjectKind.Trigger => "trigger",
             DatabaseObjectKind.Index => "index",
-            _ => throw new InvalidOperationException(Refusals.NoDefinition(target.ToString()).English),
+            _ => throw new RefusedException(Refusals.NoDefinition(target.ToString())),
         };
         List<string> parts = Texts(await Read(connection, "SELECT sql FROM sqlite_schema WHERE type=@type AND name=@name AND sql IS NOT NULL",
             [("@type", type), ("@name", target.Name)], cancel));

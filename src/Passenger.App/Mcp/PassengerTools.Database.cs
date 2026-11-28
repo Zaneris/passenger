@@ -92,12 +92,12 @@ public sealed partial class PassengerTools
         {
             if (SqlText.EffectOf(run, source.Kind) is var effect and > SqlEffect.Session)
             {
-                throw new InvalidOperationException((Refusals.AgentsQueryWrites(mask(AgentAnswers.Line(run.ReplaceLineEndings(" "), 1)), effect switch
+                throw new RefusedException(Refusals.AgentsQueryWrites(mask(AgentAnswers.Line(run.ReplaceLineEndings(" "), 1)), effect switch
                 {
                     SqlEffect.Transaction => "begins or ends a transaction",
                     SqlEffect.ChangesData => "changes data",
                     _ => "changes the schema",
-                })).English);
+                }));
             }
         }
         List<SqlResult> results = [];

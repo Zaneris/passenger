@@ -248,7 +248,7 @@ internal sealed partial class CSharpAssist
         }
         // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
         actions.AskRename(document, caret, named.Name, async (held, name, patience) => await GodotKindAtAsync(document, held.Offset) is { } now && now.Name == named.Name
-            ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(named.Name, document.Name).Shown));
+            ? await RenameKindAsync(now, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(named.Name, document.Name)));
         return true;
     }
 
@@ -355,7 +355,7 @@ internal sealed partial class CSharpAssist
             }
             catch (LanguageServerFailed failed)
             {
-                return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Message).Shown);
+                return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Message));
             }
             foreach (GodotKindUse use in uses)
             {

@@ -317,7 +317,7 @@ public partial class MainWindow
             }
             catch (Exception failed) when (failed is InvalidOperationException or IOException or Amazon.Runtime.AmazonServiceException or Amazon.Runtime.AmazonClientException)
             {
-                work.Tell(false, failed.Message);
+                work.Tell(false, RefusedException.Of(failed));
                 return;
             }
             catch (OperationCanceledException) when (work.IsStopped)
@@ -347,7 +347,7 @@ public partial class MainWindow
             }
             catch (IOException failed)
             {
-                work.Tell(false, failed.Message);
+                work.Tell(false, RefusedException.Of(failed));
                 return;
             }
             catch (OperationCanceledException) when (work.IsStopped)

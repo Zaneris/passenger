@@ -3794,7 +3794,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.OpenFile(project.PathOf("Shapes.cs"));
         Ui.Settle();
         Ui.PlaceAfter(editor, "interface ISh");
-        Task<string?> types = window.ShowTypeHierarchyAsync();
+        Task<Words?> types = window.ShowTypeHierarchyAsync();
         Ui.WaitFor(() => types.IsCompleted, "the type hierarchy");
         Task subtypes = window.Hierarchy.ChooseAsync(first: false);
         Ui.WaitFor(() => subtypes.IsCompleted, "the subtypes");
