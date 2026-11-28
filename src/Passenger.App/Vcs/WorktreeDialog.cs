@@ -78,15 +78,15 @@ public sealed class WorktreeDialog : IdeWindow
             Text = start.From is { Kind: RefKind.Remote } remote ? remote.Name[(remote.Name.IndexOf('/', StringComparison.Ordinal) + 1)..] : string.Empty,
             PlaceholderText = "feature/login",
         };
-        name.TextChanged += (_, _) => Typed();
+        TypedText.Hear(name, Typed);
         from = new TextBox { Text = start.From is { } branch ? branch.Ref.GitName ?? branch.Ref.FullName : "HEAD" };
-        from.TextChanged += (_, _) => Typed();
+        TypedText.Hear(from, Typed);
         folder = new TextBox();
-        folder.TextChanged += (_, _) =>
+        TypedText.Hear(folder, () =>
         {
             folderNamed |= folder.Text != Beside();
             Typed();
-        };
+        });
         open.IsCheckedChanged += (_, _) => Lay();
 
         existingRow = FormRows.Of("Branch", existing);
@@ -125,9 +125,7 @@ public sealed class WorktreeDialog : IdeWindow
             },
             new StackPanel { Spacing = Gaps.Group, Children = { fields, preview } },
             DialogFooter.OkCancel(CreateButton, () => Close(null), problem));
-        folder.Text = Beside();
-        folderNamed = false;
-        touched = false;
+        TypedText.Set(folder, Beside());
         Lay();
         Opened += (_, _) =>
         {
@@ -190,8 +188,7 @@ public sealed class WorktreeDialog : IdeWindow
         touched = true;
         if (!folderNamed && folder.Text != Beside())
         {
-            folder.Text = Beside();
-            folderNamed = false;
+            TypedText.Set(folder, Beside());
         }
         looking.Restart();
         Lay();

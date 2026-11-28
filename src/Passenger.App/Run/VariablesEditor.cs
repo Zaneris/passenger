@@ -94,8 +94,8 @@ public sealed class VariablesEditor : StackPanel
         row.Children.Add(valueBox);
         row.Children.Add(remove);
         rows.Children.Add(row);
-        nameBox.TextChanged += (_, _) => Tell();
-        valueBox.TextChanged += (_, _) => Tell();
+        TypedText.Hear(nameBox, Tell);
+        TypedText.Hear(valueBox, Tell);
         remove.Click += (_, _) =>
         {
             rows.Children.Remove(row);

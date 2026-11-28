@@ -78,7 +78,7 @@ public sealed class TemplateOptions
                     break;
                 default:
                     TextBox text = new() { Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
-                    text.TextChanged += (_, _) => Set(option, text.Text ?? string.Empty);
+                    TypedText.Hear(text, () => Set(option, text.Text ?? string.Empty));
                     editor = text;
                     row = Row(label, text, said);
                     break;

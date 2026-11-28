@@ -44,8 +44,8 @@ public sealed class RemoteDialog : IdeWindow
         name = new TextBox { Text = start.Editing?.Name ?? (start.Others.Contains("origin", StringComparer.Ordinal) ? string.Empty : "origin"), PlaceholderText = "origin" };
         url = new TextBox { Text = shownUrl, PlaceholderText = "https://example.com/team/project.git" };
         urlNote.Text = shownUrl != start.Editing?.Url && start.Editing is not null ? "It holds a password or token, shown masked: type the whole URL to change it." : null;
-        name.TextChanged += (_, _) => Typed();
-        url.TextChanged += (_, _) => Typed();
+        TypedText.Hear(name, Typed);
+        TypedText.Hear(url, Typed);
         then = new FormDropDown { ItemsSource = (string[])["Fetch its branches now", "Leave it until fetched"], SelectedIndex = start.WhyNotFetch is null ? 0 : 1 };
         ToolButtons.Grey(then, start.WhyNotFetch);
         then.SelectionChanged += (_, _) => Lay();

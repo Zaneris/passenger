@@ -288,6 +288,14 @@ public sealed class RefactoringDialogsTests
         ExtractInterfaceDialog dialog = Shown<ExtractInterfaceDialog>(window, "Extract Interface");
         Assert.Equal("IOrder", dialog.NameBox.Text);
         Assert.Equal("IOrder.cs", dialog.FileBox.Text);
+        // The file's name follows the interface's as it is typed, each key in turn, until a file name is typed.
+        Ui.Click(dialog.NameBox);
+        Ui.Press(dialog, "END");
+        dialog.KeyTextInput("s");
+        Ui.Settle();
+        Assert.Equal("IOrders.cs", dialog.FileBox.Text);
+        Ui.Press(dialog, "BACK_SPACE");
+        Assert.Equal("IOrder.cs", dialog.FileBox.Text);
         Assert.Equal(["Total: int", "Add(int): void", "Describe(): string"], dialog.Members.Select(m => m.Text));
         Ui.Click(dialog.Members[2].Box);
         Assert.False(dialog.Members[2].Box.IsChecked, "A click did not leave Describe out of the interface");

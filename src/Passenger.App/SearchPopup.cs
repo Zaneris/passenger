@@ -53,7 +53,7 @@ public abstract class SearchPopup<T> : UserControl, IAnswers<T?>
         empty = new TextBlock { Classes = { StyleClasses.Muted }, Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Wide), IsVisible = false };
         ListKeys.Act(results, new ListActs { Open = Choose });
         results.SelectionChanged += (_, _) => ChoiceMoved();
-        query.TextChanged += (_, _) => QueryChanged();
+        TypedText.Hear(query, QueryChanged);
         query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         if (option is { } shown)
         {

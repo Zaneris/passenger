@@ -83,12 +83,12 @@ public sealed class PushDialog : IdeWindow
             looking.Restart();
             Lay();
         };
-        remoteBranch.TextChanged += (_, _) =>
+        TypedText.Hear(remoteBranch, () =>
         {
             touched = true;
             looking.Restart();
             Lay();
-        };
+        });
         track.IsCheckedChanged += (_, _) => Lay();
         StackPanel fields = new()
         {

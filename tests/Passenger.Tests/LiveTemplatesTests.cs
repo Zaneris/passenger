@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.CSharp;
 using Passenger.App.Settings;
@@ -108,6 +109,14 @@ public sealed class LiveTemplatesTests : IClassFixture<LiveTemplatesTests.Projec
         Assert.Equal([new TemplateVariable("TYPE", "typeName", string.Empty, Editable: false), new TemplateVariable("WHO", "constant", "world")],
             page.Chosen?.Variables ?? []);
 
+        // A template chosen by a click keeps the keys in the list, so Down chooses the one listed after it.
+        int at = page.Rows.ToList().FindIndex(t => t.Abbreviation == "while");
+        Assert.True(page.Choose("while"));
+        Ui.Settle();
+        ListBoxItem above = page.EnabledBox(page.Rows[at - 1].Abbreviation)!.FindAncestorOfType<ListBoxItem>()!;
+        Ui.Click(above, new Point(above.Bounds.Width - 12, above.Bounds.Height / 2));
+        Ui.Press(dialog, "DOWN");
+        Assert.True(page.Chosen?.Abbreviation == "while", $"Down after a click on {page.Rows[at - 1].Abbreviation} chose {page.Chosen?.Abbreviation ?? "nothing"}, not while below it");
         Assert.True(page.Choose("while"));
         Ui.Settle();
         Ui.Click(page.EnabledBox("while")!);

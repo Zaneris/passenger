@@ -1528,6 +1528,8 @@ public sealed partial class VcsTests : IDisposable
         Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Add Remote dialog");
         RemoteDialog adding = DialogButtonsTests.Check(window.RemoteWindow!);
         Assert.Equal(string.Empty, adding.NameBox.Text);
+        Ui.Settle();
+        Assert.True(adding.Problem.Length == 0, $"Add Remote said why it will not save before anything was typed: {adding.Problem}");
         adding.KeyTextInput("backup");
         Ui.Click(adding.UrlBox);
         adding.KeyTextInput(backup);
@@ -2536,6 +2538,8 @@ public sealed partial class VcsTests : IDisposable
             Ui.WaitFor(() => window.TagWindow is { IsVisible: true }, "the New Tag dialog");
             TagDialog dialog = DialogButtonsTests.Check(window.TagWindow!);
             Assert.Equal(first, dialog.AtBox.Text);
+            Ui.Settle();
+            Assert.True(dialog.Problem.Length == 0, $"New Tag said why it will not make the tag before anything was typed: {dialog.Problem}");
             dialog.KeyTextInput("v1.0");
             Ui.Click(dialog.KindBox[true]);
             Ui.Click(dialog.MessageBox);

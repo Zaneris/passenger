@@ -61,7 +61,7 @@ public sealed class ColourPicker : Border, CSharp.IGivesWayInHeight, CSharp.IHea
         ToolTip.SetTip(choose, unchangeable);
         choose.Click += (_, _) => Chosen?.Invoke(this, Colour);
         StackPanel answers = DialogFooter.Popup(choose, () => Chosen?.Invoke(this, null));
-        hex.TextChanged += (_, _) => FromHex();
+        TypedText.Hear(hex, FromHex);
         Child = new StackPanel
         {
             Spacing = Gaps.Normal,
@@ -162,7 +162,7 @@ public sealed class ColourPicker : Border, CSharp.IGivesWayInHeight, CSharp.IHea
         after.Background = new SolidColorBrush(ToColor(colour));
         if (!typing)
         {
-            hex.Text = colour.Hex;
+            TypedText.Set(hex, colour.Hex);
         }
         square.InvalidateVisual();
         hue.InvalidateVisual();

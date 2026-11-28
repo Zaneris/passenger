@@ -275,11 +275,11 @@ public sealed class RunPartsTable : EditableTable
         {
             TextBox box = new() { Text = text, PlaceholderText = placeholder };
             row.Fields[label] = box;
-            box.TextChanged += (_, _) =>
+            TypedText.Hear(box, () =>
             {
                 take(box.Text ?? string.Empty);
                 Tell();
-            };
+            });
             return box;
         }
         switch (part.Kind)

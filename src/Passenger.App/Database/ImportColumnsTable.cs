@@ -83,11 +83,11 @@ public sealed class ImportColumnsTable : EditableTable
         TextBlock file = new() { Text = ContainerSecrets.InSaid(name), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         if (into is TextBox box)
         {
-            box.TextChanged += (_, _) => Tell();
+            TypedText.Hear(box, Tell);
         }
         if (type is not null)
         {
-            type.TextChanged += (_, _) => Tell();
+            TypedText.Hear(type, Tell);
         }
         Border view = Ruled(file, into, type ?? (Control)new TextBlock { Classes = { StyleClasses.Muted }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), Text = "as the table has it" });
         rows.Add((name, into, type));

@@ -164,7 +164,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         };
         foreach (TextBox changed in (TextBox[])[certificate, clientCertificate, clientKey, clientKeyPassword])
         {
-            changed.TextChanged += (_, _) => sslChosen = true;
+            TypedText.Hear(changed, () => sslChosen = true);
         }
         connect = DialogFooter.Default(initial is null ? "Connect" : "Save and Connect");
         connect.Name = "DatabaseConnectionConnect";
@@ -309,9 +309,9 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             provider.SelectedIndex = (int)initial.Kind;
             SslSettings had = DatabaseSsl.Of(initial.Kind, initial.Found is null ? initial.ConnectionString : DatabaseKinds.LaidOver(initial.Kind, initial.ConnectionString, initial.Over));
             ssl.SelectedIndex = (int)had.Choice;
-            certificate.Text = had.Authority;
-            clientCertificate.Text = had.Certificate;
-            clientKey.Text = had.Key;
+            TypedText.Set(certificate, had.Authority);
+            TypedText.Set(clientCertificate, had.Certificate);
+            TypedText.Set(clientKey, had.Key);
             clientKeyPassword.PlaceholderText = had.Certificate is not null ? "Unchanged" : clientKeyPassword.PlaceholderText;
             sslFold.IsOpen = had != new SslSettings(SslChoice.Driver);
             if (initial.SignIn is { } cloud)

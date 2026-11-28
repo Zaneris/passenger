@@ -195,7 +195,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             Child = new StackPanel { Children = { top, results, previewFrame } },
         };
         typing = new Debounce(Pause, () => searching = Refresh());
-        query.TextChanged += (_, _) => Retype();
+        TypedText.Hear(query, Retype);
         foreach (ToggleButton option in new[] { matchCase, words, regex })
         {
             option.IsCheckedChanged += (_, _) => Retype();

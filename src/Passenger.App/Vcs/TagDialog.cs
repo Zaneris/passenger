@@ -63,8 +63,8 @@ public sealed class TagDialog : IdeWindow
 
         name = new TextBox { Text = start.Name ?? string.Empty, PlaceholderText = "v1.0" };
         at = new TextBox { Text = start.At };
-        name.TextChanged += (_, _) => Typed();
-        at.TextChanged += (_, _) => Typed();
+        TypedText.Hear(name, Typed);
+        TypedText.Hear(at, Typed);
         kind.Add(false, "Lightweight", "Lightweight");
         kind.Add(true, "Annotated", "Annotated");
         kind.Choice = signing.SignsTags;
