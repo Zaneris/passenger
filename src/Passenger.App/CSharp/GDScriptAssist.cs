@@ -380,7 +380,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         if (declared is null)
         {
             AskGodot(shown);
-            context.Say(Refusals.NoDeclaration);
+            context.Say(Refusals.NoDeclaration.Shown);
         }
         else if (context.Editors.Active == shown)
         {
@@ -440,7 +440,7 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
         }
         if (await CSharpMemberAtAsync(context, document, offset) is { } csharp)
         {
-            return new Declared(Declared.Served([await PlaceOfAsync(context, csharp)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration);
+            return new Declared(Declared.Served([await PlaceOfAsync(context, csharp)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration.Shown);
         }
         GodotScriptTypes.Typed? typed = await types.TypedAsync(document);
         if (typed?.Analysis.NodeAt(offset) is not ({ } node, _) || node is not GDScriptIdentifier name
@@ -455,6 +455,6 @@ internal sealed partial class GDScriptAssist(AssistContext context, CodeCompleti
             return null;
         }
         return new Declared(Declared.Served([await PlaceOfAsync(context.Editors.Texts(), path, declared.Start)], ServerPlaces.Texts(context.Editors)),
-            Refusals.NoDeclaration);
+            Refusals.NoDeclaration.Shown);
     }
 }

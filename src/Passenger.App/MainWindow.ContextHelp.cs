@@ -62,7 +62,7 @@ public partial class MainWindow
                     }, engine.Member) : null;
             if (item is null)
             {
-                Told(false, Refusals.NoGodotDocumentation);
+                Told(false, Refusals.NoGodotDocumentation.Shown);
                 return;
             }
             string? version = (await BackgroundWork.Run(() => GodotLaunch.Found(godot)))?.Version;

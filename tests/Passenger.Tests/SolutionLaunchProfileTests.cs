@@ -278,7 +278,7 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the projects to end ({Sessions(window)}; {Runs(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();

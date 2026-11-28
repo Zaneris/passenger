@@ -75,7 +75,7 @@ public sealed class MauiRunTargetTests
             else
             {
                 Assert.Null(unchosen);
-                Assert.Equal(Refusals.NoRunTarget("MauiApp1"), refused);
+                Assert.Equal(Refusals.NoRunTarget("MauiApp1").Shown, refused);
             }
 
             window.ChooseRunTarget(app, new DeviceTarget(TargetPlatform.Android, "emulator-5554", "Pixel 9", TargetKind.Emulator, true) { Avd = "Pixel_9" });

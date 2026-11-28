@@ -69,7 +69,7 @@ public static class AzureServers
                 string text = await answer.Content.ReadAsStringAsync(cancel);
                 if (!answer.IsSuccessStatusCode)
                 {
-                    throw new IOException(Refusals.AzureRefused(page.AbsolutePath, JsonMessage(text) ?? $"{(int)answer.StatusCode} {answer.ReasonPhrase}"));
+                    throw new IOException(Refusals.AzureRefused(page.AbsolutePath, JsonMessage(text) ?? $"{(int)answer.StatusCode} {answer.ReasonPhrase}").English);
                 }
                 using JsonDocument read = JsonDocument.Parse(text);
                 items.AddRange(JsonMembers.Items(read.RootElement, "value").Select(i => i.Clone()));
@@ -77,7 +77,7 @@ public static class AzureServers
             }
             catch (Exception unread) when (unread is HttpRequestException or JsonException or UriFormatException)
             {
-                throw new IOException(Refusals.AzureRefused(asked, unread.Message), unread);
+                throw new IOException(Refusals.AzureRefused(asked, unread.Message).English, unread);
             }
         }
         return items;

@@ -265,7 +265,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
             Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
             Ui.Press(window, Ui.Shortcut(AppActions.Build), settle: false);
-            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Build)?.Stage == "Waiting for Program.cs to be saved…",
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Build)?.Stage.Shown == "Waiting for Program.cs to be saved…",
                 "the build to wait for Program.cs's save", TimeSpan.FromSeconds(10));
         }
         Ui.WaitFor(() => !window.IsBuilding, () => $"the build to end once Program.cs was saved: {window.Status}", TimeSpan.FromMinutes(2));

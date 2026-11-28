@@ -64,7 +64,7 @@ public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyLis
 
     /// <summary>Where the search stopped, each file named as <paramref name="name"/> gives it; null when it stopped nowhere.</summary>
     public string? StoppedIn(Func<string, string> name) =>
-        Stopped.Count == 0 ? null : Refusals.RegexStoppedIn(string.Join(", ", Stopped.Select(name)));
+        (Stopped.Count == 0 ? null : Refusals.RegexStoppedIn(string.Join(", ", Stopped.Select(name))))?.Shown;
 }
 
 /// <summary>What Replace in Files did beyond the matches: the files written as UTF-8 since their encoding could not hold
@@ -321,7 +321,7 @@ public static class FileSearch
     /// <summary>Why a file's matches are left as they were: a regex ran too long there, or replacing them would make its
     /// text too long (<see cref="Refusals.TooLongReplaced"/>); null when they are replaced.</summary>
     private static string? Unreplaced(SearchResult found, string replacement) =>
-        found.Stopped ? StoppedWhy : Refusals.TooLongReplaced(found, replacement);
+        (found.Stopped ? StoppedWhy : Refusals.TooLongReplaced(found, replacement))?.Shown;
 
     /// <summary>Why a file the system would not let be read or written is left as it was.</summary>
     public static string Refusal(Exception error) => error switch
@@ -340,7 +340,7 @@ public static class FileSearch
     public const string ReadOnlyWhy = "read-only";
 
     /// <summary>Why a file a regex ran too long in is left as it was.</summary>
-    public const string StoppedWhy = Refusals.RegexStopped;
+    public const string StoppedWhy = TextSearch.RegexStopped;
 
     /// <summary>Why a file outside the folder searched, which a link inside it leads to, is left as it was.</summary>
     public const string OutsideWhy = "outside the folder, where a link in it leads";

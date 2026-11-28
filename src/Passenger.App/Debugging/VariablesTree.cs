@@ -1,4 +1,5 @@
 using Avalonia;
+using Passenger.Core;
 using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
@@ -55,7 +56,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>Why no expression reaches this row's value, so it can be neither set, watched nor inspected; null where one
     /// does.</summary>
-    public string? NoExpression =>
+    public Words? NoExpression =>
         Captured ? Refusals.SnapshotValue
         : Role == VariableRole.Watch ? null
         : Role == VariableRole.Scope ? "A scope groups the frame's values and is no value of its own"
@@ -82,7 +83,7 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>Why this row's value cannot be set; null where it can.</summary>
     public string? NoSetting =>
-        NoExpression ?? Unsettable ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null);
+        (NoExpression ?? Unsettable ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null))?.Shown;
 
     /// <summary>The debugger's word that it cannot set this value, and why, though an expression reaches it.</summary>
     public string? Unsettable { get; init; }

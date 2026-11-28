@@ -329,7 +329,7 @@ public partial class MainWindow
             }
             else
             {
-                menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoFolder));
+                menu.Items.Add(ToolWindows.ListMenus.Notice(Refusals.NoFolder.Shown));
             }
             Open(menu, widget);
             return;
@@ -406,7 +406,7 @@ public partial class MainWindow
             {
                 items.Add(ToolWindows.ListMenus.Item("More Branches…", () => window.ShowAllBranches(remote + "/")));
             }
-            return items.Count > 0 ? items : [ToolWindows.ListMenus.Notice(Refusals.NothingFetched(remote))];
+            return items.Count > 0 ? items : [ToolWindows.ListMenus.Notice(Refusals.NothingFetched(remote).Shown)];
         }
 
         /// <summary>A branch, shown as <paramref name="shown"/>, opening its own menu; a local one saying what it tracks.</summary>
@@ -590,7 +590,7 @@ public partial class MainWindow
         Choice[] runnable = [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, "Git"))
             .Where(id => id != AppActions.VcsOperations && registry.WhyNot(id, context) is null)
             .Select(id => new Choice(registry[id]!.TitleWhere(context), registry.ShortcutsShown(id) ?? string.Empty, id))];
-        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), "Search Git actions", runnable, Refusals.NoVcsOperations);
+        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), "Search Git actions", runnable, Refusals.NoVcsOperations.Shown);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is string id)
@@ -1102,9 +1102,9 @@ public partial class MainWindow
             IdeErrors.Observe(GitWindow.RefreshAsync());
         }) { WhyNot = NeedsRepository });
 
-        string? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
+        Words? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 
-        void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false, bool remote = false, Func<string?>? whyNot = null) =>
+        void Add(string id, string title, Action<ActionContext> run, MenuPlace menu, bool onFile = false, bool remote = false, Func<Words?>? whyNot = null) =>
             actions!.Add(new IdeAction(id, title, "Git", run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository
@@ -1119,7 +1119,7 @@ public partial class MainWindow
     private VcsController CommitGit => commitView?.Vcs ?? session.Vcs;
 
     /// <summary>Why the Commit window's repository offers no message to commit again: none, or none committed from it yet.</summary>
-    private string? WhyNoCommitMessages() => CommitGit.Repository is not { } repository ? CommitGit.NoRepository
+    private Words? WhyNoCommitMessages() => CommitGit.Repository is not { } repository ? CommitGit.NoRepository
         : session.CommitMessages.Of(repository.Root).Count == 0 ? Refusals.NoCommitMessages
         : null;
 
@@ -1130,7 +1130,7 @@ public partial class MainWindow
     {
         ShowToolWindow(ToolWindowIds.Commit);
         IReadOnlyList<string> messages = session.CommitMessages.Of(CommitGit.Repository!.Root);
-        ChoicePopup popup = new("Commit Message History", "Search messages", [.. messages.Select(Chosen)], Refusals.NoCommitMessages);
+        ChoicePopup popup = new("Commit Message History", "Search messages", [.. messages.Select(Chosen)], Refusals.NoCommitMessages.Shown);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is string message)

@@ -181,7 +181,7 @@ public sealed class StepLibraryTests : IClassFixture<RestoredFolders>, IDisposab
 
             Assert.Null(window.OpenFile(StepsFile));
             Ui.Settle();
-            Assert.Equal(Refusals.NoFeature, window.Actions.WhyNot(AppActions.InsertStep, window.Actions.Context()));
+            Assert.Equal(Refusals.NoFeature.Shown, window.Actions.WhyNot(AppActions.InsertStep, window.Actions.Context())?.Shown);
         }
         finally
         {

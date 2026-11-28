@@ -546,7 +546,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Ui.Settle();
             Assert.False(asked.IsVisible, "The question for the agent's edit in the folder left stayed open over the folder opened, where an Allow would make it");
             CallToolResult refused = Await(editing, "the agent's edit asked about in the folder left");
-            Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.FolderChanged(PathNames.Canonical(first)), StringComparison.Ordinal),
+            Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.FolderChanged(PathNames.Canonical(first)).English, StringComparison.Ordinal),
                 $"The agent's edit asked about in the folder left was answered: {Text(refused)}");
             Assert.Equal(("notes\n", "notes\n"), (File.ReadAllText(Path.Combine(first, "Notes.txt")), File.ReadAllText(Path.Combine(second, "Notes.txt"))));
 
@@ -811,11 +811,11 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Ui.Settle();
             Assert.True(structure.IsActive && !window.IsActive,
                 $"The agent's Focus Editor left the IDE's window {(window.IsActive ? "active" : "inactive")} and the floating Structure window {(structure.IsActive ? "active" : "inactive")}");
-            Assert.True(focusing.IsError == true && Text(focusing).Contains(Refusals.PersonsKeys, StringComparison.Ordinal),
+            Assert.True(focusing.IsError == true && Text(focusing).Contains(Refusals.PersonsKeys.English, StringComparison.Ordinal),
                 $"The agent's Focus Editor was answered: {Text(focusing)}");
             string listed = Assert.Single(Await(Waiting.Apart(() => Call(client, McpTools.IdeActions)), "the agent's list of actions").EnumerateArray()
                 .Select(a => a.GetString()!), a => a.StartsWith($"{AppActions.FocusEditor}: ", StringComparison.Ordinal));
-            Assert.True(listed.EndsWith($" - cannot run: {Refusals.PersonsKeys}", StringComparison.Ordinal), $"ide_actions lists Focus Editor for the agent as {listed}");
+            Assert.True(listed.EndsWith($" - cannot run: {Refusals.PersonsKeys.English}", StringComparison.Ordinal), $"ide_actions lists Focus Editor for the agent as {listed}");
         }
         finally
         {
@@ -848,7 +848,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
                 int owned = window.OwnedWindows.Count;
                 CallToolResult refused = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = action })), $"the agent's {action}");
                 Ui.Settle();
-                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.AsksThePerson, StringComparison.Ordinal),
+                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.AsksThePerson.English, StringComparison.Ordinal),
                     $"The agent's {action} in the person's window was answered: {Text(refused)}");
                 Assert.True(!window.IsPopupOpen && window.OwnedWindows.Count == owned,
                     $"The agent's {action} opened {(window.IsPopupOpen ? window.Popup?.GetType().Name : window.OwnedWindows.LastOrDefault()?.GetType().Name)} over the person's work");
@@ -905,7 +905,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
                 CallToolResult answered = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = action })), $"the agent's {action}");
                 Ui.Settle();
                 string said = Text(answered);
-                Assert.True(answered.IsError == true ? said.Contains(Refusals.AsksThePerson, StringComparison.Ordinal) : said == $"Ran {action}",
+                Assert.True(answered.IsError == true ? said.Contains(Refusals.AsksThePerson.English, StringComparison.Ordinal) : said == $"Ran {action}",
                     $"The agent's {action} in the person's window was answered: {said}");
                 string? opened = window.IsPopupOpen ? window.Popup?.GetType().Name
                     : window.EditorArea.FindBar.IsVisible ? "the find bar"

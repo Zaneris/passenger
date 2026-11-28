@@ -417,10 +417,10 @@ public sealed class AspireView : DockPanel, IDisposable
     [
         .. selected.Resource.Commands.Where(command => !command.Hidden).OrderBy(Order).Select(command =>
         {
-            string? whyNot = model.Executing ? Refusals.CommandRunning
+            string? whyNot = (model.Executing ? Refusals.CommandRunning
                 : !command.Enabled ? Refusals.CommandDisabled
                 : command.HasArguments && model.ArgumentCommand is null ? "This command needs an argument form. Use the Aspire CLI; Passenger will not send incomplete arguments."
-                : null;
+                : null)?.Shown;
             MenuItem item = ListMenus.Item(command.DisplayName, () => model.AskCommand(selected, command.Name, () => requestAction?.Invoke(AppActions.AspireCommand)), whyNot);
             if (whyNot is null)
             {
@@ -569,7 +569,7 @@ public sealed class AspireView : DockPanel, IDisposable
             return;
         }
         AspireResource resource = selected.Resource;
-        string? none = resource.State is AspireStates.Running ? null : Refusals.NotRunning(resource.DisplayName);
+        string? none = (resource.State is AspireStates.Running ? null : Refusals.NotRunning(resource.DisplayName))?.Shown;
         Metrics.Show(resource.DisplayName, none is null ? model.ProgramOf?.Invoke(selected) : null, none);
     }
 

@@ -132,12 +132,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         if ((await ExpressionPlaceAsync(xaml, offset) ?? await CodePlaceAsync(xaml, offset)) is { } expression)
         {
             return expression.Place is { } reached
-                ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
-                : new Declared([], expression.Said ?? Refusals.NoDeclaration);
+                ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration.Shown)
+                : new Declared([], (expression.Said ?? Refusals.NoDeclaration).Shown);
         }
         if (await XamlSymbolAt(xaml, offset, null) is not { } found)
         {
-            return new Declared([], Refusals.NoDeclaration);
+            return new Declared([], Refusals.NoDeclaration.Shown);
         }
         List<(string Path, TextPosition Position)> places = [];
         List<string> unreached = [];
@@ -153,8 +153,8 @@ internal sealed partial class XamlAssist : LanguageAssist
                 unreached.Add(said);
             }
         }
-        return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), places.Count == 0 && unreached.Count > 0
-            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration);
+        return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), (places.Count == 0 && unreached.Count > 0
+            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration).Shown);
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)
@@ -349,7 +349,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             }
             return;
         }
-        if (await XamlSymbolAt(xaml, offset, Refusals.NoDeclaration) is not { } found)
+        if (await XamlSymbolAt(xaml, offset, Refusals.NoDeclaration.Shown) is not { } found)
         {
             return;
         }
@@ -374,7 +374,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     {
         if (context.Xaml?.Invoke() is not { } service)
         {
-            return (null, Refusals.NoFolder);
+            return (null, Refusals.NoFolder.Shown);
         }
         Passenger.Xaml.Metadata.AssemblyTypes? theme = file.Types.Assemblies.Where(a => a.Name.Contains(".Themes.", StringComparison.Ordinal) && a.XamlFiles.Count > 0)
             .OrderBy(a => a.Name.EndsWith(".Fluent", StringComparison.Ordinal) ? 0 : 1).FirstOrDefault();
@@ -951,8 +951,8 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             return RefactorOutcome.Refused($"Rename failed: {failed.Message}");
         }
-        return new RefactorOutcome(dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
-            : files > 1 ? $"Renamed in {Numbers.Said(files)} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
+        return new RefactorOutcome((dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
+            : files > 1 ? $"Renamed in {Numbers.Said(files)} files" : "Renamed").Shown, null, [.. changes.Keys.Select(DocumentUris.ToPath)
                 .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, RefactoredChange.Changed, []))], dropped);
     }
 

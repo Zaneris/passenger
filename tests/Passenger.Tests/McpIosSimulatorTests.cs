@@ -44,7 +44,7 @@ public sealed class McpIosSimulatorTests : McpRig
             Assert.True(chosen is not null && chosen != head, $"The folder opened on {chosen} chosen");
 
             CallToolResult refused = await Result(client, McpTools.Run, new() { ["configuration"] = head });
-            Assert.True(refused.IsError == true && Text(refused).Contains($"{Refusals.NoRunTarget(head)} ({McpTools.IdeAction} {AppActions.ChooseRunTarget} with input \"{head}:\"",
+            Assert.True(refused.IsError == true && Text(refused).Contains($"{Refusals.NoRunTarget(head).English} ({McpTools.IdeAction} {AppActions.ChooseRunTarget} with input \"{head}:\"",
                 StringComparison.Ordinal), $"run of the head with no simulator chosen did not say how an agent chooses one: {Text(refused)}");
             Assert.Equal(chosen, await ChosenAsync());
 
@@ -95,7 +95,7 @@ public sealed class McpIosSimulatorTests : McpRig
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.English);
         }
         string folder = PathNames.Canonical(TestFolders.Create(name));
         DeleteAtEnd(folder);

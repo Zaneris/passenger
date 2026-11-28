@@ -142,7 +142,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
                     $"Evaluating turns, which the pause listed as {counted}, did not read it in the stop's frame: {evaluated}");
                 // Attached to as it ran, it reads its input from what started it, never the debugger: input is refused, saying so.
                 CallToolResult typed = await Result(client, McpTools.DebugInput, new() { ["text"] = "hello" });
-                Assert.True(typed.IsError == true && Text(typed).Contains(Refusals.InputFromStarter("LoopingConsoleApp", "from what started it"), StringComparison.Ordinal),
+                Assert.True(typed.IsError == true && Text(typed).Contains(Refusals.InputFromStarter("LoopingConsoleApp", "from what started it").English, StringComparison.Ordinal),
                     $"debug_input to a program the debugger attached to did not refuse, saying where it reads its input: {Text(typed)}");
                 Assert.Equal("Detached from LoopingConsoleApp, which runs on", (await Call(client, McpTools.Stop, new() { ["detach"] = true })).GetString());
                 Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());

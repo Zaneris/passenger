@@ -15,7 +15,7 @@ public sealed record TerminalNeed(string Configuration, string Call, bool Debugg
     public string Window => Debugged ? "Debug" : "Run";
 
     /// <summary>What it needs, in Refusals' words.</summary>
-    public string Said => Refusals.NeedsTerminal(Configuration, Call, Window);
+    public string Said => Refusals.NeedsTerminal(Configuration, Call, Window).Shown;
 }
 
 public sealed partial class BuildRunController

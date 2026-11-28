@@ -33,7 +33,7 @@ public sealed class GodotAddonInstallTests
             return Task.FromResult(true);
         };
 
-        Assert.Null(window.Actions.Run(AppActions.GodotAddon));
+        Assert.Null(window.Actions.Run(AppActions.GodotAddon)?.Shown);
         Ui.WaitFor(() => window.Status?.Contains("Passenger's addon is installed", StringComparison.Ordinal) == true, () => $"the addon to be installed ({window.Status})");
         string text = File.ReadAllText(project);
         Assert.True(asked is ["Install Passenger's Godot Addon?"], $"The install was to ask once, and nothing else asked; it asked: {string.Join(" | ", asked)}");

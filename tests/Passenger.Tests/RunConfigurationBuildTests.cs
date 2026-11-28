@@ -169,8 +169,8 @@ public sealed class RunConfigurationBuildTests : IDisposable
             Assert.DoesNotContain("debug 1", Debugged(window), StringComparison.Ordinal);
             window.OpenFile(greeter);
             Typing.Replace(window, "$\"debug {i}\"", "$\"debugged {i}\"");
-            string release = Refusals.BuiltUnlike("Hello (1)", "Hello", "Release|AnyCPU", "Debug|AnyCPU");
-            Assert.Equal(release, window.Debugger.WhyNotApply());
+            string release = Refusals.BuiltUnlike("Hello (1)", "Hello", "Release|AnyCPU", "Debug|AnyCPU").Shown;
+            Assert.Equal(release, window.Debugger.WhyNotApply()?.Shown);
             Ui.Run(window, AppActions.ApplyHotReloadChanges);
             Assert.True(window.Status?.Contains(release, StringComparison.Ordinal) == true, $"Apply Hot Reload Changes did not say why the Release build takes no edit: {window.Status}");
             Assert.Null(window.Debugger.LastApplied);
@@ -186,7 +186,7 @@ public sealed class RunConfigurationBuildTests : IDisposable
             window.OpenFile(greeter);
             OpenDocument document = window.EditorArea.Active!;
             Typing.Replace(window, "$\"greeting {i}\"", "$\"howdy {i}\"");
-            Assert.Equal(Refusals.BuiltUnlike("Hello x64", "Hello", "Debug|x64", "Debug|AnyCPU"), window.Debugger.WhyNotApply());
+            Assert.Equal(Refusals.BuiltUnlike("Hello x64", "Hello", "Debug|x64", "Debug|AnyCPU").Shown, window.Debugger.WhyNotApply()?.Shown);
             BuildConfigurationTests.Choose(window, "Debug | x64");
             Ui.WaitFor(() => window.CSharpService?.For(document)?.Diagnostics.Any(d => d.Code?.ToString() == "CS1030") == true,
                 () => $"the language server to read the code as x64, warning as only x64 does{Ui.ServerLogTail()}", TimeSpan.FromMinutes(2));

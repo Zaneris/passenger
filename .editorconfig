@@ -28,3 +28,7 @@ dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 # (THIRD_PARTY_NOTICES.md): analyzers and the comment rules pass over them, as over the generators' own output.
 [src/Passenger.Debugger.Interop/**.cs]
 generated_code = true
+
+# The areas whose words are resources', where words a person reads written in the code are refused (#2122).
+[src/Passenger.App/Refusals.cs]
+dotnet_diagnostic.PSG0012.severity = warning

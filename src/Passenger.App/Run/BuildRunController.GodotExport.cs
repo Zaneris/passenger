@@ -78,11 +78,11 @@ public sealed partial class BuildRunController
         UiThread.Check();
         if (session.Folder is null || session.IsEnded)
         {
-            return Refused(Refusals.NoFolderTo("export"));
+            return Refused(Refusals.NoFolderTo("export").Shown);
         }
         if (IsBuilding)
         {
-            return Refused(Refusals.Building);
+            return Refused(Refusals.Building.Shown);
         }
         if (RunsInConsole)
         {
@@ -90,7 +90,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.Publish, $"Reading how {request.Preset} exports…") is not { } work)
         {
-            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!));
+            return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!).Shown);
         }
         using (work)
         using (cancel.Register(work.Cancel))

@@ -53,7 +53,7 @@ public sealed class AndroidTargetChoiceTests : IDisposable
         }
         if (tools.Lacks is { } lacks)
         {
-            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
+            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks).Shown}");
         }
         if (connected.Count > 0)
         {
@@ -73,7 +73,7 @@ public sealed class AndroidTargetChoiceTests : IDisposable
         {
             Ui.WaitFor(() => window.Session.Projects.Any(p => p.IsEvaluated) && window.Configurations.Count > 0,
                 () => $"the app's project evaluated and its configuration made; it has {string.Join(", ", window.Configurations.Select(c => c.Name))}: {Ui.Said(window)}", Slow);
-            string lacking = Refusals.NoAndroidTarget(tools.AvdManager);
+            string lacking = Refusals.NoAndroidTarget(tools.AvdManager).Shown;
             string? here = OperatingSystem.IsMacOS() ? DeviceTargets.Here(TargetPlatform.MacCatalyst).Shown : null;
 
             Ui.Click(window.FindControl<Button>("RunTargetButton")!);

@@ -113,10 +113,10 @@ public partial class MainWindow
             : Aspire.SelectContainer is null ? "Container selection is unavailable" : null));
     }
 
-    private string? NeedsAspireResource(ActionContext context) => NeedsAspire(context) ?? (Aspire.Selection is null ? "No Aspire resource is selected" : null);
+    private Words? NeedsAspireResource(ActionContext context) => NeedsAspire(context) ?? (Aspire.Selection is null ? "No Aspire resource is selected" : null);
 
     /// <summary>Why an action of the Aspire window cannot run: the window serves nothing in the open folder.</summary>
-    private string? NeedsAspire(ActionContext _) => Unserved(ToolWindowIds.Aspire);
+    private Words? NeedsAspire(ActionContext _) => Unserved(ToolWindowIds.Aspire);
 
     /// <summary>The Aspire window's view, shown first when it is hidden: a menu of the chosen resource's hangs from its toolbar.</summary>
     private AspireView ShownAspire()

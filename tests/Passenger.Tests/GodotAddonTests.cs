@@ -434,7 +434,7 @@ public sealed class GodotAddonTests : IDisposable
             window.OpenFile(Path.Combine(folder, "Main.cs"));
             return window;
         }
-        Assert.Null(window.Actions.Run(AppActions.GodotAddon));
+        Assert.Null(window.Actions.Run(AppActions.GodotAddon)?.Shown);
         Ui.WaitFor(() => window.Status?.Contains("Passenger's addon is installed", StringComparison.Ordinal) == true, () => $"the addon to be installed ({window.Status})");
         string enabled = File.ReadAllText(project);
         Assert.True(File.Exists(Path.Combine(folder, "addons", "passenger", "passenger.gd")) && File.Exists(Path.Combine(folder, "addons", "passenger", "plugin.cfg"))
@@ -896,12 +896,12 @@ public sealed class GodotAddonTests : IDisposable
             CodeEditor code = window.EditorArea.CodeEditor;
             string script = window.EditorArea.Active!.Path;
             code.GoTo(new TextPosition(1, 1));
-            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor)?.Shown);
             Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn .", StringComparison.Ordinal)),
                 () => $"Godot's editor to show the script's node ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
 
             Ui.PlaceAfter(code, "GetNode<Button>(\"Ui/Pr");
-            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor)?.Shown);
             Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn Ui/Press", StringComparison.Ordinal)),
                 () => $"Godot's editor to show the node the caret's path names ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
             Assert.Contains("shows Ui/Press in main.tscn", window.Status, StringComparison.Ordinal);
@@ -910,7 +910,7 @@ public sealed class GodotAddonTests : IDisposable
 
             window.OpenFile(ScenePath);
             Ui.PlaceAfter(window.EditorArea.CodeEditor, "[node name=\"Ui\" type=");
-            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor));
+            Assert.Null(window.Actions.Run(AppActions.GodotOpenInEditor)?.Shown);
             Ui.WaitFor(() => said.Any(l => l.Contains("TEST: selection res://main.tscn Ui", StringComparison.Ordinal) && !l.Contains("Ui/", StringComparison.Ordinal)),
                 () => $"Godot's editor to show the scene's node at the caret ({window.Status}; Godot said: {Said()})", TimeSpan.FromMinutes(1));
             Assert.Equal(1, EditorsOn(folder));
@@ -1088,7 +1088,7 @@ public sealed class GodotAddonTests : IDisposable
     {
         if (window.Debugger.IsDebugging)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debugger to let every game go");
         }
         window.Close();

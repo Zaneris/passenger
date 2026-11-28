@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.Containers;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
 
 namespace Passenger.App.Database;
 
@@ -98,7 +99,7 @@ public sealed class DatabaseNode(DatabaseNodeKind kind, string title, int depth,
 public sealed class DatabaseExplorer : DockPanel
 {
     private readonly DatabaseController controller;
-    private readonly Func<DatabaseSource, string?> refused;
+    private readonly Func<DatabaseSource, Words?> refused;
     private readonly TextBox search = SearchBox.Finding("Filter database objects");
     private readonly TreeList list = new() { Name = "DatabaseTree", Classes = { StyleClasses.Tree } };
     private readonly TreeRows<DatabaseNode> rows = [];
@@ -107,7 +108,7 @@ public sealed class DatabaseExplorer : DockPanel
     private List<DatabaseNode> roots = [];
 
     /// <param name="refused">Why a connection may not be opened, or null where it may.</param>
-    public DatabaseExplorer(DatabaseController controller, Func<DatabaseSource, string?> refused)
+    public DatabaseExplorer(DatabaseController controller, Func<DatabaseSource, Words?> refused)
     {
         this.controller = controller;
         this.refused = refused;
@@ -200,7 +201,7 @@ public sealed class DatabaseExplorer : DockPanel
         list.SelectedItem = node;
         if (!node.IsExpanded && node.Kind == DatabaseNodeKind.Connection && refused(node.Source) is { } why)
         {
-            controller.Refuse(why);
+            controller.Refuse(why.Shown);
             return;
         }
         if (node.IsExpanded)

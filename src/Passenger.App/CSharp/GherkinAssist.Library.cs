@@ -10,10 +10,10 @@ internal sealed partial class GherkinAssist
 {
     /// <summary>Why a step definition's phrase can't be written into the file the editor shows; null where it can.</summary>
     public string? WhyNotInsertStep() =>
-        context.Editors.Active is not { } shown ? Refusals.NoFile
+        (context.Editors.Active is not { } shown ? Refusals.NoFile
         : !IsFeature(shown) ? Refusals.NoFeature
         : context.Editor.IsReadOnly ? shown.ReadOnlyWhy
-        : null;
+        : null)?.Shown;
 
     /// <summary>Writes a step definition's phrase into the open feature at the caret as completion writes it, its first slot
     /// chosen to type over: after the keyword of a line holding one alone; as a step on an empty line; else as a step on a

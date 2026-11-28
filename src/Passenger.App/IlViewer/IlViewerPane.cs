@@ -18,7 +18,7 @@ internal sealed class IlViewerPane : UserControl
     {
         Name = "IlViewerOutput",
         IsReadOnly = true,
-        ReadOnlyWhy = Refusals.OnlyToRead,
+        ReadOnlyWhy = Refusals.OnlyToRead.Shown,
         ShowErrorStripe = false,
         ShowLineNumbers = false,
         FontSize = TypeRamp.Code,

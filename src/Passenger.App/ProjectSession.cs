@@ -150,7 +150,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Continuous = new ContinuousTests(Tests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
         {
             Work = setup.Work,
-            Refused = () => Trusted ? null : Refusals.Untrusted,
+            Refused = () => (Trusted ? null : Refusals.Untrusted)?.Shown,
             // Its builds and runs' copies, a cache of the folder's in Passenger's state, never in the folder.
             Root = folder is null ? null : Path.Combine(setup.StateFolder, "cache", "continuous", FileNames.Hash(folder, 12)),
         };
@@ -408,12 +408,12 @@ public sealed class ProjectSession : IAsyncDisposable
         NamedServices[] hosts = Folder is { } open ? [.. OwnAppHosts(open)] : [];
         if (Folder is null || !hosts.Any(h => h.All.Contains(project, PathNames.Comparer)))
         {
-            return Refusals.NotReached(name);
+            return Refusals.NotReached(name).Shown;
         }
         string folder = Path.GetDirectoryName(project)!;
-        return WorkspaceTrust.WhyNotLent(folder, Folder) is { } unlent ? Refusals.NotLent(name, folder, unlent)
+        return (WorkspaceTrust.WhyNotLent(folder, Folder) is { } unlent ? Refusals.NotLent(name, folder, unlent)
             : hosts.Any(h => h.Persons.Contains(project, PathNames.Comparer)) ? Refusals.NotReached(name)
-            : Refusals.NamedByAgent(name);
+            : Refusals.NamedByAgent(name)).Shown;
     }
 
     /// <summary>A trusted folder's projects outside it (a solution's beside it) are trusted with it while it is open, so what
@@ -427,7 +427,7 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Why the folder has no C# language server: it is not trusted, or it has none.</summary>
-    public string WhyNoCSharp => Trusted ? Refusals.NoCSharp : Refusals.Untrusted;
+    public string WhyNoCSharp => (Trusted ? Refusals.NoCSharp : Refusals.Untrusted).Shown;
 
     /// <summary>The folder came to be trusted: what the session held back begins as an open begins it, Git's status read
     /// with the repository's configuration, the language server, the projects' evaluations (and so their design-time
@@ -1634,7 +1634,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Why there is no run configuration to run, debug or profile (the <paramref name="verb"/>): no SDK to
     /// load the projects with, or no executable project (<see cref="Refusals.NothingTo"/>).</summary>
-    public string NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder);
+    public string NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder).Shown;
 
     /// <summary>The folder's projects as the project host builds them at design time, which the language server loads.</summary>
     public ProjectBuilds DesignTimeBuilds { get; }

@@ -468,7 +468,7 @@ public partial class MainWindow
     /// refused to an agent's input (<see cref="RefusedToAgentsInput"/>), else the window watching for updates restarts.</summary>
     private void RestartToUpdate()
     {
-        if (!RefusedToAgentsInput(Refusals.RestartIsThePersons))
+        if (!RefusedToAgentsInput(Refusals.RestartIsThePersons.Shown))
         {
             IdeErrors.Observe(UpdatesOwner.RestartToUpdateAsync());
         }

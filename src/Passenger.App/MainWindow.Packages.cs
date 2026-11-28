@@ -133,7 +133,7 @@ public partial class MainWindow
             {
                 if (at != session)
                 {
-                    return CSharp.RefactorOutcome.Refused(Refusals.SolutionClosed);
+                    return CSharp.RefactorOutcome.Refused(Refusals.SolutionClosed.Shown);
                 }
                 TransitiveFix? fix;
                 try

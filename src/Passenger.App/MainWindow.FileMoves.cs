@@ -114,7 +114,7 @@ public partial class MainWindow
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
         // One whose name there is a folder holding it would go to the Trash with what it replaced: it stays, said, unasked.
         string[] holding = [.. paths.Where(p => !dependents.Contains(p) && PathNames.IsUnder(p, Path.Combine(into, Path.GetFileName(p))))];
-        List<string> unput = [.. holding.Select(p => Refusals.ReplacesItsFolder(Path.GetFileName(p)))];
+        List<string> unput = [.. holding.Select(p => Refusals.ReplacesItsFolder(Path.GetFileName(p)).Shown)];
         if (holding.Length > 0)
         {
             HashSet<string> staying = new([.. holding, .. holding.SelectMany(p => following[p])], PathNames.Comparer);

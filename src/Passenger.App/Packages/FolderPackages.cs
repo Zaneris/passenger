@@ -528,7 +528,7 @@ public sealed partial class FolderPackages
     {
         if (IsBusy && (within is null || !ReferenceEquals(within, bulkRecording)))
         {
-            return new PackageOutcome(false, [], []) { Name = name, Refused = Work?.Of(Changing) is { } under ? ActionWork.Busy(under) : $"Already under way: {changing}" };
+            return new PackageOutcome(false, [], []) { Name = name, Refused = (Work?.Of(Changing) is { } under ? ActionWork.Busy(under) : $"Already under way: {changing}").Shown };
         }
         IsBusy = true;
         changing = stage;

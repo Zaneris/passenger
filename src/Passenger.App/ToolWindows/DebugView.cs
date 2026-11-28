@@ -186,7 +186,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             ListMenus.Open(ShowAsStop, () => model.Choose(chosen)),
             ListMenus.Item("Copy Stack", () => IdeErrors.Observe(ListMenus.CopyAsync(this, string.Join('\n', chosen.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{f.Line}" : f.Name))))),
         ]);
-        noSnapshots = new EmptyState(Refusals.NoSnapshots);
+        noSnapshots = new EmptyState(Refusals.NoSnapshots.Shown);
         noSnapshots.Offer(AppActions.ToggleSnapshotPoint, "Toggle Snapshot Point");
         noSnapshots.ActionRequested += (_, action) => model.Request(action);
         snapshotsPane = new Panel { IsVisible = false, Children = { snapshots, noSnapshots } };
@@ -207,7 +207,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
             },
         });
         ListMenus.Attach(moments, () => moments.SelectedItem is not DapMoment chosen ? [] : [ListMenus.Open(ShowAsStop, () => model.Choose(chosen))]);
-        noMoments = new EmptyState(Refusals.NothingRecorded);
+        noMoments = new EmptyState(Refusals.NothingRecorded.Shown);
         noMoments.Offer(AppActions.RecordCalls, "Record Calls");
         noMoments.ActionRequested += (_, action) => model.Request(action);
         timelineSaid = new TextBlock { [DockProperty] = Dock.Top, Margin = new Thickness(Gaps.Normal, Gaps.Small), TextWrapping = Avalonia.Media.TextWrapping.Wrap };

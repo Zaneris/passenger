@@ -173,7 +173,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             window.KeyTextInput(name);
             Ui.Press(window, "ENTER");
             bool Told(string words) => words.Contains($"{old} to {name}", StringComparison.Ordinal)
-                || words.StartsWith(Refusals.NotRenamed(old, string.Empty), StringComparison.Ordinal);
+                || words.StartsWith(Refusals.NotRenamed(old, string.Empty).Shown, StringComparison.Ordinal);
             Ui.WaitFor(() => said.Any(Told), () => $"the rename of {old} to {name} to be made, or say why not; the status bar said: {string.Join(" | ", said)}");
             string told = said.First(Told);
             Assert.True(told.StartsWith($"Renamed {old} to {name}", StringComparison.Ordinal), $"The rename of {old} to {name} was not made: {told}");

@@ -178,8 +178,8 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
         window = Keeping(state);
         try
         {
-            Assert.Null(window.Actions.WhyNot(AppActions.PublishAgain, window.Actions.Context()));
-            BuildOutcome again = Publish(window, () => Task.FromResult(window.Actions.Run(AppActions.PublishAgain)));
+            Assert.Null(window.Actions.WhyNot(AppActions.PublishAgain, window.Actions.Context())?.Shown);
+            BuildOutcome again = Publish(window, () => Task.FromResult(window.Actions.Run(AppActions.PublishAgain)?.Shown));
             Assert.True(again.Succeeded && again.Published is { } at && PathNames.Same(at, nightly) && File.Exists(Path.Combine(nightly, "Hello.dll")),
                 $"Publish Again after a restart ended: {again.Message}");
         }
@@ -413,7 +413,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
             // Pumped, not settled: a settle waits for the publish, which holds background work until it ends.
             Ui.PumpUntil(() => window.BottomPanel.Build.Document.Snapshot.ToString().Contains("Lingering a while", StringComparison.Ordinal), "the publish to reach its waiting step",
                 TimeSpan.FromMinutes(2));
-            Assert.Equal("Building Hello (FolderProfile)…", window.Actions.Work.Of(AppActions.Publish)?.Stage);
+            Assert.Equal("Building Hello (FolderProfile)…", window.Actions.Work.Of(AppActions.Publish)?.Stage.Shown);
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => window.LastPublish is { IsCompleted: true }, "the stopped publish to end", TimeSpan.FromSeconds(30));
             BuildOutcome ended = Ui.Await(window.LastPublish!, "the stopped publish's outcome");
@@ -434,7 +434,7 @@ public sealed class PublishTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.Equal("Tools is a library: set IsPublishable to true in it to publish it", MenuItem(window, "Tools").Tip);
             Assert.Equal("Checks is a test project, which is run rather than published", MenuItem(window, "Checks").Tip);
             Assert.Equal((true, null), (MenuItem(window, "Hello").Enabled, MenuItem(window, "Hello").Tip));
-            Assert.Equal("Nothing has been published here yet: Publish… first", window.Actions.WhyNot(AppActions.PublishAgain, window.Actions.Context()));
+            Assert.Equal("Nothing has been published here yet: Publish… first", window.Actions.WhyNot(AppActions.PublishAgain, window.Actions.Context())?.Shown);
 
             // A library that asks to be published is offered.
             Write("src/Tools/Tools.csproj", $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n"

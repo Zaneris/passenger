@@ -168,7 +168,7 @@ public partial class MainWindow
         UiThread.Check();
         DotnetWant = DotnetWant.Of(machine, session.Models.MissingSdk, session.Models.SdkVersion,
             Projects.Where(p => p.IsEvaluated).Select(p => (p.Name, p.TargetFrameworks)), session.Models.SdkAsked);
-        string? said = DotnetWant.Lack == DotnetLack.OffPath && (OffPathHidden || shellPath is null) ? null : Refusals.Dotnet(DotnetWant, Folder);
+        string? said = (DotnetWant.Lack == DotnetLack.OffPath && (OffPathHidden || shellPath is null) ? null : Refusals.Dotnet(DotnetWant, Folder))?.Shown;
         if (said is not null && DotnetWant.NoSdkAtAll && LooseCSharp() is { } loose)
         {
             said = $"{said}. {Refusals.LooseWithoutSdk(loose)}";
@@ -176,7 +176,7 @@ public partial class MainWindow
         DotnetBanner.Say(said);
         if (actions![AppActions.NewSolution] is not null)
         {
-            newSolutionWhyNot = actions.WhyNot(AppActions.NewSolution, actions.Context());
+            newSolutionWhyNot = actions.WhyNot(AppActions.NewSolution, actions.Context())?.Shown;
             if (welcome is { } shown)
             {
                 GreyNewSolution(shown);
@@ -214,22 +214,22 @@ public partial class MainWindow
     /// <summary>Where global.json chose an SDK that does not build a project: the banner's words of it, global.json, and the
     /// line it asks for the SDK on, as a build that failed for it says them; null otherwise.</summary>
     public SdkChosen? ChosenSdk() => DotnetWant is { Lack: DotnetLack.OlderThanProject, ChosenBy: { } asked } && Refusals.Dotnet(DotnetWant, Folder) is { } words
-        ? new SdkChosen(words, PathNames.Canonical(asked.Path), new Text.TextPosition(asked.Line, 0))
+        ? new SdkChosen(words.Shown, PathNames.Canonical(asked.Path), new Text.TextPosition(asked.Line, 0))
         : null;
 
     /// <summary>What a person's action that needs a .NET SDK is refused with while the folder has none to load, build and
     /// run its projects with; null while it has one.</summary>
-    private string? WithoutSdk() => DotnetWant.NoSdkAtAll ? Refusals.Dotnet(DotnetWant, Folder) : null;
+    private Words? WithoutSdk() => DotnetWant.NoSdkAtAll ? Refusals.Dotnet(DotnetWant, Folder) : null;
 
     /// <summary>What New Solution and New Project are refused with while the machine has no SDK at all; null with one.</summary>
-    private string? WithoutAnySdk() => DotnetWant.Lack is DotnetLack.NoDotnet or DotnetLack.RuntimeOnly or DotnetLack.OtherProcessor ? Refusals.Dotnet(DotnetWant, Folder) : null;
+    private Words? WithoutAnySdk() => DotnetWant.Lack is DotnetLack.NoDotnet or DotnetLack.RuntimeOnly or DotnetLack.OtherProcessor ? Refusals.Dotnet(DotnetWant, Folder) : null;
 
     /// <summary>Install .NET SDK: Microsoft's metadata asked which SDK mends the want, the person asked, the SDK installed
     /// with its stages said, then taken up at once; it says what it came to. Refused to an agent's input.</summary>
     private async Task InstallDotnetAsync(ActionContext context)
     {
         UiThread.Check();
-        if (RefusedToAgentsInput(Refusals.InstallIsThePersons) || DotnetWant.Installs is not { } wanted || work.Begin(AppActions.InstallDotnetSdk, "Asking Microsoft which .NET SDK to install") is not { } installing)
+        if (RefusedToAgentsInput(Refusals.InstallIsThePersons.Shown) || DotnetWant.Installs is not { } wanted || work.Begin(AppActions.InstallDotnetSdk, "Asking Microsoft which .NET SDK to install") is not { } installing)
         {
             return;
         }
@@ -273,7 +273,7 @@ public partial class MainWindow
                     return;
                 }
             }
-            else if (!await ConfirmAsync(title, text, "Install", addToPath, Refusals.InstallIsThePersons))
+            else if (!await ConfirmAsync(title, text, "Install", addToPath, Refusals.InstallIsThePersons.Shown))
             {
                 Told(installing, false, "No .NET SDK was installed");
                 return;
@@ -322,7 +322,7 @@ public partial class MainWindow
         {
             Mcp.Admission.Allowed => null,
             Mcp.Admission.NotAllowed => $"The person did not allow installing the .NET SDK {sdk.Version}, so nothing was installed",
-            Mcp.Admission.FolderChanged => Refusals.FolderChanged(Folder),
+            Mcp.Admission.FolderChanged => Refusals.FolderChanged(Folder).Shown,
             _ => $"Nobody at the window answered within {Mcp.AgentConnection.Limit(this)} whether to install the .NET SDK {sdk.Version}, so nothing was installed",
         };
     }
@@ -332,13 +332,13 @@ public partial class MainWindow
     private async Task AddDotnetToPathAsync()
     {
         UiThread.Check();
-        if (RefusedToAgentsInput(Refusals.AgentChangesPath) || shellPath is not { } change || work.Begin(AppActions.AddDotnetToPath, "Asking to add .NET to your shell's PATH", stoppable: false) is not { } adding)
+        if (RefusedToAgentsInput(Refusals.AgentChangesPath.Shown) || shellPath is not { } change || work.Begin(AppActions.AddDotnetToPath, "Asking to add .NET to your shell's PATH", stoppable: false) is not { } adding)
         {
             return;
         }
         using (adding)
         {
-            if (!await ConfirmAsync("Add .NET to your shell's PATH?", $"Passenger {change.Shown}.", "Add to PATH", null, Refusals.AgentChangesPath))
+            if (!await ConfirmAsync("Add .NET to your shell's PATH?", $"Passenger {change.Shown}.", "Add to PATH", null, Refusals.AgentChangesPath.Shown))
             {
                 Told(adding, false, "Your shell's PATH was left as it was");
                 return;

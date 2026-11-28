@@ -33,7 +33,7 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
             GoDotTests.Start start = startOf is null ? GoDotTests.Start.Main : await startOf(project.Key);
             if (start.Never)
             {
-                string never = Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(project.Key), start) ?? string.Empty;
+                string never = Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(project.Key), start)?.Shown ?? string.Empty;
                 log?.Invoke(never);
                 RunSummary refused = new(TimeSpan.Zero, false, true, never);
                 summary = summary is null ? refused : summary.And(refused);
@@ -78,7 +78,7 @@ public sealed class GoDotTestRunner(Func<string, IReadOnlyList<TestItem>> declar
         foreach (TestItem test in tests)
         {
             string suite = GoDotTests.Named.Of(test.Method).Suite;
-            told.Add(Outcome(test, GoDotTests.Ending.Skipped, TimeSpan.Zero) with { Message = Refusals.GoDotTestAlike(suite, alike[suite]) });
+            told.Add(Outcome(test, GoDotTests.Ending.Skipped, TimeSpan.Zero) with { Message = Refusals.GoDotTestAlike(suite, alike[suite]).Shown });
         }
         string said = string.Join("; ", alike.OrderBy(a => a.Key, StringComparer.Ordinal).Select(a => Refusals.GoDotTestAlike(a.Key, a.Value)));
         log?.Invoke(said);

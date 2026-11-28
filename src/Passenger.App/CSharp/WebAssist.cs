@@ -276,7 +276,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
             ((string Path, TextPosition Position)? place, string said) = await JsonDeclarationAsync(lsp, document, offset);
             if (context.Editors.Active != document || place is not { } found)
             {
-                context.Say(context.Editors.Active == document ? said : Refusals.NoDeclaration);
+                context.Say((context.Editors.Active == document ? said : Refusals.NoDeclaration).Shown);
                 return;
             }
             context.Navigate(found);
@@ -295,7 +295,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         IReadOnlyList<DocumentSymbol> outline = await lsp.OutlineAsync();
         if (!IsPackageJson(document))
         {
-            return (null, Refusals.NoDeclaration);
+            return (null, Refusals.NoDeclaration.Shown);
         }
         LspPosition at = lsp.PositionOf(offset);
         List<DocumentSymbol> path = DocumentSymbol.PathTo(outline, at);
@@ -311,7 +311,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
             TextPosition name = ServerPlaces.PositionOf(text, declared.SelectionRange.Start);
             return ((document.Path, new TextPosition(name.Line, name.Column + 1)), $"The script {script}");
         }
-        return (null, Refusals.NoDeclaration);
+        return (null, Refusals.NoDeclaration.Shown);
     }
 
     /// <summary>Rename where the server has none (JSON's): the property name at the caret, quotes kept, and in a
@@ -354,7 +354,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         if (JsonPropertyAt(outline, lines, offset) is not { } at || at.Path[^1].Name != old
             || asked.Map(JsonRenameEdits(at.Path, at.Key, lines, name, IsPackageJson(document))) is not { } placed)
         {
-            return RefactorOutcome.Refused(Refusals.PropertyEditedMeanwhile);
+            return RefactorOutcome.Refused(Refusals.PropertyEditedMeanwhile.Shown);
         }
         TextSnapshot was = document.Text.Snapshot;
         WorkspaceEdits.ApplyTo(context.Editors, document, placed);

@@ -59,7 +59,7 @@ public partial class MainWindow
     {
         if (GodotAtHand() is not { } folder)
         {
-            return Said(working, false, Refusals.NoGodotProject);
+            return Said(working, false, Refusals.NoGodotProject.Shown);
         }
         string file = Path.Combine(folder, GodotProject.FileName);
         if (SaveBeforeWriting([file]) is { } unsaved)
@@ -182,7 +182,7 @@ public partial class MainWindow
                     : "Godot's editor let go of this window";
             }
         };
-        link.Handle("build", (peer, _) => session == next ? GodotPlayBuildAsync(peer) : throw new GodotEditorRefused(Refusals.SolutionClosed));
+        link.Handle("build", (peer, _) => session == next ? GodotPlayBuildAsync(peer) : throw new GodotEditorRefused(Refusals.SolutionClosed.Shown));
         link.Hear("started", (peer, told) =>
         {
             if (session == next && JsonMembers.Number(told, "session") is int id)

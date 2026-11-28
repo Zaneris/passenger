@@ -90,7 +90,7 @@ public partial class MainWindow
     private async Task<(string? Answer, bool Back)> AskChangesAsync(string to, string? from, IReadOnlyList<FileChange> changes, ChangesInTheWay? inTheWay)
     {
         string what = changes.Count == 1 ? changes[0].Name : $"these {Numbers.Said(changes.Count)} files";
-        string? cannot = inTheWay is null ? null : Refusals.CannotBring(to, [.. inTheWay.Files.Select(Path.GetFileName).OfType<string>()], inTheWay.Said);
+        string? cannot = (inTheWay is null ? null : Refusals.CannotBring(to, [.. inTheWay.Files.Select(Path.GetFileName).OfType<string>()], inTheWay.Said))?.Shown;
         CheckBox back = new() { Content = $"Unstash them as {from} is checked out again", IsChecked = settings.ChangesAtCheckout != CheckoutChanges.Stash, IsVisible = from is not null };
         List<Control> detail = [ToolWindows.CommitView.FileList(changes, session.Vcs.Repository)];
         if (cannot is not null)
@@ -136,7 +136,7 @@ public partial class MainWindow
         }
         string what = changes.Count == 1 ? changes[0].Name : $"these {Numbers.Said(changes.Count)} files";
         if (!await ConfirmAsync("Discard Changes", $"Discard the changes to {what} and check out {to}?{LostWords(changes)}", "Discard",
-            ToolWindows.CommitView.FileList(changes, vcs.Repository), Refusals.DiscardIsThePersons))
+            ToolWindows.CommitView.FileList(changes, vcs.Repository), Refusals.DiscardIsThePersons.Shown))
         {
             return null;
         }

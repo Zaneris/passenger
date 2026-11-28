@@ -23,7 +23,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model)
         {
-            status.Text = Refusals.NotOfFolder(Path.GetFileName(project));
+            status.Text = Refusals.NotOfFolder(Path.GetFileName(project)).Shown;
             return null;
         }
         if (DockerSupportWhyNot(project) is { } refused)
@@ -53,7 +53,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model || DockerContext is not { } context)
         {
-            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
+            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)).Shown);
         }
         if (Unread([model]) is { } unread)
         {
@@ -160,7 +160,7 @@ public partial class MainWindow
         {
             x64.CanChoose = state?.Amd64 is not (Amd64Runs.Emulated or Amd64Runs.Never);
             bool arm = state?.ServerArch is { } arch ? arch is "arm64" or "aarch64" : RuntimeInformation.OSArchitecture == Architecture.Arm64;
-            dialog.Note = !x64.CanChoose ? Refusals.X64OnlyUnrunnable(service.X64Only!, state!) : arm ? service.Note : null;
+            dialog.Note = (!x64.CanChoose ? Refusals.X64OnlyUnrunnable(service.X64Only!, state!) : arm ? service.Note : null)?.Shown;
         }
 
         async Task ApplyAsync()
@@ -239,7 +239,7 @@ public partial class MainWindow
         }
         if (SolutionProject(project) is not { } model)
         {
-            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
+            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)).Shown);
         }
         if (Unread([model]) is { } unread)
         {

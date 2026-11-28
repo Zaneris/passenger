@@ -168,8 +168,8 @@ public partial class MainWindow
         {
             if (current.CSharp is not { } csharp || !await ReadyAsync(csharp, stop.Token) || csharp.Session is not { } roslyn)
             {
-                string why = current.CSharp is null ? current.WhyNoCSharp : current.CSharp.IsStopped ? Refusals.CSharpStopped
-                    : current.CSharp.Unavailable is { } down ? Refusals.CSharpUnavailable(down) : Refusals.NoCSharp;
+                string why = (current.CSharp is null ? current.WhyNoCSharp : current.CSharp.IsStopped ? Refusals.CSharpStopped
+                    : current.CSharp.Unavailable is { } down ? Refusals.CSharpUnavailable(down) : Refusals.NoCSharp).Shown;
                 work.Tell(false, why);
                 Refuse(why);
                 return null;

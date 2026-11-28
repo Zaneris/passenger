@@ -20,7 +20,7 @@ public partial class MainWindow
         UiThread.Check();
         if (AgentsOwn)
         {
-            throw new InvalidOperationException(Refusals.GodotEditorOfPerson);
+            throw new InvalidOperationException(Refusals.GodotEditorOfPerson.English);
         }
         if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder) && e.Addon >= AddonActs) is { } editor)
         {
@@ -29,12 +29,12 @@ public partial class MainWindow
         string name = Path.GetFileName(folder);
         if (session.GodotEditors.Editors.FirstOrDefault(e => PathNames.Same(e.Project, folder)) is { } older)
         {
-            throw new InvalidOperationException(Refusals.GodotAddonOlder(name, older.Addon));
+            throw new InvalidOperationException(Refusals.GodotAddonOlder(name, older.Addon).English);
         }
         bool addon = await BackgroundWork.Run(() => FileText.Load(Path.Combine(folder, GodotProject.FileName)) is { } project
             && GodotPlugins.Read(folder, GodotAddon.Enabled(project.Text)).Any(p => GodotAddon.Is(p) && p.Enabled));
         string? opens = session.Configurations.All.FirstOrDefault(c => c.GodotEditor)?.Name;
-        throw new InvalidOperationException(Refusals.NoGodotEditor(name, addon, opens));
+        throw new InvalidOperationException(Refusals.NoGodotEditor(name, addon, opens).English);
     }
 
     /// <summary>The Godot project an agent's act is on and its scene (res://) by the path the agent gave: a path of the open
@@ -42,12 +42,12 @@ public partial class MainWindow
     /// there is no Godot project, the path is in none, or the folder's several projects leave which one unsaid.</summary>
     internal (string Folder, string? Scene) GodotSceneOf(string? given)
     {
-        string atHand = GodotAtHand() ?? throw new InvalidOperationException(Refusals.NoGodotProject);
+        string atHand = GodotAtHand() ?? throw new InvalidOperationException(Refusals.NoGodotProject.English);
         if (given is null or "" || given.StartsWith(GodotResPaths.Scheme, StringComparison.Ordinal) || given.StartsWith(GodotUids.Scheme, StringComparison.Ordinal))
         {
             // The person's active tab, which says the project at hand, is not the agent's to see.
             return GodotProjectFolders() is { Count: > 1 } several
-                ? throw new InvalidOperationException(Refusals.GodotProjectUnnamed([.. several.Select(p => PathNames.Shown(p, Folder))]))
+                ? throw new InvalidOperationException(Refusals.GodotProjectUnnamed([.. several.Select(p => PathNames.Shown(p, Folder))]).English)
                 : (atHand, given is "" ? null : given);
         }
         string full = PathNames.Canonical(Path.GetFullPath(given, Folder ?? atHand));
@@ -62,12 +62,12 @@ public partial class MainWindow
         UiThread.Check();
         if (AgentsOwn)
         {
-            return Task.FromResult<string?>(Refusals.GodotEditorOfPerson);
+            return Task.FromResult<string?>(Refusals.GodotEditorOfPerson.Shown);
         }
         ProjectModel? project = session.RunProjects.FirstOrDefault(p => p.GodotFolder is { } at && PathNames.Same(at, folder));
         if (project is null)
         {
-            return Task.FromResult<string?>(Refusals.NoGodotProject);
+            return Task.FromResult<string?>(Refusals.NoGodotProject.Shown);
         }
         RunConfiguration? game = session.Configurations.Chosen is { GodotInEditor: true } chosen && PathNames.Same(chosen.Project, project.Path) ? chosen
             : session.Configurations.All.FirstOrDefault(c => c.Generated && !c.GodotEditor && PathNames.Same(c.Project, project.Path));

@@ -142,7 +142,7 @@ public static class ContainerPlans
     public static async Task<ContainerPlan> ResolveAsync(RunConfiguration configuration, IReadOnlyList<ProjectModel> projects, WorkspaceModel? workspace,
         string stateFolder, ContainerEngine engine, IReadOnlyList<string> labels, CancellationToken cancel)
     {
-        string folder = workspace?.Folder ?? throw new LaunchException(Refusals.NoFolderTo("run"));
+        string folder = workspace?.Folder ?? throw new LaunchException(Refusals.NoFolderTo("run").English);
         string state = StateOf(stateFolder, folder);
         Directory.CreateDirectory(state);
         string file = Slug(configuration.Name);

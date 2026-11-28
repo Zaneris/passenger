@@ -44,7 +44,7 @@ internal sealed partial class XamlAssist
         }
         if (context.CSharp?.Session is not { IsLoaded: true } session || Asked(file) is not { } code)
         {
-            return (null, Refusals.NoDeclaration);
+            return (null, Refusals.NoDeclaration.Shown);
         }
         Roslyn.Extension.NamedSymbol? symbol;
         try
@@ -53,11 +53,11 @@ internal sealed partial class XamlAssist
         }
         catch (LanguageServerFailed)
         {
-            return (null, Refusals.NoDeclaration);
+            return (null, Refusals.NoDeclaration.Shown);
         }
         if (symbol is null)
         {
-            return (null, Refusals.NoDeclaration);
+            return (null, Refusals.NoDeclaration.Shown);
         }
         if (symbol is { Path: { } path, At: { } at })
         {

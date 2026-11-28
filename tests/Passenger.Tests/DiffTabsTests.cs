@@ -281,7 +281,7 @@ public sealed class DiffTabsTests : IDisposable
         Ui.Settle();
         Assert.StartsWith("sealed class Shop", file.Text.Snapshot.ToString(), StringComparison.Ordinal);
         Assert.True(file.IsModified, "Typed in the diff tab, the file shows no change");
-        Assert.Null(window.Actions.WhyNot(AppActions.Save, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.Save, window.Actions.Context())?.Shown);
         Ui.Run(window, AppActions.Save);
         Assert.StartsWith("sealed class Shop", File.ReadAllText(shop), StringComparison.Ordinal);
         Assert.False(file.IsModified, "Save in the diff tab left the file it edits unsaved");

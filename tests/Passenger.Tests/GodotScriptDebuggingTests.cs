@@ -174,8 +174,8 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
                 && Stopped(editor) == raised, () => $"the game to stop at its script error ({Sessions(window)}, {Ui.Said(window)})", TimeSpan.FromMinutes(2));
             Ui.WaitFor(() => (window.Status ?? string.Empty).Contains("Cannot call method 'get_name' on a null value", StringComparison.Ordinal), () => $"the error in the status bar ({window.Status})");
 
-            Assert.Equal(Passenger.App.Godot.GodotScriptAdapter.NoStepFromError, window.Actions.WhyNot(AppActions.StepOver, window.Actions.Context()));
-            Assert.Null(window.Actions.WhyNot(AppActions.Resume, window.Actions.Context()));
+            Assert.Equal(Passenger.App.Godot.GodotScriptAdapter.NoStepFromError, window.Actions.WhyNot(AppActions.StepOver, window.Actions.Context())?.Shown);
+            Assert.Null(window.Actions.WhyNot(AppActions.Resume, window.Actions.Context())?.Shown);
 
             BreakpointStore store = window.Debugger.Breakpoints;
             store.Update(store.ScriptErrors, enabled: false, store.ScriptErrors.Suspend, null, null, null);
@@ -223,8 +223,8 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
         try
         {
             Choose(window);
-            Assert.Null(window.Actions.WhyNot(AppActions.RunCurrentScene, window.Actions.Context()));
-            Assert.Null(window.Actions.Run(AppActions.RunCurrentScene));
+            Assert.Null(window.Actions.WhyNot(AppActions.RunCurrentScene, window.Actions.Context())?.Shown);
+            Assert.Null(window.Actions.Run(AppActions.RunCurrentScene)?.Shown);
             Ui.WaitFor(() => Run(window).Contains("other scene ready", StringComparison.Ordinal), () => $"the game to start in other.tscn ({window.Status}; {Run(window)})", TimeSpan.FromMinutes(3));
             Assert.Contains(" res://other.tscn ", Run(window), StringComparison.Ordinal);
             Assert.DoesNotContain("main ready", Run(window), StringComparison.Ordinal);
@@ -287,7 +287,7 @@ public sealed class GodotScriptDebuggingTests : IClassFixture<GodotScriptDebuggi
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the game to end ({Sessions(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();

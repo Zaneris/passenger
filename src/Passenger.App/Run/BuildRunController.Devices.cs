@@ -105,7 +105,7 @@ public sealed partial class BuildRunController
     /// session ends, however it ends, the app ends there and the relay comes out; Stop and the folder's end wait for it from
     /// the start's first step there (<see cref="DeviceStart"/>). Null once the session is open, else why not.</summary>
     private async Task<string?> DebugOnDeviceAsync(LaunchPlan plan, IDeviceApp app, Working work, BuiltEdits? edits) =>
-        (await DebuggedOnDeviceAsync(plan, app, work.Say, work.Stopping, edits, null, null)).Refused;
+        (await DebuggedOnDeviceAsync(plan, app, said => work.Say(said), work.Stopping, edits, null, null)).Refused;
 
     /// <summary>A device test project's app debugged for a test run as Debug debugs an app there, its plan's program the test
     /// runner's start of it (its instrumentation, or its app with the Testing Platform's server options): its session's tab

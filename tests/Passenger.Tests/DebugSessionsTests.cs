@@ -211,7 +211,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.True(window.IsActive, "The stop the person's resume came to left the window behind the program they went to");
 
             Ui.Leave(window);
-            Assert.Null(window.Actions.RunForAgent(AppActions.Resume));
+            Assert.Null(window.Actions.RunForAgent(AppActions.Resume)?.English);
             Ui.WaitFor(() => first is { State: DebugState.Paused, Stops: 3 }, $"the agent's resume to stop at the breakpoint again (it is {first.State})");
             Assert.True(!window.IsActive && !window.AsksAttention,
                 $"The stop an agent's resume came to {(window.IsActive ? "brought the window forward" : "asked for the person")}, taking them from what they were in");
@@ -476,7 +476,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Equal(DebugState.Paused, first.State);
             Assert.True(DotnetProcesses.Runs(program), "Cancel ended First");
-            Assert.Equal(Refusals.CloseSolutionIsThePersons, window.Actions.RunForAgent(AppActions.CloseSolution));
+            Assert.Equal(Refusals.CloseSolutionIsThePersons.Shown, window.Actions.RunForAgent(AppActions.CloseSolution)?.English);
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
 

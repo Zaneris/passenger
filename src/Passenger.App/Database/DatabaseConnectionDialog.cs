@@ -233,7 +233,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
             }
             if (sshHost.Text?.Trim() is not { Length: > 0 } through)
             {
-                Say(Refusals.NoSshHost);
+                Say(Refusals.NoSshHost.Shown);
                 return;
             }
             string typed = sshSecret.Text ?? string.Empty;
@@ -265,7 +265,7 @@ public sealed class DatabaseConnectionDialog : IdeWindow
                                 + "key only if the server's administrator says it changed."
                             : $"{place} gives its {asked.Kind} host key, whose fingerprint is {asked.Fingerprint}. Trust it for this connection? Compare it with the "
                                 + "fingerprint the server's administrator gives first.";
-                        ConfirmDialog trust = new("Trust SSH Host Key", question, "Trust") { EnterAgrees = false, PersonsAlone = Refusals.SshHostKeyByThePerson };
+                        ConfirmDialog trust = new("Trust SSH Host Key", question, "Trust") { EnterAgrees = false, PersonsAlone = Refusals.SshHostKeyByThePerson.Shown };
                         if (!await trust.ShowDialog<bool>(this))
                         {
                             return;

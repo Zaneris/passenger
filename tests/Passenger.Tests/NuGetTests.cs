@@ -616,7 +616,7 @@ public sealed class NuGetTests : IDisposable
         ChoosePackage(nuget, Id);
         Choose(nuget, "1.1.0");
         everywhere = nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update in All Projects"));
-        Assert.True(!everywhere.IsEnabled && Equals(ToolTip.GetTip(everywhere), Refusals.UpdatedEverywhere(Id, "1.1.0")),
+        Assert.True(!everywhere.IsEnabled && Equals(ToolTip.GetTip(everywhere), Refusals.UpdatedEverywhere(Id, "1.1.0").Shown),
             $"Update in All Projects with every project at 1.1.0 is {(everywhere.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(everywhere)}");
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.Equal((before.Lib, before.App, before.Tools), (File.ReadAllText(lib), File.ReadAllText(app), File.ReadAllText(tools)));
@@ -1443,16 +1443,16 @@ public sealed class NuGetTests : IDisposable
                 $"{Id} listed, chosen and its projects shown while the feed holds its advisories: {nuget.Status}");
             Button install = Action(nuget, "App", "Install")!;
             Button? update = Action(nuget, "Lib", "Update");
-            Assert.True(!install.IsEnabled && ToolTip.GetTip(install) as string == Refusals.VulnerabilitiesUnread,
+            Assert.True(!install.IsEnabled && ToolTip.GetTip(install) as string == Refusals.VulnerabilitiesUnread.Shown,
                 $"With the audit unanswered, App's Install is {(install.IsEnabled ? "enabled" : "greyed")}, telling \"{ToolTip.GetTip(install)}\"");
-            Assert.True(update is { IsEnabled: false } && ToolTip.GetTip(update) as string == Refusals.VulnerabilitiesUnread,
+            Assert.True(update is { IsEnabled: false } && ToolTip.GetTip(update) as string == Refusals.VulnerabilitiesUnread.Shown,
                 $"With the audit unanswered, Lib's line offers [{string.Join(", ", Labels(nuget, "Lib"))}], its Update {(update?.IsEnabled == true ? "enabled" : "greyed")}");
             Assert.True(Action(nuget, "Lib", "Remove") is { IsEnabled: true }, "Lib's Remove, which puts no version in, is greyed while the audit is unanswered");
             TextBlock? asking = nuget.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Name == "Auditing");
             Assert.True(asking is { IsEffectivelyVisible: true, Text: "Asking stand-in which versions have known vulnerabilities…" },
                 $"With the audit unanswered, {Id}'s details say \"{asking?.Text}\", not that the feed is being asked");
             Assert.False(Ui.AwaitPumped(nuget.InstallAsync(Named(window, "App")), "the window's install asked meanwhile"), "The window's install ran with the audit unanswered");
-            Assert.True(nuget.Status == Refusals.VulnerabilitiesUnread && File.ReadAllText(Path.Combine(folder, "App", "App.csproj")) == app,
+            Assert.True(nuget.Status == Refusals.VulnerabilitiesUnread.Shown && File.ReadAllText(Path.Combine(folder, "App", "App.csproj")) == app,
                 $"The window's install refused with the audit unanswered says \"{nuget.Status}\"");
         }
         finally

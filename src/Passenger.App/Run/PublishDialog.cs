@@ -430,7 +430,7 @@ public sealed class PublishDialog : IdeWindow
         }
         if (!Container && folderNamed && OutputFolder.Trim().Length == 0)
         {
-            return Refusals.NoOutputFolder;
+            return Refusals.NoOutputFolder.Shown;
         }
         if (Container && (ImageName.Trim().Contains(' ', StringComparison.Ordinal) || Several(ImageTag).Contains(' ', StringComparison.Ordinal)
             || Several(Runtimes).Contains(' ', StringComparison.Ordinal) || Registry.Trim().Contains(' ', StringComparison.Ordinal)))

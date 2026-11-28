@@ -125,12 +125,12 @@ public sealed class FormDesign : IDisposable
         int start = ++starts;
         if (!OperatingSystem.IsWindows())
         {
-            Say(Refusals.FormsDrawOnWindows);
+            Say(Refusals.FormsDrawOnWindows.Shown);
             return;
         }
         if (!WorkspaceTrust.Trusts(Files.Designer))
         {
-            Say(Refusals.Untrusted);
+            Say(Refusals.Untrusted.Shown);
             return;
         }
         FormFiles files = Files;
@@ -259,7 +259,7 @@ public sealed class FormDesign : IDisposable
         }
         if (editing is not null)
         {
-            return new DesignEdited(Refusals.DesignerBusy, null);
+            return new DesignEdited(Refusals.DesignerBusy.Shown, null);
         }
         // Held from before the request is read, so no redraw or other edit is sent meanwhile.
         TaskCompletionSource<FormDesignReply?> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -291,11 +291,11 @@ public sealed class FormDesign : IDisposable
         }
         if (reply is null || read is not { } made)
         {
-            return new DesignEdited(Refusals.DesignChangedMeanwhile, null);
+            return new DesignEdited(Refusals.DesignChangedMeanwhile.Shown, null);
         }
         if (reply.Kind == PreviewKinds.Error)
         {
-            return new DesignEdited(reply.Message ?? Refusals.DesignChangesNothing, null);
+            return new DesignEdited((reply.Message ?? Refusals.DesignChangesNothing).Shown, null);
         }
         string? chosen = reply.Chosen is [var first, ..] ? first : null;
         string? handler = reply.Handler is { } declared ? declared[(declared.LastIndexOf(' ', declared.IndexOf('(')) + 1)..declared.IndexOf('(')] : null;
@@ -327,7 +327,7 @@ public sealed class FormDesign : IDisposable
         }
         if (changes.Count == 0)
         {
-            return handler is null ? new DesignEdited(Refusals.DesignChangesNothing, null) : new DesignEdited(null, chosen, handler);
+            return handler is null ? new DesignEdited(Refusals.DesignChangesNothing.Shown, null) : new DesignEdited(null, chosen, handler);
         }
         return new DesignEdited(await write(name, changes), chosen, handler);
     }

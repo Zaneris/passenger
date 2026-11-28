@@ -86,10 +86,10 @@ public partial class MainWindow
 
     /// <summary>The banner over the editors says the open folder is untrusted, while it is, naming the Git repository its
     /// Trust Folder trusts where it is in one, and what the person started there runs on until it ends.</summary>
-    private void ShowTrust() => TrustBanner.Say(session.Folder is not { } folder || session.Trusted ? null
+    private void ShowTrust() => TrustBanner.Say((session.Folder is not { } folder || session.Trusted ? null
         : session.StillRunning() is { Count: > 0 } running ? Refusals.UntrustedRunsOn(running)
         : WorkspaceTrust.FolderToTrust(folder) is { } trusting && !PathNames.Same(trusting, folder) ? Refusals.UntrustedInRepository(trusting)
-        : Refusals.UntrustedSaid);
+        : Refusals.UntrustedSaid)?.Shown);
 
     /// <summary>Settings' Trusted Folders put in force: each folder trusted there trusted, one in a Git repository with the
     /// repository (<see cref="WorkspaceTrust.FolderToTrust"/>), each no longer trusted taken back (every window of it holding
@@ -185,7 +185,7 @@ public partial class MainWindow
     private void TrustFolder(string folder)
     {
         UiThread.Check();
-        if (RefusedToAgentsInput(Refusals.TrustIsThePersons))
+        if (RefusedToAgentsInput(Refusals.TrustIsThePersons.Shown))
         {
             return;
         }

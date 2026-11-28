@@ -51,7 +51,7 @@ public sealed partial class BuildRunController
         string action = how == RunStart.Debug ? AppActions.Debug : AppActions.RunProgram;
         if (parts.Work.Begin(action, $"Working out how to {(how == RunStart.Debug ? "debug" : "run")} {configuration.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(action)!));
+            return Said(ActionWork.Busy(parts.Work.Of(action)!).Shown);
         }
         using (work)
         {
@@ -78,7 +78,7 @@ public sealed partial class BuildRunController
         }
         if (session.IsEnded)
         {
-            return Refusals.SolutionClosed;
+            return Refusals.SolutionClosed.Shown;
         }
         try
         {
@@ -208,7 +208,7 @@ public sealed partial class BuildRunController
         {
             if (await ReplacesOthersAsync(chosen.Name, plan, engine, work) is { } kept)
             {
-                return Said(session.IsEnded ? Refusals.SolutionClosed : kept);
+                return Said((session.IsEnded ? Refusals.SolutionClosed : kept).Shown);
             }
         }
         catch (OperationCanceledException)
@@ -381,7 +381,7 @@ public sealed partial class BuildRunController
             if (session.IsEnded)
             {
                 // The folder's end takes down what came, once its up has ended; the window's views are another folder's now.
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             // A run that did not start leaves nothing running, its own alone: a start that replaced it has its own.
             IdeLog.Write(IdeLog.Ide, $"Containers: {chosen.Name} did not start ({failed}): what came up is taken down");
@@ -596,7 +596,7 @@ public sealed partial class BuildRunController
     {
         if (parts.Work.Begin(AppActions.RunProgram, $"Building {run.Plan.Name} again…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
+            return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!).Shown);
         }
         using (work)
         {
@@ -648,7 +648,7 @@ public sealed partial class BuildRunController
         }
         if (parts.Work.Begin(AppActions.ContainerRestart, $"Restarting {run.Plan.ProjectName}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(AppActions.ContainerRestart)!));
+            return Said(ActionWork.Busy(parts.Work.Of(AppActions.ContainerRestart)!).Shown);
         }
         using (work)
         {

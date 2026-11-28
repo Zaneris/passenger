@@ -205,7 +205,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         }
         if (console.InTransaction && console.Connection != source.Id)
         {
-            Refuse(Refusals.TransactionOpen);
+            Refuse(Refusals.TransactionOpen.Shown);
             console.Raise();
             return null;
         }
@@ -262,7 +262,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             // Manual commit's transaction is the console's own: its COMMIT and ROLLBACK end it, and its BEGIN has nothing to open.
             if (transaction == SqlTransaction.Begin || !console.InTransaction)
             {
-                console.Ran(console.Results, console.InTransaction ? "A transaction is open already." : Refusals.NoTransaction);
+                console.Ran(console.Results, (console.InTransaction ? "A transaction is open already." : Refusals.NoTransaction).Shown);
                 return true;
             }
             await EndTransactionAsync(console, transaction == SqlTransaction.Commit);
@@ -395,7 +395,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         UiThread.Check();
         if (work.Begin(AppActions.DatabaseExport, $"Exporting {source.Title}…") is not { } started)
         {
-            return ActionWork.Busy(work.Of(AppActions.DatabaseExport)!);
+            return ActionWork.Busy(work.Of(AppActions.DatabaseExport)!).Shown;
         }
         using Working working = started;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
@@ -448,7 +448,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
 
     /// <summary>Why a file's rows may not be imported into a connection's database: one not read in SQL, one whose statements
     /// each stand alone (ClickHouse's, where a row refused could not leave those before it unwritten), one read-only.</summary>
-    public static string? WhyNotImport(DatabaseSource source) => !DatabaseKinds.SpeaksSql(source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(source.Kind))
+    public static Words? WhyNotImport(DatabaseSource source) => !DatabaseKinds.SpeaksSql(source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(source.Kind))
         : !DatabaseKinds.HasTransactions(source.Kind) ? Refusals.NoImport(DatabaseKinds.Title(source.Kind))
         : source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(source.Name) : null;
 
@@ -461,7 +461,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         string file = Path.GetFileName(choice.File.Path);
         if (work.Begin(AppActions.DatabaseImport, $"Importing {file} into {choice.Table}…") is not { } started)
         {
-            return ActionWork.Busy(work.Of(AppActions.DatabaseImport)!);
+            return ActionWork.Busy(work.Of(AppActions.DatabaseImport)!).Shown;
         }
         using Working working = started;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(working.Stopping, lifetime.Token);
@@ -482,7 +482,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         }
         catch (ImportRefused refused)
         {
-            said = Refusals.RowRefused(refused.Row, file, ContainerSecrets.InSaid(refused.Message, known: [source.ConnectionString]));
+            said = Refusals.RowRefused(refused.Row, file, ContainerSecrets.InSaid(refused.Message, known: [source.ConnectionString])).Shown;
         }
         catch (Exception stopped) when (stopped is OperationCanceledException || stopped is DbException && stop.IsCancellationRequested)
         {
@@ -565,12 +565,12 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         if (console.InTransaction || console.Running)
         {
             console.Raise();
-            return console.Running ? Refusals.SqlRunning : Refusals.TransactionOpen;
+            return (console.Running ? Refusals.SqlRunning : Refusals.TransactionOpen).Shown;
         }
         if (manual && console.Connection is { } id && Find(id) is { } source && !DatabaseKinds.HasTransactions(source.Kind))
         {
             console.Raise();
-            return Refusals.NoTransactions(DatabaseKinds.Title(source.Kind));
+            return Refusals.NoTransactions(DatabaseKinds.Title(source.Kind)).Shown;
         }
         console.Manual = manual;
         if (!manual)

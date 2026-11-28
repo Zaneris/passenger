@@ -85,7 +85,7 @@ internal sealed class WpfPreviewHost : ChildPreviewHost
             string configured = own ? Previewer : assembly;
             if (await BackgroundWork.Run(() => X86Programs.Lacking(root, configured, new Dictionary<string, string>())) is { Count: > 0 } lacking)
             {
-                return Refusals.X86RuntimeMissing(root, lacking);
+                return Refusals.X86RuntimeMissing(root, lacking).Shown;
             }
         }
         List<string> arguments = ["exec", "--runtimeconfig", configuration];

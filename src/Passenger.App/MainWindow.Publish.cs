@@ -71,7 +71,7 @@ public partial class MainWindow
     {
         if (Folder is null)
         {
-            return (null, Refusals.NoFolder);
+            return (null, Refusals.NoFolder.Shown);
         }
         IReadOnlyList<string> chosen = ChosenProjects(context) ?? SelectedProjects();
         if (chosen.Count > 1)
@@ -84,7 +84,7 @@ public partial class MainWindow
             return publishable.Count == 1 ? (publishable[0].Path, null)
                 : (null, publishable.Count == 0 ? "No project here publishes" : "No project is chosen in the Explorer or open in the editor");
         }
-        return Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen[0])) is not { } project ? (null, Refusals.NotOfFolder(Path.GetFileNameWithoutExtension(chosen[0])))
+        return Projects.FirstOrDefault(p => PathNames.Same(p.Path, chosen[0])) is not { } project ? (null, Refusals.NotOfFolder(Path.GetFileNameWithoutExtension(chosen[0])).Shown)
             : PublishProfiles.WhyNot(project) is { } why ? (null, why) : (project.Path, null);
     }
 
@@ -94,7 +94,7 @@ public partial class MainWindow
     {
         if (Folder is null)
         {
-            return (null, null, Refusals.NoFolder);
+            return (null, null, Refusals.NoFolder.Shown);
         }
         PublishMemory memory = session.Publishing;
         if (PublishTarget(context).Project is { } chosen && (memory.ProfileOf(chosen) is not null || memory.OutputOf(chosen) is not null))
@@ -122,7 +122,7 @@ public partial class MainWindow
     {
         if (Folder is not { } open || Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model)
         {
-            status.Text = Refusals.NotOfFolder(Path.GetFileNameWithoutExtension(project));
+            status.Text = Refusals.NotOfFolder(Path.GetFileNameWithoutExtension(project)).Shown;
             return null;
         }
         if (PublishProfiles.WhyNot(model) is { } why)
@@ -168,7 +168,7 @@ public partial class MainWindow
     {
         if (Folder is not { } open)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         Containers.ContainerEngine engine = session.Containers.Engine;

@@ -276,7 +276,7 @@ public sealed class EndpointsView : DockPanel
         UiThread.Check();
         if (parts.Work.Begin(AppActions.TestEndpoint, $"Testing {draft.Method} {request.Title}…") is not { } testing)
         {
-            parts.Say(ActionWork.Busy(parts.Work.Of(AppActions.TestEndpoint)!));
+            parts.Say(ActionWork.Busy(parts.Work.Of(AppActions.TestEndpoint)!).Shown);
             return EndpointSent.Withheld;
         }
         using Working held = testing;

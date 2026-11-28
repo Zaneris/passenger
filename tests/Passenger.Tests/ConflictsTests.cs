@@ -90,7 +90,7 @@ public sealed class ConflictsTests : IDisposable
         Assert.Equal(["Prices.cs", "Shop.cs"], conflicts.Rows.Select(r => r.Change.Name));
         Assert.DoesNotContain(commit.Chosen, c => c.Kind == ChangeKind.Conflicted);
         Assert.Equal("Merge branch 'feature'", commit.Message);
-        Assert.Equal(Refusals.CommitWithConflicts, CommitRefused(window));
+        Assert.Equal(Refusals.CommitWithConflicts.Shown, CommitRefused(window));
 
         Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
         Ui.Settle();
@@ -546,8 +546,8 @@ public sealed class ConflictsTests : IDisposable
             return Task.FromResult(true);
         };
         Ui.Landed(() => window.Vcs.Merge.Operation == MergeOperation.CherryPick, "the cherry-pick under way");
-        Assert.Equal("No merge in progress", window.Actions.WhyNot(AppActions.AbortMerge, window.Actions.Context()));
-        Assert.Equal("No revert in progress", window.Actions.WhyNot(AppActions.AbortRevert, window.Actions.Context()));
+        Assert.Equal("No merge in progress", window.Actions.WhyNot(AppActions.AbortMerge, window.Actions.Context())?.Shown);
+        Assert.Equal("No revert in progress", window.Actions.WhyNot(AppActions.AbortRevert, window.Actions.Context())?.Shown);
         Assert.True(window.Perform(AppActions.AbortCherryPick), window.Status);
         Ui.Landed(() => window.Vcs.Merge.Operation == MergeOperation.None, "the cherry-pick aborted");
         Assert.Equal(["Abort Cherry-Pick | Abort cherry-pick? | Abort"], asked);
@@ -560,7 +560,7 @@ public sealed class ConflictsTests : IDisposable
         // The revert of Long conflicts with Unsigned, which changed the same line after it.
         Conflicting("revert", "--no-edit", "HEAD~1");
         Ui.WaitFor(() => window.Vcs.Merge.Operation == MergeOperation.Revert, "the revert under way");
-        Assert.Equal("No cherry-pick in progress", window.Actions.WhyNot(AppActions.AbortCherryPick, window.Actions.Context()));
+        Assert.Equal("No cherry-pick in progress", window.Actions.WhyNot(AppActions.AbortCherryPick, window.Actions.Context())?.Shown);
         Assert.True(window.Perform(AppActions.AbortRevert), window.Status);
         Ui.Landed(() => window.Vcs.Merge.Operation == MergeOperation.None, "the revert aborted");
         Assert.Equal("Abort Revert | Abort revert? | Abort", asked[^1]);
@@ -606,25 +606,25 @@ public sealed class ConflictsTests : IDisposable
             side.Focus();
             Ui.Settle();
             Assert.Same(side, window.Actions.Context().Focused);
-            ReadOnlyFilesTests.AssertChangesGreyed(window, Refusals.MergeSideReadOnly, where);
+            ReadOnlyFilesTests.AssertChangesGreyed(window, Refusals.MergeSideReadOnly.Shown, where);
         }
 
         // Save's key in the main window says something of its own, so the status bar holds other words before each.
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
-        Assert.NotEqual(Refusals.MergeSideReadOnly, window.Status);
+        Assert.NotEqual(Refusals.MergeSideReadOnly.Shown, window.Status);
         merge.KeyTextInput("x");
         Ui.Settle();
-        Assert.Equal(Refusals.MergeSideReadOnly, window.Status);
+        Assert.Equal(Refusals.MergeSideReadOnly.Shown, window.Status);
         view.Left.Focus();
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
-        Assert.NotEqual(Refusals.MergeSideReadOnly, window.Status);
+        Assert.NotEqual(Refusals.MergeSideReadOnly.Shown, window.Status);
         Ui.Run(merge, Passenger.Editor.EditorActions.Duplicate);
-        Assert.Equal(Refusals.MergeSideReadOnly, window.Status);
+        Assert.Equal(Refusals.MergeSideReadOnly.Shown, window.Status);
         Assert.Equal(sides, (view.Left.Document.Snapshot.ToString(), view.Right.Document.Snapshot.ToString()));
 
         view.Result.Focus();
         Ui.Settle();
-        Assert.Null(window.Actions.WhyNot(Passenger.Editor.EditorActions.Duplicate, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(Passenger.Editor.EditorActions.Duplicate, window.Actions.Context())?.Shown);
         window.Confirm = (_, _, _) => Task.FromResult(true);
         Press(merge, "Cancel");
         Ui.Landed(() => !merge.IsVisible, "the merge window closed");
@@ -687,7 +687,7 @@ public sealed class ConflictsTests : IDisposable
         Assert.Equal("Merge branch 'feature'", commit.Message);
         Button[] buttons = [.. Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(commit).OfType<Button>().Where(b => b.Content is "Commit" or "Commit and Push…")];
         Assert.Equal(2, buttons.Length);
-        Assert.All(buttons, b => Assert.True(!b.IsEffectivelyEnabled && ToolTip.GetTip(b) as string == Refusals.CommitWithConflicts,
+        Assert.All(buttons, b => Assert.True(!b.IsEffectivelyEnabled && ToolTip.GetTip(b) as string == Refusals.CommitWithConflicts.Shown,
             $"With Prices.cs in conflict, {b.Content} is {(b.IsEffectivelyEnabled ? "on" : "greyed")}, its tip saying \"{ToolTip.GetTip(b)}\""));
 
         Assert.True(window.Perform(AppActions.ResolveConflicts), window.Status);
@@ -701,7 +701,7 @@ public sealed class ConflictsTests : IDisposable
 
         commit.Message = string.Empty;
         Ui.Settle();
-        Assert.All(buttons, b => Assert.True(!b.IsEffectivelyEnabled && ToolTip.GetTip(b) as string == Refusals.EmptyCommitMessage,
+        Assert.All(buttons, b => Assert.True(!b.IsEffectivelyEnabled && ToolTip.GetTip(b) as string == Refusals.EmptyCommitMessage.Shown,
             $"With no message, {b.Content} is {(b.IsEffectivelyEnabled ? "on" : "greyed")}, its tip saying \"{ToolTip.GetTip(b)}\""));
         window.Close();
     }

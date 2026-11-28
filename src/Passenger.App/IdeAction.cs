@@ -1,6 +1,7 @@
 using Passenger.App.Debugging;
 using Passenger.App.Docking;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
 
@@ -17,7 +18,7 @@ public sealed record IdeAction(string Id, string Title, string Group, Action<Act
 {
     /// <summary>Null when it can run in this context, else why not in words for the status bar and an agent ("No file is
     /// open"). Its menu items are disabled and Find Action greys it while it says why not.</summary>
-    public Func<ActionContext, string?> WhyNot { get; init; } = _ => null;
+    public Func<ActionContext, Words?> WhyNot { get; init; } = _ => null;
 
     public IReadOnlyList<MenuPlace> Menus { get; init; } = [];
 
@@ -80,7 +81,7 @@ public sealed class ActionContext(OpenDocument? file, CodeEditor editor, object?
 
     /// <summary>Why an action changing the file shown greys while its editor refuses changes, in Refusals' words (<see
     /// cref="OpenDocument.ReadOnlyWhy"/>); null while it takes them, or none is shown.</summary>
-    public string? ReadOnlyWhy => editor.IsReadOnly ? file?.ReadOnlyWhy : null;
+    public Words? ReadOnlyWhy => editor.IsReadOnly ? file?.ReadOnlyWhy : null;
 
     /// <summary>The selection, or the name at the caret with what it is a member of ("order.Total"), as the debugger
     /// evaluates it; null with neither.</summary>

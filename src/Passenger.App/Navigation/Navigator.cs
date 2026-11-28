@@ -363,7 +363,7 @@ public sealed class Navigator
     {
         if (Session.CSharp is not { Session: { } server } csharp)
         {
-            parts.Status.Text = Refusals.NoCSharp;
+            parts.Status.Text = Refusals.NoCSharp.Shown;
             return;
         }
         Lsp.LspLocation asked = new(uri, new Lsp.LspRange(at, at));
@@ -398,7 +398,7 @@ public sealed class Navigator
         CSharpService? csharp = Session.CSharp;
         if (csharp?.Session is not { IsLoaded: true } server)
         {
-            throw new Lsp.LanguageServerFailed(csharp is null ? Refusals.NoCSharp : $"the C# language server is not ready: {csharp.State}");
+            throw new Lsp.LanguageServerFailed((csharp is null ? Refusals.NoCSharp : $"the C# language server is not ready: {csharp.State}").English);
         }
         IReadOnlyList<Lsp.SymbolInformation> found = await server.SymbolsAsync(query.Trim(), cancel);
         string? root = Session.Folder;
@@ -489,7 +489,7 @@ public sealed class Navigator
     {
         if (Editors.Active is not { } active || Session.OutlineOf(active) is null)
         {
-            parts.Status.Text = Editors.Active is { } file ? Refusals.NoOutline(file.Name) : Refusals.NoFile;
+            parts.Status.Text = (Editors.Active is { } file ? Refusals.NoOutline(file.Name) : Refusals.NoFile).Shown;
             return;
         }
         Outline<SymbolRow>? outline = null;
@@ -497,7 +497,7 @@ public sealed class Navigator
         SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
         {
             // Where the outline comes from now: a server started again while the popup is open has a new document.
-            FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
+            FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name).Shown);
             outline ??= await source.ReadAsync(active.Path, null, cancel);
             IReadOnlyList<SymbolRow> rows = outline.Rows;
             string filter = query.Trim();

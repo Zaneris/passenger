@@ -364,7 +364,7 @@ public sealed class DockingTests
             Assert.Equal(1.25, window.Settings.DisplayScale);
             Press(AppActions.ResetZoom);
             Assert.Equal(1, window.Settings.DisplayScale);
-            Assert.Equal(Refusals.ZoomedAsFarAsItGoes(up: false), window.Actions.WhyNot(AppActions.ZoomOut, window.Actions.Context()));
+            Assert.Equal(Refusals.ZoomedAsFarAsItGoes(up: false).Shown, window.Actions.WhyNot(AppActions.ZoomOut, window.Actions.Context())?.Shown);
 
             Press(AppActions.FullScreen);
             Assert.Equal(WindowState.FullScreen, window.WindowState);
@@ -724,7 +724,7 @@ public sealed class DockingTests
         dock.Show(ToolWindowIds.Migrations);
         Ui.Settle();
         Assert.Contains(window.MigrationsView, dock.GetVisualDescendants());
-        Assert.Contains(window.MigrationsView.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Refusals.NoEfCore);
+        Assert.Contains(window.MigrationsView.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Refusals.NoEfCore.Shown);
         dock.Hide(ToolWindowIds.Migrations);
         Ui.Settle();
 

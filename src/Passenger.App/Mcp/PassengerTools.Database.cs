@@ -41,7 +41,7 @@ public sealed partial class PassengerTools
             : throw new InvalidOperationException($"No connection {connection} in the Database window: {McpTools.Database} with no connection lists them, each by a name of its own");
         if (window.WhyNotOpened(named) is { } why)
         {
-            throw new InvalidOperationException(why);
+            throw new InvalidOperationException(why.English);
         }
         // Read-only on the database's side too: PostgreSQL's and MySQL's sessions, SQLite's file opened to read.
         DatabaseSource reading = (database is { Length: > 0 } other ? named.In(other) : named) with { Mark = DatabaseMark.ReadOnly };
@@ -92,12 +92,12 @@ public sealed partial class PassengerTools
         {
             if (SqlText.EffectOf(run, source.Kind) is var effect and > SqlEffect.Session)
             {
-                throw new InvalidOperationException(Refusals.AgentsQueryWrites(mask(AgentAnswers.Line(run.ReplaceLineEndings(" "), 1)), effect switch
+                throw new InvalidOperationException((Refusals.AgentsQueryWrites(mask(AgentAnswers.Line(run.ReplaceLineEndings(" "), 1)), effect switch
                 {
                     SqlEffect.Transaction => "begins or ends a transaction",
                     SqlEffect.ChangesData => "changes data",
                     _ => "changes the schema",
-                }));
+                })).English);
             }
         }
         List<SqlResult> results = [];

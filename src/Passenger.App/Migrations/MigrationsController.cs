@@ -149,7 +149,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     public EfGap? Failure { get; private set; }
 
     /// <summary>The command under way, or null.</summary>
-    public string? Busy => running?.Stage;
+    public Words? Busy => running?.Stage;
 
     /// <summary>Follows the session the window binds: its projects read again, its listing forgotten.</summary>
     public void Bind(ProjectSession session)
@@ -295,7 +295,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         UiThread.Check();
         if (Startup is not { } startup)
         {
-            return Said(new EfDone(false, Refusals.NoEfCore)).Said;
+            return Said(new EfDone(false, Refusals.NoEfCore.Shown)).Said;
         }
         if (EfEnvironmentChoices.WhyNot(name) is { } why)
         {
@@ -727,11 +727,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         if (running is { } under)
         {
-            return Said(new EfDone(false, ActionWork.Busy(under)));
+            return Said(new EfDone(false, ActionWork.Busy(under).Shown));
         }
         if (parts.Work.Begin(action, $"{stage}…") is not { } work)
         {
-            return Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!)));
+            return Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!).Shown));
         }
         running = work;
         then = relist;
@@ -806,11 +806,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         if (session.Folder is null)
         {
-            return (null, Refusals.NoFolder);
+            return (null, Refusals.NoFolder.Shown);
         }
         if (Project is not { } project || Startup is not { } startup)
         {
-            return (null, Refusals.NoEfCore);
+            return (null, Refusals.NoEfCore.Shown);
         }
         (string? framework, string folder, IReadOnlyDictionary<string, string> environment) = await RunOfAsync(startup, work);
         if (EfRestore.Of(startup.Path, framework) is not { Runtime: not null })
@@ -845,7 +845,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 answers.Add("Go On");
             }
-            string? answer = await parts.Choose(Title(work.Stage), $"{gap.Said}.{NetworkNote(gap)}", answers, answers.FirstOrDefault());
+            string? answer = await parts.Choose(Title(work.Stage.Shown), $"{gap.Said}.{NetworkNote(gap)}", answers, answers.FirstOrDefault());
             if (work.IsStopped || session != parts.Session())
             {
                 return (null, "Stopped");
@@ -918,7 +918,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         ProjectSession session = parts.Session();
         if (Project is not { } project || Startup is not { } startup)
         {
-            return (null, Said(new EfDone(false, Refusals.NoEfCore)).Said);
+            return (null, Said(new EfDone(false, Refusals.NoEfCore.Shown)).Said);
         }
         // Asked before any listing, the project's contexts are listed first, as dotnet ef names them; asked as one runs, after it.
         if (running is not null && listing is { IsCompleted: false } pending)
@@ -931,11 +931,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         if ((Context ?? (Contexts is [var only] ? only.Name : null)) is not { } context)
         {
-            return (null, Said(new EfDone(false, Refusals.NoEfContext)).Said);
+            return (null, Said(new EfDone(false, Refusals.NoEfContext.Shown)).Said);
         }
         if (parts.Work.Begin(action, $"Finding {context}'s database…") is not { } work)
         {
-            return (null, Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!))).Said);
+            return (null, Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(action)!).Shown)).Said);
         }
         using (work)
         {
@@ -963,7 +963,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 }
                 return EfConnections.WrittenOf(context, code, options) is { } written
                     ? (new EfConnection(EfConnections.Assumed(context), written, $"used by {context}'s migrations", folder, packages), null)
-                    : (null, EfConnections.FactoryOf(context, code, options) is { } factory ? Refusals.NoEfFactoryConnection(context, factory) : Refusals.NoEfConnection(context, named));
+                    : (null, (EfConnections.FactoryOf(context, code, options) is { } factory ? Refusals.NoEfFactoryConnection(context, factory) : Refusals.NoEfConnection(context, named)).Shown);
             }, work.Stopping);
             if (found is null)
             {
@@ -1123,11 +1123,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         if (running is { } under)
         {
-            return Said(new EfDone(false, ActionWork.Busy(under))).Said;
+            return Said(new EfDone(false, ActionWork.Busy(under).Shown)).Said;
         }
         if (parts.Work.Begin(AppActions.MigrationsFix, $"{fix.Title}…") is not { } work)
         {
-            return Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(AppActions.MigrationsFix)!))).Said;
+            return Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(AppActions.MigrationsFix)!).Shown)).Said;
         }
         running = work;
         try
@@ -1304,13 +1304,13 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         if (Project is not { } project || Startup is not { } startup)
         {
-            return Refusals.NoEfCore;
+            return Refusals.NoEfCore.Shown;
         }
         string? named = (Failure?.Fixes.FirstOrDefault(f => f.Kind == EfFixKind.AddFactory)?.Title)?.Split(' ').Last() ?? Context;
         EfContext? context = Contexts.FirstOrDefault(c => c.Name == named || c.FullName == named) ?? (named is null ? null : new EfContext(named, named));
         if (context is null)
         {
-            return Refusals.NoEfContext;
+            return Refusals.NoEfContext.Shown;
         }
         EfRestore? restore = EfRestore.Of(project.Path);
         string file = Path.Combine(project.Folder, $"{context.Name}Factory.cs");
@@ -1444,7 +1444,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             return EfOutcome.Unstarted(missing.Message);
         }
         ChildProcesses.WithVariables(start, setting.Environment);
-        work.Say($"{Title(work.Stage).TrimEnd('…')}: dotnet ef {string.Join(' ', verb.TakeWhile(v => !v.StartsWith('-')))}…");
+        work.Say($"{Title(work.Stage.Shown).TrimEnd('…')}: dotnet ef {string.Join(' ', verb.TakeWhile(v => !v.StartsWith('-')))}…");
         // The database a run gives is said by where it reaches, its connection string being the environment's.
         parts.Views.Build.Append($"\n{ChildProcesses.Shown(start)}\n"
             + (setting.Database is { } database ? $"Against {database.Where}\n" : string.Empty));

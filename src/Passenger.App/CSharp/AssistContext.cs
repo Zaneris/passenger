@@ -114,8 +114,8 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>An open file's server document as it is now, for what the person chose from an answer (a fix, a new
     /// name): the server that answered may have been started again while they chose.</summary>
     public LspDocument Now(OpenDocument document) => service()?.For(document)?.Lsp ?? WebOf(document)?.Lsp ?? throw new LanguageServerFailed(
-        WebOf(document) is not null ? "its language server is not running"
-        : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp);
+        (WebOf(document) is not null ? "its language server is not running"
+        : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp).Shown);
 
     /// <summary>Waits, for a change at an offset of a C# file, until the server holds in their projects the C# files come
     /// under the projects it reaches (<see cref="CSharpService.ReachedAsync"/>), for up to <see cref="Patience.Limit"/>, the
@@ -208,9 +208,9 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     }
 
     private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
-        left.Count == 0 ? null
+        (left.Count == 0 ? null
         : CSharpService.IsReload(left[0]) ? Refusals.NotLoadedAgain(Path.GetFileNameWithoutExtension(left[0].Project))
-        : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+        : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project)))?.Shown;
 
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;

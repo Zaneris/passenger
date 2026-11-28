@@ -115,7 +115,7 @@ public sealed class McpGodotScriptGameTests : McpRig
             $"A click whose handler stopped at a breakpoint answered: {Text(clicked)}");
         Assert.Equal("press.gd:9:1", (await Call(client, McpTools.DebugState)).GetProperty("location").GetString());
         CallToolResult next = await Result(client, McpTools.DebugSetNextStatement, new() { ["path"] = "press.gd", ["line"] = 10 });
-        Assert.True(next.IsError == true && Text(next).Contains(Passenger.App.Refusals.NoNextStatement, StringComparison.Ordinal),
+        Assert.True(next.IsError == true && Text(next).Contains(Passenger.App.Refusals.NoNextStatement.English, StringComparison.Ordinal),
             $"Set Next Statement in a game's GDScript answered: {Text(next)}");
         await Call(client, McpTools.Stop);
     }

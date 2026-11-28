@@ -23,7 +23,7 @@ public partial class MainWindow
     /// <summary>Why no build configuration can be chosen: no folder, or none offered yet, which in a folder not trusted is
     /// for good until it is, as its projects are never evaluated there.</summary>
     private string? WhyNotChooseBuild() =>
-        session.Folder is null ? Refusals.NoFolderTo("build") : session.BuildChoices.Offered.Count == 0 ? Untrusted() ?? Refusals.NoBuildConfigurations : null;
+        (session.Folder is null ? Refusals.NoFolderTo("build") : session.BuildChoices.Offered.Count == 0 ? Untrusted() ?? Refusals.NoBuildConfigurations : null)?.Shown;
 
     /// <summary>The session's choice and offer shown in the widget as they change.</summary>
     private void BindBuildConfigurations(ProjectSession next)
@@ -84,7 +84,7 @@ public partial class MainWindow
         UiThread.Check();
         if (session.Folder is not { } folder || session.Workspace is not { } workspace)
         {
-            throw new InvalidOperationException(Refusals.NoFolderTo("build"));
+            throw new InvalidOperationException(Refusals.NoFolderTo("build").English);
         }
         using Working? work = actions!.Work.Begin(A.ChooseBuildConfiguration, $"Reading what {Path.GetFileName(workspace.Solution?.Path ?? folder)} builds as {configuration.Shown(session.BuildChoices.Offered)}…");
         if (await session.BuildChoices.ChooseAsync(folder, workspace, configuration) is { } why)

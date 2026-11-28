@@ -133,11 +133,11 @@ public sealed partial class PassengerTools
         }
         catch (TimeoutException)
         {
-            resources = await (app.Interactions ?? throw new InvalidOperationException(Refusals.AppHostStarting)).GetResourcesAsync(cancel);
+            resources = await (app.Interactions ?? throw new InvalidOperationException(Refusals.AppHostStarting.English)).GetResourcesAsync(cancel);
         }
         if (Session != current || current.IsEnded || current.Aspire.FindApp(target.AppHostPath) != app)
         {
-            throw new InvalidOperationException(Refusals.AppHostChanged);
+            throw new InvalidOperationException(Refusals.AppHostChanged.English);
         }
         AspireResource? resource = resources.FirstOrDefault(resource => resource.Name == name);
         AspireResourceRun? service = app.Services.Where(run => ((IRunService)run).Name == name).MaxBy(run => run.Sequence);
@@ -194,7 +194,7 @@ public sealed partial class PassengerTools
             }
             if (Session != current || current.IsEnded || current.Aspire.FindApp(app.Configuration.Project) != app || app.Stopping)
             {
-                throw new InvalidOperationException(Refusals.AppHostChanged);
+                throw new InvalidOperationException(Refusals.AppHostChanged.English);
             }
             apps.Add(new AspireOwnedAppInfo(app.Configuration.Project, app.ProcessId ?? 0, state, app.Group,
                 [.. resources.Select(resource => ResourceInfoOf(app, resource))]) { How = Words(app.How) });

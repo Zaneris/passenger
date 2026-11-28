@@ -68,7 +68,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model)
         {
-            return SecretsSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
+            return SecretsSaid(Refusals.NotOfFolder(Path.GetFileName(project)).Shown);
         }
         string name = Path.GetFileNameWithoutExtension(model.Path);
         (UserSecretsFile? secrets, string? problem) = UserSecrets.Ensure(model.Path, model.Property(Passenger.Host.CarriedProperties.UserSecretsId),

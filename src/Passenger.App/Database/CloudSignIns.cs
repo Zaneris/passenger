@@ -61,7 +61,7 @@ internal static class CloudSignIns
 
     /// <summary>Why a kind takes no sign-in of a kind, in its own words.</summary>
     public static string WhyNot(CloudSignInKind sign, DatabaseKind kind) =>
-        sign == CloudSignInKind.AzureEntra ? Refusals.NoEntraSignIn(DatabaseKinds.Title(kind)) : Refusals.NoCloudSignIn(DatabaseKinds.Title(kind));
+        (sign == CloudSignInKind.AzureEntra ? Refusals.NoEntraSignIn(DatabaseKinds.Title(kind)) : Refusals.NoCloudSignIn(DatabaseKinds.Title(kind))).Shown;
 
     /// <summary>The connection's string with what its sign-in gives laid over it, and SQL Server's Entra ID token apart.</summary>
     public static async Task<SignedIn> SignedInAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
@@ -105,7 +105,7 @@ internal static class CloudSignIns
     private static async Task<string> AwsAsync(DatabaseKind kind, string connection, CloudSignIn signIn, CancellationToken cancel)
     {
         (string host, int port) = DatabaseKinds.Endpoint(kind, connection);
-        string region = RegionOf(signIn, host) ?? throw new InvalidOperationException(Refusals.NoAwsRegion(host));
+        string region = RegionOf(signIn, host) ?? throw new InvalidOperationException(Refusals.NoAwsRegion(host).English);
         AWSCredentials credentials = await AwsProfiles.CredentialsAsync(signIn.Profile, cancel);
         DbConnectionStringBuilder laid = DatabaseKinds.Builder(kind, connection);
         if (signIn.Kind == CloudSignInKind.AwsIam && kind == DatabaseKind.Redshift)
@@ -118,7 +118,7 @@ internal static class CloudSignIns
         }
         if (signIn.Kind == CloudSignInKind.AwsIam)
         {
-            string user = DatabaseKinds.Value(connection, "Username", "User ID", "UserID", "User", "Uid") ?? throw new InvalidOperationException(Refusals.NoIamUser);
+            string user = DatabaseKinds.Value(connection, "Username", "User ID", "UserID", "User", "Uid") ?? throw new InvalidOperationException(Refusals.NoIamUser.English);
             string token = await RDSAuthTokenGenerator.GenerateAuthTokenAsync(credentials, RegionEndpoint.GetBySystemName(region), host, port, user);
             ContainerSecrets.Mark(token);
             laid["Password"] = token;
@@ -132,7 +132,7 @@ internal static class CloudSignIns
         }
         catch (AmazonServiceException refused)
         {
-            throw new IOException(Refusals.SecretUnread(signIn.Secret, refused.Message), refused);
+            throw new IOException(Refusals.SecretUnread(signIn.Secret, refused.Message).English, refused);
         }
         try
         {
@@ -146,7 +146,7 @@ internal static class CloudSignIns
         }
         catch (Exception unread) when (unread is JsonException or FormatException)
         {
-            throw new IOException(Refusals.SecretUnread(signIn.Secret, $"it holds no username and password as RDS's secrets do ({unread.Message})"), unread);
+            throw new IOException(Refusals.SecretUnread(signIn.Secret, $"it holds no username and password as RDS's secrets do ({unread.Message})").English, unread);
         }
     }
 
@@ -159,7 +159,7 @@ internal static class CloudSignIns
         const string Workgroup = "workgroup/";
         string named = signIn.Cluster is { Length: > 0 } own ? own
             : DatabaseKinds.IsRedshiftHost(host) ? (host.Contains(".redshift-serverless.", StringComparison.OrdinalIgnoreCase) ? Workgroup : string.Empty) + host.Split('.')[0]
-            : throw new InvalidOperationException(Refusals.NoRedshiftCluster(host));
+            : throw new InvalidOperationException(Refusals.NoRedshiftCluster(host).English);
         try
         {
             if (named.StartsWith(Workgroup, StringComparison.Ordinal))
@@ -180,7 +180,7 @@ internal static class CloudSignIns
         }
         catch (AmazonServiceException refused)
         {
-            throw new IOException(Refusals.RedshiftRefusedIam(named, refused.Message), refused);
+            throw new IOException(Refusals.RedshiftRefusedIam(named, refused.Message).English, refused);
         }
     }
 

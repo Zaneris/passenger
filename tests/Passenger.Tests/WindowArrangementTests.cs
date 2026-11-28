@@ -228,7 +228,7 @@ public sealed class WindowArrangementTests : IDisposable
                 again.ApplySettings(again.Settings with { ClosedToolWindows = ClosedToolWindows.KeepIcons });
                 Ui.Settle();
                 // The setting says what × does: a window off its stripe stays off until opened or checked on the stripe again.
-                Assert.True(StripeButton(again, ToolWindowIds.Debug) is null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context()) == Refusals.ClosedKeepIcons,
+                Assert.True(StripeButton(again, ToolWindowIds.Debug) is null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context())?.Shown == Refusals.ClosedKeepIcons.Shown,
                     "Keeping icons chosen, the closed Debug window came back to its stripe unasked, or Close was not greyed for it");
                 Assert.DoesNotContain(again.DockHost.GetVisualDescendants().OfType<Button>(), b => b.Name == AppActions.CloseToolWindow && b.IsEffectivelyVisible);
             }
@@ -573,7 +573,7 @@ public sealed class WindowArrangementTests : IDisposable
             Ui.Settle();
             DockHost dock = window.DockHost;
             Assert.True(!dock.IsShown(ToolWindowIds.Bookmarks) && EdgeTab(window, ToolWindowIds.Bookmarks) is not null, "Bookmarks is not hidden along the edge to begin with");
-            Assert.Null(window.Actions.RunForAgent(AppActions.ShowBookmarks));
+            Assert.Null(window.Actions.RunForAgent(AppActions.ShowBookmarks)?.English);
             Ui.Settle();
             Assert.True(dock.Peeked is null && dock.IsShown(ToolWindowIds.Bookmarks) && Header(window, "Bookmarks") is not null && window.EditorArea.CodeEditor.IsKeyboardFocusWithin,
                 $"An agent's call for Bookmarks left it over the editors {dock.Peeked?.Id}, shown in its place {Header(window, "Bookmarks") is not null}, "

@@ -86,7 +86,7 @@ public sealed partial class CSharpService
     /// its files are answered for in, as Problems analyses it, its edges judged by the folder's layer rules: the projects for
     /// <paramref name="of"/> null, else the level below that node.</summary>
     internal Task<Roslyn.Extension.DependenciesFound> DependenciesAsync(string? of) =>
-        session is { } running ? running.DependenciesAsync(of, AnalysedFrameworks(), Layers) : throw new InvalidOperationException(Refusals.Sentence(Refusals.CSharpNotRunning));
+        session is { } running ? running.DependenciesAsync(of, AnalysedFrameworks(), Layers) : throw new InvalidOperationException(Refusals.CSharpNotRunningSentence.English);
 
     /// <summary>Solution-wide analysis made to follow the frameworks chosen: the reports of a framework no longer chosen let
     /// go of at once, and the pulls asked again with the choices as they stand, the new framework's reports coming as the

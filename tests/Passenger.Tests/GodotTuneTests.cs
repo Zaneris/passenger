@@ -112,7 +112,7 @@ public sealed class GodotTuneTests : IClassFixture<GodotTuneTests.Game>
             Ui.ClickAcross(swatch, () =>
             {
                 Ui.Await(window.Session.Game!.SetValueAsync(tree.Details!.Id, "Speed", 9.0), "Speed set again as the swatch is pressed");
-                Assert.Null(window.Actions.Run(AppActions.LiveTreeRefresh));
+                Assert.Null(window.Actions.Run(AppActions.LiveTreeRefresh)?.Shown);
                 Ui.WaitFor(() => tree.Details?.Properties.First(p => p.Name == "Speed").Value != slid,
                     () => $"Main read again with Speed's new value ({tree.Details?.Properties.First(p => p.Name == "Speed").Value})");
             });

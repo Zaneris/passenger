@@ -47,7 +47,7 @@ public sealed partial class BuildRunController
         string action = debug ? AppActions.Debug : AppActions.RunProgram;
         if (parts.Work.Begin(action, $"Working out how to {doing} {chosen.Name}…") is not { } work)
         {
-            return Said(ActionWork.Busy(parts.Work.Of(action)!));
+            return Said(ActionWork.Busy(parts.Work.Of(action)!).Shown);
         }
         using (work)
         using (cancellation.Register(work.Cancel))
@@ -71,7 +71,7 @@ public sealed partial class BuildRunController
             await EndProjectsAsync(chosen.Name);
             if (session.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
         }
         List<PartStart> starts = [];
@@ -728,7 +728,7 @@ public sealed partial class BuildRunController
     {
         if (parts.Work.Begin(AppActions.Debug, $"Restarting {name}…") is not { } work)
         {
-            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
+            return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!).Shown;
         }
         using (work)
         using (BackgroundWork.Scope())

@@ -26,7 +26,7 @@ public sealed record SshTunnel(string Host, int Port, string User)
 
 /// <summary>A host's key no one trusted yet, or one other than the key trusted or known for it.</summary>
 public sealed class SshHostKeyException(string host, int port, string kind, string fingerprint, bool changed)
-    : IOException(changed ? Refusals.SshHostKeyChanged(host, fingerprint) : Refusals.SshHostKeyUnknown(host))
+    : IOException((changed ? Refusals.SshHostKeyChanged(host, fingerprint) : Refusals.SshHostKeyUnknown(host)).English)
 {
     public string Host { get; } = host;
     public int Port { get; } = port;
@@ -411,7 +411,7 @@ internal static class SshTunnels
                 {
                     client.Dispose();
                     string why = i == 0 && route.Proxy is { } proxy && await proxy.SaidAsync() is { Length: > 0 } said ? $"{failed.Message} ProxyCommand said: {said}" : failed.Message;
-                    throw refused ?? new IOException(Refusals.SshUnreachable(hop.HostName, ContainerSecrets.InSaid(why)), failed);
+                    throw refused ?? new IOException(Refusals.SshUnreachable(hop.HostName, ContainerSecrets.InSaid(why)).English, failed);
                 }
                 route.Clients.Add(client);
                 (string Host, int Port)? next = last ? server : (hops[i + 1].HostName, hops[i + 1].Port);
@@ -430,7 +430,7 @@ internal static class SshTunnels
         catch (Exception failed) when (failed is not (IOException or OperationCanceledException))
         {
             route.Close();
-            throw new IOException(Refusals.SshUnreachable(tunnel.Host, ContainerSecrets.InSaid(failed.Message)), failed);
+            throw new IOException(Refusals.SshUnreachable(tunnel.Host, ContainerSecrets.InSaid(failed.Message)).English, failed);
         }
         catch (Exception)
         {
@@ -485,7 +485,7 @@ internal static class SshTunnels
             {
                 if (named)
                 {
-                    throw new IOException(Refusals.SshUnreachable(hop.HostName, $"{Path.GetFileName(file)}: {unread.Message}"), unread);
+                    throw new IOException(Refusals.SshUnreachable(hop.HostName, $"{Path.GetFileName(file)}: {unread.Message}").English, unread);
                 }
                 IdeLog.Write(IdeLog.Ide, $"SSH: {file} passed over for {hop.HostName}: {unread.Message}");
             }
@@ -499,6 +499,6 @@ internal static class SshTunnels
         {
             methods.Add(new PasswordAuthenticationMethod(hop.User, secret));
         }
-        return methods.Count > 0 ? [.. methods] : throw new IOException(Refusals.SshUnreachable(hop.HostName, "there is no agent, key file or password to sign in with"));
+        return methods.Count > 0 ? [.. methods] : throw new IOException(Refusals.SshUnreachable(hop.HostName, "there is no agent, key file or password to sign in with").English);
     }
 }

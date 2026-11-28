@@ -197,7 +197,7 @@ public static partial class ProjectTemplates
     {
         if (!WorkspaceTrust.Trusts(project))
         {
-            return Refusals.Untrusted;
+            return Refusals.Untrusted.Shown;
         }
         IReadOnlyList<string> arguments = windowsTargeting ? ["restore", project, PropertySwitch.Of(MSBuildNames.EnableWindowsTargeting, "true")] : ["restore", project];
         Task<ChildResult> restore = ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(arguments, folder), limit: TimeSpan.FromMinutes(10), cancel: cancel);

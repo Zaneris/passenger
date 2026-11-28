@@ -563,7 +563,7 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
             Assert.True(window.EditorArea.FormLayout.View == PaneView.Editor && group.Side is not FormDesignPane, "A form's code showed its design where nothing draws it");
             Ui.Click(Layout(group, AppActions.FormCodeAndDesign));
             FormDesignPane elsewhere = Assert.IsType<FormDesignPane>(group.Side);
-            Assert.Equal(Refusals.FormsDrawOnWindows, elsewhere.Design.Status);
+            Assert.Equal(Refusals.FormsDrawOnWindows.Shown, elsewhere.Design.Status);
             Assert.Skip(OnlyOnWindows);
         }
         Assert.Equal(PaneView.Preview, window.EditorArea.FormLayout.View);

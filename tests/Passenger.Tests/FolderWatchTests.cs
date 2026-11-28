@@ -158,7 +158,7 @@ public sealed class FolderWatchTests : IDisposable
         Passenger.App.ToolWindows.CommitView commit = window.CommitView;
         Avalonia.Controls.TextBlock branch = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.TextBlock>(window, "BranchName")!;
         Ui.Settle();
-        Assert.True(window.Vcs.Repository is null && Said(commit) == Refusals.NoRepository,
+        Assert.True(window.Vcs.Repository is null && Said(commit) == Refusals.NoRepository.Shown,
             $"The folder of no repository opened with the Commit window saying '{Said(commit)}'");
         string Shown() => $"the branch widget says {branch.Text}, the Commit window lists [{string.Join(", ", Listed(commit))}] and says '{Said(commit)}'";
 
@@ -166,7 +166,7 @@ public sealed class FolderWatchTests : IDisposable
         Ui.WaitFor(() => branch.Text == "main" && Listed(commit).Contains("Shop.cs"), () => $"the repository git init made to be taken, where {Shown()}");
 
         TestFolders.Delete(Path.Combine(folder, ".git"));
-        Ui.WaitFor(() => window.Vcs.Repository is null && branch.Text == "Version control" && Listed(commit).Length == 0 && Said(commit) == Refusals.NoRepository,
+        Ui.WaitFor(() => window.Vcs.Repository is null && branch.Text == "Version control" && Listed(commit).Length == 0 && Said(commit) == Refusals.NoRepository.Shown,
             () => $"the repository whose .git was removed to be let go, where {Shown()}");
         window.Close();
 

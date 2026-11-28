@@ -204,7 +204,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         {
             if (change.Work.Id == global::Passenger.App.Packages.FolderPackages.Changing && !change.Ended)
             {
-                worked.Add(change.Work.Stage);
+                worked.Add(change.Work.Stage.Shown);
             }
         };
         McpClient client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
@@ -379,7 +379,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             CallToolResult commit = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Commit })), "the commit with no repository");
             said = Text(commit);
             Assert.True(commit.IsError == true, $"Commit in a folder with no repository was answered as run: {said}");
-            Assert.Contains(Refusals.NoRepository, said, StringComparison.Ordinal);
+            Assert.Contains(Refusals.NoRepository.English, said, StringComparison.Ordinal);
             Assert.False(window.DockHost.IsShown(ToolWindowIds.Commit), "Commit, refused for want of a repository, opened the Commit window anyway");
         }
         finally
@@ -408,30 +408,30 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             foreach (string tool in (string[])[McpTools.Build, McpTools.Run, McpTools.DebugStart, McpTools.TestsRun])
             {
                 CallToolResult refused = Await(Waiting.Apart(() => Result(client, tool)), tool);
-                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.Untrusted, StringComparison.Ordinal),
+                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.Untrusted.English, StringComparison.Ordinal),
                     $"{tool} in a window whose folder is not trusted answered: {Text(refused)}");
             }
             CallToolResult search = Await(Waiting.Apart(() => Result(client, McpTools.NugetSearch, new() { ["query"] = "Serilog" })), McpTools.NugetSearch);
-            Assert.True(search.IsError == true && Text(search).Contains(Refusals.UntrustedFeeds, StringComparison.Ordinal),
+            Assert.True(search.IsError == true && Text(search).Contains(Refusals.UntrustedFeeds.English, StringComparison.Ordinal),
                 $"{McpTools.NugetSearch} in a window whose folder is not trusted answered: {Text(search)}");
             JsonElement workspace = Await(Waiting.Apart(() => Call(client, McpTools.Workspace)), "the workspace");
-            Assert.Equal(Refusals.Untrusted, workspace.GetProperty("trust").GetString());
+            Assert.Equal(Refusals.Untrusted.English, workspace.GetProperty("trust").GetString());
             // As the instructions say: every tool the one rule refuses named, and the C# answers and builds refused, never waited for.
             string told = client.ServerInstructions ?? string.Empty;
             Assert.True(McpTools.Untrusted.Keys.All(tool => told.Contains(tool, StringComparison.Ordinal)) && !told.Contains("wait for that", StringComparison.Ordinal)
                 && told.Contains("refused at once, as are ide_action's actions that would run its code (building it among them) and C# answers", StringComparison.Ordinal),
                 $"The instructions misstate what a folder not trusted refuses: {told}");
             CallToolResult symbol = Await(Waiting.Apart(() => Result(client, McpTools.FindSymbol, new() { ["query"] = "Program" })), McpTools.FindSymbol);
-            Assert.True(symbol.IsError == true && Text(symbol).Contains(Refusals.Untrusted, StringComparison.Ordinal),
+            Assert.True(symbol.IsError == true && Text(symbol).Contains(Refusals.Untrusted.English, StringComparison.Ordinal),
                 $"{McpTools.FindSymbol} in a window whose folder is not trusted answered: {Text(symbol)}");
             Task<CallToolResult> building = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Build }));
             Press(Question(window, "the question for the agent's Build"), AgentToolDialog.AllowForSession);
             CallToolResult built = Await(building, "the agent's Build");
-            Assert.True(built.IsError == true && Text(built).Contains(Refusals.Untrusted, StringComparison.Ordinal),
+            Assert.True(built.IsError == true && Text(built).Contains(Refusals.Untrusted.English, StringComparison.Ordinal),
                 $"{McpTools.IdeAction} {AppActions.Build} in a window whose folder is not trusted answered: {Text(built)}");
 
             CallToolResult trust = Await(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.TrustFolder })), "the agent's Trust Folder");
-            Assert.True(trust.IsError == true && Text(trust).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
+            Assert.True(trust.IsError == true && Text(trust).Contains(Refusals.TrustIsThePersons.English, StringComparison.Ordinal),
                 $"An agent's Trust Folder answered: {Text(trust)}");
             Assert.False(window.Session.Trusted, "An agent trusted the person's folder");
         }
@@ -462,23 +462,23 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 new() { ["app"] = "ide", ["window"] = nameof(WorkspaceTrustDialog), ["control"] = $"Button \"{WorkspaceTrustDialog.Trust}\"" }));
             Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
             CallToolResult answered = Await(answering, "the agent's click on the trust question's Trust");
-            Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.TrustAnsweredByThePerson, StringComparison.Ordinal),
+            Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.TrustAnsweredByThePerson.English, StringComparison.Ordinal),
                 $"The agent's click on the trust question's Trust was answered: {Text(answered)}{Said()}");
             Assert.True(question.IsVisible && !window.Session.Trusted, "The agent's click answered the trust question the person is asked");
 
             Ui.ClickButton(question, WorkspaceTrustDialog.Untrusted);
-            Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid, "the banner over the folder opened without trusting it");
+            Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid.English, "the banner over the folder opened without trusting it");
             string title = window.Actions[AppActions.TrustFolder]!.Title;
             Avalonia.Controls.Button link = window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => (b.Content as string) == title && b.IsEffectivelyVisible);
             Avalonia.Point at = Avalonia.VisualExtensions.TranslatePoint(link, new Avalonia.Point(link.Bounds.Width / 2, link.Bounds.Height / 2), window)
                 ?? throw new InvalidOperationException("The banner's Trust Folder is not in the window");
             CallToolResult clicked = Await(Waiting.Apart(() => Result(client, McpTools.AppClick,
                 new() { ["app"] = "ide", ["window"] = nameof(MainWindow), ["x"] = at.X, ["y"] = at.Y })), "the agent's click on the banner's Trust Folder");
-            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.TrustIsThePersons, StringComparison.Ordinal),
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.TrustIsThePersons.English, StringComparison.Ordinal),
                 $"The agent's click on the banner's Trust Folder was answered: {Text(clicked)}{Said()}");
             Ui.Settle();
             Assert.False(window.Session.Trusted || WorkspaceTrust.Trusts(folder), "The agent's click on the banner trusted the person's folder");
-            Assert.Equal((Refusals.UntrustedSaid, Refusals.TrustIsThePersons), (window.TrustSaid, window.Status));
+            Assert.Equal((Refusals.UntrustedSaid.English, Refusals.TrustIsThePersons.English), (window.TrustSaid, window.Status));
 
             Ui.Click(link);
             Ui.WaitFor(() => window.Session.Trusted && window.TrustSaid is null, "the person's own click on Trust Folder to trust the folder");
@@ -616,19 +616,19 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 new() { ["app"] = "ide", ["window"] = nameof(MainWindow), ["x"] = at.X, ["y"] = at.Y }));
             Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
             CallToolResult clicked = Await(clicking, "the agent's click on the banner's Install Workloads…");
-            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.AgentInstallsMobile, StringComparison.Ordinal),
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.AgentInstallsMobile.English, StringComparison.Ordinal),
                 $"The agent's click on the banner's Install Workloads… was answered: {Text(clicked)}");
             Ui.Settle();
             Assert.True(window.Actions.Work.Of(AppActions.InstallWorkloads) is null && !window.OwnedWindows.OfType<ConfirmDialog>().Any() && installed.Count == 0,
-                $"The agent's click on Install Workloads… began an install ({window.Actions.Work.Of(AppActions.InstallWorkloads)?.Stage}; {installed.Count} run)");
-            Assert.Equal(Refusals.AgentInstallsMobile, window.Status);
+                $"The agent's click on Install Workloads… began an install ({window.Actions.Work.Of(AppActions.InstallWorkloads)?.Stage.Shown}; {installed.Count} run)");
+            Assert.Equal(Refusals.AgentInstallsMobile.English, window.Status);
 
             Ui.Click(link);
             WaitFor(() => window.OwnedWindows.OfType<ConfirmDialog>().Any(d => d.IsVisible), "the person's own click on Install Workloads… to ask them");
             ConfirmDialog question = window.OwnedWindows.OfType<ConfirmDialog>().Single();
             CallToolResult answered = Await(Waiting.Apart(() => Result(client, McpTools.AppClick,
                 new() { ["app"] = "ide", ["window"] = nameof(ConfirmDialog), ["control"] = "Button \"Install\"" })), "the agent's click on the question's Install");
-            Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.AgentInstallsMobile, StringComparison.Ordinal),
+            Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.AgentInstallsMobile.English, StringComparison.Ordinal),
                 $"The agent's click on the install question's Install was answered: {Text(answered)}");
             Ui.Settle();
             Assert.True(question.IsVisible && question.Answered is null && installed.Count == 0, "The agent's click answered the install question the person is asked");
@@ -670,22 +670,22 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             CallToolResult exited = Allowed(McpTools.IdeAction, new() { ["action"] = AppActions.Exit }, "the agent's Exit");
-            Assert.True(exited.IsError == true && Text(exited).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal), $"The agent's Exit answered: {Text(exited)}");
+            Assert.True(exited.IsError == true && Text(exited).Contains(Refusals.QuitIsThePersons.English, StringComparison.Ordinal), $"The agent's Exit answered: {Text(exited)}");
             Assert.True(window.IsVisible, "The agent's Exit closed the person's window");
 
             CallToolResult found = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }, "the agent's keys for Find Action");
             CallToolResult typed = Allowed(McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Exit" }, "the agent's typing in Find Action");
             CallToolResult entered = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Enter" }, "the agent's Enter on Find Action's Exit");
-            Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal),
+            Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.QuitIsThePersons.English, StringComparison.Ordinal),
                 $"The agent's Enter on Find Action's Exit answered: {Text(entered)} (Find Action's keys: {Text(found)}; the typing: {Text(typed)})");
             Ui.Settle();
             Assert.True(window.IsVisible, "The agent's Exit from Find Action closed the person's window");
-            Assert.Equal(Refusals.QuitIsThePersons, window.Status);
+            Assert.Equal(Refusals.QuitIsThePersons.English, window.Status);
 
             if (Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Button>(window, "CloseButton") is { IsEffectivelyVisible: true })
             {
                 CallToolResult closed = Allowed(McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#CloseButton" }, "the agent's click on the window's Close");
-                Assert.True(closed.IsError == true && Text(closed).Contains(Refusals.QuitIsThePersons, StringComparison.Ordinal),
+                Assert.True(closed.IsError == true && Text(closed).Contains(Refusals.QuitIsThePersons.English, StringComparison.Ordinal),
                     $"The agent's click on the last window's Close answered: {Text(closed)}");
                 Ui.Settle();
                 Assert.True(window.IsVisible, "The agent's click on Close closed the person's last window");
@@ -724,20 +724,20 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Assert.Contains("allowed every tool", Text(Allowed(McpTools.RequestFullAccess, [], "the agent's request for every tool")), StringComparison.Ordinal);
 
             string listed = Text(Allowed(McpTools.IdeActions, new() { ["query"] = AppActions.CloseSolution }, "the agent's ide_actions"));
-            Assert.True(listed.Contains($" - cannot run: {Refusals.CloseSolutionIsThePersons}", StringComparison.Ordinal), $"ide_actions listed Close Solution as: {listed}");
+            Assert.True(listed.Contains($" - cannot run: {Refusals.CloseSolutionIsThePersons.English}", StringComparison.Ordinal), $"ide_actions listed Close Solution as: {listed}");
             CallToolResult closed = Allowed(McpTools.IdeAction, new() { ["action"] = AppActions.CloseSolution }, "the agent's Close Solution");
-            Assert.True(closed.IsError == true && Text(closed).Contains(Refusals.CloseSolutionIsThePersons, StringComparison.Ordinal), $"The agent's Close Solution answered: {Text(closed)}");
+            Assert.True(closed.IsError == true && Text(closed).Contains(Refusals.CloseSolutionIsThePersons.English, StringComparison.Ordinal), $"The agent's Close Solution answered: {Text(closed)}");
             Ui.Settle();
             Assert.Equal(folder, window.Folder);
 
             Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "primary+shift+A" }, "the agent's keys for Find Action");
             Allowed(McpTools.AppType, new() { ["app"] = "ide", ["text"] = "Close Solution" }, "the agent's typing in Find Action");
             CallToolResult entered = Allowed(McpTools.AppKey, new() { ["app"] = "ide", ["keys"] = "Enter" }, "the agent's Enter on Close Solution");
-            Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.CloseSolutionIsThePersons, StringComparison.Ordinal),
+            Assert.True(entered.IsError == true && Text(entered).Contains(Refusals.CloseSolutionIsThePersons.English, StringComparison.Ordinal),
                 $"The agent's Enter on Find Action's Close Solution answered: {Text(entered)}");
             Ui.Settle();
             Assert.Equal(folder, window.Folder);
-            Assert.Equal(Refusals.CloseSolutionIsThePersons, window.Status);
+            Assert.Equal(Refusals.CloseSolutionIsThePersons.English, window.Status);
         }
         finally
         {
@@ -766,14 +766,14 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             global::Passenger.Languages.TextMate.TextMateHighlighter grammar = window.EditorArea.Active?.Grammar ?? throw new InvalidOperationException("tool.py opened with no grammar");
             Ui.WaitFor(() => grammar.Failure is not null, "tool.py's grammar to fail");
             Environment.SetEnvironmentVariable(variable, was);
-            Assert.Equal(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure!.Message), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+            Assert.Equal(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure!.Message).English, window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context())?.English);
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<CallToolResult> converting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.ConvertIndentationToTabs }));
             Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
             CallToolResult refused = Await(converting, "Convert Indentation on tool.py");
             string said = Text(refused);
-            Assert.True(refused.IsError == true && said.Contains(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure.Message), StringComparison.Ordinal),
+            Assert.True(refused.IsError == true && said.Contains(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure.Message).English, StringComparison.Ordinal),
                 $"Convert Indentation on a file whose grammar failed answered: {said}");
             Assert.Contains(IdeErrors.Errors, e => e.Message == grammar.Failure.Message);
         }
@@ -886,13 +886,13 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             string[] said = [.. found.Content.OfType<TextContentBlock>().Select(t => t.Text)];
             JsonElement[] symbols = found.IsError == true ? [] : [.. JsonDocument.Parse(said[0]).RootElement.EnumerateArray()];
             Assert.True(symbols.Any(s => s.GetProperty("name").GetString() == "Greeter" && s.GetProperty("path").GetString() == Path.Combine("Lib", "Greeter.cs"))
-                && said.Skip(1).Any(words => words.Contains(Refusals.Untaken([late]), StringComparison.Ordinal)),
+                && said.Skip(1).Any(words => words.Contains(Refusals.Untaken([late]).English, StringComparison.Ordinal)),
                 $"find_symbol of Greeter, asked while Late.cs is still loading into Lib, did not find Greeter naming Late.cs as left out: {string.Join(" | ", said)}");
 
             CallToolResult asked = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.SymbolInfo, new() { ["path"] = "Lib/Greeter.cs", ["line"] = 3, ["column"] = 14 })),
                 "the agent's symbol_info of Greeter", AgentLimit);
             string answered = Text(asked);
-            Assert.True(asked.IsError == true && answered.Contains(Refusals.NotTakenIn(late, "Lib"), StringComparison.Ordinal),
+            Assert.True(asked.IsError == true && answered.Contains(Refusals.NotTakenIn(late, "Lib").English, StringComparison.Ordinal),
                 $"symbol_info in Lib, asked while Late.cs is still loading into it, did not wait for Late.cs and say so: {answered}");
 
             Task<CallToolResult> tidying = Waiting.Apart(() => Result(client, McpTools.Refactor,
@@ -903,7 +903,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 .First(b => (string?)b.Content == AgentToolDialog.AllowForSession), settle: false);
             CallToolResult tidied = Ui.AwaitPumped(tidying, "the agent's Optimize Imports of Lib", AgentLimit);
             string[] left = tidied.IsError == true ? [] : [.. JsonDocument.Parse(Text(tidied)).RootElement.GetProperty("notApplied").EnumerateArray().Select(l => l.GetString()!)];
-            Assert.True(left.Contains(Refusals.NotTakenIn(late, "Lib")) && File.ReadAllText(written).StartsWith("using System.Text;", StringComparison.Ordinal),
+            Assert.True(left.Contains(Refusals.NotTakenIn(late, "Lib").English) && File.ReadAllText(written).StartsWith("using System.Text;", StringComparison.Ordinal),
                 $"Optimize Imports of Lib, asked while Late.cs is still loading into it, did not leave Late.cs as it is saying why: {Text(tidied)}");
         }
         finally
@@ -945,7 +945,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Ui.PumpUntil(() => window.EditorArea.Active?.Name == "Late.cs" && window.CSharpService!.For(window.EditorArea.Active) is not null, "Late.cs to open", AgentLimit);
             CallToolResult refused = Ui.AwaitPumped(Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Reformat })),
                 "the agent's Reformat Code of Late.cs", AgentLimit);
-            string expected = Refusals.NotInServerYet("Reformat Code", "Late.cs", "Lib");
+            string expected = Refusals.NotInServerYet("Reformat Code", "Late.cs", "Lib").English;
             Assert.True(refused.IsError == true && Text(refused).Contains(expected, StringComparison.Ordinal),
                 $"Reformat Code of a file the server has not taken in yet answered an agent: {Text(refused)}");
             Assert.Equal(expected, window.Status);
@@ -1271,7 +1271,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Task<CallToolResult> asked = Waiting.Apart(() => Result(client, McpTools.Definition, onApi, heard: heard));
             CallToolResult refused = Ui.AwaitPumped(asked, "the agent's definition, asked as the YAML server's start is held", AgentLimit);
             Assert.True(held.IsCompleted, $"The YAML server's start was never held, the definition answering: {Text(refused)}");
-            Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.StillStarting("YAML", limit), StringComparison.Ordinal),
+            Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.StillStarting("YAML", limit).English, StringComparison.Ordinal),
                 $"definition on a compose file, asked while the YAML server's start was held past the agent's wait, answered: {Text(refused)}");
             Assert.True(heard.Told.Any(t => t.Message?.Contains("Waiting for the YAML language server to start", StringComparison.Ordinal) == true),
                 $"The agent was not told its definition waited for the YAML server to start: {heard}");

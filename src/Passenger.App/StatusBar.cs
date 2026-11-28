@@ -29,7 +29,7 @@ public sealed record StatusPlace(string Name, Action Go)
 }
 
 /// <summary>Says something in the window's status bar, with where a click on it shows more (none when null).</summary>
-public delegate void StatusSay(string said, StatusPlace? more = null);
+public delegate void StatusSay(Words said, StatusPlace? more = null);
 
 /// <summary>The window's status bar: what the last action came to (an error's or a warning's marked with its icon until
 /// something else is said, and a link to where it has more to see while it has a place, its whole text on hover), and
@@ -200,9 +200,9 @@ public sealed class StatusBar
         working.IsVisible = latest is not null;
         if (!change.Ended)
         {
-            Show(change.Work.Stage, null, null);
+            Show(change.Work.Stage.Shown, null, null);
             Announcer.Live(text, Urgency.Polite);
-            announcer.TellStage(change.Work.Stage);
+            announcer.TellStage(change.Work.Stage.Shown);
         }
     }
 

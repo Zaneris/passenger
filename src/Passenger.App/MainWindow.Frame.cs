@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Settings;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -39,7 +40,7 @@ public partial class MainWindow
     }
 
     /// <summary>One of the frame's actions, which the terminal's keys run too.</summary>
-    private void Frame(string id, string title, Action<ActionContext> run, Func<ActionContext, string?>? whyNot, (string Path, int Group, int Order) menu) =>
+    private void Frame(string id, string title, Action<ActionContext> run, Func<ActionContext, Words?>? whyNot, (string Path, int Group, int Order) menu) =>
         actions!.Add(new IdeAction(id, title, "IDE", run)
         {
             WhyNot = whyNot ?? (_ => null),

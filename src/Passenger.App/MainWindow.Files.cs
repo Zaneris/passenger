@@ -337,7 +337,7 @@ public partial class MainWindow
             TypeRename.Named? named = null;
             TypeRename.Markup markup = new([], null);
             // Asked again once the server has read a file not open written a moment before (by Undo, another change).
-            (string? refused, System.Text.Json.JsonElement made) = await assist.PatientlyAsync(AppActions.Rename, async patience =>
+            (Words? refused, System.Text.Json.JsonElement made) = await assist.PatientlyAsync(AppActions.Rename, async patience =>
             {
                 Lsp.LspDocument? document = component is not null ? null
                     : opened ?? (shown = server.Open(type.Declaring, new TextDocument(FileText.Load(type.Declaring)?.Text ?? string.Empty)));
@@ -361,7 +361,7 @@ public partial class MainWindow
             }, answer => answer.Item1 is not null);
             if (refused is not null || asked is null)
             {
-                return refused;
+                return refused?.Shown;
             }
             if (markup.ClassFile is { } xaml && named?.FullName is { } fullName
                 && TypeRename.ClassEdit(xaml, WorkspaceEdits.Answered(Editors, asked)(xaml), fullName, renamed) is { } classEdit)

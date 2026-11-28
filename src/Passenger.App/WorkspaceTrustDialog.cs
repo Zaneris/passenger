@@ -31,7 +31,7 @@ public sealed class WorkspaceTrustDialog : IdeWindow
         {
             said.Add(DialogFooter.Paragraph(InRepository(folder, Trusting)));
         }
-        said.Add(DialogFooter.Paragraph(Refusals.TrustLets));
+        said.Add(DialogFooter.Paragraph(Refusals.TrustLets.Shown));
         said.Add(DialogFooter.Paragraph(Above is not null
             ? $"Untrusted, you read and edit its files, and none of its code runs until you trust it. {TrustParent} trusts every folder in {Path.GetFileName(Above)} too."
             : "Untrusted, you read and edit its files, and none of its code runs until you trust it."));
@@ -66,7 +66,7 @@ public sealed class WorkspaceTrustDialog : IdeWindow
     /// stays for the person.</summary>
     private void Answer(TrustAnswer said)
     {
-        if (AgentAsks.PersonsAlone(Refusals.TrustAnsweredByThePerson))
+        if (AgentAsks.PersonsAlone(Refusals.TrustAnsweredByThePerson.Shown))
         {
             return;
         }

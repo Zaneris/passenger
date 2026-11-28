@@ -43,8 +43,8 @@ public sealed partial class PassengerTools
         {
             // The window's words name its Settings page; an agent starts a program Hot Reload applies to by run or debug_start.
             string started = debugger.IsDebugging ? string.Empty : $" ({McpTools.Run} with hotReload true, or {McpTools.DebugStart}, starts one it applies to)";
-            return why == window.ScriptsReloadAsSaved() ? new HotReloadInfo("nothingToApply", why, [], [], 0, [], false, false)
-                : throw new InvalidOperationException($"Hot Reload cannot apply changes: {why}{started}");
+            return why.English == window.ScriptsReloadAsSaved() ? new HotReloadInfo("nothingToApply", why.English, [], [], 0, [], false, false)
+                : throw new InvalidOperationException($"Hot Reload cannot apply changes: {why.English}{started}");
         }
         // The window's Apply Hot Reload Changes, its restarts made as the agent asks (else as Settings say) and never asked.
         DebugSession? before = debugger.Session;
@@ -62,8 +62,8 @@ public sealed partial class PassengerTools
                 AgentCall.Follow(window.Actions.Work, AppActions.Debug, AppActions.Build);
             }
             return await window.RestartForAgentAsync(rude, running);
-        }).WaitAsync(cancel) ?? throw new InvalidOperationException(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is { } under
-            ? ActionWork.Busy(under) : "Apply Hot Reload Changes is under way");
+        }).WaitAsync(cancel) ?? throw new InvalidOperationException((window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is { } under
+            ? ActionWork.Busy(under) : "Apply Hot Reload Changes is under way").English);
         HotReloadOutcome outcome = applied.Outcome;
         HotReloadInfo answer = new(Result(outcome.Result), outcome.Said, [.. outcome.Files.Select(Relative)], outcome.Modules, outcome.Methods,
             [.. outcome.Problems.Select(p => new Finding(p.Severity == Passenger.App.Run.ProblemSeverity.Error ? "error" : "warning", p.Code, p.Message,

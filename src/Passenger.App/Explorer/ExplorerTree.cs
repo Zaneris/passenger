@@ -1289,16 +1289,16 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     /// <summary>Why Rename, Delete, Cut and a drag leave the row where it is: a folder the SDK reads by its name, or a file
     /// or folder of a NuGet package, every project's copy; null for every other row.</summary>
-    public string? Kept => SdkFolder is { } read ? Refusals.ReadBySdk(read, Name)
+    public string? Kept => (SdkFolder is { } read ? Refusals.ReadBySdk(read, Name)
         : Kind is NodeKind.File or NodeKind.Folder && Path is { } path && Packages.PackageFolders.PackageOf(path) is { } package
             ? Refusals.OfPackage(Name, package, Kind == NodeKind.Folder)
-        : null;
+        : null)?.Shown;
 
     /// <summary>Why nothing is pasted, dropped or made new in a folder on disk: a NuGet package's, every project's copy;
     /// null where it may be.</summary>
-    public static string? KeptOut(string folder) => Packages.PackageFolders.PackageIn(folder) is { } package
+    public static string? KeptOut(string folder) => (Packages.PackageFolders.PackageIn(folder) is { } package
         ? Refusals.OfPackage(System.IO.Path.GetFileName(folder), package, folder: true)
-        : null;
+        : null)?.Shown;
 
     /// <summary>Cut and waiting to be pasted, which dims it.</summary>
     public bool IsCut

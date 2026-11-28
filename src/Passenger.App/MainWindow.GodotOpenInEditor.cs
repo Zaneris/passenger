@@ -59,13 +59,13 @@ public partial class MainWindow
     {
         if (Editors.Active is not { } shown || GodotOfFile(shown.Path) is not { } folder)
         {
-            return (false, GodotAtHand() is null ? Refusals.NoGodotProject : Refusals.NoGodotScene);
+            return (false, (GodotAtHand() is null ? Refusals.NoGodotProject : Refusals.NoGodotScene).Shown);
         }
         int caret = Editors.CodeEditor.Document == shown.Text ? Editors.CodeEditor.Selections.Primary.Caret : shown.Selections.Primary.Caret;
         (string? scene, string node, string? why) = await GodotPlaceAtAsync(folder, shown, caret);
         if (scene is null)
         {
-            return (false, why ?? Refusals.NoGodotScene);
+            return (false, (why ?? Refusals.NoGodotScene).Shown);
         }
         string name = Path.GetFileName(folder);
         string place = node == "." ? Path.GetFileName(scene) : $"{node} in {Path.GetFileName(scene)}";

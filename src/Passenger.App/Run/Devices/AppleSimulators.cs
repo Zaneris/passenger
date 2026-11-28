@@ -68,7 +68,7 @@ public static class AppleSimulators
     {
         if (!OperatingSystem.IsMacOS())
         {
-            return ([], null, Refusals.IosOnMacAlone);
+            return ([], null, Refusals.IosOnMacAlone.Shown);
         }
         MSBuildAnswer listed = await MSBuildQuestions.AskAsync(project, null, globals, new MSBuildQuestion([MSBuildNames.Restore]), cancel);
         if (listed.Succeeded)
@@ -81,7 +81,7 @@ public static class AppleSimulators
         }
         if (!listed.Succeeded)
         {
-            return ([], null, Refusals.NoIos(AndroidDevices.ProblemOf(listed.Said)));
+            return ([], null, Refusals.NoIos(AndroidDevices.ProblemOf(listed.Said)).Shown);
         }
         if (!listed.Answered)
         {
@@ -89,7 +89,7 @@ public static class AppleSimulators
         }
         if (listed.Property(MSBuildNames.SdkDevPath) is not { Length: > 0 } developer || !File.Exists(new AppleTools(developer).Simctl))
         {
-            return ([], null, Refusals.NoIos("the iOS workload found no Xcode with simctl"));
+            return ([], null, Refusals.NoIos("the iOS workload found no Xcode with simctl").Shown);
         }
         return (DeviceTargets.Parse(TargetPlatform.Ios, listed), new AppleTools(PathNames.Canonical(developer)), null);
     }

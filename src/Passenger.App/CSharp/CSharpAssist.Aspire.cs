@@ -233,7 +233,7 @@ internal sealed partial class CSharpAssist
     internal Task<RefactorOutcome> RenameResourceAsync(OpenDocument document, int offset, string old, string name, Patience? patience) =>
         actions.MakeAsync($"Rename {old} to {name}", document, offset,
             async current => (await current.ExtensionAsync<AspireRenaming>(Handlers.AspireRename, new AspireRenameRequest(current.PlaceOf(offset), name))).Made
-                ?? new Refactored(Refusals.NotRenamed(old, "no resource is named there any longer"), []),
+                ?? new Refactored(Refusals.NotRenamed(old, "no resource is named there any longer").Shown, []),
             files => $"Renamed {old} to {name} in {Passenger.Core.Plural.Of(files, "file")}", patience);
 
     /// <summary>Aspire's Go to Declaration, in an AppHost's or a service's file: the project file a service is added by (its
@@ -260,6 +260,6 @@ internal sealed partial class CSharpAssist
             return null;
         }
         LspPosition at = target.At is { } place ? new LspPosition(place.Line, place.Character) : new LspPosition(0, 0);
-        return new Declared([new LspLocation(DocumentUris.FromPath(Passenger.Core.PathNames.Canonical(found)), new LspRange(at, at))], Refusals.NoDeclaration);
+        return new Declared([new LspLocation(DocumentUris.FromPath(Passenger.Core.PathNames.Canonical(found)), new LspRange(at, at))], Refusals.NoDeclaration.Shown);
     }
 }

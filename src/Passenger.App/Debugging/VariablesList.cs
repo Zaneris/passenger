@@ -136,7 +136,7 @@ public sealed class VariablesList : TreeList
     internal Func<bool> CanReadMemory { get; set; } = () => false;
 
     /// <summary>Why the debugger whose values the rows are marks no object, where it cannot; Mark Object greys saying so.</summary>
-    public Func<string?> MarksWhyNot { get; set; } = () => null;
+    public Func<Words?> MarksWhyNot { get; set; } = () => null;
 
     /// <summary>The menu's items for a row's object: marked, or not yet.</summary>
     public const string MarkObject = "Mark Object";
@@ -231,7 +231,7 @@ public sealed class VariablesList : TreeList
         if (DataWatch is { } offer)
         {
             // Greyed until the debugger answers what can be done with the row.
-            MenuItem watch = ListMenus.Item(DataWatchOffer.Set, () => DataBreakpointRequested?.Invoke(this, node), Refusals.AskingDebugger);
+            MenuItem watch = ListMenus.Item(DataWatchOffer.Set, () => DataBreakpointRequested?.Invoke(this, node), Refusals.AskingDebugger.Shown);
             items.Add(new Separator());
             items.Add(watch);
             IdeErrors.Observe(Offer(watch, offer(node)));

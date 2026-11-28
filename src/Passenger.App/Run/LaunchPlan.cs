@@ -312,7 +312,7 @@ public sealed partial record LaunchPlan
         if (configuration.IsScript)
         {
             // Run starts it with its package manager (BuildRunController.Scripts.cs): no .NET program to plan.
-            throw new LaunchException(Refusals.ScriptOnlyRuns(configuration.Name));
+            throw new LaunchException(Refusals.ScriptOnlyRuns(configuration.Name).English);
         }
         if (configuration.RunsScriptGame)
         {
@@ -352,7 +352,7 @@ public sealed partial record LaunchPlan
         Devices.TargetPlatform? platform = device?.Platform ?? Devices.DeviceTargets.PlatformOf(framework ?? project.TargetFrameworks.FirstOrDefault() ?? string.Empty);
         if (device is null && configuration.Program.Length == 0 && platform is Devices.TargetPlatform.Android or Devices.TargetPlatform.Ios)
         {
-            throw new LaunchException(Refusals.NoRunTarget(project.Name));
+            throw new LaunchException(Refusals.NoRunTarget(project.Name).English);
         }
         if (configuration.Program.Length == 0 && platform == Devices.TargetPlatform.MacCatalyst && !OperatingSystem.IsMacOS())
         {
@@ -519,7 +519,7 @@ public sealed partial record LaunchPlan
             return plan;
         }
         // A Functions app runs as dotnet run runs it, by func, whose SDK names it only in a target no evaluation runs.
-        string func = await BackgroundWork.Run(Aspire.FunctionsHost.Func, cancel) ?? throw new LaunchException(Refusals.NoFunc(project.Name));
+        string func = await BackgroundWork.Run(Aspire.FunctionsHost.Func, cancel) ?? throw new LaunchException(Refusals.NoFunc(project.Name).English);
         return Aspire.FunctionsHost.Plan(plan, func, [.. plan.OwnArguments]);
     }
 

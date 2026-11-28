@@ -574,10 +574,10 @@ public sealed class ContainersTests
         try
         {
             Assert.Null(engine.Known);
-            Assert.Null(window.Actions.WhyNot(AppActions.ContainerPrune, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.ContainerPrune, window.Actions.Context())?.Shown);
             EngineState known = Ui.Await(engine.StateAsync(), "the engine's state, its command missing");
             Assert.False(known.IsReady, $"An engine whose command is missing serves: {known}");
-            string? why = window.Actions.WhyNot(AppActions.ContainerPrune, window.Actions.Context());
+            string? why = window.Actions.WhyNot(AppActions.ContainerPrune, window.Actions.Context())?.Shown;
             Assert.True(why is not null && why == known.Problem,
                 $"Prune, the engine known not to serve ({known.Problem}), was refused with \"{why}\" rather than the engine's own words");
         }
@@ -854,7 +854,7 @@ public sealed class ContainersTests
             };
             view.Metrics.Paused = (_, _) => true;
             Passenger.Profiler.ProfilePlace place = new(_ => throw new InvalidOperationException("The stand-in's metrics were read"), "a stand-in", path => path);
-            string paused = Refusals.MetricsWhilePaused("web");
+            string paused = Refusals.MetricsWhilePaused("web").Shown;
             Ui.WaitFor(() => view.Choose(r => r.Kind == ContainerRowKind.Service && r.Service == "web"), "web's row");
             view.ShowTab(RunWindows.StatsTab);
             Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for");
@@ -918,7 +918,7 @@ public sealed class ContainersTests
             Assert.True(view.Metrics.IsVisible, "web's metrics said why its program was not reached where nobody sees it");
             Ui.WaitFor(() => lookups.Count == 1, "web's program to be looked for again, nothing else having changed");
             lookups.Dequeue().SetResult(DotnetLookup.Found(1, place));
-            Ui.WaitFor(() => view.Metrics.Said == Refusals.MetricsWhilePaused("web"), () => $"web's metrics to be followed once its program was found, not \"{view.Metrics.Said}\"");
+            Ui.WaitFor(() => view.Metrics.Said == Refusals.MetricsWhilePaused("web").Shown, () => $"web's metrics to be followed once its program was found, not \"{view.Metrics.Said}\"");
 
             Assert.True(view.Choose(r => r.Kind == ContainerRowKind.Project), "the project's row");
             Ui.Settle();
@@ -1296,13 +1296,13 @@ public sealed class ContainersTests
                 $"the container listed through wslc, not [{string.Join(", ", view.Rows.Select(row => row.Label))}] ({view.State?.Problem}; wslc was asked: {string.Join("; ", wslc.Calls)})");
             Assert.True(view.State is { Status: EngineStatus.NoCompose, IsWslc: true, EngineName: ContainerEngine.WslContainers, ServerVersion: "2.7.3.0" },
                 $"The engine's state is not WSL Containers' serving with no Compose: {view.State}");
-            Assert.Contains(window.BottomPanel.Problems.ContainerProblems, problem => problem.Message == Refusals.WslcNoCompose);
+            Assert.Contains(window.BottomPanel.Problems.ContainerProblems, problem => problem.Message == Refusals.WslcNoCompose.Shown);
             Assert.True(view.Choose(row => row.Container is { } container && ContainerRow.SameId(wslc.Id, container.Id)), "The container's row");
             Ui.Settle();
-            Assert.Equal(Refusals.WslcNoPause, window.Actions.WhyNot(AppActions.ContainerPause, window.Actions.Context()));
-            Assert.Null(window.Actions.WhyNot(AppActions.ContainerStop, window.Actions.Context()));
+            Assert.Equal(Refusals.WslcNoPause.Shown, window.Actions.WhyNot(AppActions.ContainerPause, window.Actions.Context())?.Shown);
+            Assert.Null(window.Actions.WhyNot(AppActions.ContainerStop, window.Actions.Context())?.Shown);
             (string? why, string? endpoint) = Ui.AwaitPumped(window.Session.Tests.ContainerEngine!(CancellationToken.None), "the engine Testcontainers would reach");
-            Assert.True(why == Refusals.WslcNoDockerApi && endpoint is null, $"Testcontainers was offered WSL Containers: {why}, {endpoint}");
+            Assert.True(why == Refusals.WslcNoDockerApi.Shown && endpoint is null, $"Testcontainers was offered WSL Containers: {why}, {endpoint}");
 
             view.ShowTab("Details");
             Ui.WaitFor(() => view.Details.Details is { } details && details.Id == wslc.Id && details.Ports.Any(port => port.HostPort == "50379"),
@@ -1566,8 +1566,8 @@ public sealed class ContainersTests
         {
             Assert.False(window.IsRunning, "The run was still followed once let go of");
             Assert.Null(window.Builds.Containers);
-            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
-            Assert.NotNull(window.Actions.WhyNot(AppActions.Detach, window.Actions.Context()));
+            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown);
+            Assert.NotNull(window.Actions.WhyNot(AppActions.Detach, window.Actions.Context())?.Shown);
             Assert.False(TakenDown(engineFolder), "Detach took the run's containers down");
 
             window.Close();
@@ -1745,7 +1745,7 @@ public sealed class ContainersTests
         Ui.Settle();
         Assert.True(window.SelectConfiguration("docker-compose"), $"No configuration of the .dcproj: [{string.Join(", ", window.Configurations.Select(c => c.Name))}]");
         Ui.Launched(window, window.RunAsync(), "the Docker Compose project's run to come up");
-        Assert.Null(window.Actions.WhyNot(AppActions.Detach, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.Detach, window.Actions.Context())?.Shown);
         Assert.True(window.Perform(AppActions.Detach), "Detach did not run");
         Ui.WaitFor(() => window.Status?.StartsWith("Detached from docker-compose", StringComparison.Ordinal) == true, () => $"Detach to be said, not \"{window.Status}\"");
         Assert.Equal("Detached from docker-compose: its containers run on until the Containers window stops them or the folder closes", window.Status);
@@ -2042,7 +2042,7 @@ public sealed class ContainersTests
                 ToggleButton shown = window.ContainersWindow.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == $"containers{tab}Tab");
                 Assert.True(shown.IsChecked == true, $"Find Action showed the Containers window's {tab} tab without choosing it");
             }
-            Assert.Equal("Nothing chosen in the Containers window has a Details tab", window.Actions.WhyNot(AppActions.ContainersDetails, window.Actions.Context()));
+            Assert.Equal("Nothing chosen in the Containers window has a Details tab", window.Actions.WhyNot(AppActions.ContainersDetails, window.Actions.Context())?.Shown);
             FindAction(window, "Find in Container Logs");
             Ui.WaitFor(() => window.ContainersWindow.Log.Find.IsVisible, "the log's Find to open");
             Assert.Equal(RunWindows.LogTab, window.ContainersWindow.ShownTab);

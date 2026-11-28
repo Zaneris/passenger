@@ -113,9 +113,9 @@ public sealed class HotReload
     /// <summary>Why the code the language server reads now is not the code the program runs (<see cref="Builds"/>), naming
     /// the first project of the program's the two build unlike; null while they build it alike, or with nothing to check.</summary>
     private string? Unlike() =>
-        programBuild is { } built && reads() is { } read && built.Workspace.BuiltUnlike(read, built.Project) is { } unlike
+        (programBuild is { } built && reads() is { } read && built.Workspace.BuiltUnlike(read, built.Project) is { } unlike
             ? Refusals.BuiltUnlike(built.Name, Path.GetFileNameWithoutExtension(unlike.Project), unlike.Here.Key, unlike.There.Key)
-            : null;
+            : null)?.Shown;
 
     /// <summary>Hot Reload for this program restarted on the same build, without the edits it took in, whose built lines are
     /// <paramref name="restarted"/>: the files' texts from before their edits kept, every edit since the build one to apply.</summary>
@@ -161,7 +161,7 @@ public sealed class HotReload
     }
 
     /// <summary>Why Apply Changes cannot run now, or null when it can.</summary>
-    public string? WhyNot => stopped is not null ? stopped
+    public Words? WhyNot => stopped is not null ? stopped
         : debug?.State is not (DebugState.Running or DebugState.Paused) ? Refusals.ProgramNotRunning
         : Unlike();
 
@@ -211,10 +211,10 @@ public sealed class HotReload
     {
         UiThread.Check();
         Stopwatch took = Stopwatch.StartNew();
-        string? why = WhyNot;
+        string? why = WhyNot?.Shown;
         if (why is not null || debug is not { } program)
         {
-            return new HotReloadOutcome(HotReloadResult.Failed, why ?? Refusals.ProgramNotRunning);
+            return new HotReloadOutcome(HotReloadResult.Failed, (why ?? Refusals.ProgramNotRunning).Shown);
         }
         starting ??= StartAsync();
         if (await starting is not null)

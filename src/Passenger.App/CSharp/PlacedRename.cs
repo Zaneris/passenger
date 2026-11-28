@@ -45,7 +45,7 @@ internal sealed class PlacedRename(string old, string name)
     {
         if (files.Count == 0)
         {
-            return Refusals.NotRenamed(old, none);
+            return Refusals.NotRenamed(old, none).Shown;
         }
         if (behind is not null && await behind(Read) is { } stale)
         {

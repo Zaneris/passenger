@@ -63,7 +63,7 @@ public partial class MainWindow
             IReadOnlyList<string> remotes = await vcs.RemotesAsync();
             IReadOnlyList<string> branches = editing is null ? [] : [.. (await vcs.BranchTreeAsync()).Branches
                 .Where(b => b.Kind == RefKind.Remote && b.Name.StartsWith(editing.Name + "/", StringComparison.Ordinal)).Select(b => b.Name)];
-            start = new RemoteStart(editing, remotes, branches, editing is null ? [] : await vcs.TrackingAsync(editing.Name), vcs.WhyNotRemote);
+            start = new RemoteStart(editing, remotes, branches, editing is null ? [] : await vcs.TrackingAsync(editing.Name), vcs.WhyNotRemote?.Shown);
         }
         RemoteDialog dialog = new(start);
         remoteDialog = dialog;
@@ -120,7 +120,7 @@ public partial class MainWindow
             BranchInfo? pushed = branch ?? (await vcs.LocalBranchesAsync()).FirstOrDefault(b => b.IsCurrent);
             if (pushed is null)
             {
-                status.Text = Refusals.Detached;
+                status.Text = Refusals.Detached.Shown;
                 reading.Tell(false, Refusals.Detached);
                 return;
             }

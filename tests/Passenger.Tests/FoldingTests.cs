@@ -837,7 +837,7 @@ public sealed class FoldingTests : IDisposable
                 }
                 else
                 {
-                    Assert.Null(window.Actions.Run(action));
+                    Assert.Null(window.Actions.Run(action)?.Shown);
                     Ui.Settle();
                 }
             }
@@ -868,7 +868,7 @@ public sealed class FoldingTests : IDisposable
 
             editor.Focus();
             editor.Selections = SelectionSet.Single(Text().IndexOf("    int Twice", StringComparison.Ordinal));
-            Assert.Null(window.Actions.Run(EditorActions.Unfold));
+            Assert.Null(window.Actions.Run(EditorActions.Unfold)?.Shown);
             Ui.Settle();
             Assert.Equal([Expected()[0]], Own());
             Assert.DoesNotContain(editor.FoldRegions, r => r.Kind == FoldKind.Own && !r.Folded);

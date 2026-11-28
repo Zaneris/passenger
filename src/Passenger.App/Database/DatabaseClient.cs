@@ -26,7 +26,7 @@ internal static partial class DatabaseClient
     {
         if (!DatabaseKinds.SpeaksSql(source.Kind))
         {
-            throw new InvalidOperationException(Refusals.NotSql(DatabaseKinds.Title(source.Kind)));
+            throw new InvalidOperationException(Refusals.NotSql(DatabaseKinds.Title(source.Kind)).English);
         }
         if (source.Kind == DatabaseKind.DuckDb)
         {
@@ -36,7 +36,7 @@ internal static partial class DatabaseClient
             }
             catch (Updates.ReleaseAssetException failed)
             {
-                throw new IOException(Refusals.NoDuckDbEngine(failed.Message), failed);
+                throw new IOException(Refusals.NoDuckDbEngine(failed.Message).English, failed);
             }
         }
         string whole = Whole(source);
@@ -813,7 +813,7 @@ internal static partial class DatabaseClient
         string Said(int row, int column) => Convert.ToString(rows.Rows[row][column], CultureInfo.InvariantCulture) ?? string.Empty;
         if (rows.RowCount == 0)
         {
-            throw new InvalidOperationException(Refusals.NoPlan);
+            throw new InvalidOperationException(Refusals.NoPlan.English);
         }
         return source.Kind switch
         {
@@ -854,7 +854,7 @@ internal static partial class DatabaseClient
         string[] keys = [.. schema.Columns.Where(c => c.Primary).Select(c => c.Name)];
         if (keys.Length == 0 && !(edits.Changed.IsEmpty && edits.Deleted.IsEmpty))
         {
-            throw new InvalidOperationException(Refusals.NoPrimaryKey(schema.Table.ToString()));
+            throw new InvalidOperationException(Refusals.NoPrimaryKey(schema.Table.ToString()).English);
         }
         string table = Full(source.Kind, schema.Table);
         await using DbConnection connection = await OpenAsync(source, cancel);
@@ -924,13 +924,13 @@ internal static partial class DatabaseClient
             }
             if (now.RowCount != 1)
             {
-                throw new InvalidOperationException(Refusals.RowGone(schema.Table.ToString(), key.ToString()));
+                throw new InvalidOperationException(Refusals.RowGone(schema.Table.ToString(), key.ToString()).English);
             }
             for (int i = 0; i < columns.Length; i++)
             {
                 if (Array.IndexOf(now.Columns, columns[i]) is not (>= 0 and int at) || !PendingEdits.Same(now.Rows[0][at], read[i]))
                 {
-                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()));
+                    throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()).English);
                 }
             }
         }
@@ -947,7 +947,7 @@ internal static partial class DatabaseClient
             int affected = await command.ExecuteNonQueryAsync(cancel);
             if (affected != 1)
             {
-                throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()));
+                throw new InvalidOperationException(Refusals.RowChanged(schema.Table.ToString(), key.ToString()).English);
             }
         }
 
@@ -973,7 +973,7 @@ internal static partial class DatabaseClient
             {
                 "1" => true,
                 "0" => false,
-                string word => bool.TryParse(word, out bool truth) ? truth : throw new FormatException(Refusals.NotTrueOrFalse(text)),
+                string word => bool.TryParse(word, out bool truth) ? truth : throw new FormatException(Refusals.NotTrueOrFalse(text).English),
             },
             IConvertible and not string => Convert.ChangeType(text, like.GetType(), CultureInfo.InvariantCulture),
             _ => text,

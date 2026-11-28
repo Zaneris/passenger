@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -104,11 +105,11 @@ public static class ToolButtons
     /// name, as a refusal follows what it stopped ("Delete: main is checked out"), or alone on one of words, which names
     /// itself; null gives it back its <paramref name="tip"/> while it can act, else its name alone. A screen reader names it
     /// as before. UiRulesTests fails a control greyed with why by hand.</summary>
-    public static void Grey(Control button, string? why, string? tip = null)
+    public static void Grey(Control button, Words? why, string? tip = null)
     {
         string? name = AutomationProperties.GetName(button);
         button.IsEnabled = why is null;
-        ToolTip.SetTip(button, why is null ? tip ?? name : name is null ? why : $"{name}: {why}");
+        ToolTip.SetTip(button, why is null ? tip ?? name : name is null ? why.Shown : $"{name}: {why.Shown}");
     }
 
     private static T Made<T>(T button, Control mark, string tip)

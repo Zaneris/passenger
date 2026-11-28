@@ -69,7 +69,7 @@ public sealed partial class MigrationsController
         cancel.ThrowIfCancellationRequested();
         if (parts.Session() != owning)
         {
-            return new EfUpdate(false, null, [], Refusals.SolutionClosed);
+            return new EfUpdate(false, null, [], Refusals.SolutionClosed.Shown);
         }
         string named = $"{(InstalledVersion.Move(version, await FolderPackages.VersionsInAsync(project, id)) == PackageMove.Downgrade ? "Downgrade" : "Update")} {id} to {version} in {project.Name}";
         if (left is null)
@@ -93,7 +93,7 @@ public sealed partial class MigrationsController
         cancel.ThrowIfCancellationRequested();
         if (parts.Session() != owning)
         {
-            return new EfUpdate(false, null, [], Refusals.SolutionClosed);
+            return new EfUpdate(false, null, [], Refusals.SolutionClosed.Shown);
         }
         if (answer is null)
         {

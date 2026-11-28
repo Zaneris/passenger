@@ -96,7 +96,7 @@ public sealed class ToolboxView : DockPanel
         list.AddHandler(PointerCaptureLostEvent, (_, _) => EndDrag(), RoutingStrategies.Bubble, handledEventsToo: true);
         placeholder = new EmptyState();
         Children.Add(new Panel { Children = { list, placeholder } });
-        Show([], Refusals.NoFormDesign);
+        Show([], Refusals.NoFormDesign.Shown);
     }
 
     /// <summary>An item to add to the design, into its chosen container.</summary>
@@ -159,7 +159,7 @@ public sealed class ToolboxView : DockPanel
         {
             if (top.Count == 0)
             {
-                placeholder.Text = why ?? Refusals.NoFormDesign;
+                placeholder.Text = (why ?? Refusals.NoFormDesign).Shown;
             }
             return;
         }
@@ -172,7 +172,7 @@ public sealed class ToolboxView : DockPanel
             row.Below.AddRange(group.Select(e => new ToolboxRow(group.Key, e)));
             top.Add(row);
         }
-        placeholder.Text = top.Count == 0 ? why ?? Refusals.NoFormDesign : null;
+        placeholder.Text = (top.Count == 0 ? why ?? Refusals.NoFormDesign : null)?.Shown;
         Relist();
     }
 

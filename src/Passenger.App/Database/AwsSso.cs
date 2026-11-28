@@ -78,7 +78,7 @@ public static class AwsSso
     {
         if (!AwsProfiles.Store().TryGetProfile(profile, out CredentialProfile? found) || Of(found) is not { } sso)
         {
-            throw new InvalidOperationException(Refusals.AwsProfileUnusable(profile, "no IAM Identity Center sign-in"));
+            throw new InvalidOperationException(Refusals.AwsProfileUnusable(profile, "no IAM Identity Center sign-in").English);
         }
         using AmazonSSOOIDCClient oidc = new(new AnonymousAWSCredentials(), AwsProfiles.Config<AmazonSSOOIDCConfig>(sso.Region));
         RegisterClientResponse client = await oidc.RegisterClientAsync(new RegisterClientRequest
@@ -116,11 +116,11 @@ public static class AwsSso
             }
             catch (Exception ended) when (ended is ExpiredTokenException or AccessDeniedException)
             {
-                throw new InvalidOperationException(Refusals.AwsSignInNotApproved(profile), ended);
+                throw new InvalidOperationException(Refusals.AwsSignInNotApproved(profile).English, ended);
             }
             if (until.Passed)
             {
-                throw new InvalidOperationException(Refusals.AwsSignInNotApproved(profile));
+                throw new InvalidOperationException(Refusals.AwsSignInNotApproved(profile).English);
             }
             await Task.Delay(every, cancel);
         }
@@ -212,7 +212,7 @@ public static class AwsSso
 }
 
 /// <summary>A profile that signs in through IAM Identity Center has no sign-in that holds: the person signs in again.</summary>
-public sealed class AwsSignInNeededException(string profile) : IOException(Refusals.AwsSignInNeeded(profile))
+public sealed class AwsSignInNeededException(string profile) : IOException(Refusals.AwsSignInNeeded(profile).English)
 {
     public string Profile { get; } = profile;
 }

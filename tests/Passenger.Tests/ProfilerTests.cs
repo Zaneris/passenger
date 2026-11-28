@@ -668,12 +668,12 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
         try
         {
             Ui.PumpUntil(() => Programs().Count > 0, "the program to run as the profiler waits for it", TimeSpan.FromMinutes(2));
-            Assert.Equal("Already under way: Starting Starting: Undiagnosed under the profiler…", window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
+            Assert.Equal("Already under way: Starting Starting: Undiagnosed under the profiler…", window.Actions.WhyNot(AppActions.Profile, window.Actions.Context())?.Shown);
 
             Task<string?> second = window.ProfileAsync();
             again = second;
             Assert.True(Ui.Pumped(() => second.IsCompleted, TimeSpan.FromSeconds(10)), $"A second Profile while the first program started went on to start it again ({Programs().Count} programs)");
-            Assert.Equal(Refusals.Profiling, Ui.AwaitPumped(second, "the second Profile's refusal"));
+            Assert.Equal(Refusals.Profiling.Shown, Ui.AwaitPumped(second, "the second Profile's refusal"));
             Assert.Single(Programs());
             Assert.False(started.IsCompleted, $"The first profile's start ended: {(started.IsCompleted ? Ui.AwaitPumped(started, "the first profile's start") : null)}");
 
@@ -689,7 +689,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Assert.Equal(killed, view.Status);
             Assert.False(kill.IsVisible, "Kill stayed once the start was ended");
             Assert.Equal(before, Ports());
-            Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context())?.Shown);
 
             Configure(window, "Elsewhere", pids, workingDirectory: "gone");
             string? refused = Ui.Await(window.ProfileAsync(), "the build and the start", TimeSpan.FromMinutes(3));
@@ -716,7 +716,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             own[closed] = OwnProcess.Of(closed);
             Assert.False(waiting.IsCompleted, $"The profiler gave up on the program before the folder was closed: {(waiting.IsCompleted ? Ui.AwaitPumped(waiting, "the profile's start") : null)}");
             Assert.Null(window.CloseSolution());
-            Assert.Equal(Refusals.SolutionClosed, Ui.AwaitPumped(waiting, "the profile's start to end with its folder", TimeSpan.FromSeconds(10)));
+            Assert.Equal(Refusals.SolutionClosed.Shown, Ui.AwaitPumped(waiting, "the profile's start to end with its folder", TimeSpan.FromSeconds(10)));
             Assert.True(Processes.Gone(closed), $"Closing the folder left the program being profiled running: {Processes.Describe(closed)}");
             Assert.Equal(before, Ports());
             window.Close();
@@ -751,7 +751,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Ui.TypeToDebugged(window, "to the breakpoint");
             Ui.WaitFor(() => window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused, "the program to stop at its breakpoint", TimeSpan.FromMinutes(1));
 
-            Assert.Equal(Attaching, window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Assert.Equal(Attaching, window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context())?.Shown);
             Task<string?> refused = window.AttachProfilerAsync();
             Assert.True(refused.IsCompleted, "Attach Profiler waited on the program the debugger holds");
             Assert.Equal(Attaching, Ui.Await(refused, "Attach Profiler's refusal"));
@@ -759,13 +759,13 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Assert.Null(window.Profiling);
 
             Resume(window);
-            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context())?.Shown);
             Ui.Launched(window, window.AttachProfilerAsync(), "the profiler to attach to the program gone on");
             Assert.True(window.Profiling is { Attached: true }, "Attach Profiler did not attach once the program went on");
 
             Assert.True(window.Perform(AppActions.Pause), "Pause did not run");
             Ui.WaitFor(() => window.Debugger.Session?.State == Passenger.App.Debugging.DebugState.Paused, "the program to pause", TimeSpan.FromMinutes(1));
-            Assert.Equal(Snapshotting, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context()));
+            Assert.Equal(Snapshotting, window.Actions.WhyNot(AppActions.MemorySnapshot, window.Actions.Context())?.Shown);
             window.ShowToolWindow(ToolWindowIds.Profiler);
             Ui.Settle();
             Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
@@ -787,7 +787,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Passenger.App.Profiling.SnapshotRead read = Ui.Await(window.SnapshotAsync(), "the attached run's snapshot once the program went on", TimeSpan.FromMinutes(2));
             Assert.True(read.Snapshot is not null, read.Message);
             Assert.True(window.Debugger.IsDebugging, "The program debugged ended with the profiler's snapshot");
-            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context())?.Shown);
         }
         finally
         {
@@ -878,21 +878,21 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Passenger.App.Profiling.ProfilerView view = window.ProfilerView;
             Assert.True(Processes.IsRunning(program), "The program Profile started ended with its snapshot");
             Assert.True(view.CanKill, "Kill went with the snapshot, though the program Profile started goes on");
-            Assert.Null(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown);
             // Windows lists a named pipe until its last handle goes, which the program closes soon, not at once.
             Ui.WaitFor(() => Ports().SequenceEqual(before),
                 () => $"the profiler's port to go with the snapshot, the program going on, where {string.Join(", ", Ports())} is still listed",
                 TimeSpan.FromSeconds(10));
             Assert.Equal($"{window.Configuration!.Name} goes on after its snapshot: Kill it first, or Attach Profiler to profile it again",
-                window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
+                window.Actions.WhyNot(AppActions.Profile, window.Actions.Context())?.Shown);
             Ui.TypeToRun(window, "after the snapshot");
             Ui.WaitFor(() => Shows(run, "read after the snapshot"), "the program to read what was typed after its snapshot");
 
             Ui.Run(window, AppActions.Stop);
             Assert.True(Processes.Gone(program), $"Stop left the program Profile started running: {Processes.Describe(program)}");
             Ui.WaitFor(() => !view.CanKill, "Kill to go with the program");
-            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()));
-            Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
+            Assert.Equal("Nothing is running", window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown);
+            Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context())?.Shown);
             Assert.Null(window.Profiling);
 
             int first = program;
@@ -930,14 +930,14 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             int ran = Started(pids, "Run's program to write its id");
             Assert.True(window.SelectConfiguration("Other"), "No configuration Other");
             string taken = "Run's program uses the Run console: stop it first, or Attach Profiler to profile it";
-            Assert.Equal(taken, window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
+            Assert.Equal(taken, window.Actions.WhyNot(AppActions.Profile, window.Actions.Context())?.Shown);
             Assert.Equal(taken, Ui.Await(window.ProfileAsync(), "Profile's refusal"));
             Assert.True(Shows(run, "waiting"), "Profile cleared the Run console of Run's program");
             Ui.TypeToRun(window, "to the run");
             Ui.WaitFor(() => Shows(run, "read to the run"), "Run's program to read what was typed once Profile was refused");
 
             Assert.True(window.SelectConfiguration(name), $"No configuration {name}");
-            Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.Profile, window.Actions.Context())?.Shown);
             Ui.Launched(window, window.ProfileAsync(), "the profiled run", TimeSpan.FromMinutes(3));
             Assert.True(Processes.Gone(ran), $"Profile of {name} left the program Run started for it running: {Processes.Describe(ran)}");
             Assert.False(window.Runner.IsRunning, $"Profile of {name} left Run's program holding the Run console");
@@ -1144,7 +1144,7 @@ public sealed class ProfilerTests : IClassFixture<ProfilerTests.Waits>, IDisposa
             Ui.Launched(window, window.RunAsync(), "the run in the terminal", TimeSpan.FromMinutes(3));
             Ui.PumpUntil(() => Programs().Count == 1, "the program to start in the terminal", TimeSpan.FromMinutes(2));
             int inTerminal = Programs()[0];
-            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context()));
+            Assert.Null(window.Actions.WhyNot(AppActions.AttachProfiler, window.Actions.Context())?.Shown);
             Ui.Launched(window, window.AttachProfilerAsync(), "the profiler to attach to the program in the terminal");
             Assert.Equal(inTerminal, window.Profiling?.ProcessId);
             Ui.Hold(TimeSpan.FromSeconds(1), "the attached profiler to sample the spinning program");

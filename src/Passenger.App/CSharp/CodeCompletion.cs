@@ -107,7 +107,7 @@ internal sealed partial class CodeCompletion
     public bool ToggleFilter(MemberKinds kind) => completion.IsVisible && completion.Filters.Toggle(kind);
 
     /// <summary>Why a filter by the kind of member can't be turned on or off now; null where the open list offers it.</summary>
-    public string? WhyNotFilter(MemberKinds kind) => completion.IsVisible && completion.Filters.IsVisible && completion.Filters.Offered.HasFlag(kind) ? null : Refusals.NoMembersListed;
+    public Words? WhyNotFilter(MemberKinds kind) => completion.IsVisible && completion.Filters.IsVisible && completion.Filters.Offered.HasFlag(kind) ? null : Refusals.NoMembersListed;
 
     /// <summary>The filter of the kind of member it names.</summary>
     public Avalonia.Controls.Primitives.ToggleButton Filter(string named) => completion.Filters.Of(MemberKindsOf.All.Single(k => MemberKindsOf.Words(k) == named));
@@ -453,7 +453,7 @@ internal sealed partial class CodeCompletion
                 if (fits.Expected is not { } expected || fit.Length == 0)
                 {
                     Close();
-                    context.Say(fits.Expected is { } type ? Refusals.NothingFits(type) : Refusals.NoTypeExpected);
+                    context.Say((fits.Expected is { } type ? Refusals.NothingFits(type) : Refusals.NoTypeExpected).Shown);
                     return;
                 }
                 Made(lsp, list, [fit], null, null, asked, caret, incomplete: false, before: null, fitting: true);

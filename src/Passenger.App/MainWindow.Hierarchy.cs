@@ -226,12 +226,12 @@ public partial class MainWindow
     /// <summary>The server running now, asked for as each level of a hierarchy opens: the window may have been shown by
     /// one since started again.</summary>
     private RoslynSession Running() =>
-        session.CSharp?.Session ?? throw new LanguageServerFailed(Refusals.CSharpNotRunning);
+        session.CSharp?.Session ?? throw new LanguageServerFailed(Refusals.CSharpNotRunning.Shown);
 
-    private string Said(string why)
+    private string Said(Words why)
     {
-        status.Text = why;
-        return why;
+        status.Text = why.Shown;
+        return why.Shown;
     }
 
     /// <summary>A level's rows, each landing at its place (a call, or the item's name) in the editor's lines of the file

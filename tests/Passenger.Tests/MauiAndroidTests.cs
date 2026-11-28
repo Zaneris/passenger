@@ -38,7 +38,7 @@ internal static class MauiAndroidTests
         }
         if (tools.Lacks is { } lacks)
         {
-            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
+            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks).Shown}");
         }
         if (MauiApp.Target(targets) is not { } target)
         {

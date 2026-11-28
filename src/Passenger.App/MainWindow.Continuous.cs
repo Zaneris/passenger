@@ -80,11 +80,11 @@ public partial class MainWindow
 
     /// <summary>Why the person's work has the machine now, which continuous testing waits out; null while it is free.</summary>
     private string? MachineTaken(ProjectSession of) =>
-        IsBuilding ? Refusals.Building
+        (IsBuilding ? Refusals.Building
         : of.Tests.IsBusy ? "the tests are running"
         : of.Debug.IsDebugging ? "a program is debugged"
         : of.Profiled is not null || of.ProfileStarting is not null ? "a program is profiled"
-        : null;
+        : null)?.Shown;
 
     private void MarkReach(ProjectSession of)
     {

@@ -344,8 +344,8 @@ public sealed class FilePropertiesTests : IDisposable
         const string Code = "data = <<~TEXT\n        exact\nTEXT\n\ndef run\n        1\nend\n";
         Write("tool.rb", Code);
         MainWindow window = Open("tool.rb");
-        Assert.Equal(Refusals.UnreadStrings("tool.rb"), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
-        Assert.Equal(Refusals.UnreadStrings("tool.rb"), window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        Assert.Equal(Refusals.UnreadStrings("tool.rb").Shown, window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context())?.Shown);
+        Assert.Equal(Refusals.UnreadStrings("tool.rb").Shown, window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context())?.Shown);
         Assert.Equal(Code, Text(window));
 
         Write("notes.txt", "one\n    two\n");
@@ -400,8 +400,8 @@ public sealed class FilePropertiesTests : IDisposable
         Write("tool.py", Spaced);
         MainWindow window = Open("tool.py");
         window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
-        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
-        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context())?.Shown);
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context())?.Shown);
         Click(window, "IndentButton");
         Choose(window, "Convert Indentation to Tabs");
         Assert.Equal(tabbed, Text(window));
@@ -427,12 +427,12 @@ public sealed class FilePropertiesTests : IDisposable
         Write("loader.py", Code);
         MainWindow window = Open("loader.py");
         window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(8, UseTabs: false, TabWidth: 8);
-        Assert.Equal(Refusals.BlockAtRisk("loader.py", "Python", 3), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
-        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context()));
+        Assert.Equal(Refusals.BlockAtRisk("loader.py", "Python", 3).Shown, window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context())?.Shown);
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToSpaces, window.Actions.Context())?.Shown);
         Assert.Equal(Code, Text(window));
 
         window.EditorArea.Active!.ChosenIndent = new Passenger.Text.IndentOptions(4, UseTabs: false, TabWidth: 4);
-        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context())?.Shown);
         Click(window, "IndentButton");
         Choose(window, "Convert Indentation to Tabs");
         Assert.Equal("class Loader:\n\t# kept\n\tdef __init__(self):\n\t\tself.text = \"\"\"\n          words\"\"\"\n   # between levels\n\t\tself.done = call(1,\n\t\t\t\t\t\t 2)\n", Text(window));
@@ -445,7 +445,7 @@ public sealed class FilePropertiesTests : IDisposable
     {
         Write("data.yaml", "list: [\n\t1,\n\t2\n]\nkey: |\n \tfirst\n second\nafter: 1\n");
         MainWindow window = Open("data.yaml");
-        Assert.Equal(Refusals.SpacesAlone("data.yaml", "YAML"), window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context()));
+        Assert.Equal(Refusals.SpacesAlone("data.yaml", "YAML").Shown, window.Actions.WhyNot(AppActions.ConvertIndentationToTabs, window.Actions.Context())?.Shown);
         Click(window, "IndentButton");
         Choose(window, "Convert Indentation to Spaces");
         Assert.Equal("list: [\n  1,\n  2\n]\nkey: |\n \tfirst\n second\nafter: 1\n", Text(window));

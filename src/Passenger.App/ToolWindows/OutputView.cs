@@ -111,7 +111,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
         {
             Document = Document,
             IsReadOnly = true,
-            ReadOnlyWhy = Refusals.OutputReadOnly,
+            ReadOnlyWhy = Refusals.OutputReadOnly.Shown,
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
@@ -595,7 +595,7 @@ public sealed class OutputView : DockPanel, IOwnKeys
             {
                 Document = new TextDocument(),
                 IsReadOnly = true,
-                ReadOnlyWhy = Refusals.OutputReadOnly,
+                ReadOnlyWhy = Refusals.OutputReadOnly.Shown,
                 LineCommentPrefix = null,
                 ShowLineNumbers = false,
                 ShowErrorStripe = false,

@@ -43,7 +43,7 @@ public partial class MainWindow
         };
         actions!.Add(new IdeAction(AppActions.ShowDependencyMap, "Show Dependency Map", "IDE", context => IdeErrors.Observe(ShowDependencyMapAsync(context)))
         {
-            WhyNot = _ => session.CSharp is null ? Refusals.Sentence(Refusals.CSharpNotRunning) : null,
+            WhyNot = _ => session.CSharp is null ? Refusals.CSharpNotRunningSentence : null,
             Menus = [new MenuPlace("Navigate", 2, 8)],
         });
     }
@@ -54,7 +54,7 @@ public partial class MainWindow
     {
         if (session.CSharp is not { } csharp)
         {
-            return Said(Refusals.Sentence(Refusals.CSharpNotRunning));
+            return Said(Refusals.CSharpNotRunningSentence);
         }
         IReadOnlyList<string>? path = null;
         try
@@ -99,7 +99,7 @@ public partial class MainWindow
     {
         if (session.CSharp is not { IsReady: true } csharp)
         {
-            throw new InvalidOperationException(session.CSharp?.Unready("The dependency map") ?? Refusals.Sentence(Refusals.CSharpNotRunning));
+            throw new InvalidOperationException((session.CSharp?.Unready("The dependency map") ?? Refusals.CSharpNotRunningSentence).English);
         }
         return await csharp.DependenciesAsync(of);
     }
@@ -182,7 +182,7 @@ public partial class MainWindow
     {
         if (node.Given.Path is not { } path)
         {
-            status.Text = Refusals.MapNodeUnplaced;
+            status.Text = Refusals.MapNodeUnplaced.Shown;
             return;
         }
         NavigateTo(path, new LspPosition(node.Given.At?.Line ?? 0, node.Given.At?.Character ?? 0));

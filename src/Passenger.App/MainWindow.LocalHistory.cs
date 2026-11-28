@@ -120,7 +120,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history || Folder is not { } folder)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         string full = PathNames.Canonical(path);
@@ -141,7 +141,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history || Folder is not { } open)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         using Working? reading = BeginWork(AppActions.RecentChanges, "Reading the recent changes…");
@@ -168,7 +168,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         NamePopup popup = new("Put Label", string.Empty, name =>
@@ -192,7 +192,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history || Folder is not { } folder)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         string full = PathNames.Canonical(path);
         bool isFolder = Directory.Exists(full);
@@ -217,7 +217,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         List<string> refused = [];
         // A file deleted then is followed as its delete goes; one written may come back, with the folders it was in.

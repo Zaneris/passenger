@@ -405,7 +405,7 @@ public partial class MainWindow
     {
         MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id))
         {
-            WhyNot = w.Action is { } shows ? actions!.WhyNot(shows, actions.Context()) : w.Unserved,
+            WhyNot = (w.Action is { } shows ? actions!.WhyNot(shows, actions.Context()) : w.Unserved)?.Shown,
         })],
         MainMenu.RecentSolutions => [.. RecentMenu().Select(r => new ListedItem(r.Title, r.Open))],
         MainMenu.OpenSolutionWindows => SolutionWindows(),
@@ -606,7 +606,7 @@ public partial class MainWindow
 
     /// <summary>Why words with the keys refuse an action they take (<see cref="WordsEdits"/>): Copy with none selected.</summary>
     private static string? WhyNotInWords(SelectableWords words, string action) =>
-        action == EditorActions.Copy && string.IsNullOrEmpty(words.SelectedText) ? Refusals.NothingSelected : null;
+        (action == EditorActions.Copy && string.IsNullOrEmpty(words.SelectedText) ? Refusals.NothingSelected : null)?.Shown;
 
     /// <summary>Runs an editing action on a text box, where it takes it (<see cref="TextBoxEdits"/>).</summary>
     private static bool Edit(TextBox box, string action)

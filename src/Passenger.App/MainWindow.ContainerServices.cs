@@ -100,7 +100,7 @@ public partial class MainWindow
     {
         if (context.Service is { } named)
         {
-            return named.Run.IsStopped ? ServiceAim.Refused(Refusals.NotRunning(named.Run.Name))
+            return named.Run.IsStopped ? ServiceAim.Refused(Refusals.NotRunning(named.Run.Name).Shown)
                 : new(named.Run, named.Name, named.Run.ServiceNamed(named.Name) is not null, null, null);
         }
         bool aspireShown = Dock.IsShown(ToolWindowIds.Aspire);
@@ -133,8 +133,8 @@ public partial class MainWindow
         }
         if (!chosen.Resource.IsProject)
         {
-            return ServiceAim.Refused(chosen.Resource.IsGoProgram ? Refusals.NoGoDebugger(chosen.Resource.DisplayName)
-                : $"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}");
+            return ServiceAim.Refused((chosen.Resource.IsGoProgram ? Refusals.NoGoDebugger(chosen.Resource.DisplayName)
+                : $"{chosen.Resource.DisplayName} is not a .NET service of {app.Name}").Shown);
         }
         return session.Aspire.FindService(chosen) is { } running ? new(app, ((IRunService)running).Name, true, chosen, null) { Start = running }
             : new(app, app.UnstartedName(chosen.Resource) ?? chosen.Resource.DisplayName, false, chosen, null);
@@ -151,9 +151,9 @@ public partial class MainWindow
     {
         AspireResource resource = chosen.Resource;
         string host = Path.GetFileNameWithoutExtension(chosen.AppHostPath);
-        return resource.IsGoProgram ? ServiceAim.Refused(Refusals.NoGoDebugger(resource.DisplayName))
+        return resource.IsGoProgram ? ServiceAim.Refused(Refusals.NoGoDebugger(resource.DisplayName).Shown)
             : !resource.IsProject ? ServiceAim.Refused($"{resource.DisplayName} is not a .NET service of {host}")
-            : resource.State != AspireStates.Running ? ServiceAim.Refused(Refusals.NotRunning(resource.DisplayName, host))
+            : resource.State != AspireStates.Running ? ServiceAim.Refused(Refusals.NotRunning(resource.DisplayName, host).Shown)
             : AspireController.ProgramOf(resource) is not int program ? ServiceAim.Refused($"{host} says no program {resource.DisplayName} runs as")
             : new ServiceAim(null, resource.DisplayName, true, chosen, null) { Elsewhere = program };
     }
@@ -238,8 +238,8 @@ public partial class MainWindow
     {
         string name = $"{chosen.Resource.DisplayName} of {Path.GetFileNameWithoutExtension(chosen.AppHostPath)}";
         DotnetProcess? found = await BackgroundWork.Run(() => DotnetProcesses.Find(program));
-        string? why = found is null ? Refusals.Unattached(name, $"its program ({program}) has ended, or is no .NET program a debugger can reach")
-            : await AttachAsync(found, name);
+        string? why = (found is null ? Refusals.Unattached(name, $"its program ({program}) has ended, or is no .NET program a debugger can reach")
+            : await AttachAsync(found, name))?.Shown;
         if (why is not null)
         {
             Say(why);

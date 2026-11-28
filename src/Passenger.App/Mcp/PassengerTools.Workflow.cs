@@ -230,7 +230,7 @@ public sealed partial class PassengerTools
             // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
             throw new InvalidOperationException(vcs.Merge is { Operation: MergeOperation.Rebase, Stop: null }
                 ? $"{result.Commit.Message} (ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})"
-                : chosen.Count == 0 && passed.Count > 0 && result.Commit.Message == Refusals.NoFilesChosenToCommit ? $"{result.Commit.Message}: {Plural.Listed(left)}"
+                : chosen.Count == 0 && passed.Count > 0 && result.Commit.Message == Refusals.NoFilesChosenToCommit.English ? $"{result.Commit.Message}: {Plural.Listed(left)}"
                 : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;
@@ -625,7 +625,7 @@ public sealed partial class PassengerTools
         PackageChange done = weighed.AsAsked
             ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said }
             : weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said }
-            : throw new InvalidOperationException(weighed.Said ?? Refusals.SolutionClosed);
+            : throw new InvalidOperationException((weighed.Said ?? Refusals.SolutionClosed).English);
         return await WarnedAsync(done, feeds, offered, cancel);
     });
 

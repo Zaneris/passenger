@@ -753,7 +753,7 @@ public partial class MainWindow
     }
 
     /// <summary>The want of a .NET SDK in the banner's words, or dotnet's before the machine's .NET is read.</summary>
-    private string SdkWords(MissingSdk missing) => WithoutSdk() ?? Refusals.NoSdk(missing, Folder);
+    private string SdkWords(MissingSdk missing) => (WithoutSdk() ?? Refusals.NoSdk(missing, Folder)).Shown;
 
     /// <summary>The want of a .NET SDK said in the status bar as an error, a click there opening its download page.</summary>
     private void SaySdk(MissingSdk missing)

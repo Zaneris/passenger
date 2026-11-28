@@ -327,7 +327,7 @@ public partial class MainWindow
                 && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
             || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line)));
 
-        string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound);
+        string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound).Shown;
     }
 
     /// <summary>Runs (or debugs) one example row of an outline: the row of the outline's test, as the tree has it once the
@@ -345,7 +345,7 @@ public partial class MainWindow
         RunTests(() => running.Tests.RunPickedAsync(workspace, methods => [.. methods
             .Where(test => test.Places.Any(at => PathNames.Same(at.Path, path) && outline.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line))))
             .SelectMany(test => test.Children.Where(c => c.Item is not null && Testing.TestGutter.Ran(c, row, rows)))],
-            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug, cover));
+            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound).Shown, debug, cover));
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and
@@ -538,7 +538,7 @@ public partial class MainWindow
     {
         if (session != running || running.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new InvalidOperationException(Refusals.SolutionClosed.English);
         }
     }
 }

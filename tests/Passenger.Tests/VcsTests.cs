@@ -2147,7 +2147,7 @@ public sealed partial class VcsTests : IDisposable
             $"git offers build output for the first commit:\n{untracked}");
         Assert.Equal($"Created a Git repository in {Path.GetFileName(solution)}", window.Status);
         Ui.WaitFor(() => window.GitBranches.Rows.Count > 0, "the Git window to list the new repository's HEAD");
-        Assert.Equal(Refusals.InRepository, window.Actions.WhyNot(AppActions.CreateRepository, window.Actions.Context()));
+        Assert.Equal(Refusals.InRepository.Shown, window.Actions.WhyNot(AppActions.CreateRepository, window.Actions.Context())?.Shown);
         Assert.DoesNotContain(commit.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
         window.Close();
     }
@@ -2497,7 +2497,7 @@ public sealed partial class VcsTests : IDisposable
         Assert.True(window.Perform(AppActions.SkipRebase), window.Status);
         Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Merge.Stop is { Step: RebaseStep.Edit }, "the rebase stopped at the planned edit");
         Assert.Contains("stopped to edit", window.Status, StringComparison.Ordinal);
-        Assert.Contains("Continue Rebase goes on", window.Actions.WhyNot(AppActions.SkipRebase, window.Actions.Context()), StringComparison.Ordinal);
+        Assert.Contains("Continue Rebase goes on", window.Actions.WhyNot(AppActions.SkipRebase, window.Actions.Context())?.Shown, StringComparison.Ordinal);
         Assert.True(window.Perform(AppActions.ContinueRebase), window.Status);
         Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Merge.Operation is MergeOperation.None, "the rebase's end");
         Assert.Equal(["Notes", "Twice", "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
@@ -2891,7 +2891,7 @@ public sealed partial class VcsTests : IDisposable
             Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
             Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
             commit = window.Vcs.CommitAsync([.. window.Vcs.Changes.Where(c => c.Name == "Shop.cs")], "Sealed", amend: false, push: false);
-            Ui.PumpUntil(() => window.Actions.Work.Latest?.Stage == "Waiting for Shop.cs to be saved…", "the commit to wait for Shop.cs's save", TimeSpan.FromSeconds(10));
+            Ui.PumpUntil(() => window.Actions.Work.Latest?.Stage.Shown == "Waiting for Shop.cs to be saved…", "the commit to wait for Shop.cs's save", TimeSpan.FromSeconds(10));
         }
         CommitResult made = Ui.Landed(commit, "the commit made once Shop.cs was saved");
         Assert.True(made.Succeeded, made.Commit.Message);

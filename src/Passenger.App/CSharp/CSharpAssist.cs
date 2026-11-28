@@ -105,7 +105,7 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
                 (places, _) = await UnloadedSources.OfAsync(places, csharp.UnloadedNow?.Invoke() ?? []);
                 places = await csharp.Generated.CopiedAsync(places);
             }
-            return new Declared(places, Refusals.NoDeclaration) { Title = $"Declarations of {name}" };
+            return new Declared(places, Refusals.NoDeclaration.Shown) { Title = $"Declarations of {name}" };
         }, snapshot);
 
     /// <summary>Go to Declaration from the file shown, where <see cref="DeclaredAsync"/> leads.</summary>
@@ -164,18 +164,18 @@ internal sealed partial class CSharpAssist(AssistContext context, PopupPlacement
         }
         if (await xaml.NamedElementOfAsync(document, found, offset) is { } element && await xaml.XamlPlaceAsync(element, null) is ({ } place, _))
         {
-            return new Declared(Declared.Served([place], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration);
+            return new Declared(Declared.Served([place], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration.Shown);
         }
         if (context.CSharp is not { } csharp)
         {
-            return new Declared(found, Refusals.NoDeclaration);
+            return new Declared(found, Refusals.NoDeclaration.Shown);
         }
         // A project the folder has but C# does not load is declared in its own source, never its assembly's metadata stub.
         (found, bool onlyByName) = await UnloadedSources.OfAsync(found, csharp.UnloadedNow?.Invoke() ?? []);
         // One place of the person's is gone to straight, but from that place, where a generator's parts are all that's left to go to.
         IReadOnlyList<LspLocation> parts = found is [{ } only] && !(PathNames.Same(DocumentUris.ToPath(only.Uri), document.Path) && only.Range.Holds(lsp.PositionOf(offset)))
             ? [] : await lsp.GeneratedPartsAsync(offset);
-        return new Declared(await csharp.Generated.CopiedAsync([.. found.Union(parts)]), Refusals.NoDeclaration) { Note = onlyByName ? Refusals.OverloadNotInSource : null };
+        return new Declared(await csharp.Generated.CopiedAsync([.. found.Union(parts)]), Refusals.NoDeclaration.Shown) { Note = (onlyByName ? Refusals.OverloadNotInSource : null)?.Shown };
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)

@@ -213,7 +213,7 @@ public sealed class ProjectTelemetryTests : McpRig
             Ui.WaitFor(() => !window.IsRunning, $"web to end with its error\n{ContainerRunsTests.Run(window)}", TimeSpan.FromMinutes(1));
             string said = ContainerRunsTests.Run(window);
             Assert.Contains($"{Name}'s logs and traces stay in its Telemetry tab until Stop or its next run", said, StringComparison.Ordinal);
-            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is null, "Stop is greyed while a run that ended keeps its dashboard");
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown is null, "Stop is greyed while a run that ended keeps its dashboard");
 
             // Read once the program has gone: its dashboard kept them.
             Ui.Click(tab);

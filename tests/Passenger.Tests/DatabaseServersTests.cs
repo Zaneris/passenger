@@ -341,7 +341,7 @@ public sealed class DatabaseServersTests
 
                 // The table exports as CSV read from the server; its rows copied as inserts and pasted into the console write them again.
                 List<string> told = [];
-                window.Actions.Work.Told += (_, outcome) => told.Add(outcome.Said);
+                window.Actions.Work.Told += (_, outcome) => told.Add(outcome.Said.Shown);
                 ListBox tree = window.DatabaseExplorer.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
                 Ui.ChooseFromMenu(tree, "Export Data…");
@@ -862,7 +862,7 @@ public sealed class DatabaseServersTests
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
                 Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
                 Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"products' rows ({window.Database.Said})");
-                Assert.Equal(Refusals.NoRowEdits("ClickHouse"), window.EditorArea.Active!.DatabaseTable!.WhyNotEdited);
+                Assert.Equal(Refusals.NoRowEdits("ClickHouse").Shown, window.EditorArea.Active!.DatabaseTable!.WhyNotEdited?.Shown);
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
                 Assert.True(window.Perform(AppActions.DatabaseShowDdl), "Show DDL did not run");
                 Ui.WaitFor(() => window.EditorArea.Active?.Name.EndsWith("products.sql", StringComparison.Ordinal) == true && !window.Database.Busy, () => window.Database.Said);
@@ -881,7 +881,7 @@ public sealed class DatabaseServersTests
                 Assert.True(window.Perform(AppActions.DatabaseExplain), "Explain Plan did not run");
                 Ui.WaitFor(() => !console.Running && console.Plan is not null, () => console.Said, TimeSpan.FromMinutes(1));
                 Assert.Contains(SqlPlans.Each(console.Plan!), step => step.Operation.Contains("ReadFromMergeTree", StringComparison.Ordinal));
-                Assert.Equal(Refusals.NoTransactions("ClickHouse"), window.Database.SetManual(console, true));
+                Assert.Equal(Refusals.NoTransactions("ClickHouse").Shown, window.Database.SetManual(console, true));
 
                 CodeEditor editor = window.EditorArea.CodeEditor;
                 Replace(window, "SELECT  FROM products p");
@@ -1011,7 +1011,7 @@ public sealed class DatabaseServersTests
                 Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
                 Replace(window, "db.orders.deleteMany({})");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
-                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Shop"), () => console.Said);
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Shop").Shown, () => console.Said);
                 Assert.Equal(3, orders.CountDocuments(MongoDB.Driver.FilterDefinition<MongoDB.Bson.BsonDocument>.Empty));
                 Passenger.App.Mcp.PassengerTools tools = new(window);
                 object counted = Ui.Await(tools.Database(connection: "Shop", sql: "db.orders.countDocuments({})"), "an agent's count of the orders", TimeSpan.FromMinutes(1));
@@ -1306,7 +1306,7 @@ public sealed class DatabaseServersTests
                 Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
                 Replace(window, "DEL tags");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
-                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Cache"), () => console.Said);
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Cache").Shown, () => console.Said);
                 Assert.True(keys.KeyExists("tags"), "A read-only connection's DEL deleted the key");
                 object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Cache", sql: "GET greeting"), "an agent's read of a string", TimeSpan.FromMinutes(1));
                 Assert.Equal("hi", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read)).Sets[0].Rows[0][0]);
@@ -1441,7 +1441,7 @@ public sealed class DatabaseServersTests
                 Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
                 Replace(window, "UPDATE \"orders\" SET qty = 0 WHERE id = '1'");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
-                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Orders"), () => console.Said);
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Orders").Shown, () => console.Said);
                 Assert.Equal("7", Order("1")!["qty"].N);
                 object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Orders", sql: "SELECT name FROM \"orders\" WHERE id = '1'"),
                     "an agent's read of an item", TimeSpan.FromMinutes(1));
@@ -1500,7 +1500,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal(["ann 2 coffee", "ann 1 tea", "bob 1 milk"], Enumerable.Range(0, 3).Select(r => $"{data.Rows.Cell(r, 0)} {data.Rows.Cell(r, 1)} {data.Rows.Cell(r, 2)}")
                     .OrderBy(r => r[..3], StringComparer.Ordinal));
                 Assert.Equal("[\"hot\"]", data.Rows.Cell(Enumerable.Range(0, 3).Single(r => data.Rows.Cell(r, 2) == "tea"), 4));
-                Assert.Equal(Refusals.NoRowEdits("Cassandra"), data.WhyNotEdited);
+                Assert.Equal(Refusals.NoRowEdits("Cassandra").Shown, data.WhyNotEdited?.Shown);
 
                 // A console of CQL, completion of a table's columns, a read-only mark and an agent's read.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
@@ -1522,7 +1522,7 @@ public sealed class DatabaseServersTests
                 Assert.True(window.Perform(AppActions.DatabaseReadOnly), "Read-Only Connection did not run");
                 Replace(window, "UPDATE orders SET qty = 0 WHERE customer = 'ann' AND at = 1");
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
-                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Orders"), () => console.Said);
+                Ui.WaitFor(() => console.Said == Refusals.ReadOnlyConnection("Orders").Shown, () => console.Said);
                 object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Orders", sql: "SELECT qty FROM orders WHERE customer = 'ann' AND at = 1"),
                     "an agent's read of a row", TimeSpan.FromMinutes(1));
                 Assert.Equal("2", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read)).Sets[0].Rows[0][0]);
@@ -1628,11 +1628,11 @@ public sealed class DatabaseServersTests
                     Ui.Await(window.DatabaseExplorer.ToggleAsync(secretRow), "the secret's connection to be refused");
                 }
                 Assert.False(secretRow.IsExpanded, "A profile with no IAM Identity Center sign-in opened its connection");
-                Assert.Equal(Refusals.AwsSignInNeeded("sso"), window.Database.Said);
+                Assert.Equal(Refusals.AwsSignInNeeded("sso").Shown, window.Database.Said);
                 window.DatabaseExplorer.Choose(secretRow);
                 Assert.True(window.Perform(AppActions.DatabaseSignIn), "Sign In did not run");
                 Ui.WaitFor(() => window.Actions.Work.Of(AppActions.DatabaseSignIn) is null && SystemCredentials.Read(AwsSso.CredentialService, "shop") is not null,
-                    () => $"the device sign-in approved ({window.Actions.Work.Of(AppActions.DatabaseSignIn)?.Stage ?? window.Status})", TimeSpan.FromMinutes(1));
+                    () => $"the device sign-in approved ({window.Actions.Work.Of(AppActions.DatabaseSignIn)?.Stage.Shown ?? window.Status})", TimeSpan.FromMinutes(1));
                 Assert.Contains(new Uri(aws.Verification), window.Browsed);
                 Ui.WaitFor(() => !window.Database.Busy, () => window.Database.Said);
                 Assert.True(window.Database.Sources.Single(s => s.Name == "Secret").SignIn is { Kind: CloudSignInKind.AwsSecret },
@@ -1764,10 +1764,10 @@ public sealed class DatabaseServersTests
                     Ui.Await(window.DatabaseExplorer.ToggleAsync(postgresRow), "the connection to be refused");
                 }
                 Assert.False(postgresRow.IsExpanded, "A connection by Entra ID opened with no account signed in");
-                Assert.Equal(Refusals.AzureSignInNeeded(null), window.Database.Said);
+                Assert.Equal(Refusals.AzureSignInNeeded(null).Shown, window.Database.Said);
                 window.DatabaseExplorer.Choose(postgresRow);
                 List<(bool Succeeded, string Said)> told = [];
-                window.Actions.Work.Told += (_, outcome) => told.Add(outcome);
+                window.Actions.Work.Told += (_, outcome) => told.Add((outcome.Succeeded, outcome.Said.Shown));
                 SignInOnEntra("ann", () => Assert.True(window.Perform(AppActions.DatabaseSignIn), "Sign In did not run"));
                 Ui.WaitFor(() => window.Actions.Work.Of(AppActions.DatabaseSignIn) is null && told.Any(t => t.Said.Contains("Entra", StringComparison.Ordinal)),
                     () => $"the sign-in told; Entra heard:\n{string.Join('\n', entra.Heard)}\nand the log says:\n{string.Join('\n', Ui.IdeLog().Split('\n').Where(l => l.Contains("Entra", StringComparison.Ordinal)))}",

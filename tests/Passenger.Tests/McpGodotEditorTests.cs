@@ -23,7 +23,7 @@ public sealed class McpGodotEditorTests : McpRig
             foreach (string action in new[] { "read", "play" })
             {
                 CallToolResult refused = await Result(client, McpTools.GodotEditor, new() { ["action"] = action });
-                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.GodotEditorOfPerson, StringComparison.Ordinal),
+                Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.GodotEditorOfPerson.English, StringComparison.Ordinal),
                     $"godot_editor {action} on an agent's own Passenger answered: {Text(refused)}");
             }
         }

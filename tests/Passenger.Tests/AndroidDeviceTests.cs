@@ -662,7 +662,7 @@ public sealed class AndroidDeviceTests
         }
         if (tools.Lacks is { } lacks)
         {
-            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
+            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks).Shown}");
         }
         DeviceTarget? target = MauiApp.Target(targets);
         if (target is null)

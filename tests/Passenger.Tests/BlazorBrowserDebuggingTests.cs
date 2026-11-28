@@ -597,7 +597,7 @@ public sealed class BlazorBrowserDebuggingTests(StandInAppHost appHost) : IDispo
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the app to end ({Sessions(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();

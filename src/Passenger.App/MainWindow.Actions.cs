@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Passenger.App.Run;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using E = Passenger.Editor.EditorActions;
 using A = Passenger.App.AppActions;
@@ -64,7 +65,7 @@ public partial class MainWindow
     {
         if (work.Begin(id, stage, stoppable) is not { } working)
         {
-            status.Text = ActionWork.Busy(work.Of(id)!);
+            status.Text = ActionWork.Busy(work.Of(id)!).Shown;
             return;
         }
         using (working)
@@ -83,7 +84,7 @@ public partial class MainWindow
         {
             return begun;
         }
-        status.Text = ActionWork.Busy(work.Of(id)!);
+        status.Text = ActionWork.Busy(work.Of(id)!).Shown;
         return null;
     }
 
@@ -100,14 +101,14 @@ public partial class MainWindow
         return new ActionContext(Editors.Active, Editors.CodeEditor, focused, tool, session.Debug.IsDebugging ? session.Debug.Session?.State : null);
     }
 
-    private string? NeedsFolder(ActionContext _) => Folder is null ? Refusals.NoFolder : null;
+    private Words? NeedsFolder(ActionContext _) => Folder is null ? Refusals.NoFolder : null;
 
     /// <summary>A folder open whose tests can run: with a .NET SDK where a run builds first, and with none where it does not,
     /// as GUT's tests of a game of GDScript alone.</summary>
-    private string? NeedsTestBuild(ActionContext context) => NeedsFolder(context) ?? Untrusted() ?? (WithoutSdk() is { } none && session.Tests.Builds ? none : null);
+    private Words? NeedsTestBuild(ActionContext context) => NeedsFolder(context) ?? Untrusted() ?? (WithoutSdk() is { } none && session.Tests.Builds ? none : null);
 
     /// <summary>Why nothing of the open folder's code runs: it is not trusted (<see cref="ProjectSession.Trusted"/>).</summary>
-    private string? Untrusted() => session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
+    private Words? Untrusted() => session.Folder is not null && !session.Trusted ? Refusals.Untrusted : null;
 
     /// <summary>Why an action working in a tool window that serves one kind of project cannot run: the window serves nothing
     /// in the open folder, in the words its own action greys with (<see cref="Docking.ToolWindow.Unserved"/>).</summary>
@@ -186,7 +187,7 @@ public partial class MainWindow
             status.ShowWork(change, work.Latest);
             ShowStop();
         };
-        work.Told += (_, told) => announcer.Tell(told.Said, told.Succeeded ? Urgency.Polite : Urgency.Assertive);
+        work.Told += (_, told) => announcer.Tell(told.Said.Shown, told.Succeeded ? Urgency.Polite : Urgency.Assertive);
         AddEditing();
         actions.Add(new IdeAction(A.ShowDebugMemory, "Memory", "Tool Windows", context =>
         {
@@ -443,10 +444,10 @@ public partial class MainWindow
     /// them, a text box with the keys taking its own unless read-only, and a console those its program's input takes
     /// (<see cref="ToolWindows.OutputView.TakesEdit"/>).</summary>
     private static string? ChangeRefused(string action, ActionContext context) =>
-        context.Focused is TextBox box && TextBoxEdits.ContainsKey(action) ? (box.IsReadOnly ? Refusals.TextReadOnly : null)
+        (context.Focused is TextBox box && TextBoxEdits.ContainsKey(action) ? (box.IsReadOnly ? Refusals.TextReadOnly : null)
         : context.Focused is CodeEditor other && other != context.Editor
             ? (other.IsReadOnly && other.FindAncestorOfType<ToolWindows.OutputView>()?.TakesEdit(other, action) != true ? other.ReadOnlyWhy : null)
-        : context.ReadOnlyWhy;
+        : context.ReadOnlyWhy)?.Shown;
 
     /// <summary>The table whose changes not yet written Undo and Redo step through: the one shown, unless a box of its has the keys.</summary>
     private static Database.DatabaseTableTab? TableSteps(ActionContext context) => context.Focused is TextBox ? null : context.File?.DatabaseTable;
@@ -578,14 +579,14 @@ public partial class MainWindow
         Add(A.ExportBreakpoints, "Export Breakpoints…", "Debug", _ => IdeErrors.Observe(ExportBreakpointsAsync()), NeedsFolder, ("Run", 2, 8));
         Add(A.ImportBreakpoints, "Import Breakpoints…", "Debug", _ => IdeErrors.Observe(ImportBreakpointsAsync()), NeedsFolder, ("Run", 2, 9));
 
-        string? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : Untrusted() is { } untrusted ? untrusted : IsBuilding ? Refusals.Building
+        Words? Unbuildable(ActionContext _) => Folder is null ? Refusals.NoFolderTo("build") : Untrusted() is { } untrusted ? untrusted : IsBuilding ? Refusals.Building
             : session.Workspace is { Solution: null, Projects.Count: 0, GodotGames.Count: > 0 } ? Refusals.NothingToBuildOfScripts : WithoutSdk();
 
-        string? NoneSelected(ActionContext context) => Unbuildable(context)
+        Words? NoneSelected(ActionContext context) => Unbuildable(context)
             ?? (SelectedProjects().Count == 0 ? "No project is chosen in the Explorer or open in the editor" : null);
 
-        string? Unconfigured(string verb) => Untrusted() is { } untrusted ? untrusted : Configuration is null ? WithoutSdk() ?? session.NothingTo(verb)
-            : Configuration is { Kind: Run.RunKind.Project or Run.RunKind.Projects, RunsScriptGame: false } ? WithoutSdk() : null;
+        string? Unconfigured(string verb) => (Untrusted() is { } untrusted ? untrusted : Configuration is null ? WithoutSdk() ?? session.NothingTo(verb)
+            : Configuration is { Kind: Run.RunKind.Project or Run.RunKind.Projects, RunsScriptGame: false } ? WithoutSdk() : null)?.Shown;
     }
 
     /// <summary>The unit tests' actions: in context (the Unit Tests window's chosen rows while it has the keys, else the
@@ -609,15 +610,15 @@ public partial class MainWindow
         AddTestSessions();
 
         // Where the Explorer has the keys, its rows say what to run, never the editor's caret.
-        string? NoTestHere(ActionContext context) => NeedsTestBuild(context)
+        Words? NoTestHere(ActionContext context) => NeedsTestBuild(context)
             ?? (ChosenTests(context) is { } chosen ? session.Tests.NeverRuns(chosen) : ChosenProjects(context) is not null ? null
                 : ExplorerHasKeys(context) ? "No project chosen in the Explorer holds tests"
                 : TestAtCaret(context) is null ? "No test is at the caret" : null);
 
         // Stop is disabled with no run to end, its toolbar's button and its menu item alike.
-        string? NothingRunning(ActionContext context) => NeedsFolder(context) ?? (session.Tests.IsBusy ? null : "No unit tests are running");
+        Words? NothingRunning(ActionContext context) => NeedsFolder(context) ?? (session.Tests.IsBusy ? null : "No unit tests are running");
 
-        string? Measured(ActionContext context) => NeedsFolder(context) ?? (session.Tests.Coverage is null ? Refusals.NoCoverage : null);
+        Words? Measured(ActionContext context) => NeedsFolder(context) ?? (session.Tests.Coverage is null ? Refusals.NoCoverage : null);
     }
 
     /// <summary>The projects holding tests chosen in the Explorer, while it has the keys (<see cref="TestProjectsOf"/>).</summary>
@@ -678,7 +679,7 @@ public partial class MainWindow
         string? Here(string id, bool place) => place && id != action && AppActions.KeysIn(id) == action ? id : null;
     }
 
-    private void Add(string id, string title, string group, Action<ActionContext> run, Func<ActionContext, string?>? whyNot = null, (string Path, int Group, int Order)? menu = null,
+    private void Add(string id, string title, string group, Action<ActionContext> run, Func<ActionContext, Words?>? whyNot = null, (string Path, int Group, int Order)? menu = null,
         IReadOnlyList<string>? words = null, string? works = null) =>
         actions!.Add(new IdeAction(id, title, group, run)
         {

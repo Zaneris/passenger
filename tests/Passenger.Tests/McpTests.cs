@@ -401,7 +401,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.WriteAllText(Path.Combine(unstarted, "Caller.cs"), Caller);
         await using McpClient serverless = await Start(["--mcp", unstarted],
             environment: new() { [global::Passenger.Lsp.RoslynServerFolder.ServerVariable] = Path.Combine(unstarted, "no-server") });
-        string couldNot = Refusals.CSharpUnavailable("The Roslyn language server is missing");
+        string couldNot = Refusals.CSharpUnavailable("The Roslyn language server is missing").English;
         foreach ((string tool, Dictionary<string, object?> arguments) in CodeAsks("Greeter.cs", "Caller.cs").Append((McpTools.Diagnostics, new())))
         {
             CallToolResult answer = await Result(serverless, tool, arguments);
@@ -596,7 +596,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"tests_run with coverage did not name Halved's lines as never run and Clamped's line as a branch never taken: {file}");
 
         CallToolResult both = await Result(client, McpTools.TestsRun, new() { ["coverage"] = true, ["debug"] = true });
-        Assert.True(both.IsError == true && Text(both).Contains(Refusals.CoverageDebugged, StringComparison.Ordinal), $"tests_run with coverage and debug answered: {Text(both)}");
+        Assert.True(both.IsError == true && Text(both).Contains(Refusals.CoverageDebugged.English, StringComparison.Ordinal), $"tests_run with coverage and debug answered: {Text(both)}");
     }
 
     /// <summary>An agent's code_actions at an interface's name offers Create Fake into the test project that sees it, and at a
@@ -629,7 +629,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string[] offered = [.. (await Call(client, McpTools.CodeActions, clock)).EnumerateArray().Select(a => a.GetString()!)];
         Assert.True(offered.FirstOrDefault() == "Create Fake of IClock in Shop.Tests [quickfix]", $"code_actions at IClock offered {string.Join("; ", offered)}");
         CallToolResult calendar = await Result(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop/Greeter.cs", ["line"] = 10, ["column"] = 22, ["title"] = "Create Fake of Calendar" });
-        Assert.True(calendar.IsError == true && Text(calendar).Contains(Refusals.FakeNeedsSeam("Calendar", FakeSeams.Sealed, "Extract Interface", "Introduce Parameter"), StringComparison.Ordinal),
+        Assert.True(calendar.IsError == true && Text(calendar).Contains(Refusals.FakeNeedsSeam("Calendar", FakeSeams.Sealed, "Extract Interface", "Introduce Parameter").English, StringComparison.Ordinal),
             $"Create Fake of the sealed Calendar answered {Text(calendar)}");
 
         await Call(client, McpTools.ApplyCodeAction, new(clock) { ["title"] = "Create Fake of IClock in Shop.Tests" });
@@ -2348,7 +2348,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"vcs_stash outside a repository answered: {Text(stashes)}");
 
         JsonElement built = await Call(client, McpTools.Build);
-        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild && built.GetProperty("errors").GetInt32() == 0,
+        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild.English && built.GetProperty("errors").GetInt32() == 0,
             $"A build of a folder with no solution or project answered: {built}");
 
         CallToolResult unread = await Result(client, McpTools.Diagnostics, new() { ["path"] = "Notes.md" });
@@ -2399,11 +2399,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(unknown.IsError == true && Text(unknown).Contains("No action is called app.no.such: ide_actions lists them", StringComparison.Ordinal),
             $"ide_action of an action there is not answered: {Text(unknown)}");
 
-        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
-            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
-            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons),
-            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons),
-            (AppActions.CloseSolution, Refusals.CloseSolutionIsThePersons)])
+        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls.English),
+            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath.English), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile.English),
+            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile.English), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons.English),
+            (AppActions.AddCommand, Refusals.CommandIsThePersons.English), (AppActions.RemoveCommand, Refusals.CommandIsThePersons.English),
+            (AppActions.CloseSolution, Refusals.CloseSolutionIsThePersons.English)])
         {
             CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
             Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),
@@ -2847,7 +2847,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Dictionary<string, string?>? home = OperatingSystem.IsWindows() ? new() { ["DOTNET_CLI_HOME"] = Directory.CreateDirectory(Path.Combine(TestRun.Root, "mcp-dotnet-home")).FullName } : null;
         await using McpClient client = await Start(["--mcp", folder], environment: home, languageServer: false);
         CallToolResult none = await Result(client, McpTools.VcsStatus);
-        Assert.True(none.IsError == true && Text(none).Contains(Refusals.NoRepository, StringComparison.Ordinal), $"vcs_status in a folder of no repository answered: {Text(none)}");
+        Assert.True(none.IsError == true && Text(none).Contains(Refusals.NoRepository.English, StringComparison.Ordinal), $"vcs_status in a folder of no repository answered: {Text(none)}");
 
         string made = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.CreateRepository }));
         Assert.Equal($"Created a Git repository in {Path.GetFileName(folder)}", made);
@@ -2856,7 +2856,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
 
         CallToolResult again = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.CreateRepository });
-        Assert.True(again.IsError == true && Text(again).Contains(Refusals.InRepository, StringComparison.Ordinal),
+        Assert.True(again.IsError == true && Text(again).Contains(Refusals.InRepository.English, StringComparison.Ordinal),
             $"Create Git Repository in a folder made a repository answered: {Text(again)}");
     }
 
@@ -3125,14 +3125,14 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         string selectElement = Assert.Single(listed, l => l.StartsWith($"{AppActions.SelectElement}: ", StringComparison.Ordinal));
         Assert.Contains("cannot run: No Avalonia, WPF or WinUI app is being debugged", selectElement, StringComparison.Ordinal);
         string restart = Assert.Single(listed, l => l.StartsWith($"{AppActions.RestartCSharpServer}: Restart C# Language Server [IDE]", StringComparison.Ordinal));
-        Assert.Contains($" - cannot run: {Refusals.NoCSharp}", restart, StringComparison.Ordinal);
+        Assert.Contains($" - cannot run: {Refusals.NoCSharp.English}", restart, StringComparison.Ordinal);
         // An action that turns something on and off says which it is, so an agent never turns one blind.
         Assert.Contains(listed, l => l.StartsWith($"{AppActions.ContinuousTesting}: Continuous Testing [Unit Tests] (off)", StringComparison.Ordinal));
 
         Assert.Equal($"Ran {AppActions.ShowStructure}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowStructure })).GetString());
         // A console app's folder holds no Godot project, which the Game window serves.
         string game = Assert.Single(listed, l => l.StartsWith($"{AppActions.ShowGame}: ", StringComparison.Ordinal));
-        Assert.Contains($" - cannot run: {Refusals.NoGodotProject}", game, StringComparison.Ordinal);
+        Assert.Contains($" - cannot run: {Refusals.NoGodotProject.English}", game, StringComparison.Ordinal);
 
         // An action's id, which its line begins with.
         static string Id(string line) => line[..line.IndexOf(": ", StringComparison.Ordinal)];

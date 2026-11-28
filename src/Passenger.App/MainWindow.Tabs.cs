@@ -6,6 +6,7 @@ using Passenger.App.Editors;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -115,14 +116,14 @@ public partial class MainWindow
         });
 
         string? Closes(ActionContext c, Func<EditorTab, int, bool> which, string none) =>
-            Refusals.NeedsFile(c) ?? (EditorArea.Unpinned(TabOf(c)!.Value.Group, which).Count > 0 ? null : none);
+            (Refusals.NeedsFile(c) ?? (EditorArea.Unpinned(TabOf(c)!.Value.Group, which).Count > 0 ? null : none))?.Shown;
 
         int IndexOf(ActionContext c) => TabOf(c)!.Value.Group.Tabs.Select(t => t.Document).ToList().IndexOf(TabOf(c)!.Value.File);
 
-        string? NotSplit(ActionContext? c) => Editors.IsSplit(c is null ? Editors.ActiveGroup : GroupOf(c)) ? null : "The editor is not split";
+        Words? NotSplit(ActionContext? c) => Editors.IsSplit(c is null ? Editors.ActiveGroup : GroupOf(c)) ? null : "The editor is not split";
 
         // A tool window's view stands in one place, so its tab moves between groups but is never shown twice.
-        string? Splits(ActionContext c) => Refusals.NeedsFile(c) ?? (TabOf(c)?.File.Tool is { } tool ? $"{tool.Window.Title} shows in one place at a time" : null);
+        Words? Splits(ActionContext c) => Refusals.NeedsFile(c) ?? (TabOf(c)?.File.Tool is { } tool ? $"{tool.Window.Title} shows in one place at a time" : null);
     }
 
     /// <summary>The theme's default layout as the dock's default, once every tool window is added: what the window opens on
@@ -160,7 +161,7 @@ public partial class MainWindow
     private bool Pinned(ActionContext context) => TabOf(context) is { } tab && tab.Group.IsPinned(tab.File);
 
     /// <summary>A tab action listed in Window > Editor Tabs at a place.</summary>
-    private void Tab(string id, string title, Action<ActionContext> run, Func<ActionContext, string?> whyNot, (int Group, int Order) at, IReadOnlyList<string>? words = null) =>
+    private void Tab(string id, string title, Action<ActionContext> run, Func<ActionContext, Words?> whyNot, (int Group, int Order) at, IReadOnlyList<string>? words = null) =>
         Add(id, title, Tabs, run, whyNot, (TabsMenu, at.Group, at.Order), words);
 
     /// <summary>Next Tab (1) or Previous Tab (-1): the tabs of what has the keys stepped (<see cref="TabsWithKeys"/>), the
@@ -179,7 +180,7 @@ public partial class MainWindow
         }
     }
 
-    private string? WhyNotStepTab(ActionContext context) => TabsWithKeys(context) is null ? Refusals.NeedsFile(context) : null;
+    private Words? WhyNotStepTab(ActionContext context) => TabsWithKeys(context) is null ? Refusals.NeedsFile(context) : null;
 
     /// <summary>The tabs of what has the keys: those of the nearest part holding them (the Terminal's shells), else the
     /// first of the tool window with them, its header's before its view's; null where the editors have them.</summary>

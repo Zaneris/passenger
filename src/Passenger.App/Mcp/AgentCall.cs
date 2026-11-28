@@ -186,14 +186,14 @@ public sealed class AgentCall : IAsyncDisposable
         {
             before.Changed -= was;
         }
-        string? Now() => work.Latest is { } latest && actions.Contains(latest.Id, StringComparer.Ordinal) ? latest.Stage
-            : actions.Select(work.Of).OfType<Working>().FirstOrDefault()?.Stage;
+        string? Now() => (work.Latest is { } latest && actions.Contains(latest.Id, StringComparer.Ordinal) ? latest.Stage
+            : actions.Select(work.Of).OfType<Working>().FirstOrDefault()?.Stage)?.English;
         followed = work;
         following = (_, change) =>
         {
             if (actions.Contains(change.Work.Id, StringComparer.Ordinal))
             {
-                stage = change.Ended ? Now() : change.Work.Stage;
+                stage = (change.Ended ? Now() : change.Work.Stage)?.English;
             }
         };
         work.Changed += following;

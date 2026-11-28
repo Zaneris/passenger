@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
 using A = Passenger.App.AppActions;
@@ -75,7 +76,7 @@ public partial class MainWindow
     };
 
     /// <summary>Why the file's line separator and encoding cannot change: none is open, or it is read-only.</summary>
-    private static string? Unchangeable(ActionContext context) =>
+    private static Words? Unchangeable(ActionContext context) =>
         context.File is not { } file ? Refusals.NoFile : file.ReadOnlyWhy;
 
 
@@ -157,7 +158,7 @@ public partial class MainWindow
     {
         if (document.ReadOnlyWhy is { } readOnly)
         {
-            status.Text = readOnly;
+            status.Text = readOnly.Shown;
             return;
         }
         string from = document.EncodingName;

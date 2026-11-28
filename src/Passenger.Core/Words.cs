@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Resources;
 using System.Text;
@@ -39,7 +40,9 @@ public sealed class Words : IEquatable<Words>
     /// <summary>Verbatim words: a name, a path, a program's message, said as written in every language.</summary>
     public static Words Verbatim(string text) => new(text);
 
-    public static implicit operator Words(string verbatim) => new(verbatim);
+    /// <summary>Verbatim words, as <see cref="Verbatim"/> makes them; none from none.</summary>
+    [return: NotNullIfNotNull(nameof(verbatim))]
+    public static implicit operator Words?(string? verbatim) => verbatim is null ? null : new(verbatim);
 
     /// <summary>Whether these are verbatim words rather than a resource's.</summary>
     public bool IsVerbatim => resources is null;

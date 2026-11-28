@@ -26,7 +26,7 @@ public partial class MainWindow
     {
         RunOffer[] offered = [.. ConfigurationChoices("Run configuration"), .. session.Configurations.RecentCommands.Select(c => new RunOffer(c, RunWords.RecentInTerminal, Command: c))];
         RunOffersPopup popup = new(TitleOf(A.RunAnything), $"Run a configuration or a command line; {OtherwiseKey} debugs", offered, commands: true,
-            Refusals.NothingToRunYet);
+            Refusals.NothingToRunYet.Shown);
         popups.Show(popup, chosen => Take(chosen, popup.Otherwise, context));
     }
 
@@ -37,7 +37,7 @@ public partial class MainWindow
         string id = debug ? A.ChooseDebugConfiguration : A.ChooseRunConfiguration;
         RunOffer[] offered = [.. ConfigurationChoices(string.Empty), new RunOffer(actions![A.EditConfigurations]!.TitleWhere(context), string.Empty, Action: A.EditConfigurations)];
         RunOffersPopup popup = new(TitleOf(id), debug ? $"Debug a configuration; {OtherwiseKey} runs it" : $"Run a configuration; {OtherwiseKey} debugs it", offered,
-            commands: false, Refusals.NoRunConfigurationMatches);
+            commands: false, Refusals.NoRunConfigurationMatches.Shown);
         popups.Show(popup, chosen => Take(chosen, popup.Otherwise != debug, context));
     }
 

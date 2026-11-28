@@ -873,7 +873,7 @@ public sealed class ExplorerFilesTests : IDisposable
                 Ui.Run(window, action);
                 Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Kind != NodeKind.File && r.Into is { } into && PathNames.Same(into, root)));
                 Ui.Run(window, EditorActions.Paste);
-                string refusal = Refusals.ReplacesItsFolder(Path.GetFileName(held));
+                string refusal = Refusals.ReplacesItsFolder(Path.GetFileName(held)).Shown;
                 Ui.WaitFor(() => window.Status == refusal, () => $"{action} and Paste of {Path.GetRelativePath(root, held)} beside the folder holding it to be refused: '{window.Status}'");
             }
         }
@@ -1284,7 +1284,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
         Ui.ClickRow(window, project);
         AlsoChoose(window, notes);
-        string why = Refusals.RemovedAlone("Shop", "the solution");
+        string why = Refusals.RemovedAlone("Shop", "the solution").Shown;
         Ui.RightClick(Ui.Row(window.ExplorerView, notes));
         Assert.True(window.ExplorerView.SelectedNodes.Count == 2, "A right-click on a row chosen with another chose it alone, so its menu is not of both");
         ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("A right-click on Notes.txt opened no menu");

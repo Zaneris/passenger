@@ -49,7 +49,7 @@ public partial class MainWindow
                 return null;
             }
         }
-        ChoicePopup popup = new(title, "Search rules by name or id", [.. found.Rules.Select(r => new Choice(r.Title, $"{r.Id} · {r.Category}", r))], Refusals.NoInspections);
+        ChoicePopup popup = new(title, "Search rules by name or id", [.. found.Rules.Select(r => new Choice(r.Title, $"{r.Id} · {r.Category}", r))], Refusals.NoInspections.Shown);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is EditorConfigDiagnostic rule)
@@ -73,8 +73,8 @@ public partial class MainWindow
         }
         if (session.CSharp?.Session is not { } server)
         {
-            Refuse(Refusals.Sentence(Refusals.CSharpNotRunning));
-            running.Tell(false, Refusals.Sentence(Refusals.CSharpNotRunning));
+            Refuse(Refusals.CSharpNotRunningSentence);
+            running.Tell(false, Refusals.CSharpNotRunningSentence);
             return;
         }
         InspectionFound found;

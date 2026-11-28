@@ -302,7 +302,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
             Task<string?> running = window.RunAsync();
-            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.RunProgram)?.Stage.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || running.IsCompleted,
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.RunProgram)?.Stage.Shown.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || running.IsCompleted,
                 "Run to check the development certificate", TimeSpan.FromMinutes(2));
             Assert.False(running.IsCompleted, $"Run ended before it checked the certificate: {(running.IsCompleted ? running.Result : null)}");
             File.Delete(Path.Combine(standIn, "slow"));
@@ -941,7 +941,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             (subscribed, System.Net.HttpStatusCode refused) = project.AskToStartApi("above", projectPath: above);
             Assert.False((int)refused is >= 200 and < 300, "The IDE started a service in a folder holding the open folder, which it lends no trust");
-            string why = Refusals.NotLent("Above.Api", PathNames.Canonical(project.Folder), Unlent.HoldsOpen);
+            string why = Refusals.NotLent("Above.Api", PathNames.Canonical(project.Folder), Unlent.HoldsOpen).Shown;
             Ui.WaitFor(() => window.Status == why, () => $"the status to say why the service above was refused; it says {window.Status}");
             Assert.Contains(why, window.AspireRuntime.LastAppConsole?.Document.Snapshot.ToString() ?? string.Empty, StringComparison.Ordinal);
 
@@ -2131,7 +2131,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             List<Passenger.App.Debugging.HotReloadOutcome> told = [];
             window.Debugger.Applied += (_, outcome) => told.Add(outcome);
             // The action's apply under way, then the save, before anything has settled.
-            Assert.Null(window.Actions.Run(AppActions.ApplyHotReloadChanges));
+            Assert.Null(window.Actions.Run(AppActions.ApplyHotReloadChanges)?.Shown);
             Assert.True(window.EditorArea.SaveAll(), "The edited file was not saved");
             Ui.WaitFor(() => told.Count > 0 && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, $"Apply Hot Reload Changes to end ({window.Status})",
                 TimeSpan.FromMinutes(2));
@@ -3011,7 +3011,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.Aspire.Rows.Count == 2, $"the service's and the Go program's rows ({window.Aspire.Status})");
             string[] services = ["Debug Service", "Attach to Service", "Run Service without Debugger", "Profile Service"];
             foreach ((string name, Func<string, string?> said) in (ReadOnlySpan<(string, Func<string, string?>)>)[
-                ("goapi", _ => Refusals.NoGoDebugger("goapi")),
+                ("goapi", _ => Refusals.NoGoDebugger("goapi").Shown),
                 ("api", service => service == "Attach to Service" ? null
                     : $"Passenger does not run {StandInAppHost.Name}: Run, Debug or Profile its configuration first, or Attach to Service debugs api as it runs")])
             {

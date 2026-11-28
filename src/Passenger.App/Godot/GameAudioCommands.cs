@@ -29,7 +29,7 @@ public sealed class GameAudioCommands
         {
             if (parts.Actions.Run(AppActions.MuteGameAudio) is { } why)
             {
-                parts.Say(why);
+                parts.Say(why.Shown);
             }
             Show();
         };

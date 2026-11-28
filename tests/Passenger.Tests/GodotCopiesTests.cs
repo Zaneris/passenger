@@ -117,7 +117,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
             // One game alone takes no copy's arguments: a client.
             Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("role client", StringComparison.Ordinal),
                 () => $"the game in the Run console to say its role ({window.Status})", TimeSpan.FromMinutes(1));
-            Assert.Null(window.Actions.Run(AppActions.RunAnotherCopy));
+            Assert.Null(window.Actions.Run(AppActions.RunAnotherCopy)?.Shown);
             string client = $"{Name} #2";
             Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual([Name, client]) && Text(window.RunParts[1]).Contains("role client", StringComparison.Ordinal),
                 () => $"the game in the Run console and another copy beside it, each a tab ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
@@ -174,7 +174,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
             Ui.WaitFor(() => Tab(window, Name)?.Session?.State == DebugState.Paused, () => $"the server to stop at its breakpoint ({Sessions(window)})", TimeSpan.FromMinutes(1));
             Assert.True(copies.Skip(1).All(c => Tab(window, c)?.Session?.State == DebugState.Running), $"A client stopped with the server: {Sessions(window)}");
 
-            Assert.Null(window.Actions.Run(AppActions.DebugAnotherCopy));
+            Assert.Null(window.Actions.Run(AppActions.DebugAnotherCopy)?.Shown);
             Ui.WaitFor(() => window.Session.Games.Count == 4 && Console(window, $"{Name} #4").Contains("role client", StringComparison.Ordinal),
                 () => $"a fourth copy beside them, a client ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
 
@@ -244,7 +244,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the copies to end ({Sessions(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();

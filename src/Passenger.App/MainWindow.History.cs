@@ -64,9 +64,9 @@ public partial class MainWindow
     };
 
     private static string? WhyNoTarget(ActionContext context, bool fileOnly) =>
-        Target(context, fileOnly) is not null ? null
+        (Target(context, fileOnly) is not null ? null
         : context.ToolWindow?.Id != ToolWindowIds.Explorer ? Refusals.NoFile
-        : fileOnly ? "Choose a file in the Explorer" : "Choose a file or folder in the Explorer";
+        : fileOnly ? "Choose a file in the Explorer" : "Choose a file or folder in the Explorer")?.Shown;
 
     /// <summary>The lines a selection covers (the caret's alone with none), less the line it ends at the start of.</summary>
     private static (int First, int Last) SelectedLines(CodeEditor editor)

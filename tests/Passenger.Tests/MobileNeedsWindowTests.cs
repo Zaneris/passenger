@@ -290,7 +290,7 @@ public sealed class MobileNeedsWindowTests : IDisposable
             Ui.Click(dialog.InstallButton);
             Ui.WaitFor(() => !dialog.IsInstalling, () => $"the install to end: {window.Status}", Slow);
             string toRun = WorkloadInstalls.AsAdministrator(unwritable, ["android"]);
-            string refused = Refusals.WorkloadsNeedAdministrator(unwritable, toRun);
+            string refused = Refusals.WorkloadsNeedAdministrator(unwritable, toRun).Shown;
             Assert.Empty(asked);
             Assert.Equal(refused, dialog.Problem);
             Assert.Equal(refused, window.Status);
@@ -419,8 +419,8 @@ public sealed class MobileNeedsWindowTests : IDisposable
         Ui.WaitFor(() => window.Projects.Any(p => p.IsEvaluated), "the project to evaluate", Slow);
         Ui.Await(window.MobileAsked(), "what the project needs to be asked", Slow);
         Assert.Equal("Droid needs a JDK (Java 21.0.8) and the Android SDK's platforms;android-37.0", window.MobileSaid);
-        Assert.Null(window.Actions.WhyNot(AppActions.InstallAndroidDependencies, window.Actions.Context()));
-        Assert.Equal(Refusals.AgentInstallsMobile, window.Actions.WhyNot(AppActions.InstallAndroidDependencies, window.Actions.Context().ForAgent()));
+        Assert.Null(window.Actions.WhyNot(AppActions.InstallAndroidDependencies, window.Actions.Context())?.Shown);
+        Assert.Equal(Refusals.AgentInstallsMobile.Shown, window.Actions.WhyNot(AppActions.InstallAndroidDependencies, window.Actions.Context().ForAgent())?.Shown);
 
         List<string> questions = [];
         bool accept = false;

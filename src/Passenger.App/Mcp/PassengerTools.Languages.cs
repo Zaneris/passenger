@@ -106,7 +106,7 @@ public sealed partial class PassengerTools
             }
             return web.Lsp is { } server ? new ServerServed(document, LanguageOf(document), server, web)
                 : languages.CannotStart(document) ? throw new InvalidOperationException(languages.Unready("Its code help", document))
-                : throw new TimeoutException(Refusals.StillStarting(WebLanguages.Name(web.Kind), ServerLimit));
+                : throw new TimeoutException(Refusals.StillStarting(WebLanguages.Name(web.Kind), ServerLimit).English);
         }
         if (Passenger.Workspace.GodotFileKinds.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
         {
@@ -214,7 +214,7 @@ public sealed partial class PassengerTools
         }
         if (asked.Map(WebAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, WebAssist.IsPackageJson(document))) is not { } placed)
         {
-            throw new InvalidOperationException(Refusals.PropertyEditedMeanwhile);
+            throw new InvalidOperationException(Refusals.PropertyEditedMeanwhile.English);
         }
         WorkspaceEdits.ApplyTo(Editors, document, placed);
         document.Save();
@@ -252,7 +252,7 @@ public sealed partial class PassengerTools
         }
         if (made.Left.Count > 0)
         {
-            throw new InvalidOperationException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left));
+            throw new InvalidOperationException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left).English);
         }
         if (web.Document.Text.Version == version)
         {
