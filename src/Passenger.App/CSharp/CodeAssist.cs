@@ -123,7 +123,7 @@ public sealed class CodeAssist
             };
             editor.HoverEnded += (_, _) => quickInfo.PointerLeft();
             editor.ClickReach = (action, offset, cancel) => editor == Editor && action == AppActions.GoToDeclaration ? DeclaredFromAsync(offset, cancel) : NoReach;
-            editor.FormatsTyped = typed => editor == Editor && context.Languages.CSharp.FormatsTyped(typed);
+            editor.FormatsTyped = typed => editor == Editor && context.Languages.FormatsTyped(typed);
             editor.LeftBlock += (_, closer) =>
             {
                 if (editor == Editor)
@@ -142,7 +142,7 @@ public sealed class CodeAssist
             {
                 if (editor == Editor)
                 {
-                    context.Languages.CSharp.FormatLineBreak();
+                    context.Languages.FormatLineBreak();
                 }
             };
             editor.Typed += (_, text) =>
