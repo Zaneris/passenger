@@ -208,14 +208,15 @@ public sealed class ContinuousTests : IDisposable
     }
 
     /// <summary>Files the folder's watcher heard saved, written or gone, or <paramref name="every"/> where it lost what: a
-    /// round once saves pause, which looks at every mapped file where what changed is not known.</summary>
+    /// round once saves pause, which looks at every mapped file where what changed is not known, a save of a file a round
+    /// gave back among them.</summary>
     public void FilesChanged(IEnumerable<string> paths, bool every = false)
     {
         UiThread.Check();
-        int before = changed.Count;
-        changed.UnionWith(paths.Where(p => !IsOwn(p)));
+        string[] heard = [.. paths.Where(p => !IsOwn(p))];
+        changed.UnionWith(heard);
         everyFile |= every;
-        if (IsOn && (changed.Count > before || every))
+        if (IsOn && (heard.Length > 0 || every))
         {
             waiting.Restart();
         }
