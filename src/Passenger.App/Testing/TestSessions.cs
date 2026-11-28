@@ -34,7 +34,8 @@ public sealed record SessionTest
 
 /// <summary>A test session: a named set of tests the Unit Tests window shows in a tab of its own, which New Session makes
 /// from the tests chosen, Append to Session adds to and Run Current Session runs. It keeps what it took in
-/// (<see cref="SessionTest"/>), so a test written later in a class it holds is in it, and what was taken out of that.</summary>
+/// (<see cref="SessionTest"/>), so a test written later in a class it holds is in it, and what was taken out of that; of
+/// what takes a test in or out, the narrowest says (a method taken in again inside a class taken out is in).</summary>
 public sealed class TestSession(string name, IEnumerable<SessionTest> tests, IEnumerable<SessionTest>? left = null)
 {
     private readonly List<SessionTest> tests = [.. tests];
@@ -64,7 +65,15 @@ public sealed class TestSession(string name, IEnumerable<SessionTest> tests, IEn
         return whole ? [method] : method.Children.Where(Holds);
     }
 
-    private bool Holds(Func<SessionTest, bool> takes) => tests.Any(takes) && !left.Any(takes);
+    /// <summary>Whether what takes a test in holds it: of what takes it in and what takes it out, the narrowest takes it in.</summary>
+    private bool Holds(Func<SessionTest, bool> takes) => Narrowest(tests.Where(takes), [.. left.Where(takes)]);
+
+    /// <summary>Whether all that one takes in is held.</summary>
+    private bool Holding(SessionTest test) => Narrowest(tests.Where(t => t.Covers(test)), [.. left.Where(l => l.Covers(test))]);
+
+    /// <summary>Whether one of what takes a test in is narrower than all that takes it out, which lie in one line from the
+    /// project down.</summary>
+    private static bool Narrowest(IEnumerable<SessionTest> taking, IReadOnlyList<SessionTest> leaving) => taking.Any(t => leaving.All(l => !t.Covers(l)));
 
     /// <summary>Takes these in, each no longer left out; false where it held them all already.</summary>
     internal bool Add(IEnumerable<SessionTest> added)
@@ -73,7 +82,7 @@ public sealed class TestSession(string name, IEnumerable<SessionTest> tests, IEn
         foreach (SessionTest test in added)
         {
             changed |= left.RemoveAll(test.Covers) > 0;
-            if (!tests.Any(t => t.Covers(test)))
+            if (!Holding(test))
             {
                 tests.RemoveAll(test.Covers);
                 tests.Add(test);
@@ -90,7 +99,7 @@ public sealed class TestSession(string name, IEnumerable<SessionTest> tests, IEn
         foreach (SessionTest test in removed)
         {
             changed |= tests.RemoveAll(test.Covers) > 0;
-            if (tests.Any(t => t.Covers(test)) && !left.Any(l => l.Covers(test)))
+            if (Holding(test))
             {
                 left.RemoveAll(test.Covers);
                 left.Add(test);

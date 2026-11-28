@@ -312,11 +312,11 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         });
     }
 
-    /// <summary>Test sessions from the keys (#2311): New Session at the caret makes one of the test there, shown alone in its
-    /// tab; New Session in the Unit Tests window makes a second of the class chosen, Append to Session adds the theory at the
-    /// caret to it, and Run Current Session, chosen from Unit Test Operations, runs those tests alone; Delete takes a test out
-    /// of the session shown; the sessions and the one shown come back when the folder opens again, a tab shows another; and
-    /// Go to Test goes from a type to the test class named after it and back.</summary>
+    /// <summary>Test sessions from the keys (#2311): New Session at the caret makes one of the test there, alone in its tab;
+    /// New Session in the window makes a second of the class chosen, Append to Session adds the theory at the caret, and Run
+    /// Current Session runs those tests alone; Delete takes a test out; the sessions come back with the folder, a tab shows
+    /// another, and sessions restored anew have tabs of their own; Go to Test goes from a type to its test class and back; and
+    /// a method appended inside a class left out is in.</summary>
     private void Test_sessions_made_appended_to_and_run_from_the_keys_run_their_tests_alone_and_come_back_with_the_folder()
     {
         string doubler = Write("Doubler.cs", "namespace Sums.Tests;\n\npublic static class Doubler\n{\n    public static int Twice(int value) => value * 2;\n}\n");
@@ -388,6 +388,29 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Ui.Run(again, AppActions.GoToTest);
         Ui.WaitFor(() => PathNames.Same(again.EditorArea.Active?.Path ?? string.Empty, doubler), () => $"Go to Test back to Doubler.cs, at {again.EditorArea.Active?.Path}");
         Assert.Equal(2, again.EditorArea.CodeEditor.CaretPosition.Line);
+
+        // A session of the whole project with a class taken out takes a method of that class in again when it is appended.
+        ListBox rows = Tree(again);
+        Ui.Run(again, AppActions.ShowAllTests);
+        Ui.Click(rows.ContainerFromItem(again.Tests.Tree.Rows.Single(r => r.Kind == TestNodeKind.Project))!);
+        Ui.Run(again, AppActions.NewTestSession);
+        Ui.Click(rows.ContainerFromItem(again.Tests.Tree.Rows.Single(r => r.Name == "SumTests"))!);
+        Ui.Press(again, OperatingSystem.IsMacOS() ? "BACK_SPACE" : "DELETE");
+        Assert.DoesNotContain(Shown(again), r => r.Trim() == "SumTests");
+        again.OpenFile(Source);
+        Ui.Settle();
+        again.EditorArea.CodeEditor.Focus();
+        Ui.PlaceAfter(again.EditorArea.CodeEditor, "public void Doubles");
+        Ui.Run(again, AppActions.AppendToTestSession);
+        Assert.True(Shown(again).Select(r => r.Trim()).Where(r => r is "SumTests" or "Doubles" or "Two_and_two_make_four").SequenceEqual(["SumTests", "Doubles"]),
+            $"Doubles appended to a session of its project that left SumTests out shows as [{string.Join(", ", Shown(again))}], not taken in again alone");
+
+        // A folder's opening restores sessions of the names shown before, each a session of its own, whose tab is its.
+        again.Tests.Tree.Restore([.. again.Tests.Tree.Sessions.Select(s => new TestSession(s.Name, s.Tests, s.Left))], null);
+        Ui.Settle();
+        Ui.Click(tabs.Toggles[1]);
+        Assert.True(ReferenceEquals(again.Tests.Tree.Shown, again.Tests.Tree.Sessions[0]),
+            $"The first session's tab showed {again.Tests.Tree.Shown?.Name ?? "All Tests"}, a session no longer the folder's");
         again.Close();
     }
 
