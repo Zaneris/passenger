@@ -140,6 +140,23 @@ public static class RedisCommands
         return statements;
     }
 
+    /// <summary>The word a caret is in, as completion takes and replaces it: from the white space before it to the white
+    /// space after, a key's punctuation (user:42, cart.items) in it.</summary>
+    public static (int Start, int End) WordAt(string text, int caret)
+    {
+        int start = caret;
+        while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
+        {
+            start--;
+        }
+        int end = caret;
+        while (end < text.Length && !char.IsWhiteSpace(text[end]))
+        {
+            end++;
+        }
+        return (start, end);
+    }
+
     /// <summary>A command's words as redis-cli splits them; a quote left open is said as a <see cref="FormatException"/>.</summary>
     public static List<string> Words(string run)
     {

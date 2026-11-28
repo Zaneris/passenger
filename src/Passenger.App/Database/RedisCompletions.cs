@@ -9,11 +9,7 @@ public static class RedisCompletions
     /// <summary>Where the word being typed at <paramref name="caret"/> starts, and what may stand there.</summary>
     public static (int Start, IReadOnlyList<SqlCompletions.Candidate> Items) At(string text, int caret, SqlCatalog? catalog)
     {
-        int start = caret;
-        while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
-        {
-            start--;
-        }
+        int start = RedisCommands.WordAt(text, caret).Start;
         int line = start;
         while (line > 0 && text[line - 1] != '\n')
         {
