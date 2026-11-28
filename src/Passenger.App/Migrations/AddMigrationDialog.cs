@@ -85,7 +85,7 @@ public sealed class AddMigrationDialog : IdeWindow
     {
         string name = NameBox.Text?.Trim() ?? string.Empty;
         (string? folder, string? unfit) = EfOutputFolders.Read(FolderBox.Text, project);
-        string? why = MigrationsController.WhyNotNamed(name) ?? unfit;
+        string? why = MigrationsController.WhyNotNamed(name)?.Shown ?? unfit;
         problem.Text = why;
         if (why is null)
         {
