@@ -816,8 +816,7 @@ public partial class MainWindow
             boxes.Add((name, box));
             rows.Children.Add(FormRows.Of(name, box));
         }
-        ConfirmDialog dialog = new("Run with Parameters", $"{(statements == 1 ? "The statement takes" : "The statements take")} {(asked.Count == 1 ? "a parameter" : $"{asked.Count} parameters")}. "
-            + "Give each a value: a number, text, 'quoted text' or NULL.", "Run", detail: rows);
+        ConfirmDialog dialog = new("Run with Parameters", global::Passenger.App.Database.DatabaseWords.ParametersAsked(statements, asked.Count).Shown, "Run", detail: rows);
         // The first value is typed as the question opens, as a question asking one is.
         dialog.Opened += (_, _) =>
         {

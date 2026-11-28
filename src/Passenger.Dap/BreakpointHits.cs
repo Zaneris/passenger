@@ -315,7 +315,7 @@ public static class BreakpointHits
     }
 
     /// <summary>What a snapshot point says once it has taken its limit of captures.</summary>
-    public static string LimitReached(int limit) => $"Took its {limit} {(limit == 1 ? "snapshot" : "snapshots")}, so its later hits pass by until debugging starts again";
+    public static string LimitReached(int limit) => DapWords.SnapshotLimitReached(limit).Shown;
 
     /// <summary>What a line breakpoint that neither stops nor logs says at a hit: its file's name and line (from one).</summary>
     public static string Reached(string file, int line) => $"Breakpoint reached at {Path.GetFileName(file)}:{line}";

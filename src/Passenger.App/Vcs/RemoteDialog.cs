@@ -183,11 +183,7 @@ public sealed class RemoteDialog : IdeWindow
         }
         if (plan.Name != editing.Name)
         {
-            string branches = start.Branches.Count == 0 ? string.Empty
-                : $": its {Plural.Of(start.Branches.Count, "branch", "branches")} here {Plural.Agreeing(start.Branches.Count, "becomes", "become")} {plan.Name}/…";
-            string tracking = start.Tracking.Count == 0 ? string.Empty
-                : $"{(branches.Length == 0 ? ":" : ", and")} {Plural.Listed(start.Tracking)} {(start.Tracking.Count == 1 ? "tracks" : "track")} {(start.Tracking.Count == 1 ? "its" : "their")} branch under the new name";
-            yield return $"Renames {editing.Name} to {plan.Name}{branches}{tracking}.";
+            yield return VcsWords.RenamesRemote(editing.Name, plan.Name, start.Branches.Count, start.Tracking.Count, Plural.Listed(start.Tracking)).Shown;
         }
         if (plan.Url != editing.Url)
         {

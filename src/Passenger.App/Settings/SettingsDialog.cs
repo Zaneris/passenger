@@ -661,21 +661,18 @@ public sealed partial class SettingsDialog : IdeWindow
         };
         TextBlock name = new()
         {
+            [ShownWords.TextProperty] = label,
             Padding = new Thickness(0, 0, Gaps.Group, 0),
             TextWrapping = TextWrapping.Wrap,
         };
-        ShownWords.Set(name, TextBlock.TextProperty, label);
         AutomationProperties.SetLabeledBy(editor, name);
         // The one field of an editor of several parts (a check box before it, its problem under it) is heard by the row's words.
         if (editor is not TextBox && editor.GetLogicalDescendants().OfType<TextBox>().ToList() is [{ } field] && AutomationProperties.GetName(field) is null or "")
         {
             AutomationProperties.SetLabeledBy(field, name);
         }
-        TextBlock? said = note is null ? null : new TextBlock { TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
-        if (said is not null)
-        {
-            ShownWords.Set(said, TextBlock.TextProperty, note);
-        }
+        TextBlock? said = note is null ? null
+            : new TextBlock { [ShownWords.TextProperty] = note, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Left, Classes = { StyleClasses.Muted } };
         TextBlock? setOver = null;
         if (over is not null)
         {
