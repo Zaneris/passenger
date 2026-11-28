@@ -244,7 +244,7 @@ public enum Admission
     /// <summary>Allowed, and for a tool for every call of it until the agent goes or the window leaves the folder.</summary>
     Allowed,
 
-    /// <summary>A tool allowed for the one call whose arguments its question showed (<see cref="AgentToolDialog.AllowOnce"/>).</summary>
+    /// <summary>A tool allowed for the one call whose arguments its question showed (<see cref="McpWords.AllowOnce"/>).</summary>
     AllowedOnce,
 
     NotAllowed,

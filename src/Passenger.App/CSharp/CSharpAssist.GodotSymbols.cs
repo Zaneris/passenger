@@ -494,7 +494,7 @@ internal sealed partial class CSharpAssist
         }
         IReadOnlyList<LspLocation> places = [.. symbols.Symbols.Where(s => s.Path is not null && s.At is not null && !GeneratedCode.IsCopy(s.Path))
             .Select(s => new LspLocation(DocumentUris.FromPath(s.Path!), new LspRange(new LspPosition(s.At!.Line, s.At.Character), new LspPosition(s.At.Line, s.At.Character))))];
-        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration.Shown);
+        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration);
 
         static string Simple(string full) => full[(full.LastIndexOf('.') + 1)..];
     }

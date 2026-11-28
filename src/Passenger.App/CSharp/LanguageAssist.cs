@@ -1,5 +1,6 @@
 using Avalonia.Media;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
 
@@ -318,7 +319,7 @@ internal sealed record FilePreview(string File, string Named, PreviewKind Kind, 
 /// <summary>Where Go to Declaration goes, the window's and an agent's alike: its places as a language server names them,
 /// each with the words its choice shows (<see cref="Names"/>, none for one shown by its line of code); else a page that
 /// declares it (an image's registry page), or the words for there being none.</summary>
-internal sealed record Declared(IReadOnlyList<LspLocation> Places, string None)
+internal sealed record Declared(IReadOnlyList<LspLocation> Places, Words None)
 {
     /// <summary>The words each place's choice shows, in order; null where each is shown by its line of code.</summary>
     public IReadOnlyList<string?>? Names { get; init; }

@@ -813,7 +813,7 @@ public sealed partial class PassengerTools
             Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),
             // A program Profile started that said it needs a terminal, as the Profiler window offers one.
             NeedsTerminal = Builds.RunNeed is { Profiled: true } need && !attach
-                ? $"{need.Said}: {McpTools.Profile} with terminal true profiles it in a Terminal tab" : null,
+                ? $"{need.Said.English}: {McpTools.Profile} with terminal true profiles it in a Terminal tab" : null,
         };
 
         ProfileFrame Frame(string method, int total, int self) =>

@@ -166,6 +166,17 @@ internal static class Rules
             + "run. A check of what Words say compares their English; one of which words they are compares Words made the "
             + "same way.");
 
+    public static readonly DiagnosticDescriptor WordsForAgents = new(
+        "PSG0014",
+        "Words an agent reads are said in the person's language",
+        "{0}: an agent reads English, so say their English (.English)",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: false,
+        description: "An agent's answer is English whatever language the window is in, so tools and scripts read one language: "
+            + "Words made a string (by an interpolation, a +, ToString, a join or as an object) or read as Shown say the person's "
+            + "language, and an agent would read it. Turned on in .editorconfig for the code answering agents.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

@@ -546,13 +546,13 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (declared is { Page: { } page })
         {
-            throw new InvalidOperationException($"{declared.None} is declared on its registry, not in the folder: its page is {page}");
+            throw new InvalidOperationException($"{declared.None.English} is declared on its registry, not in the folder: its page is {page}");
         }
-        if (declared is null || declared.Places.Count == 0 && declared.None == Refusals.NoDeclaration.Shown)
+        if (declared is null || declared.Places.Count == 0 && declared.None == Refusals.NoDeclaration)
         {
             return (IReadOnlyList<Place>)[];
         }
-        return declared.Places.Count > 0 ? await Places(declared.Places, cancel) : throw new InvalidOperationException(declared.None);
+        return declared.Places.Count > 0 ? await Places(declared.Places, cancel) : throw new InvalidOperationException(declared.None.English);
     });
 
     [McpServerTool(Name = McpTools.Usages, Title = "Find usages", ReadOnly = true), Description(
@@ -1789,7 +1789,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // A program that said it needs a terminal, as the Run window offers one.
         if (builds.RunNeed is { } need)
         {
-            status += $". {need.Said}: {McpTools.Run} with terminal true runs it in a Terminal tab";
+            status += $". {need.Said.English}: {McpTools.Run} with terminal true runs it in a Terminal tab";
         }
         return new RunResult(code is null, code, status, output);
     });
@@ -3584,7 +3584,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // A program that said it needs a terminal, as the Debug window offers one.
         if ((session is null ? debugger.Chosen : debugger.TabOf(session)) is { } tab && Builds.DebugNeedOf(tab) is { } need)
         {
-            summary += $". {need.Said}: {McpTools.DebugStart} with terminal true debugs it in a Terminal tab";
+            summary += $". {need.Said.English}: {McpTools.DebugStart} with terminal true debugs it in a Terminal tab";
         }
         if (session is null || session.State == DebugState.Ended)
         {

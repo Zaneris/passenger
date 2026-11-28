@@ -162,7 +162,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> describing = Waiting.Apart(() => Call(client, McpTools.Refactor, Place("change_signature", "Calc.cs", Calc, "int Sca")));
-            Press(Question(window, "the question for the agent's refactoring"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's refactoring"), McpWords.AllowForSession.English);
             JsonElement dialog = Await(describing, "Change Signature described").GetProperty("dialog");
             Assert.Equal("public static int Scale(int value, int factor, int unused)", dialog.GetProperty("preview").GetString());
             Assert.Equal(["value", "factor", "unused"], dialog.GetProperty("parameters").EnumerateArray().Select(p => p.GetProperty("name").GetString()));
@@ -235,7 +235,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> refusing = Waiting.Apart(() => Result(client, McpTools.Refactor, Place("safe_delete", "Calc.cs", Calc, "int Sca")));
-            Press(Question(window, "the question for the agent's refactoring"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's refactoring"), McpWords.AllowForSession.English);
             CallToolResult refused = Await(refusing, "Safe Delete of a used method");
             Assert.True(refused.IsError == true && Text(refused).Contains("has 3 usages that would no longer compile", StringComparison.Ordinal)
                 && Text(refused).Contains("Till.cs:5: public static int Total()", StringComparison.Ordinal) && Text(refused).Contains("give options {\"deleteAnyway\": true}", StringComparison.Ordinal),
@@ -1108,7 +1108,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         {
             // System is the project's implicit using, so nothing needs it.
             Task<JsonElement> optimizing = Waiting.Apart(() => Call(client, McpTools.Refactor, new() { ["kind"] = "optimize_imports", ["path"] = "Tidy.cs" }));
-            Press(Question(window, "the question for the agent's refactoring"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's refactoring"), McpWords.AllowForSession.English);
             JsonElement optimized = Await(optimizing, "Optimize Imports on a file");
             Assert.Equal(["Tidy.cs changed"], Files(optimized));
             string tidied = File.ReadAllText(PathOf("Tidy.cs"));

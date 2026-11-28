@@ -82,7 +82,7 @@ public sealed class ContainerTelemetryTests : McpRig
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> logs = Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["resource"] = "web", ["limit"] = 50 }));
-            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Press(Admission(window, "the window to ask whether the agent may work there"), McpWords.Allow.English);
             JsonElement read = Await(logs, "the agent's telemetry of web's logs");
             Assert.Contains(read.GetProperty("logs").EnumerateArray(), item => item.GetProperty("message").GetString()?.Contains("Passenger order 42", StringComparison.Ordinal) == true);
             JsonElement traced = Await(Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["kind"] = "traces", ["traceId"] = log.TraceId })), "the agent's telemetry of the request's trace");

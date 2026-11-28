@@ -75,3 +75,11 @@ dotnet_diagnostic.PSG0012.severity = warning
 [src/Passenger.App/Navigation/**.cs]
 dotnet_diagnostic.PSG0012.severity = warning
 
+# The code answering agents, whose words are English whatever language the window is in (#2122); its questions to the person
+# are the person's words.
+[src/Passenger.App/Mcp/**.cs]
+dotnet_diagnostic.PSG0014.severity = warning
+
+[src/Passenger.App/Mcp/{AgentAdmissionDialog.cs,AgentToolDialog.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+dotnet_diagnostic.PSG0014.severity = none

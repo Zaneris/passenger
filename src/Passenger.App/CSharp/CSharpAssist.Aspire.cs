@@ -260,6 +260,6 @@ internal sealed partial class CSharpAssist
             return null;
         }
         LspPosition at = target.At is { } place ? new LspPosition(place.Line, place.Character) : new LspPosition(0, 0);
-        return new Declared([new LspLocation(DocumentUris.FromPath(Passenger.Core.PathNames.Canonical(found)), new LspRange(at, at))], Refusals.NoDeclaration.Shown);
+        return new Declared([new LspLocation(DocumentUris.FromPath(Passenger.Core.PathNames.Canonical(found)), new LspRange(at, at))], Refusals.NoDeclaration);
     }
 }

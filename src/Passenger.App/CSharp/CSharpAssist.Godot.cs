@@ -336,7 +336,7 @@ internal sealed partial class CSharpAssist
         if (await GodotNamesAsync(document, lsp, offset, uses: false) is { Via: GodotNameVia.String, Symbol: { Path: { } declaring, At: { } place } })
         {
             LspPosition at = new(place.Line, place.Character);
-            return new Declared([new LspLocation(DocumentUris.FromPath(declaring), new LspRange(at, at))], Refusals.NoDeclaration.Shown);
+            return new Declared([new LspLocation(DocumentUris.FromPath(declaring), new LspRange(at, at))], Refusals.NoDeclaration);
         }
         if (await GodotKindDeclaredAsync(document, offset) is { } defined)
         {
@@ -405,7 +405,7 @@ internal sealed partial class CSharpAssist
                 }
             }
         }
-        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration.Shown) { Names = names, Title = "Declarations" };
+        return places.Count == 0 ? null : new Declared(places, Refusals.NoDeclaration) { Names = names, Title = "Declarations" };
     }
 
     /// <summary>The GDScript member a string of a Godot project's C# names at an offset, on a node the code tells it is

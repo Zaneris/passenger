@@ -12,9 +12,9 @@ namespace Passenger.App.Web;
 public sealed record ComposePlace(string Path, TextPosition Position, string Name);
 
 /// <summary>What Go to Declaration finds in a compose file: places, or an image's registry page, or neither and why.</summary>
-public sealed record ComposeAnswer(IReadOnlyList<ComposePlace> Places, Uri? Page, string Said)
+public sealed record ComposeAnswer(IReadOnlyList<ComposePlace> Places, Uri? Page, Words Said)
 {
-    public static ComposeAnswer None(string said) => new([], null, said);
+    public static ComposeAnswer None(Words said) => new([], null, said);
 }
 
 /// <summary>Passenger's own Go to Declaration in a compose file, read from the YAML server's outline of it (each key's path
@@ -44,19 +44,19 @@ public static partial class ComposeDeclarations
         }
         if (chain is not [{ Name: "services" }, _, { } under, ..])
         {
-            return ComposeAnswer.None(Refusals.NoDeclaration.Shown);
+            return ComposeAnswer.None(Refusals.NoDeclaration);
         }
         ComposeAnswer answer = under.Name switch
         {
             "build" => Build(chain, folder, texts, projects),
             "image" when under.Detail is { Length: > 0 } image => Image(image),
-            "env_file" => EnvFile(chain, lines) is { Length: > 0 } file ? File(file, folder) : ComposeAnswer.None(Refusals.NoDeclaration.Shown),
+            "env_file" => EnvFile(chain, lines) is { Length: > 0 } file ? File(file, folder) : ComposeAnswer.None(Refusals.NoDeclaration),
             "extends" => Extends(chain, outline, lines, folder, texts),
             _ => Named(chain, at, written, column) switch
             {
                 { Kind: "service" } service => Service(outline, lines, service.Name),
                 { } named => Declared(outline, lines, named.Kind + "s", named.Name),
-                null => ComposeAnswer.None(Refusals.NoDeclaration.Shown),
+                null => ComposeAnswer.None(Refusals.NoDeclaration),
             },
         };
         return answer with { Places = [.. answer.Places.Select(p => p.Path.Length == 0 ? p with { Path = path } : p)] };
@@ -230,7 +230,7 @@ public static partial class ComposeDeclarations
     {
         if (name is not { Length: > 0 })
         {
-            return ComposeAnswer.None(Refusals.NoDeclaration.Shown);
+            return ComposeAnswer.None(Refusals.NoDeclaration);
         }
         return outline.FirstOrDefault(s => s.Name == "services")?.Children?.FirstOrDefault(s => s.Name == name) is { } service
             ? new ComposeAnswer([Here(lines, service, $"The service {name}")], null, $"The service {name}")
@@ -242,7 +242,7 @@ public static partial class ComposeDeclarations
     {
         if (name is not { Length: > 0 })
         {
-            return ComposeAnswer.None(Refusals.NoDeclaration.Shown);
+            return ComposeAnswer.None(Refusals.NoDeclaration);
         }
         string what = kind[..^1];
         return outline.FirstOrDefault(s => s.Name == kind)?.Children?.FirstOrDefault(s => s.Name == name) is { } declared

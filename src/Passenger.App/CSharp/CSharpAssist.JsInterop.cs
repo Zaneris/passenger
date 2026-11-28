@@ -36,7 +36,7 @@ internal sealed partial class CSharpAssist
         IReadOnlyList<(string Path, int Start, string Name)> places = await BackgroundWork.Run(() => Places(call, path, found.Projects, texts, stopped));
         if (stopped.Count > 0)
         {
-            return new Declared([], Refusals.RegexStoppedIn(Plural.Listed([.. stopped.Select(Path.GetFileName).OfType<string>()])).Shown);
+            return new Declared([], Refusals.RegexStoppedIn(Plural.Listed([.. stopped.Select(Path.GetFileName).OfType<string>()])));
         }
         List<LspLocation> located = [];
         foreach ((string file, int start, _) in places)

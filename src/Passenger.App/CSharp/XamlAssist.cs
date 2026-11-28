@@ -162,12 +162,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         if ((await ExpressionPlaceAsync(xaml, offset) ?? await CodePlaceAsync(xaml, offset)) is { } expression)
         {
             return expression.Place is { } reached
-                ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration.Shown)
-                : new Declared([], (expression.Said ?? Refusals.NoDeclaration).Shown);
+                ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+                : new Declared([], expression.Said ?? Refusals.NoDeclaration);
         }
         if (await XamlSymbolAt(xaml, offset, null) is not { } found)
         {
-            return new Declared([], Refusals.NoDeclaration.Shown);
+            return new Declared([], Refusals.NoDeclaration);
         }
         List<(string Path, TextPosition Position)> places = [];
         List<string> unreached = [];
@@ -184,7 +184,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             }
         }
         return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), (places.Count == 0 && unreached.Count > 0
-            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration).Shown);
+            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration));
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)

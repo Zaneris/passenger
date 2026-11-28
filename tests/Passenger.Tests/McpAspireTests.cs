@@ -85,8 +85,8 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
         {
             WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
             Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.Run, new() { ["configuration"] = StandInAppHost.Configuration, ["waitSeconds"] = 0 }));
-            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
-            Press(Question(window, "the question for the agent's run"), AgentToolDialog.AllowForSession);
+            Press(Admission(window, "the window to ask whether the agent may work there"), McpWords.Allow.English);
+            Press(Question(window, "the question for the agent's run"), McpWords.AllowForSession.English);
             WaitFor(() => running.IsCompleted || window.CertificateQuestion is not null, "the agent's run", TimeSpan.FromMinutes(2));
             Assert.Null(window.CertificateQuestion);
             const string Said = "StandIn.AppHost over HTTP for this run: the development certificate is not trusted, and an agent's call started this run, and asks no one";
@@ -245,7 +245,7 @@ public sealed class McpAspireTests : McpRig, IClassFixture<RestoredFolders>
                 new() { ["configuration"] = configuration }, giveUp.Token));
             Window permission = Question(window, "permission for the Aspire startup");
             // Not settled: the start the answer lets go holds background work until it is given up.
-            Ui.Click(permission.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, AgentToolDialog.AllowForSession)), settle: false);
+            Ui.Click(permission.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, McpWords.AllowForSession.English)), settle: false);
             Ui.PumpUntil(() => File.Exists(pidFile) || starting.IsCompleted, "the starting AppHost process", TimeSpan.FromMinutes(5));
             Assert.True(File.Exists(pidFile), $"The AppHost process did not start: {(starting.IsCompletedSuccessfully ? Text(starting.Result) : window.Status)}{Said()}");
             int processId = Processes.WrittenId(pidFile, "the starting AppHost PID");

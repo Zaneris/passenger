@@ -181,8 +181,8 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
     {
         (string scene, Passenger.Workspace.GodotNode declared) = node.Declared;
         return scenes.FileOf(scene) is { } path
-            ? new Declared(Declared.Served([(path, new TextPosition(declared.Section.Line, 0))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration.Shown)
-            : new Declared([], Refusals.NoDeclaration.Shown);
+            ? new Declared(Declared.Served([(path, new TextPosition(declared.Section.Line, 0))], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
+            : new Declared([], Refusals.NoDeclaration);
     }
 
     /// <summary>A connection's method in the code of its receiving node's script, or its signal's in its sending node's: a
@@ -197,7 +197,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         {
             string name = method ? connection.Method : connection.Signal;
             return await BackgroundWork.Run(() => GodotChecks.ScriptPlace(scenes, written, method ? GodotScriptKind.Function : GodotScriptKind.Signal, name)) is ({ } file, { } declared)
-                ? new Declared(Declared.Served([(file, declared)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration.Shown)
+                ? new Declared(Declared.Served([(file, declared)], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
                 : new Declared([], $"{what} is declared in {Path.GetFileName(gd)}");
         }
         if (node?.Script is not { } script || !GodotChecks.IsCSharp(script) || scenes.FileOf(script) is not { } code || context.CSharp is not { } service)
@@ -217,7 +217,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
             return new Declared([], $"{what} is declared in {Path.GetFileName(code)}");
         }
         return new Declared([new LspLocation(DocumentUris.FromPath(path), new LspRange(new LspPosition(at.Line, at.Character), new LspPosition(at.Line, at.Character)))],
-            Refusals.NoDeclaration.Shown);
+            Refusals.NoDeclaration);
     }
 
     /// <summary>Rename on a node's name in a scene: its box, then the node renamed everywhere that names it.</summary>

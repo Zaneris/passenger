@@ -357,7 +357,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
             {
                 ["changes"] = new Dictionary<string, object> { ["editorFontSize"] = 99, ["showBuildResults"] = "always" },
             }));
-            Press(Question(window, "the question for the agent's settings change"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's settings change"), McpWords.AllowForSession.English);
             JsonElement[] changed = [.. Await(changing, "the agent's settings change").EnumerateArray()];
             JsonElement size = Assert.Single(changed, c => c.GetProperty("name").GetString() == "editorFontSize");
             Assert.Equal((13.0, 48.0), (size.GetProperty("before").GetDouble(), size.GetProperty("after").GetDouble()));

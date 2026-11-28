@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Mcp;
 
@@ -10,30 +12,21 @@ namespace Passenger.App.Mcp;
 /// answer, and Escape and closing answer Deny.</summary>
 public sealed class AgentToolDialog : IdeWindow
 {
-    public const string AllowOnce = "Allow Once";
-    public const string AllowForSession = "Allow for This Session";
-    public const string Deny = "Deny";
-
-    /// <summary>The question's title for every tool at once.</summary>
-    public const string AllowEveryTool = "Allow every tool?";
-
     /// <param name="ownWindows">Whether the call gives input to Passenger's own windows (an app_ tool's app ide), which the
     /// question names, as there the agent's input does what the person's would.</param>
     public AgentToolDialog(string agent, string tool, string what, bool ownWindows, Control? arguments)
     {
-        Button once = new() { Content = AllowOnce, Classes = { StyleClasses.Primary } };
-        Button session = new() { Content = AllowForSession };
+        Button once = new() { [ShownWords.ContentProperty] = McpWords.AllowOnce, Classes = { StyleClasses.Primary } };
+        Button session = new() { [ShownWords.ContentProperty] = McpWords.AllowForSession };
         once.Click += (_, _) => Answer(Admission.AllowedOnce);
         session.Click += (_, _) => Answer(Admission.Allowed);
 
-        string asks = ownWindows
-            ? $"{agent}, connected through Passenger's MCP server, wants to {what} (its {tool} tool), the app being Passenger's own windows, where its input does what yours would."
-            : $"{agent}, connected through Passenger's MCP server, wants to {what} (its {tool} tool).";
-        string uses = ownWindows ? $"{tool} in Passenger's windows" : tool;
-        DialogFooter.Question(this, ownWindows ? $"Allow {tool} in Passenger's windows?" : $"Allow {tool}?",
+        Words agentName = Words.Verbatim(agent);
+        Words toolName = Words.Verbatim(tool);
+        DialogFooter.Question(this, ownWindows ? McpWords.AllowToolInOwnWindows(toolName) : McpWords.AllowTool(toolName),
         [
-            DialogFooter.Paragraph(asks),
-            DialogFooter.Paragraph($"Allow Once lets this call alone go on, asking again at the agent's next. Allow for This Session lets it use {uses} without asking in this folder until it disconnects."),
+            DialogFooter.Paragraph(ownWindows ? McpWords.WantsToInOwnWindows(agentName, Words.Verbatim(what), toolName) : McpWords.WantsTo(agentName, Words.Verbatim(what), toolName)),
+            DialogFooter.Paragraph(ownWindows ? McpWords.AllowOnceSaysInOwnWindows(toolName) : McpWords.AllowOnceSays(toolName)),
             .. arguments is null ? [] : new[] { arguments },
         ], DialogFooter.Answers(once, session, Denial()));
     }
@@ -42,15 +35,12 @@ public sealed class AgentToolDialog : IdeWindow
     /// they do in the person's words over <paramref name="tools"/>, the list of them.</summary>
     public AgentToolDialog(string agent, Control tools)
     {
-        Button session = new() { Content = AllowForSession, Classes = { StyleClasses.Primary } };
+        Button session = new() { [ShownWords.ContentProperty] = McpWords.AllowForSession, Classes = { StyleClasses.Primary } };
         session.Click += (_, _) => Answer(Admission.Allowed);
-        DialogFooter.Question(this, AllowEveryTool,
+        DialogFooter.Question(this, McpWords.AllowEveryTool,
         [
-            DialogFooter.Paragraph($"{agent}, connected through Passenger's MCP server, asks to use the tools below without your leave at each call: to "
-                + "edit and refactor files, build, run, debug and evaluate code, commit, run commands, and click or type in the apps it runs and "
-                + "in Passenger's own windows, where its input does what yours would."),
-            DialogFooter.Paragraph("Allow for This Session lets it use them all in this folder until it disconnects. Deny keeps each asking at "
-                + "its call, and refuses the agent's later requests for every tool until then."),
+            DialogFooter.Paragraph(McpWords.AsksEveryTool(Words.Verbatim(agent))),
+            DialogFooter.Paragraph(McpWords.EveryToolSays),
             tools,
         ], DialogFooter.Answers(session, Denial()));
     }
@@ -61,7 +51,7 @@ public sealed class AgentToolDialog : IdeWindow
 
     private Button Denial()
     {
-        Button deny = new() { Content = Deny, IsCancel = true };
+        Button deny = new() { [ShownWords.ContentProperty] = McpWords.Deny, IsCancel = true };
         deny.Click += (_, _) => Answer(Admission.NotAllowed);
         return deny;
     }

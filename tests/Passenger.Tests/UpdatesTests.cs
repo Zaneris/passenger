@@ -664,7 +664,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         try
         {
             Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#UpdateButton" }));
-            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), McpWords.AllowForSession.English);
             CallToolResult clicked = Await(clicking, "the agent's click on the status bar's Restart to Update");
             Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.RestartIsThePersons.Shown, StringComparison.Ordinal),
                 $"The agent's click on the status bar's Restart to Update was answered: {Text(clicked)}");

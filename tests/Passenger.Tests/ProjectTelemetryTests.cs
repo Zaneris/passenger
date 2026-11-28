@@ -103,7 +103,7 @@ public sealed class ProjectTelemetryTests : McpRig
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> logs = Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["limit"] = 50 }));
-            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Press(Admission(window, "the window to ask whether the agent may work there"), McpWords.Allow.English);
             JsonElement read = Await(logs, "the agent's telemetry of the project run, the only run there is");
             Assert.Contains(read.GetProperty("logs").EnumerateArray(), item => item.GetProperty("message").GetString()?.Contains("Passenger order 42", StringComparison.Ordinal) == true);
             JsonElement named = Await(Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["resource"] = "shop-web", ["kind"] = "traces", ["traceId"] = log.TraceId })),
@@ -294,7 +294,7 @@ public sealed class ProjectTelemetryTests : McpRig
         {
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> looked = Waiting.Apart(() => Call(client, McpTools.Workspace));
-            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Press(Admission(window, "the window to ask whether the agent may work there"), McpWords.Allow.English);
             Await(looked, "the agent's look at the workspace");
             JsonElement ran = Asked(window, client, McpTools.Run, "run a configuration", new() { ["telemetry"] = true, ["waitSeconds"] = 120 });
             Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The agent's run with telemetry answered: {ran}");

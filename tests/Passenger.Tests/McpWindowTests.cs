@@ -211,7 +211,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> installing = Waiting.Apart(() => Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample" }));
-            Press(Question(window, "the question for the agent's install"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's install"), McpWords.AllowForSession.English);
             JsonElement installed = Await(installing, "the agent's install");
             Assert.Equal(["Lib.csproj"], installed.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!));
             Assert.True(worked.Contains("Installing Passenger.Sample 1.0.0 in Lib…"), $"The agent's install did not show as the NuGet window's work; it showed: {string.Join(" | ", worked)}");
@@ -262,7 +262,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 new() { ["text"] = "tally", ["replacement"] = "count", ["wholeWords"] = true, ["scope"] = "directory", ["directory"] = "." }));
             Avalonia.Controls.Window asked = Question(window, "the question for the agent's replace");
             // Pumped, not settled: the replace holds the window's background work while its write of Notes.txt is held.
-            Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == AgentToolDialog.AllowForSession), settle: false);
+            Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(asked).OfType<Avalonia.Controls.Button>().First(b => (string?)b.Content == McpWords.AllowForSession.English), settle: false);
             Ui.PumpUntil(() => held.IsCompleted, "the agent's write of Notes.txt to be held", AgentLimit);
             window.EditorArea.CodeEditor.Focus();
             window.KeyTextInput("// saved meanwhile ");
@@ -306,7 +306,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             JsonElement found = Assert.Single(Await(Waiting.Apart(() => Call(client, McpTools.NugetSearch, new() { ["query"] = "sample", ["feed"] = "local" })), "the agent's search").EnumerateArray());
             Assert.Equal("Passenger.Sample", found.GetProperty("id").GetString());
             Task<JsonElement> installing = Waiting.Apart(() => Call(client, McpTools.NugetInstall, new() { ["project"] = "Lib", ["id"] = "Passenger.Sample" }));
-            Press(Question(window, "the question for the agent's install"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's install"), McpWords.AllowForSession.English);
             JsonElement installed = Await(installing, "the agent's install");
             Assert.Equal(["Lib.csproj"], installed.GetProperty("changed").EnumerateArray().Select(f => f.GetString()!));
             Assert.False(window.DockHost[ToolWindowIds.NuGet].IsBuilt, "The agent's package search or install built the hidden NuGet window's view");
@@ -345,7 +345,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             try
             {
                 Task<JsonElement> committing = Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "Two as a number", ["push"] = true }));
-                Press(Question(window, "the question for the agent's commit"), AgentToolDialog.AllowForSession);
+                Press(Question(window, "the question for the agent's commit"), McpWords.AllowForSession.English);
                 string answer = Await(committing, "the agent's commit and push").GetString()!;
                 Assert.Equal("Nothing to run: no executable project", pressed);
                 Assert.True(answer.EndsWith(" Two as a number; Pushed main", StringComparison.Ordinal),
@@ -370,7 +370,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> misspelt = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "app.biuld" }));
-            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's action"), McpWords.AllowForSession.English);
             CallToolResult unknown = Await(misspelt, "the misspelt action");
             string said = Text(unknown);
             Assert.True(unknown.IsError == true, $"An action no action has was answered as run: {said}");
@@ -425,7 +425,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Assert.True(symbol.IsError == true && Text(symbol).Contains(Refusals.Untrusted.English, StringComparison.Ordinal),
                 $"{McpTools.FindSymbol} in a window whose folder is not trusted answered: {Text(symbol)}");
             Task<CallToolResult> building = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Build }));
-            Press(Question(window, "the question for the agent's Build"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's Build"), McpWords.AllowForSession.English);
             CallToolResult built = Await(building, "the agent's Build");
             Assert.True(built.IsError == true && Text(built).Contains(Refusals.Untrusted.English, StringComparison.Ordinal),
                 $"{McpTools.IdeAction} {AppActions.Build} in a window whose folder is not trusted answered: {Text(built)}");
@@ -460,7 +460,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         {
             Task<CallToolResult> answering = Waiting.Apart(() => Result(client, McpTools.AppClick,
                 new() { ["app"] = "ide", ["window"] = nameof(WorkspaceTrustDialog), ["control"] = $"Button \"{WorkspaceTrustDialog.Trust}\"" }));
-            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), McpWords.AllowForSession.English);
             CallToolResult answered = Await(answering, "the agent's click on the trust question's Trust");
             Assert.True(answered.IsError == true && Text(answered).Contains(Refusals.TrustAnsweredByThePerson.English, StringComparison.Ordinal),
                 $"The agent's click on the trust question's Trust was answered: {Text(answered)}{Said()}");
@@ -514,7 +514,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> naming = Waiting.Apart(() => Result(client, McpTools.VcsCommit, new() { ["message"] = "The picture", ["paths"] = new[] { "Picture.bin" } }));
-            Press(Question(window, "the question for the agent's vcs_commit"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's vcs_commit"), McpWords.AllowForSession.English);
             CallToolResult refused = Await(naming, "the agent's commit of Picture.bin");
             Assert.True(refused.IsError == true && Text(refused).Contains(Why, StringComparison.Ordinal), $"An agent's commit of Picture.bin in a folder not trusted answered: {Text(refused)}");
             string made = Await(Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "The notes" })), "the agent's commit").GetString()!;
@@ -557,11 +557,11 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> stashing = Waiting.Apart(() => Result(client, McpTools.VcsStash, new() { ["action"] = "push", ["message"] = "Set aside" }));
-            Press(Question(window, "the question for the agent's vcs_stash"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's vcs_stash"), McpWords.AllowForSession.English);
             CallToolResult stash = Await(stashing, "the agent's stash");
             Assert.True(stash.IsError == true && Text(stash).Contains(Why, StringComparison.Ordinal), $"An agent's stash of Picture.bin in a folder not trusted answered: {Text(stash)}");
             Task<CallToolResult> checking = Waiting.Apart(() => Result(client, McpTools.VcsCheckout, new() { ["branch"] = "pictured" }));
-            Press(Question(window, "the question for the agent's vcs_checkout"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's vcs_checkout"), McpWords.AllowForSession.English);
             CallToolResult checkout = Await(checking, "the agent's checkout");
             Assert.True(checkout.IsError == true && Text(checkout).Contains(Why, StringComparison.Ordinal), $"An agent's checkout of pictured in a folder not trusted answered: {Text(checkout)}");
             Assert.Equal(("main\n", string.Empty, "two\n"), (TestGit.Run(folder, "branch", "--show-current"), TestGit.Run(folder, "stash", "list"), File.ReadAllText(picture)));
@@ -614,7 +614,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
                 ?? throw new InvalidOperationException("The banner's Install Workloads… is not in the window");
             Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick,
                 new() { ["app"] = "ide", ["window"] = nameof(MainWindow), ["x"] = at.X, ["y"] = at.Y }));
-            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), McpWords.AllowForSession.English);
             CallToolResult clicked = Await(clicking, "the agent's click on the banner's Install Workloads…");
             Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.AgentInstallsMobile.English, StringComparison.Ordinal),
                 $"The agent's click on the banner's Install Workloads… was answered: {Text(clicked)}");
@@ -663,7 +663,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             WaitFor(() => calling.IsCompleted || Questions(window).Any(), what);
             if (Questions(window).FirstOrDefault() is { } asked)
             {
-                Press(asked, AgentToolDialog.AllowForSession);
+                Press(asked, McpWords.AllowForSession.English);
             }
             return Await(calling, what);
         }
@@ -715,7 +715,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             WaitFor(() => calling.IsCompleted || Questions(window).Any(), what);
             if (Questions(window).FirstOrDefault() is { } asked)
             {
-                Press(asked, AgentToolDialog.AllowForSession);
+                Press(asked, McpWords.AllowForSession.English);
             }
             return Await(calling, what);
         }
@@ -770,7 +770,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<CallToolResult> converting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.ConvertIndentationToTabs }));
-            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's action"), McpWords.AllowForSession.English);
             CallToolResult refused = Await(converting, "Convert Indentation on tool.py");
             string said = Text(refused);
             Assert.True(refused.IsError == true && said.Contains(Refusals.GrammarFailed("tool.py", "Python", grammar.Failure.Message).English, StringComparison.Ordinal),
@@ -802,7 +802,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> saving = Waiting.Apart(() => Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.SaveAsLaunchProfile, ["input"] = "Twice" }));
-            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's action"), McpWords.AllowForSession.English);
             Assert.Equal("Saved as the launch profile Twice in Sum's Properties/launchSettings.json, made for it: it is now Sum: Twice, generated from that profile",
                 Await(saving, "the agent's Save as Launch Profile").GetString());
             Assert.True(window.Configurations.SingleOrDefault(c => c.Name == "Sum: Twice") is { Generated: true, Arguments: "--twice" },
@@ -900,7 +900,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Ui.PumpUntil(() => Questions(window).Any(), "the question for the agent's Optimize Imports", AgentLimit);
             // Pumped, not settled: the server's load held waits on the window.
             Ui.Click(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(Questions(window).Single()).OfType<Avalonia.Controls.Button>()
-                .First(b => (string?)b.Content == AgentToolDialog.AllowForSession), settle: false);
+                .First(b => (string?)b.Content == McpWords.AllowForSession.English), settle: false);
             CallToolResult tidied = Ui.AwaitPumped(tidying, "the agent's Optimize Imports of Lib", AgentLimit);
             string[] left = tidied.IsError == true ? [] : [.. JsonDocument.Parse(Text(tidied)).RootElement.GetProperty("notApplied").EnumerateArray().Select(l => l.GetString()!)];
             Assert.True(left.Contains(Refusals.NotTakenIn(late, "Lib").English) && File.ReadAllText(written).StartsWith("using System.Text;", StringComparison.Ordinal),
@@ -933,7 +933,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             window.OpenFile(greeter);
             Ui.WaitFor(() => window.CSharpService!.For(window.EditorArea.Active!)?.Lsp is not null, "the server to have Greeter.cs");
             Task<CallToolResult> formatting = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.Reformat }));
-            Press(Question(window, "the question for the agent's Reformat Code"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's Reformat Code"), McpWords.AllowForSession.English);
             CallToolResult formatted = Await(formatting, "the agent's Reformat Code of Greeter.cs");
             Assert.True(formatted.IsError != true && Text(formatted) is "Already formatted" or "Reformatted", $"Reformat Code of Greeter.cs answered an agent: {Text(formatted)}");
 
@@ -1208,7 +1208,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         {
             // The first waits through the server's restore of MAUI and the load after it, so the load held next is the move's.
             Task<JsonElement> yelled = Waiting.Apart(() => Call(client, McpTools.Rename, new() { ["path"] = "Helper.cs", ["line"] = 5, ["column"] = 26, ["newName"] = "Yell" }));
-            Press(Question(window, "the question for the agent's rename"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's rename"), McpWords.AllowForSession.English);
             Await(yelled, "the agent's rename of Shout to Yell");
             // Pumped, not settled, from here: the server's load held waits on the window.
             Task loadHeld = window.Session.DesignTimeBuilds.HoldNextAsked(project, loading.Task);
@@ -1535,7 +1535,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> asking = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "tests.fault" }));
-            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's action"), McpWords.AllowForSession.English);
             CallToolResult faulted = Await(asking, "the action that fails");
             string said = Text(faulted);
             Assert.True(faulted.IsError == true && said.Contains("NullReferenceException: The fault's own words", StringComparison.Ordinal),
@@ -1564,7 +1564,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> asking = Waiting.Apart(() => Result(client, McpTools.IdeAction, new() { ["action"] = "tests.held" }));
-            Press(Question(window, "the question for the agent's action"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's action"), McpWords.AllowForSession.English);
             CallToolResult failed = Await(asking, "the action that fails");
             Assert.True(failed.IsError == true && Text(failed).Contains("The file is held by another program", StringComparison.Ordinal),
                 $"An agent's call that failed was answered without the failure's words: {Text(failed)}");
@@ -1596,7 +1596,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> removing = Waiting.Apart(() => Call(client, McpTools.BreakpointSet, new() { ["exception"] = ExceptionBreakpoint.AnyException, ["remove"] = true }));
-            Press(Question(window, "the question for the agent's breakpoint"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's breakpoint"), McpWords.AllowForSession.English);
             JsonElement answer = Await(removing, "the agent's remove of Any exception");
             JsonElement listed = answer.EnumerateArray().Single(b => b.TryGetProperty("exception", out JsonElement type) && type.GetString() == ExceptionBreakpoint.AnyException);
             Assert.False(listed.GetProperty("enabled").GetBoolean(), $"The agent's remove answered Any exception still on: {listed}");
@@ -1637,7 +1637,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         WaitFor(() => window.Agents == 1 || agent.IsCompleted, "the window to show the agent", AgentLimit);
         int shown = window.Agents;
         // A breakpoint is asked about first: its condition or log message runs in the person's later sessions too.
-        Press(Question(window, "the question for the agent's breakpoint"), AgentToolDialog.AllowForSession);
+        Press(Question(window, "the question for the agent's breakpoint"), McpWords.AllowForSession.English);
         looked.TrySetResult();
         WaitFor(() => agent.IsCompleted, "the agent's calls", AgentLimit);
         Assert.Equal(1, shown);
@@ -1669,7 +1669,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             Task<JsonElement> asking = Waiting.Apart(() => Call(client, McpTools.Workspace));
             AgentAdmissionDialog asked = Admission(window, "the window to ask whether the agent may work there");
             Assert.Equal(0, window.Agents);
-            Press(asked, AgentAdmissionDialog.Allow);
+            Press(asked, McpWords.Allow.English);
             Assert.Equal(window.Folder, Await(asking, "the agent's workspace call").GetProperty("folder").GetString());
             WaitFor(() => window.AgentStatus == "Agent connected", "the status bar to say an agent is connected");
 
@@ -1691,7 +1691,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
             WaitFor(() => window.AgentStatus is null, "the status bar to say no agent is on the window");
             Assert.True(File.Exists(socket), "Turning the MCP server off closed the window's socket, where it is to ask instead");
             Task<CallToolResult> again = Waiting.Apart(() => Result(client, McpTools.Workspace));
-            Press(Admission(window, "the window to ask again once agents were shut out"), AgentAdmissionDialog.DontAllow);
+            Press(Admission(window, "the window to ask again once agents were shut out"), McpWords.DontAllow.English);
             CallToolResult refused = Await(again, "the call after agents were shut out");
             Assert.True(refused.IsError == true && Text(refused).Contains("did not let Test Agent work there", StringComparison.Ordinal),
                 $"A call the person did not let in was answered: {Text(refused)}");
@@ -1729,7 +1729,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
 
             using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(Cancel);
             Task<CallToolResult> allowed = Waiting.Apart(() => CallGivingUp(client, McpTools.Run, run, giveUp.Token));
-            Press(Question(window, "the question asked again"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question asked again"), McpWords.AllowForSession.English);
             WaitFor(() => window.Runner.IsRunning && window.AgentStatus == "Agent: Run a configuration", "the agent's run in the status bar");
 
             giveUp.Cancel();
@@ -1852,7 +1852,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> committing = Waiting.Apart(() => Call(client, McpTools.VcsCommit, new() { ["message"] = "Two", ["push"] = true }));
-            Press(Question(window, "the question for the agent's vcs_commit"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's vcs_commit"), McpWords.AllowForSession.English);
             WaitFor(() => window.GitQuestion is { IsVisible: true }, "the window to ask the person for the login the push needs");
             Passenger.App.Vcs.GitQuestionDialog asked = window.GitQuestion!;
             Assert.Equal($"Sign in to {remote.Place}", asked.Title);
@@ -1903,7 +1903,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> running = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-shell", ["waitSeconds"] = 5 }));
-            Press(Question(window, "the question for the agent's terminal command"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's terminal command"), McpWords.AllowForSession.English);
             string answer = Await(running, "the agent's terminal command").GetString()!;
             Assert.Contains("agent-shell", answer, StringComparison.Ordinal);
             Ui.Settle();
@@ -1948,7 +1948,7 @@ public sealed class McpWindowTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> first = Waiting.Apart(() => Call(client, McpTools.TerminalRun, new() { ["command"] = "echo agent-one", ["waitSeconds"] = 5 }));
-            Press(Question(window, "the question for the agent's terminal command"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's terminal command"), McpWords.AllowForSession.English);
             WaitFor(() => terminal.AgentShell is not null || first.IsCompleted, "the Agent Shell to start for the agent's first command");
             Assert.True(terminal.AgentShell is not null, $"The agent's command ran in no Agent Shell, the person's program's screen:\n{TerminalTests.Screen(persons.Session)}");
             Heard heard = new();
