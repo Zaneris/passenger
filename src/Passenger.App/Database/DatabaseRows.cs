@@ -229,11 +229,14 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
         && schema.Columns.FirstOrDefault(c => c.Name == Columns[column]) is { Primary: false, Generated: false }
         && Rows[row][column] is null or AbsentField or string or long or int or short or byte or double or float or decimal or bool;
 
-    public override string Cell(int row, int column) => ContainerSecrets.InSaid(Rows[row][column] switch
+    public override string Cell(int row, int column) => ContainerSecrets.InSaid(Text(row, column));
+
+    /// <summary>A cell's text whole, none of it masked: what a write over its masked text puts back what it hid from.</summary>
+    public string Text(int row, int column) => Rows[row][column] switch
     {
         null => "NULL",
         byte[] bytes => $"[{bytes.Length} bytes]",
         IFormattable value => value.ToString(null, CultureInfo.InvariantCulture),
         object value => value.ToString() ?? string.Empty,
-    });
+    };
 }

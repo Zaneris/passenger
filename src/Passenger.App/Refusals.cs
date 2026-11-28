@@ -990,6 +990,9 @@ public static class Refusals
     /// <summary>A table's Redo with no change of it taken back.</summary>
     public const string NoPendingRedo = "No change of this table to redo";
 
+    /// <summary>A cell written over its text shown masked, a mask added or taken out, so what each hid cannot be put back.</summary>
+    public const string MaskedPartChanged = "Write the value whole: a part of it shown masked was changed";
+
     /// <summary>Delete Rows with no row chosen in a table that may change.</summary>
     public const string NoRowChosen = "Choose a row first";
 

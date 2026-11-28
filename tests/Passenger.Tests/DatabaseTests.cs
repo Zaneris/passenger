@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Microsoft.Data.Sqlite;
 using Passenger.App;
+using Passenger.App.Containers;
 using Passenger.App.Database;
 using Passenger.App.Tables;
 using Passenger.Core;
@@ -46,6 +47,7 @@ public sealed class DatabaseTests
             CREATE TRIGGER Noted AFTER INSERT ON Orders BEGIN UPDATE Products SET Note = 'ordered' WHERE Id = NEW.Product; END;
             WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<105)
             INSERT INTO Products SELECT x, 'Product '||x, NULL FROM n;
+            UPDATE Products SET Note = 'https://alice:kept-in-cell@example.com/old' WHERE Id = 5;
             """);
         string settings = TestFolders.Create("database-settings-");
         MainWindow window = Open(folder, settings);
@@ -159,6 +161,13 @@ public sealed class DatabaseTests
                 Assert.True(window.Perform(Passenger.Editor.EditorActions.Undo), "Undo did not take back the revert");
                 Assert.Equal("2 rows changed, 1 row deleted, 1 row added pending", data.Edits.Said);
                 Assert.Equal("Product 1", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+                // A cell shown with a secret masked is written as shown, what the mask hid kept where the mask still stands.
+                int masked = Enumerable.Range(0, data.Shown.RowCount).First(r => data.Shown.Cell(r, 0) == "5");
+                grid.Choose((masked, 2), (masked, 2));
+                Assert.True(grid.BeginWriting(), "The masked cell could not be written");
+                Assert.Equal($"https://alice:{ContainerSecrets.Masked}@example.com/old", grid.Writing!.Text);
+                grid.Writing.Text = grid.Writing.Text.Replace("/old", "/new", StringComparison.Ordinal);
+                Ui.Press(window, "ENTER");
                 grid.Focus();
                 Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseSubmit))[0].First.Notation());
                 Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
@@ -168,6 +177,7 @@ public sealed class DatabaseTests
                 Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
                 Assert.Null(Scalar(folder, "SELECT Name FROM Products WHERE Id=4"));
                 Assert.Equal("Added", Scalar(folder, "SELECT Name FROM Products WHERE Id=500"));
+                Assert.Equal("https://alice:kept-in-cell@example.com/new", Scalar(folder, "SELECT Note FROM Products WHERE Id=5"));
             });
             Flow.Step("a row changed elsewhere since it was read refuses the changes, none written, and the tab asks before it closes with them", () =>
             {

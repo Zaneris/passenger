@@ -144,6 +144,17 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
 
     private static string Shown(string? text) => ContainerSecrets.InSaid(text ?? "NULL");
 
+    /// <summary>A cell's text whole, as <see cref="Cell"/> shows it masked: as written and not yet submitted, else as read.</summary>
+    public string Whole(int row, int column)
+    {
+        if (IsRead(row))
+        {
+            return KeyOf(row) is { } key && Edits.Changed.TryGetValue(key, out ChangedRow? changed) && changed.Written.TryGetValue(column, out string? text)
+                ? text ?? "NULL" : Page.Text(row, column);
+        }
+        return AddedAt(row) is { } added && added.Written.TryGetValue(column, out string? written) ? written ?? "NULL" : string.Empty;
+    }
+
     /// <summary>A cell's value as written and not yet submitted (its text, or none for NULL), else as read.</summary>
     public override object? ValueAt(int row, int column)
     {
