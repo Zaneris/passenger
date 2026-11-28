@@ -63,8 +63,8 @@ public sealed record FilesFound(IReadOnlyList<SearchMatch> Matches, IReadOnlyLis
         Stopped.Select(path => (path, FileSearch.StoppedWhy)).Concat(Outside.Select(path => (path, FileSearch.OutsideWhy)));
 
     /// <summary>Where the search stopped, each file named as <paramref name="name"/> gives it; null when it stopped nowhere.</summary>
-    public string? StoppedIn(Func<string, string> name) =>
-        (Stopped.Count == 0 ? null : Refusals.RegexStoppedIn(string.Join(", ", Stopped.Select(name))))?.Shown;
+    public Words? StoppedIn(Func<string, string> name) =>
+        Stopped.Count == 0 ? null : Refusals.RegexStoppedIn(string.Join(", ", Stopped.Select(name)));
 }
 
 /// <summary>What Replace in Files did beyond the matches: the files written as UTF-8 since their encoding could not hold

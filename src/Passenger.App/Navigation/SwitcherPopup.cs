@@ -22,7 +22,7 @@ public sealed record SwitcherRow(string Name, string After, OpenDocument? Docume
     public string? IconBrushKey => Document?.IconBrushKey;
 
     /// <summary>What a screen reader is told it is, after its name: a file's folder, or a tool window.</summary>
-    public string Said => Window is null ? After : "tool window";
+    public string Said => Window is null ? After : NavigationWords.ToolWindowSaid.Shown;
 }
 
 /// <summary>The Switcher's popup: the window's open tabs, the one used last first, then its tool windows, with one chosen.
@@ -39,7 +39,7 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
 
     /// <param name="chosen">The row chosen as it opens.</param>
     public SwitcherPopup(IReadOnlyList<SwitcherRow> rows, int chosen)
-        : base("Switcher", "A file's or tool window's name", PopupFrame.Medium)
+        : base(NavigationWords.Switcher, NavigationWords.SwitcherPlaceholder, PopupFrame.Medium)
     {
         all = rows;
         first = chosen;
@@ -51,7 +51,7 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
     protected override void QueryChanged()
     {
         string typed = Query.Trim();
-        Show(typed.Length == 0 ? all : [.. all.Where(row => FuzzyMatch.Score(typed, row.Name) is not null)], "Nothing open has that name",
+        Show(typed.Length == 0 ? all : [.. all.Where(row => FuzzyMatch.Score(typed, row.Name) is not null)], NavigationWords.NothingOpenNamed,
             typed.Length == 0 ? first : 0);
     }
 

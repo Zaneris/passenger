@@ -84,4 +84,24 @@
     <value>Nothing matches</value>
     <comment>A list's words where its search keeps nothing.</comment>
   </data>
+  <data name="UsageDeclaration" xml:space="preserve">
+    <value>Declaration</value>
+    <comment>What a usage does where it is: declares the symbol (Show Usages' rows, the Find window's groups).</comment>
+  </data>
+  <data name="UsageWrite" xml:space="preserve">
+    <value>Write</value>
+    <comment>What a usage does where it is: writes the symbol.</comment>
+  </data>
+  <data name="UsageRead" xml:space="preserve">
+    <value>Read</value>
+    <comment>What a usage does where it is: reads the symbol.</comment>
+  </data>
+  <data name="UsageInvocation" xml:space="preserve">
+    <value>Invocation</value>
+    <comment>What a usage does where it is: calls the symbol.</comment>
+  </data>
+  <data name="UsageImport" xml:space="preserve">
+    <value>Import</value>
+    <comment>What a usage does where it is: imports the symbol.</comment>
+  </data>
 </root>

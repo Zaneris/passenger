@@ -1955,4 +1955,20 @@
     <value>{context}'s migrations take their connection from its design-time factory, {factory}, which names none Passenger can read: name it there through GetConnectionString or a connection string written whole</value>
     <comment>A context's database asked for where its design-time factory, which dotnet ef makes it by, makes its connection in a way read from no code.</comment>
   </data>
+  <data name="NoEditBefore" xml:space="preserve">
+    <value>No earlier edit location</value>
+    <comment>Why Last Edit Location cannot go: no edit before the one gone to.</comment>
+  </data>
+  <data name="NoEditAfter" xml:space="preserve">
+    <value>No later edit location</value>
+    <comment>Why Next Edit Location cannot go: no edit after the one gone to.</comment>
+  </data>
+  <data name="NoPlaceBefore" xml:space="preserve">
+    <value>No place to go back to</value>
+    <comment>Why Back cannot go: no place before.</comment>
+  </data>
+  <data name="NoPlaceAfter" xml:space="preserve">
+    <value>No place to go forward to</value>
+    <comment>Why Forward cannot go: no place after.</comment>
+  </data>
 </root>

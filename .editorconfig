@@ -71,3 +71,6 @@ dotnet_diagnostic.PSG0012.severity = warning
 
 [src/Passenger.App/Docking/**.cs]
 dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Navigation/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning

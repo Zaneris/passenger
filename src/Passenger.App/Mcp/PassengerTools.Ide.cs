@@ -285,10 +285,10 @@ public sealed partial class PassengerTools
         (FilesFound? every, string? why) = await window.FindEveryMatchAsync(query, chosen, cancel);
         (FilesFound searched, IReadOnlyList<string> unreached) = Reached(every ?? throw new InvalidOperationException(why), changes: true);
         IReadOnlyList<SearchMatch> found = searched.Matches;
-        string? outside = unreached.Count == 0 ? null : $"not replaced: {string.Join("; ", unreached.Select(p => Refusals.OutOfReach(p, Session.Folder, changes: true)))}";
+        string? outside = unreached.Count == 0 ? null : $"not replaced: {string.Join("; ", unreached.Select(p => Refusals.OutOfReach(p, Session.Folder, changes: true).English))}";
         if (found.Count == 0)
         {
-            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}"
+            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped.English}"
                 : outside is not null ? $"Nothing was replaced: {outside}" : "Nothing matches, so nothing was replaced";
         }
         List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];

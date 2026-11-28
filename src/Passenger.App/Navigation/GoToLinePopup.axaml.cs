@@ -1,7 +1,10 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.App.Navigation;
@@ -16,6 +19,8 @@ public partial class GoToLinePopup : UserControl, IAnswers<TextPosition?>
     {
         InitializeComponent();
         this.lastLine = lineCount;
+        ShownWords.Set(Heading, TextBlock.TextProperty, NavigationWords.GoToLine);
+        ShownWords.Set(Query, AutomationProperties.NameProperty, NavigationWords.GoToLine);
         Query.Text = $"{current.Line + 1}:{current.Column + 1}";
         Query.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         Dispatcher.UIThread.Post(() =>
@@ -48,7 +53,7 @@ public partial class GoToLinePopup : UserControl, IAnswers<TextPosition?>
             }
             else
             {
-                Problem.Text = $"A line from 1 to {lastLine}, and a column after a colon if wanted";
+                ShownWords.Set(Problem, TextBlock.TextProperty, NavigationWords.LineRange(Words.Verbatim(lastLine.ToString(System.Globalization.CultureInfo.InvariantCulture))));
                 Problem.IsVisible = true;
             }
             e.Handled = true;
