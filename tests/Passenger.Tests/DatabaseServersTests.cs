@@ -1402,7 +1402,7 @@ public sealed class DatabaseServersTests
                 Write(window, grid, (Row("coffee"), note), "decaf");
                 grid.Choose((Row("milk"), named), (Row("milk"), named));
                 Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Items did not run");
-                Write(window, grid, (data.Shown.RowCount - 1, Array.IndexOf(data.Rows.Columns, "id")), "4");
+                Write(window, grid, (data.Shown.RowCount - 1, Array.IndexOf(data.Rows.Columns, "id")), "0004");
                 Write(window, grid, (data.Shown.RowCount - 2, named), "water");
                 Assert.Equal("2 items changed, 1 item deleted, 1 item added pending", data.EditsSaid);
                 Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
@@ -1410,7 +1410,7 @@ public sealed class DatabaseServersTests
                 Assert.Equal("7", Order("1")!["qty"].N);
                 Assert.Equal("decaf", Order("2")!["note"].S);
                 Assert.Null(Order("3"));
-                Assert.Equal("water", Order("4")!["name"].S);
+                Assert.Equal("water", Order("0004")!["name"].S);
                 Ui.Await(dynamo.UpdateItemAsync(new Amazon.DynamoDBv2.Model.UpdateItemRequest
                 {
                     TableName = "orders", Key = new() { ["id"] = new Amazon.DynamoDBv2.Model.AttributeValue { S = "2" } }, UpdateExpression = "SET qty = :q",

@@ -30,6 +30,13 @@ public sealed class RowKey(object?[] values) : IEquatable<RowKey>
     public override string ToString() => ContainerSecrets.InSaid(string.Join(", ", Values.Select(v => Convert.ToString(v, CultureInfo.InvariantCulture))));
 }
 
+/// <summary>A submission that wrote some of its changes before a failure or Stop ended it, as no transaction held them
+/// together: those not written, which still wait, and what ended it.</summary>
+public sealed class PartlyWritten(PendingEdits left, string why, Exception cause) : InvalidOperationException(why, cause)
+{
+    public PendingEdits Left { get; } = left;
+}
+
 /// <summary>A row of the table changed: as it was read, and the text written in each of its cells changed, by column (null
 /// for NULL).</summary>
 public sealed record ChangedRow(object?[] Read, ImmutableDictionary<int, string?> Written);
@@ -56,6 +63,14 @@ public sealed record PendingEdits
     public string SaidOf(string noun) => IsEmpty ? "No changes pending"
         : string.Join(", ", new[] { (Changed.Count, "changed"), (Deleted.Count, "deleted"), (Added.Count, "added") }
             .Where(c => c.Item1 > 0).Select(c => $"{Plural.Of(c.Item1, noun)} {c.Item2}")) + " pending";
+
+    /// <summary>What of it was written where <paramref name="left"/> still waits, said in a line.</summary>
+    public string Besides(PendingEdits left) => (this with
+    {
+        Changed = Changed.RemoveRange(left.Changed.Keys),
+        Deleted = Deleted.RemoveRange(left.Deleted.Keys),
+        Added = Added.RemoveAll(left.Added.Contains),
+    }).Said.Replace(" pending", string.Empty, StringComparison.Ordinal);
 
     /// <summary>A cell of a row read written, or put back as read where what is written is <paramref name="asRead"/>.</summary>
     public PendingEdits Write(RowKey key, object?[] read, int column, string? text, bool asRead)
@@ -128,7 +143,8 @@ public sealed class PendingTable(DatabaseRows page, PendingEdits edits, bool edi
             return null;
         }
         object?[] values = [.. schema.Columns.Where(c => c.Primary).Select(c => Array.IndexOf(Page.Columns, c.Name) is >= 0 and int at ? Page.Rows[row][at] : null)];
-        return values.Any(v => v is null) ? null : new RowKey(values);
+        // A key column past the first may hold null: a Cosmos DB item's partition value, which is a value of its own.
+        return values[0] is null ? null : new RowKey(values);
     }
 
     public override int RowNumber(int row) => Page.Offset + row + 1;

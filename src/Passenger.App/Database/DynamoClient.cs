@@ -142,12 +142,14 @@ internal static class DynamoClient
         };
     });
 
-    /// <summary>Writes a page's changes in one transaction (in turn past DynamoDB's 100), each change held to its item as read:
-    /// an attribute changed only where it holds what was read (missing where it was missing), an item deleted only where it
-    /// is there, one added only where its key is not taken.</summary>
+    /// <summary>Writes a page's changes in one transaction, at most DynamoDB's 100 (more refused before any is written, as
+    /// two would commit apart), each change held to its item as read: an attribute changed only where it holds what was
+    /// read (missing where it was missing), an item deleted only where it is there, one added only where its key is not
+    /// taken; each key's value of the type its table declares, a string's as written, a number's as read.</summary>
     internal static async Task SubmitAsync(DatabaseSource source, DatabaseSchema schema, DatabaseRows page, PendingEdits edits, CancellationToken cancel) =>
         await Guarded(source, async () =>
         {
+            using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
             string[] keys = [.. schema.Columns.Where(c => c.Primary).Select(c => c.Name)];
             List<TransactWriteItem> writes = [];
             foreach ((RowKey key, ChangedRow row) in edits.Changed)
@@ -177,19 +179,51 @@ internal static class DynamoClient
                 {
                     Update = new Update
                     {
-                        TableName = schema.Table.Name, Key = KeyOf(keys, key), UpdateExpression = "SET " + string.Join(", ", sets),
+                        TableName = schema.Table.Name, Key = KeyOf(schema, keys, key), UpdateExpression = "SET " + string.Join(", ", sets),
                         ConditionExpression = holds.Count > 0 ? string.Join(" AND ", holds) : null, ExpressionAttributeNames = names, ExpressionAttributeValues = values,
                     },
                 });
             }
-            foreach (RowKey key in edits.Deleted.Keys)
+            foreach ((RowKey key, object?[] read) in edits.Deleted)
             {
+                // Deleted only while each plain attribute holds what was read, of the type the item holds it as now, a missing one missing.
+                Dictionary<string, AttributeValue> now = (await client.GetItemAsync(new GetItemRequest { TableName = schema.Table.Name, Key = KeyOf(schema, keys, key),
+                    ConsistentRead = true }, cancel)).Item ?? throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name));
+                Dictionary<string, string> names = new() { ["#k"] = keys[0] };
+                Dictionary<string, AttributeValue> values = [];
+                List<string> holds = ["attribute_exists(#k)"];
+                for (int column = 0; column < read.Length; column++)
+                {
+                    if (keys.Contains(page.Columns[column]) || read[column] is JsonText)
+                    {
+                        continue;
+                    }
+                    names[$"#a{column}"] = page.Columns[column];
+                    if (read[column] is AbsentField)
+                    {
+                        holds.Add($"attribute_not_exists(#a{column})");
+                        continue;
+                    }
+                    if (!now.TryGetValue(page.Columns[column], out AttributeValue? held))
+                    {
+                        throw new InvalidOperationException(Refusals.ItemChanged(schema.Table.Name));
+                    }
+                    if (read[column] is null)
+                    {
+                        values[$":r{column}"] = new AttributeValue { S = "NULL" };
+                        holds.Add($"attribute_type(#a{column}, :r{column})");
+                        continue;
+                    }
+                    values[$":r{column}"] = held.B is not null && read[column] is string base64 && ImportTypes.TryConvert(base64, typeof(byte[]), out object bytes)
+                        ? new AttributeValue { B = new MemoryStream((byte[])bytes) } : Attribute(BsonValue.Create(read[column]));
+                    holds.Add($"#a{column} = :r{column}");
+                }
                 writes.Add(new TransactWriteItem
                 {
                     Delete = new Delete
                     {
-                        TableName = schema.Table.Name, Key = KeyOf(keys, key), ConditionExpression = "attribute_exists(#k)",
-                        ExpressionAttributeNames = new Dictionary<string, string> { ["#k"] = keys[0] },
+                        TableName = schema.Table.Name, Key = KeyOf(schema, keys, key), ConditionExpression = string.Join(" AND ", holds),
+                        ExpressionAttributeNames = names, ExpressionAttributeValues = values.Count > 0 ? values : null,
                     },
                 });
             }
@@ -201,11 +235,10 @@ internal static class DynamoClient
                 {
                     throw new InvalidOperationException(Refusals.ItemLacksKey(lacking));
                 }
-                // A key's written words take the type its table declares.
+                // A key's written words, as written, take the type its table declares: 000123 stays a string's.
                 foreach (string key in keys)
                 {
-                    string? words = item[key].S ?? item[key].N;
-                    item[key] = schema.Columns.First(c => c.Name == key).Type == "number" ? new AttributeValue { N = words } : new AttributeValue { S = words };
+                    item[key] = KeyValue(schema, key, added.Written[Array.IndexOf(page.Columns, key)]!);
                 }
                 writes.Add(new TransactWriteItem
                 {
@@ -216,13 +249,13 @@ internal static class DynamoClient
                     },
                 });
             }
-            using AmazonDynamoDBClient client = await ClientAsync(source, cancel);
+            if (writes.Count > MostInTransaction)
+            {
+                throw new InvalidOperationException(Refusals.TooManyItemChanges(writes.Count, MostInTransaction));
+            }
             try
             {
-                foreach (TransactWriteItem[] batch in writes.Chunk(MostInTransaction))
-                {
-                    await client.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = [.. batch] }, cancel);
-                }
+                await client.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = writes }, cancel);
             }
             catch (TransactionCanceledException refused) when (refused.CancellationReasons?.Any(r => r.Code == "ConditionalCheckFailed") == true)
             {
@@ -305,14 +338,30 @@ internal static class DynamoClient
     {
         BsonNull => new AttributeValue { NULL = true },
         BsonBoolean truth => new AttributeValue { BOOL = truth.AsBoolean },
-        BsonInt32 or BsonInt64 or BsonDouble or BsonDecimal128 => new AttributeValue { N = Convert.ToString(BsonTypeMapper.MapToDotNetValue(value), CultureInfo.InvariantCulture) },
+        BsonDecimal128 exact => new AttributeValue { N = ((decimal)exact.AsDecimal128).ToString(CultureInfo.InvariantCulture) },
+        BsonInt32 or BsonInt64 or BsonDouble => new AttributeValue { N = Convert.ToString(BsonTypeMapper.MapToDotNetValue(value), CultureInfo.InvariantCulture) },
         BsonDateTime at => new AttributeValue { S = at.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture) },
         _ => new AttributeValue { S = value.ToString() },
     };
 
-    /// <summary>An item's key by its primary attributes' values as read.</summary>
-    private static Dictionary<string, AttributeValue> KeyOf(string[] keys, RowKey key) =>
-        keys.Select((name, at) => (name, value: key.Values[at])).ToDictionary(k => k.name, k => Attribute(k.value is null ? BsonNull.Value : BsonValue.Create(k.value)), StringComparer.Ordinal);
+    /// <summary>An item's key by its primary attributes' values as read, each of the type its table declares.</summary>
+    private static Dictionary<string, AttributeValue> KeyOf(DatabaseSchema schema, string[] keys, RowKey key) =>
+        keys.Select((name, at) => (name, value: key.Values[at])).ToDictionary(k => k.name, k => KeyValue(schema, k.name, k.value switch
+        {
+            double number => number.ToString("R", CultureInfo.InvariantCulture),
+            IFormattable exact => exact.ToString(null, CultureInfo.InvariantCulture),
+            _ => Convert.ToString(k.value, CultureInfo.InvariantCulture) ?? string.Empty,
+        }), StringComparer.Ordinal);
+
+    /// <summary>A key attribute's value from its text, of the type its table declares: a number's digits as they are, a
+    /// binary's bytes from base64 (or 0x hex), a string's text as it is.</summary>
+    private static AttributeValue KeyValue(DatabaseSchema schema, string key, string text) => schema.Columns.First(c => c.Name == key).Type switch
+    {
+        "number" => new AttributeValue { N = text.Trim() },
+        "binary" => ImportTypes.TryConvert(text, typeof(byte[]), out object bytes) ? new AttributeValue { B = new MemoryStream((byte[])bytes) }
+            : throw new InvalidOperationException(Refusals.NotAValue(text, "bytes", key)),
+        _ => new AttributeValue { S = text },
+    };
 
     private static string TypeOf(TableDescription table, string attribute) => AttributeType(table, attribute) switch
     {

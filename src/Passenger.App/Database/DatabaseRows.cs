@@ -228,7 +228,7 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public override RowWriter? Inserts(TextWriter into, string lineBreak) => Into is { } target ? new SqlInserts(into, target, lineBreak) : null;
 
     public override bool IsEditable(int row, int column) => Schema is { } schema && schema.Columns.Any(c => c.Primary)
-        && schema.Columns.Where(c => c.Primary).All(c => Array.IndexOf(Columns, c.Name) switch { < 0 => false, int key => Rows[row][key] is not null })
+        && schema.Columns.Where(c => c.Primary).Select((c, at) => (c, at)).All(k => Array.IndexOf(Columns, k.c.Name) switch { < 0 => false, int key => k.at > 0 || Rows[row][key] is not null })
         && schema.Columns.FirstOrDefault(c => c.Name == Columns[column]) is { Primary: false, Generated: false }
         && Rows[row][column] is null or AbsentField or string or long or int or short or byte or double or float or decimal or bool;
 

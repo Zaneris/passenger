@@ -883,6 +883,14 @@ public static class Refusals
     /// <summary>A DynamoDB item added without its table's key, which every item holds.</summary>
     public static string ItemLacksKey(string key) => $"An item added needs its key, {key}";
 
+    /// <summary>Another page, filter or sort of a document database's table while its changes wait, which stand by the
+    /// fields of the page shown.</summary>
+    public const string DocumentChangesPending = "Submit or revert the changes first: another page's documents may hold other fields";
+
+    /// <summary>A DynamoDB table's changes past the most one transaction writes, refused before any is written.</summary>
+    public static string TooManyItemChanges(int changes, int most) =>
+        $"DynamoDB writes at most {most} changes in one transaction, and these are {changes}: submit them in parts, so none is written apart from the rest";
+
     /// <summary>A DynamoDB table's changes, refused whole as an item they change no longer stands as it was read.</summary>
     public static string ItemChanged(string table) => $"An item of {table} changed since it was read, so nothing was written: read the table again";
 
