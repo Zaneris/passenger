@@ -48,6 +48,7 @@ public sealed class ExplorerOpenedFileTests : IDisposable
         Flow.StepApart<ExplorerOpenedFileTests>("with always select opened file off the explorer keeps its row and turned on it chooses the file shown", t => t.With_always_select_opened_file_off_the_explorer_keeps_its_row_and_turned_on_it_chooses_the_file_shown());
         Flow.StepApart<ExplorerOpenedFileTests>("with open files with single click a plain click opens a file keeping the keys and no other click does", t => t.With_open_files_with_single_click_a_plain_click_opens_a_file_keeping_the_keys_and_no_other_click_does());
         Flow.StepApart<ExplorerOpenedFileTests>("a file with an error waves its name and every row holding it until the error is gone", t => t.A_file_with_an_error_waves_its_name_and_every_row_holding_it_until_the_error_is_gone());
+        Flow.StepApart<ExplorerOpenedFileTests>("a double click on a project's row opens its project file and with the setting off expands it", t => t.A_double_click_on_a_projects_row_opens_its_project_file_and_with_the_setting_off_expands_it());
     }
 
     /// <summary>An error in an open file waves the name of its row and of its folder's, its project's and the solution's,

@@ -657,7 +657,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Window app = Question(window, "the question for the agent's click in an app");
             Assert.Contains("Allow app_click?", Texts(app));
             Press(app, AgentToolDialog.AllowForSession);
-            Assert.Contains("No Avalonia, WPF, WinUI or MAUI app", Text(Await(clicking, "the click in an app")), StringComparison.Ordinal);
+            Assert.Contains("No Avalonia, WPF, WinUI, Windows Forms or MAUI app", Text(Await(clicking, "the click in an app")), StringComparison.Ordinal);
             Task<CallToolResult> clickingOwn = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#RunConfigButton" }));
             Window own = Question(window, "the question for the agent's click in Passenger's own windows");
             string[] said = Texts(own);
@@ -723,7 +723,7 @@ public sealed class McpAttachTests : McpRig, IClassFixture<RestoredFolders>
             Unasked(window, client, McpTools.Build);
             // In an app, none running: no test but McpAvaloniaAppTests' inspects Passenger's own windows in the test process.
             string clicked = Text(UnaskedResult(window, client, McpTools.AppClick, new() { ["x"] = 10, ["y"] = 10 }));
-            Assert.Contains("No Avalonia, WPF, WinUI or MAUI app", clicked, StringComparison.Ordinal);
+            Assert.Contains("No Avalonia, WPF, WinUI, Windows Forms or MAUI app", clicked, StringComparison.Ordinal);
             Assert.Contains("allowed already", Text(UnaskedResult(window, client, McpTools.RequestFullAccess)), StringComparison.Ordinal);
 
             // The agent's own open, still the person's to allow, leaves every tool asking again in the folder it opens.
