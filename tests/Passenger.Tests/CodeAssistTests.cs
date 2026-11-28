@@ -2536,10 +2536,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>On a library type's decompiled source, every action of the Code and Refactor menus that would change the file
-    /// greys saying it is read-only (those of another language's files saying that instead), those that only fold it, find
-    /// its code's clones or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only
-    /// read it, and Create Fake, which writes a test project's file, greys only for its own reasons; Code Cleanup's and
-    /// Rename's keys there say so and change nothing.</summary>
+    /// greys saying it is read-only (another language's files' saying that instead), those that only fold it, find its
+    /// clones, inspect the solution or act on the language server stay enabled, as do Go to Declaration and Find Usages, and
+    /// Create Fake, which writes a test project's file, greys only for its own reasons; Code Cleanup's and Rename's keys
+    /// there say so and change nothing.</summary>
     private void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
         MainWindow window = project.Open("Program.cs");
@@ -2549,7 +2549,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         HashSet<string> reading = [EditorActions.Unfold, EditorActions.UnfoldAll, EditorActions.Fold, EditorActions.FoldToDefinitions, EditorActions.FoldAll,
             EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, EditorActions.UnfoldRecursively, EditorActions.FoldRecursively,
             .. EditorActions.UnfoldToLevels, .. EditorActions.UnfoldAllToLevels, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer,
-            AppActions.FindClones, AppActions.FindClonesOfSelection];
+            AppActions.FindClones, AppActions.FindClonesOfSelection, AppActions.RunInspectionByName];
         HashSet<string> elsewhere = [AppActions.CreateFake];
         HashSet<string> otherLanguage = [AppActions.OrderScriptParts, AppActions.ExtractResource, AppActions.ExtractStyle];
 
