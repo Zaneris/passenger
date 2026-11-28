@@ -135,7 +135,7 @@ public sealed class TestsView : DockPanel
         };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add(StyleClasses.Muted);
-        placeholder = new EmptyState { Text = model.EmptyText };
+        placeholder = new EmptyState(model.EmptyText);
         model.Rows.CollectionChanged += (_, _) => ShowPlaceholder();
         model.EmptyTextChanged += (_, _) => ShowPlaceholder();
 
@@ -303,14 +303,13 @@ public sealed class TestsView : DockPanel
     public bool HasFocus => tree.IsKeyboardFocusWithin;
 
     /// <summary>What the window says of the tests last found or run, whole in its tip where the line trims it.</summary>
-    public string Status
+    public string Status => status.Text ?? string.Empty;
+
+    /// <summary>Says what the window says of the tests, in the language in force and again as it changes.</summary>
+    public void Tell(Words said)
     {
-        get => status.Text ?? string.Empty;
-        set
-        {
-            status.Text = value;
-            ToolTip.SetTip(status, value.Length > 0 ? value : null);
-        }
+        ShownWords.Set(status, TextBlock.TextProperty, said);
+        ShownWords.Set(status, ToolTip.TipProperty, said.IsEmpty ? null : said);
     }
 
     /// <summary>Tests are being found or run: Stop has something to end, and is disabled while it has not.</summary>
@@ -486,9 +485,9 @@ public sealed class TestsView : DockPanel
     private void ShowPlaceholder()
     {
         placeholder.IsVisible = Model.Rows.Count == 0;
-        placeholder.Text = Model.Roots.Count == 0 ? Model.EmptyText
-            : Model is { Shown: not null, Outcomes.Count: 0, Search.Length: 0 } ? "None of this session's tests is found"
-            : "No matching tests";
+        placeholder.Say(Model.Roots.Count == 0 ? Model.EmptyText
+            : Model is { Shown: not null, Outcomes.Count: 0, Search.Length: 0 } ? TestingWords.NoneOfSession
+            : TestingWords.NoneMatching);
     }
 
     /// <summary>Shows the tests of a session (every test for none) and gives the tree's chosen row the keys, its first where

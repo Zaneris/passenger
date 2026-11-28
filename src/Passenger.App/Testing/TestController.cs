@@ -12,9 +12,6 @@ namespace Passenger.App.Testing;
 /// A UI-thread object: everything a run says crosses to the UI thread before it changes the tree.</summary>
 public sealed class TestController : IAsyncDisposable
 {
-    /// <summary>What the window says when Stop ends a run before its tests ran.</summary>
-    public const string StoppedMessage = "Tests stopped";
-
     private static readonly IReadOnlyList<TestSource> NoSources = [];
 
     private readonly Func<IReadOnlyList<string>, CancellationToken, Task<Run.BuildOutcome>> build;
@@ -104,7 +101,7 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Why the tests of these methods (every one shown, where none is named) are not run: each is a GoDotTest game's
     /// whose scenes never run its tests, as last read; null where any may run.</summary>
-    public string? NeverRuns(IEnumerable<TestNode>? methods = null)
+    public Words? NeverRuns(IEnumerable<TestNode>? methods = null)
     {
         UiThread.Check();
         List<string?> games = [.. (methods ?? Tree.Methods).Select(m => m.ProjectPath).Distinct(StringComparer.Ordinal)];
@@ -118,7 +115,7 @@ public sealed class TestController : IAsyncDisposable
             }
         }
         return games.Count > 0 && games.All(p => p is not null && goDotStarts.TryGetValue(p, out GoDotTests.Start? start) && start.Never)
-            ? string.Join("; ", games.Select(g => Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(g)!, goDotStarts[g!]))) : null;
+            ? Joined(games.Select(g => Refusals.GoDotTestStart(Path.GetFileNameWithoutExtension(g)!, goDotStarts[g!])).OfType<Words>()) : null;
     }
 
     /// <summary>The games whose start a read has been begun for, so asking again begins none.</summary>
@@ -156,7 +153,7 @@ public sealed class TestController : IAsyncDisposable
     public event EventHandler? BusyChanged;
 
     /// <summary>The last run's tally, for the window's status line.</summary>
-    public string Summary { get; private set; } = string.Empty;
+    public Words Summary { get; private set; } = Words.Verbatim(string.Empty);
 
     /// <summary>The methods the last run ran, or the run under way runs, each holding that run's results alone.</summary>
     public IReadOnlyList<TestNode> RunMethods { get; private set; } = [];
@@ -169,7 +166,7 @@ public sealed class TestController : IAsyncDisposable
     public event EventHandler? Changed;
 
     /// <summary>Something for the status bar.</summary>
-    public event EventHandler<string>? Message;
+    public event EventHandler<Words>? Message;
 
     /// <summary>A run of tests ended, not stopped: how it ended.</summary>
     public event EventHandler<RunSummary>? Ran;
@@ -263,12 +260,12 @@ public sealed class TestController : IAsyncDisposable
     public bool Builds => projects().Any(p => p.Exists && !p.IsScriptGame);
 
     /// <summary>Builds, then finds the tests of every test project. Null once found, or what stopped it.</summary>
-    public async Task<string?> DiscoverAsync(string workspace)
+    public async Task<Words?> DiscoverAsync(string workspace)
     {
         UiThread.Check();
         if (IsBusy)
         {
-            return "Tests are already running";
+            return TestingWords.AlreadyRunning;
         }
         IsBusy = true;
         BackgroundWork.Begin();
@@ -284,7 +281,7 @@ public sealed class TestController : IAsyncDisposable
         }
         catch (Exception error) when (error is IOException or InvalidOperationException)
         {
-            return $"The tests could not be found: {error.Message}";
+            return TestingWords.NotFoundBecause(Words.Verbatim(error.Message));
         }
         finally
         {
@@ -297,18 +294,18 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Run Until Failure: these rows' tests run again and again, built once, until one fails or Stop is
     /// pressed, each run counted as it goes; the failing run's results stay to read.</summary>
-    public Task<string?> RunUntilFailureAsync(string workspace, IEnumerable<TestNode> rows) => UntilFailureAsync(workspace, new Choice([.. rows], null, null));
+    public Task<Words?> RunUntilFailureAsync(string workspace, IEnumerable<TestNode> rows) => UntilFailureAsync(workspace, new Choice([.. rows], null, null));
 
     /// <summary>Run Until Failure of the methods a match takes once the first run's build has ended
     /// (<see cref="RunMatchingAsync"/>), those same methods run again after.</summary>
-    public Task<string?> RunUntilFailureAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none) => UntilFailureAsync(workspace, new Choice(null, Methods(match), none));
+    public Task<Words?> RunUntilFailureAsync(string workspace, Func<TestNode, bool> match, Func<Words?, Words> none) => UntilFailureAsync(workspace, new Choice(null, Methods(match), none));
 
-    private async Task<string?> UntilFailureAsync(string workspace, Choice choice)
+    private async Task<Words?> UntilFailureAsync(string workspace, Choice choice)
     {
         stopRequested = false;
         for (int run = 1; ; run++)
         {
-            if (await RunChoiceAsync(workspace, choice, debug: false, build: run == 1, prefix: $"Run {run}: ") is { } problem)
+            if (await RunChoiceAsync(workspace, choice, debug: false, build: run == 1, counted: run) is { } problem)
             {
                 return problem;
             }
@@ -317,17 +314,17 @@ public sealed class TestController : IAsyncDisposable
             Runs = run;
             if (FirstFailed(chosen) is { } failed)
             {
-                Message?.Invoke(this, $"{failed.Name} failed on run {run}");
+                Message?.Invoke(this, TestingWords.FailedOnRun(failed.Name, run));
                 return null;
             }
             if (ended is { Aborted: true } broken)
             {
-                Message?.Invoke(this, $"Run {run} broke off{(broken.Error is { } why ? $": {why}" : string.Empty)}");
+                Message?.Invoke(this, broken.Error is { } why ? TestingWords.BrokeOffWhy(run, Words.Verbatim(why)) : TestingWords.BrokeOff(run));
                 return null;
             }
             if (stopRequested)
             {
-                Message?.Invoke(this, $"Stopped after {Plural.Of(run, "run")}; none failed");
+                Message?.Invoke(this, TestingWords.StoppedAfter(run));
                 return null;
             }
         }
@@ -344,43 +341,44 @@ public sealed class TestController : IAsyncDisposable
 
     /// <summary>Runs tests: these rows' (all when none), after a build and a look for the tests built since, so a test
     /// the code declares runs once it has been built.</summary>
-    public Task<string?> RunAsync(string workspace, IEnumerable<TestNode>? rows = null, bool debug = false, bool build = true, string prefix = "", bool cover = false) =>
-        RunChoiceAsync(workspace, new Choice(rows?.ToList(), null, null), debug, build, prefix, cover);
+    public Task<Words?> RunAsync(string workspace, IEnumerable<TestNode>? rows = null, bool debug = false, bool build = true, bool cover = false) =>
+        RunChoiceAsync(workspace, new Choice(rows?.ToList(), null, null), debug, build, null, cover);
 
     /// <summary>Runs the tree's methods a match takes as they stand once the build and the look for the tests it built have
     /// ended, the test projects' changed files read first: a test written since the tree was last made, or one only a
     /// runner finds, runs with them. <paramref name="none"/> says what is said when it takes none, given why the tests of
     /// the projects concerned could not be found (null where they were).</summary>
-    public Task<string?> RunMatchingAsync(string workspace, Func<TestNode, bool> match, Func<string?, string> none, bool debug = false, bool cover = false) =>
-        RunChoiceAsync(workspace, new Choice(null, Methods(match), none), debug, build: true, prefix: string.Empty, cover);
+    public Task<Words?> RunMatchingAsync(string workspace, Func<TestNode, bool> match, Func<Words?, Words> none, bool debug = false, bool cover = false) =>
+        RunChoiceAsync(workspace, new Choice(null, Methods(match), none), debug, build: true, counted: null, cover);
 
     /// <summary>Runs the rows a pick takes from the tree's methods as they stand once the build and the look for the tests it
     /// built have ended (<see cref="RunMatchingAsync"/>): a data row of a method alone, as an outline's example row.</summary>
-    public Task<string?> RunPickedAsync(string workspace, Func<IReadOnlyList<TestNode>, List<TestNode>> pick, Func<string?, string> none, bool debug = false, bool cover = false) =>
-        RunChoiceAsync(workspace, new Choice(null, pick, none), debug, build: true, prefix: string.Empty, cover);
+    public Task<Words?> RunPickedAsync(string workspace, Func<IReadOnlyList<TestNode>, List<TestNode>> pick, Func<Words?, Words> none, bool debug = false, bool cover = false) =>
+        RunChoiceAsync(workspace, new Choice(null, pick, none), debug, build: true, counted: null, cover);
 
     private static Func<IReadOnlyList<TestNode>, List<TestNode>> Methods(Func<TestNode, bool> match) => methods => [.. methods.Where(match)];
 
     /// <summary>Runs a choice of tests; with <paramref name="cover"/>, their coverage measured (<see cref="Coverage"/>), which a
-    /// debugged run's never is.</summary>
-    private async Task<string?> RunChoiceAsync(string workspace, Choice choice, bool debug, bool build, string prefix, bool cover = false)
+    /// debugged run's never is; <paramref name="counted"/>, a run of Run Until Failure, said with its number.</summary>
+    private async Task<Words?> RunChoiceAsync(string workspace, Choice choice, bool debug, bool build, int? counted, bool cover = false)
     {
         UiThread.Check();
         if (IsBusy)
         {
-            return "Tests are already running";
+            return TestingWords.AlreadyRunning;
         }
+        Words Counted(Words said) => counted is { } run ? TestingWords.RunNumbered(run, said) : said;
         IsBusy = true;
         BackgroundWork.Begin();
         holdingWork = true;
         ended = null;
         using CancellationTokenSource stop = Begin();
-        working = Work?.Begin(AppActions.RunTests, build ? "Building the test projects…" : "Finding the tests…");
+        working = Work?.Begin(AppActions.RunTests, build ? TestingWords.BuildingProjects : TestingWords.FindingTests);
         using CancellationTokenRegistration stopped = working?.Stopping.Register(stop.Cancel) ?? default;
         Devices?.Begin(projects(), UiThread.Marshal<string>(stage => working?.Say(stage)));
         // What the run came to, told as its work ends: the tally, or why it did not run.
-        (bool Ran, string Said)? came = null;
-        string? Came(string? problem)
+        (bool Ran, Words Said)? came = null;
+        Words? Came(Words? problem)
         {
             came = (problem is null, problem ?? Summary);
             return problem;
@@ -396,9 +394,9 @@ public sealed class TestController : IAsyncDisposable
             List<TestItem> tests = Chosen(chosen ?? Tree.Methods);
             if (tests.Count == 0)
             {
-                string? missed = UnfoundIn(chosen);
-                string none = chosen is null ? "There are no tests to run" : "None of these tests was found in the test projects as built";
-                return Came(choice.None?.Invoke(missed) ?? (missed is null ? none : $"{none}: {missed}"));
+                Words? missed = UnfoundIn(chosen);
+                return Came(choice.None?.Invoke(missed) ?? (chosen is null ? (missed is null ? TestingWords.NoTestsToRun : TestingWords.NoTestsToRunWhy(missed))
+                    : missed is null ? TestingWords.NoneOfTheseFound : TestingWords.NoneOfTheseFoundWhy(missed)));
             }
             List<TestNode> methods = [.. tests.Select(Tree.Node).OfType<TestNode>().Select(n => n.Kind == TestNodeKind.Row ? n.Parent! : n).Distinct()];
             // A GoDotTest game none of whose scenes runs its tests is said before Godot starts, its start read as it stands.
@@ -408,7 +406,7 @@ public sealed class TestController : IAsyncDisposable
             }
             if (NeverRuns(methods) is { } never)
             {
-                Summary = prefix + never;
+                Summary = Counted(never);
                 Message?.Invoke(this, Summary);
                 return Came(never);
             }
@@ -418,11 +416,11 @@ public sealed class TestController : IAsyncDisposable
             if (containerized.Count > 0 && ContainerEngine is { } engine)
             {
                 // Testcontainers' own words for a missing engine are a page per test; the engine's state says it once.
-                working?.Say("Checking the container engine for Testcontainers…");
+                working?.Say(TestingWords.CheckingEngine);
                 (string? engineProblem, dockerHost) = await engine(stop.Token);
                 if (engineProblem is not null)
                 {
-                    string said = $"{prefix}The tests were not run: they use Testcontainers, and {engineProblem}";
+                    Words said = Counted(TestingWords.EngineProblem(Words.Verbatim(engineProblem)));
                     Summary = said;
                     Message?.Invoke(this, said);
                     return Came(said);
@@ -445,7 +443,7 @@ public sealed class TestController : IAsyncDisposable
             RunMethods = methods;
             RunOutcomes = [];
             CoverageRun? coverage = cover && !debug ? await BackgroundWork.Run(CoverageRun.Begin, stop.Token) : null;
-            working?.Say($"{prefix}Running {Plural.Of(tests.Count, "test")}…");
+            working?.Say(Counted(TestingWords.RunningTestsGoing(tests.Count)));
             DateTimeOffset began = DateTimeOffset.Now;
             Tree.Begin(tests);
             RunSummary? summary = null;
@@ -453,7 +451,7 @@ public sealed class TestController : IAsyncDisposable
             try
             {
                 Changed?.Invoke(this, EventArgs.Empty);
-                Message?.Invoke(this, $"{prefix}Running {Plural.Of(tests.Count, "test")}");
+                Message?.Invoke(this, Counted(TestingWords.RunningTests(tests.Count)));
                 HashSet<TestOutcome> applied = new(ReferenceEqualityComparer.Instance);
                 void Apply(IReadOnlyList<TestOutcome> outcomes) => Tree.Apply(outcomes.Where(applied.Add));
                 // Each test project's tests run with its launch profile's environment, so projects whose differ run apart.
@@ -514,16 +512,16 @@ public sealed class TestController : IAsyncDisposable
                 await Task.WhenAll(aspireRuns.Select(aspire => aspire.DisposeAsync().AsTask()));
             }
             RunOutcomes = summary.Outcomes;
-            string covered = string.Empty;
+            Words tally = Tally(summary);
             if (coverage is not null)
             {
-                working?.Say($"{prefix}Reading the tests' coverage…");
+                working?.Say(Counted(TestingWords.ReadingCoverage));
                 Action<string> said = UiThread.Marshal(log);
                 CoverageReport report = await BackgroundWork.Run(() => coverage.Read(said));
                 Measured(report, coverage.Unmeasured);
-                covered = report.Files.Count == 0 ? "; no coverage was measured" : $"; {report.Counts.LinesSaid} covered";
+                tally = Clauses.Then(tally, report.Files.Count == 0 ? TestingWords.NoCoverage : TestingWords.Covered(LinesOf(report.Counts)));
             }
-            Summary = prefix + Tally(summary) + covered + (UnfoundIn(chosen) is { } unseen ? $"; {unseen}" : string.Empty);
+            Summary = Counted(UnfoundIn(chosen) is { } unseen ? Clauses.Then(tally, unseen) : tally);
             Message?.Invoke(this, Summary);
             if (!summary.Canceled)
             {
@@ -538,7 +536,7 @@ public sealed class TestController : IAsyncDisposable
         }
         catch (Exception error) when (error is IOException or InvalidOperationException)
         {
-            return Came($"The tests could not run: {error.Message}");
+            return Came(TestingWords.CouldNotRun(Words.Verbatim(error.Message)));
         }
         finally
         {
@@ -709,23 +707,20 @@ public sealed class TestController : IAsyncDisposable
     }
 
     /// <summary>The last run's tests again, after a build.</summary>
-    public Task<string?> RerunAsync(string workspace) =>
+    public Task<Words?> RerunAsync(string workspace) =>
         lastRun.Count == 0 ? RunAsync(workspace) : RunAsync(workspace, [.. lastRun]);
 
     /// <summary>The tests that failed in their last run again, after a build; none failed is said to the action that asked.</summary>
-    public Task<string?> RerunFailedAsync(string workspace)
+    public Task<Words?> RerunFailedAsync(string workspace)
     {
         List<TestNode> failed = [.. Tree.Methods.Where(m => m.State == TestState.Failed)];
         if (failed.Count == 0)
         {
-            ActionWork.Tell(false, NoneFailed);
-            return Task.FromResult<string?>(NoneFailed);
+            ActionWork.Tell(false, TestingWords.NoneFailed);
+            return Task.FromResult<Words?>(TestingWords.NoneFailed);
         }
         return RunAsync(workspace, failed);
     }
-
-    /// <summary>What Rerun Failed Tests says with no test failed.</summary>
-    private const string NoneFailed = "No test failed";
 
     /// <summary>Stops what is under way, whichever step it is at: the build, finding where the tests build, finding
     /// them, or running them (what has run keeps its result).</summary>
@@ -798,10 +793,10 @@ public sealed class TestController : IAsyncDisposable
         {
             DeclaredFramework = p.TargetFrameworks is [{ } only] && !only.Contains('$', StringComparison.Ordinal) ? only : null,
         })]);
-        Tree.EmptyText = folder is null ? "Open a folder or solution to see its tests"
-            : awaitingProjects || Finder.IsLooking ? "Looking for tests…"
-            : tests.Count == 0 ? "No test projects: none references xUnit, NUnit or MSTest"
-            : "No tests in the test projects yet";
+        Tree.EmptyText = folder is null ? TestingWords.OpenForTests
+            : awaitingProjects || Finder.IsLooking ? TestingWords.LookingForTests
+            : tests.Count == 0 ? TestingWords.NoTestProjectsYet
+            : TestingWords.NoTestsYet;
     }
 
     private static string NameOf(ProjectModel project, IReadOnlyList<ProjectModel> tests)
@@ -830,11 +825,11 @@ public sealed class TestController : IAsyncDisposable
     }
 
     /// <summary>What the window says of a run stopped before its tests ran; a build stopped says so itself.</summary>
-    private string Stopped()
+    private Words Stopped()
     {
         LetGoOfStuck();
-        Message?.Invoke(this, StoppedMessage);
-        return StoppedMessage;
+        Message?.Invoke(this, TestingWords.Stopped);
+        return TestingWords.Stopped;
     }
 
     /// <summary>Ends a runner that cannot be asked again (one stopped that never said it had), its test hosts with it, off
@@ -852,7 +847,7 @@ public sealed class TestController : IAsyncDisposable
     /// <summary>Builds the test projects of <paramref name="scope"/> (every one for null) and what they reference, where
     /// <paramref name="build"/> asks, then finds their tests, those of the rest kept as last found. Null once found, or what
     /// stopped it.</summary>
-    private async Task<string?> DiscoverCore(string workspace, bool build, CancellationToken cancel, IReadOnlySet<string>? scope = null)
+    private async Task<Words?> DiscoverCore(string workspace, bool build, CancellationToken cancel, IReadOnlySet<string>? scope = null)
     {
         bool Within(ProjectModel project) => scope is null || scope.Contains(project.Path);
         (IReadOnlyList<ProjectModel> every, List<(ProjectModel Project, string Framework)> declaring) = Testing();
@@ -860,12 +855,12 @@ public sealed class TestController : IAsyncDisposable
         if (build && Building([.. every.Where(Within), .. declaring.Select(d => d.Project).Where(Within)]) is { Count: > 0 } building
             && await this.build(building, cancel) is { Succeeded: false } unbuilt)
         {
-            return unbuilt.Message.Shown;
+            return unbuilt.Message;
         }
         cancel.ThrowIfCancellationRequested();
         if (build)
         {
-            working?.Say("Finding the tests…");
+            working?.Say(TestingWords.FindingTests);
         }
         if (folder != workspace)
         {
@@ -877,7 +872,7 @@ public sealed class TestController : IAsyncDisposable
         {
             sources = new(StringComparer.Ordinal);
             Load();
-            return "There are no test projects: none references a test SDK or adapter";
+            return TestingWords.NoTestProjects;
         }
         IReadOnlyList<ProjectModel> tests = [.. every.Where(Within)];
         declaring = [.. declaring.Where(d => Within(d.Project))];
@@ -944,20 +939,25 @@ public sealed class TestController : IAsyncDisposable
         Load();
         int count = built.Sum(a => discovered[a.Path].Tests.Count) + declaring.Sum(d => next[d.Project.Path][0].Tests.Count);
         int projectCount = built.Where(a => discovered[a.Path].Unfound is null).Select(a => a.Project).Distinct().Count() + declaring.Count;
-        Message?.Invoke(this, $"Found {Plural.Of(count, "test")} in {Plural.Of(projectCount, "project")}" + (UnfoundIn(null) is { } missed ? $"; {missed}" : string.Empty));
+        Message?.Invoke(this, UnfoundIn(null) is { } missed ? Clauses.Then(TestingWords.Found(count, projectCount), missed) : TestingWords.Found(count, projectCount));
         return null;
     }
 
     /// <summary>Why the tests of these rows' projects (every test project's, for no rows or rows of no project) could not be
     /// found in their built assemblies when last looked for; null where all were.</summary>
-    private string? UnfoundIn(IReadOnlyList<TestNode>? rows)
+    private Words? UnfoundIn(IReadOnlyList<TestNode>? rows)
     {
         HashSet<string> projects = new(rows?.SelectMany(r => r.Kind == TestNodeKind.Row ? r.Parent?.Methods ?? [] : r.Methods)
             .Select(m => m.ProjectPath).OfType<string>() ?? [], PathNames.Comparer);
         List<UnfoundTests> said = [.. unfound.Where(u => projects.Count == 0 || projects.Contains(u.Assembly.Project.Path))];
-        return said.Count == 0 ? null
-            : string.Join("; ", said.Select(u => Refusals.TestsNotFound(Path.GetFileName(u.Assembly.Path), u.Assembly.Framework, u.Why)));
+        return said.Count == 0 ? null : Joined(said.Select(u => Refusals.TestsNotFound(Path.GetFileName(u.Assembly.Path), u.Assembly.Framework, u.Why)));
     }
+
+    /// <summary>The share of lines a run's tests ran, as words: "82% of lines (41 of 50)".</summary>
+    private static Words LinesOf(CoverageCounts counts) => TestingWords.Lines(CoverageCounts.Percent(counts.LineRate), counts.LinesRun, counts.Lines);
+
+    /// <summary>Clauses said one after the other, apart by semicolons; null for none.</summary>
+    private static Words? Joined(IEnumerable<Words> clauses) => clauses.Aggregate((Words?)null, (said, next) => said is null ? next : Clauses.Then(said, next));
 
     /// <summary>The tests a project's code declares as last read, by its path.</summary>
     private IReadOnlyList<TestItem> Declared(string project) => (code.GetValueOrDefault(project) ?? CodeTests.None).Tests;
@@ -1050,19 +1050,21 @@ public sealed class TestController : IAsyncDisposable
         return new Dictionary<string, string>(environment) { [EngineVariables.DockerHost] = DockerEndpoints.ForDotnetClient(host) };
     }
 
-    private static string Tally(RunSummary summary)
+    private static Words Tally(RunSummary summary)
     {
         IReadOnlyList<TestOutcome> results = summary.Outcomes;
         int passed = results.Count(r => r.State == TestState.Passed);
         int failed = results.Count(r => r.State == TestState.Failed);
         int skipped = results.Count(r => r.State == TestState.Skipped);
-        string ending = summary.Canceled ? ", stopped" : summary.Aborted ? $", broken off{(summary.Error is { } why ? $": {why}" : "")}" : string.Empty;
-        return $"Tests passed: {Numbers.Said(passed)}, failed: {Numbers.Said(failed)}{(skipped > 0 ? $", skipped: {Numbers.Said(skipped)}" : "")} of {Numbers.Said(results.Count)} in {Durations.Said(summary.Elapsed)}{ending}";
+        Words tally = TestingWords.Tally(skipped, passed, failed, results.Count, Durations.Words(summary.Elapsed));
+        return summary.Canceled ? TestingWords.TallyStopped(tally)
+            : summary.Aborted ? (summary.Error is { } why ? TestingWords.TallyBrokenOffWhy(tally, Words.Verbatim(why)) : TestingWords.TallyBrokenOff(tally))
+            : tally;
     }
 
     /// <summary>What a run runs: rows chosen (every test for none), or the rows a pick takes of the tree's methods once the
     /// tests built are found, and what is said when that is none, given why the tests of the projects concerned could not be found.</summary>
-    private sealed record Choice(List<TestNode>? Rows, Func<IReadOnlyList<TestNode>, List<TestNode>>? Pick, Func<string?, string>? None);
+    private sealed record Choice(List<TestNode>? Rows, Func<IReadOnlyList<TestNode>, List<TestNode>>? Pick, Func<Words?, Words>? None);
 
     /// <summary>The debugger for a run: the runner's test host started under it, or attached to, on the UI thread, from
     /// when the run is the debugger session's rather than work a screenshot waits for.</summary>

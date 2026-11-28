@@ -79,12 +79,15 @@ public partial class MainWindow
     }
 
     /// <summary>Why the person's work has the machine now, which continuous testing waits out; null while it is free.</summary>
-    private string? MachineTaken(ProjectSession of) =>
-        (IsBuilding ? Refusals.Building
-        : of.Tests.IsBusy ? "the tests are running"
-        : of.Debug.IsDebugging ? "a program is debugged"
-        : of.Profiled is not null || of.ProfileStarting is not null ? "a program is profiled"
-        : null)?.Shown;
+    private Words? MachineTaken(ProjectSession of) =>
+        IsBuilding ? Refusals.Building
+        : of.Tests.IsBusy ? TestingWords.TestsRunning
+        : of.Debug.IsDebugging ? TestingWords.ProgramDebugged
+        : of.Profiled is not null || of.ProfileStarting is not null ? TestingWords.ProgramProfiled
+        : null;
+
+    /// <summary>A line's number as a person reads it, from one, as written in every language.</summary>
+    private static Words LineNumber(int line) => Words.Verbatim((line + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     private void MarkReach(ProjectSession of)
     {
@@ -109,24 +112,24 @@ public partial class MainWindow
         List<TestNode> nodes = [.. mark.Tests.Select(MethodOf).OfType<TestNode>()];
         if (mark.Tests.Length == 0)
         {
-            menu.Items.Add(ToolWindows.ListMenus.Notice($"No test runs line {line + 1}"));
+            menu.Items.Add(ToolWindows.ListMenus.Notice(TestingWords.NoTestRunsLine(LineNumber(line))));
         }
         else
         {
-            menu.Items.Add(ToolWindows.ListMenus.Heading($"Line {line + 1}, run by {Plural.Of(mark.Tests.Length, "test")}"));
+            menu.Items.Add(ToolWindows.ListMenus.Heading(TestingWords.LineRunBy(LineNumber(line), mark.Tests.Length)));
             foreach (string identity in mark.Tests)
             {
                 TestNode? node = MethodOf(identity);
                 ReachedTest? reached = session.Continuous.Map.Tests.GetValueOrDefault(identity);
                 string name = node?.Name ?? ContinuousTests.Named(identity).Method.Split('.')[^1];
-                string said = reached?.State switch
+                string state = reached?.State switch
                 {
                     TestState.Passed => "passed",
                     TestState.Failed => "failed",
                     TestState.Skipped => "skipped",
-                    _ => "not run",
+                    _ => "other",
                 };
-                menu.Items.Add(ToolWindows.ListMenus.Item($"{name} ({said})", () =>
+                menu.Items.Add(ToolWindows.ListMenus.Item(TestingWords.ReachedTest(state, name), () =>
                 {
                     if (node?.Path is { } path && File.Exists(path))
                     {
@@ -136,7 +139,7 @@ public partial class MainWindow
             }
             menu.Items.Add(new Separator());
             menu.Items.Add(ToolWindows.ListMenus.Item(TestingWords.RunTheseTests(nodes.Count), () => RunTests(() => session.Tests.RunAsync(Folder!, nodes)),
-                session.Tests.IsBusy ? "Tests are already running" : nodes.Count == 0 ? "None of these tests is in the Unit Tests window" : null));
+                session.Tests.IsBusy ? TestingWords.AlreadyRunning : nodes.Count == 0 ? TestingWords.NoneInWindow : null));
         }
         ReachMenu = menu;
         menu.Placement = PlacementMode.Pointer;

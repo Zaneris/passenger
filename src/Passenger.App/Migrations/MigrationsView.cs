@@ -5,6 +5,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
@@ -31,17 +33,16 @@ public sealed class MigrationsView : DockPanel
 
     /// <summary>The gaps the rows show, each its words, weight and fixes, so a change that leaves them as they are keeps the
     /// rows and the buttons a person may be pressing.</summary>
-    private IReadOnlyList<(string Said, bool Blocks, string Fixes)> shownGaps = [];
+    private IReadOnlyList<(Words Said, bool Blocks, string Fixes)> shownGaps = [];
 
     public MigrationsView(MigrationsController controller)
     {
         this.controller = controller;
-        projects = Chooser("MigrationsProject", "The project whose contexts and migrations are listed");
-        startups = Chooser("MigrationsStartup", "The project dotnet ef starts to make the context, as its run does");
-        environments = Chooser("MigrationsEnvironment", "The environment dotnet ef runs the startup project in, whose appsettings.{Environment}.json "
-            + "its configuration reads: none chosen, the one its run configuration names. A name typed is taken too.");
+        projects = Chooser("MigrationsProject", MigrationsWords.ProjectTip);
+        startups = Chooser("MigrationsStartup", MigrationsWords.StartupTip);
+        environments = Chooser("MigrationsEnvironment", MigrationsWords.EnvironmentTip);
         environments.IsEditable = true;
-        contexts = Chooser("MigrationsContext", "The context whose migrations are listed");
+        contexts = Chooser("MigrationsContext", MigrationsWords.ContextTip);
         projects.SelectionChanged += (_, _) =>
         {
             if (!showing && projects.SelectedItem is ProjectModel chosen)
@@ -99,22 +100,22 @@ public sealed class MigrationsView : DockPanel
             ItemSpacing = Gaps.Wide,
             Children =
             {
-                ToolDropDown.Labelled("Project", projects), ToolDropDown.Labelled("Startup", startups), ToolDropDown.Labelled("Environment", environments),
-                ToolDropDown.Labelled("Context", contexts), against,
+                ToolDropDown.Labelled(MigrationsWords.ProjectLabel, projects), ToolDropDown.Labelled(MigrationsWords.StartupLabel, startups),
+                ToolDropDown.Labelled(MigrationsWords.EnvironmentLabel, environments), ToolDropDown.Labelled(MigrationsWords.ContextLabel, contexts), against,
             },
         };
         Border topBar = ToolBars.Top(top);
 
         Border leftBar = ToolBars.Side(
-            ToolButtons.Of(AppActions.MigrationsRefresh, IconKeys.Rerun, "Refresh Migrations", Request),
-            ToolButtons.Of(AppActions.AddMigration, IconKeys.Add, "Add Migration…", Request),
-            ToolButtons.Of(AppActions.UpdateDatabase, IconKeys.Update, "Update Database", Request),
-            ToolButtons.Of(AppActions.RemoveLastMigration, IconKeys.Clear, "Remove Last Migration", Request),
+            ToolButtons.Of(AppActions.MigrationsRefresh, IconKeys.Rerun, ActionTitles.MigrationsRefresh, Request),
+            ToolButtons.Of(AppActions.AddMigration, IconKeys.Add, ActionTitles.AddMigration, Request),
+            ToolButtons.Of(AppActions.UpdateDatabase, IconKeys.Update, ActionTitles.UpdateDatabase, Request),
+            ToolButtons.Of(AppActions.RemoveLastMigration, IconKeys.Clear, ActionTitles.RemoveLastMigration, Request),
             ToolBars.Gap(),
-            ToolButtons.Of(AppActions.ScriptMigrations, IconKeys.DocumentText, "Script Migrations…", Request),
-            ToolButtons.Of(AppActions.BundleMigrations, IconKeys.Package, "Bundle Migrations", Request),
+            ToolButtons.Of(AppActions.ScriptMigrations, IconKeys.DocumentText, ActionTitles.ScriptMigrations, Request),
+            ToolButtons.Of(AppActions.BundleMigrations, IconKeys.Package, ActionTitles.BundleMigrations, Request),
             ToolBars.Gap(),
-            ToolButtons.Of(AppActions.MigrationsDatabase, IconKeys.Database, "Open Context's Database", Request));
+            ToolButtons.Of(AppActions.MigrationsDatabase, IconKeys.Database, ActionTitles.MigrationsDatabase, Request));
 
         gaps = new StackPanel { [DockProperty] = Dock.Top, Name = "MigrationsGaps", Spacing = Gaps.Tight, Margin = new Thickness(Gaps.Normal, Gaps.Small, Gaps.Normal, 0) };
         list = new ListBox
@@ -124,9 +125,9 @@ public sealed class MigrationsView : DockPanel
         ReusedRows.Use(list, Row);
         ListMenus.Attach(list, () => list.SelectedItem is not MigrationRow chosen ? [] :
         [
-            ListMenus.Item($"Update Database to {chosen.Name}", () => ActionRequested?.Invoke(this, AppActions.UpdateDatabaseTo)),
-            ListMenus.Item("Update Database", () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
-            ListMenus.Item("Copy Id", () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
+            ListMenus.Item(ActionTitles.UpdateDatabaseToNamed(chosen.Name), () => ActionRequested?.Invoke(this, AppActions.UpdateDatabaseTo)),
+            ListMenus.Item(ActionTitles.UpdateDatabase, () => ActionRequested?.Invoke(this, AppActions.UpdateDatabase)),
+            ListMenus.Item(MigrationsWords.CopyId, () => IdeErrors.Observe(ListMenus.CopyAsync(list, chosen.Id))),
         ]);
         placeholder = new EmptyState();
         Children.Add(leftBar);
@@ -160,7 +161,7 @@ public sealed class MigrationsView : DockPanel
         list.SelectedItem = controller.Migrations.FirstOrDefault(m => m.Name == migration || m.Id == migration);
 
     /// <summary>The words of what keeps dotnet ef from working, as the window shows them, the last command's failure last.</summary>
-    public IReadOnlyList<string> GapsShown => [.. gaps.Children.OfType<DockPanel>().Select(row => row.Tag as string ?? string.Empty)];
+    public IReadOnlyList<string> GapsShown => [.. gaps.Children.OfType<DockPanel>().Select(row => (row.Tag as Words)?.English ?? string.Empty)];
 
     private void Show()
     {
@@ -190,12 +191,12 @@ public sealed class MigrationsView : DockPanel
         {
             showing = false;
         }
-        against.Text = controller.Database is { } database ? $"Against {database}" : string.Empty;
-        against.IsVisible = against.Text.Length > 0;
-        IEnumerable<EfGap> pending = controller.Pending.Select(p => new EfGap($"{p.Context}'s model has changes no migration covers",
-            [new EfFix(EfFixKind.AddMigration, "Add Migration…")], Blocks: false));
+        ShownWords.Set(against, TextBlock.TextProperty, controller.Database is { } database ? MigrationsWords.Against(database) : null);
+        against.IsVisible = controller.Database is not null;
+        IEnumerable<EfGap> pending = controller.Pending.Select(p => new EfGap(MigrationsWords.ModelChanged(p.Context),
+            [new EfFix(EfFixKind.AddMigration, ActionTitles.AddMigration)], Blocks: false));
         List<EfGap> shown = [.. controller.Gaps.Concat(pending).Concat(controller.Failure is { } failed ? [failed] : [])];
-        List<(string Said, bool Blocks, string Fixes)> keys = [.. shown.Select(g => (g.Said, g.Blocks, string.Join('\n', g.Fixes.Select(f => $"{f.Kind} {f.Title}"))))];
+        List<(Words Said, bool Blocks, string Fixes)> keys = [.. shown.Select(g => (g.Said, g.Blocks, string.Join('\n', g.Fixes.Select(f => $"{f.Kind} {f.Title.English}"))))];
         if (!keys.SequenceEqual(shownGaps))
         {
             shownGaps = keys;
@@ -205,11 +206,12 @@ public sealed class MigrationsView : DockPanel
                 gaps.Children.Add(GapRow(gap));
             }
         }
-        placeholder.Text = (controller.Projects.Count == 0 ? Refusals.NoEfCore
-            : !controller.Listed ? "Refresh to list the migrations, as dotnet ef reads them and the database has them"
-            : controller.Migrations.Count == 0 ? $"{controller.Context ?? controller.Project?.Name} has no migrations: Add Migration… makes its first"
-            : string.Empty).Shown;
-        placeholder.IsVisible = placeholder.Text.Length > 0;
+        Words? empty = controller.Projects.Count == 0 ? Refusals.NoEfCore
+            : !controller.Listed ? MigrationsWords.RefreshToList
+            : controller.Migrations.Count == 0 ? MigrationsWords.NoneYet(controller.Context ?? controller.Project?.Name ?? string.Empty)
+            : null;
+        placeholder.Say(empty);
+        placeholder.IsVisible = empty is not null;
     }
 
     /// <summary>The environment chooser as the controller stands: its offers, and the one dotnet ef runs in shown in its field.</summary>
@@ -255,11 +257,11 @@ public sealed class MigrationsView : DockPanel
         StackPanel fixes = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
         foreach (EfFix fix in gap.Fixes)
         {
-            Button button = new() { Content = fix.Title };
+            Button button = new() { [ShownWords.ContentProperty] = fix.Title };
             button.Click += (_, _) => IdeErrors.Observe(controller.FixAsync(fix));
             fixes.Children.Add(button);
         }
-        StackPanel words = new() { Children = { new TextBlock { Text = gap.Said, TextWrapping = TextWrapping.Wrap } } };
+        StackPanel words = new() { Children = { new TextBlock { [ShownWords.TextProperty] = gap.Said, TextWrapping = TextWrapping.Wrap } } };
         if (fixes.Children.Count > 0)
         {
             words.Children.Add(fixes);
@@ -287,7 +289,7 @@ public sealed class MigrationsView : DockPanel
             string stamp = row.Id.Length > 15 && row.Id[14] == '_' && DateTime.TryParseExact(row.Id[..14], "yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out DateTime made)
                 ? made.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
-            state.Text = row.Applied switch { true => "Applied", false => "Pending", null => "Not read" };
+            ShownWords.Set(state, TextBlock.TextProperty, row.Applied switch { true => MigrationsWords.Applied, false => MigrationsWords.Pending, null => MigrationsWords.NotRead });
             state.Classes.Set(StyleClasses.Muted, row.Applied != false);
             state.TextTrimming = row.Applied == false ? TextTrimming.None : TextTrimming.CharacterEllipsis;
             name.Text = row.Name;
@@ -295,7 +297,7 @@ public sealed class MigrationsView : DockPanel
         });
     }
 
-    private static ComboBox Chooser(string name, string tip)
+    private static ComboBox Chooser(string name, Words tip)
     {
         ComboBox chooser = new ToolDropDown
         {
@@ -312,11 +314,11 @@ public sealed class MigrationsView : DockPanel
             return row.Showing<object>(item =>
             {
                 shown.Show(item switch { ProjectModel project => project, EfContext context => context.Name, EfEnvironment environment => environment.Name, _ => (object)string.Empty });
-                note.Text = (item as EfEnvironment)?.Note ?? string.Empty;
-                note.IsVisible = note.Text.Length > 0;
+                ShownWords.Set(note, TextBlock.TextProperty, (item as EfEnvironment)?.Note);
+                note.IsVisible = (item as EfEnvironment)?.Note is not null;
             });
         });
-        ToolTip.SetTip(chooser, tip);
+        ShownWords.Set(chooser, ToolTip.TipProperty, tip);
         return chooser;
     }
 }

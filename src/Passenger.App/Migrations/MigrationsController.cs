@@ -24,7 +24,7 @@ public sealed record MigrationsParts(
     StatusSay Say,
     Func<ProjectSession> Session,
     Func<BuildRunController> Builds,
-    Func<string, string, IReadOnlyList<string>, string?, Task<string?>> Choose,
+    Func<Words, Words, IReadOnlyList<Words>, Words?, Task<Words?>> Choose,
     Func<ProjectModel, string, string, CommandHistory.Recording, Task<PackageOutcome>> Install,
     Func<ProjectModel, IReadOnlyList<(string Id, string Version)>, CommandHistory.Recording, IReadOnlyList<(string Id, string Version)>?, Task<PackageOutcome>> InstallSet,
     Func<Task<IPackageFeed>> Feed,
@@ -67,7 +67,7 @@ internal sealed record EfSetting(ProjectModel Project, ProjectModel Startup, str
 
 /// <summary>The database a context's migrations go to: its connection string as dotnet ef reads it, the name it has, what
 /// it is used by, the folder a SQLite file's path is read from, and the startup project's packages, which tell its kind.</summary>
-public sealed record EfConnection(string Name, string Value, string Used, string Folder, IReadOnlyList<string> Packages)
+public sealed record EfConnection(string Name, string Value, Words Used, string Folder, IReadOnlyList<string> Packages)
 {
     /// <summary>Whether a compose run or an AppHost gave it, so it goes with the run.</summary>
     public bool Running { get; init; }
@@ -283,10 +283,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// names, else the one Passenger's own environment names (which a run inherits), else Development, as dotnet ef takes it.</summary>
     private EfEnvironment DefaultOf(ProjectModel startup) =>
         RunsOf(startup) is { } runs && AspNetCoreVariables.EnvironmentOf(runs.Environment.GetValueOrDefault, string.Empty) is { Length: > 0 } configured
-            ? new EfEnvironment(configured, "the run configuration's")
+            ? new EfEnvironment(configured, MigrationsWords.RunConfigurationsNote)
             : AspNetCoreVariables.EnvironmentOf(System.Environment.GetEnvironmentVariable, string.Empty) is { Length: > 0 } inherited
-            ? new EfEnvironment(inherited, "Passenger's own")
-            : new EfEnvironment("Development", "the default");
+            ? new EfEnvironment(inherited, MigrationsWords.PassengersOwnNote)
+            : new EfEnvironment("Development", MigrationsWords.DefaultNote);
 
     /// <summary>Chooses the environment dotnet ef runs the startup project in, kept with the folder: the default's name goes
     /// back to none chosen, following the run configuration. Null once chosen, else why not, said.</summary>
@@ -480,6 +480,10 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         SyntaxFacts.IsValidIdentifier(name) && SyntaxFacts.GetKeywordKind(name) == SyntaxKind.None ? null
         : name.Length == 0 ? MigrationsWords.Unnamed : MigrationsWords.NoClassName(name);
 
+    /// <summary>Why a folder typed for a migration's files is none of the project's, said.</summary>
+    public static Words WhyNotInto(EfFolderUnfit unfit, ProjectModel project) => unfit.Problem is { } problem
+        ? MigrationsWords.NoFolder(unfit.Typed, Words.Verbatim(problem)) : MigrationsWords.OutsideProject(unfit.Typed, project.Name);
+
     /// <summary>The folders, from the chosen project's, holding the chosen context's migrations as the project was last
     /// read, the last one's first (<see cref="EfOutputFolders.Holding"/>).</summary>
     public IReadOnlyList<string> OutputFolders => Project is { } project ? EfOutputFolders.Holding(bound?.EfProjects.Of(project), project, Context) : [];
@@ -551,9 +555,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     public async Task<EfDone> RemoveLastAsync(string action, CancellationToken cancel = default)
     {
         if (Listed && Migrations.LastOrDefault() is { } last && !parts.AsksNoOne() && Mcp.AgentCall.Current is null
-            && await parts.Choose("Remove Last Migration", $"Remove {last.Name}? Its files are deleted and the model snapshot goes back to the migration before it."
-                + (last.Applied is null ? " The database could not be read, so whether it has the migration is not known." : string.Empty),
-                ["Remove"], null) is null)
+            && await parts.Choose(ActionTitles.RemoveLastMigration, last.Applied is null ? MigrationsWords.RemoveUnreadQuestion(last.Name) : MigrationsWords.RemoveQuestion(last.Name),
+                [MigrationsWords.Remove], null) is null)
         {
             return new EfDone(false, MigrationsWords.RemoveCancelled);
         }
@@ -587,10 +590,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     {
         if (target is not null && Listed && RolledBack(target) is { Count: > 0 } undone && !parts.AsksNoOne() && Mcp.AgentCall.Current is null)
         {
-            string names = string.Join(", ", undone.Select(m => m.Name));
-            string? answer = await parts.Choose($"Roll Back {Plural.Of(undone.Count, "Migration")}",
-                $"Updating the database to {(target == "0" ? "before the first migration" : target)} runs the Down method of {names} against it, which can lose the data they hold.",
-                ["Roll Back"], null);
+            Words? answer = await parts.Choose(MigrationsWords.RollBackTitle(undone.Count),
+                MigrationsWords.RollBackQuestion(target == "0" ? "none" : "other", string.Join(", ", undone.Select(m => m.Name)), target),
+                [MigrationsWords.RollBack], null);
             if (answer is null)
             {
                 return new EfDone(false, MigrationsWords.UpdateCancelled);
@@ -842,12 +844,12 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 }
                 return (null, gap.Fixes.Count > 0 ? MigrationsWords.FixFirst(gap.Said, gap.Fixes[0].Title) : gap.Said);
             }
-            List<string> answers = [.. gap.Fixes.Where(f => f.Kind is not (EfFixKind.ChooseStartup or EfFixKind.ChooseContext)).Select(f => f.Title)];
+            List<Words> answers = [.. gap.Fixes.Where(f => f.Kind is not (EfFixKind.ChooseStartup or EfFixKind.ChooseContext)).Select(f => f.Title)];
             if (!gap.Blocks)
             {
-                answers.Add("Go On");
+                answers.Add(MigrationsWords.GoOn);
             }
-            string? answer = await parts.Choose(Title(work.Stage.Shown), $"{gap.Said}.{NetworkNote(gap)}", answers, answers.FirstOrDefault());
+            Words? answer = await parts.Choose(commandStage ?? MigrationsWords.Title, Question(gap), answers, answers.FirstOrDefault());
             if (work.IsStopped || session != parts.Session())
             {
                 return (null, MigrationsWords.Stopped);
@@ -856,7 +858,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             {
                 return (null, gap.Said);
             }
-            if (gap.Fixes.FirstOrDefault(f => f.Title == answer) is not { } fix)
+            if (gap.Fixes.FirstOrDefault(f => f.Title.Equals(answer)) is not { } fix)
             {
                 continue;
             }
@@ -960,11 +962,11 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 string[] packages = [.. reading.SelectMany(p => p.Packages).Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase)];
                 if (EfConnections.NameOf(context, code, options, [.. values.Keys]) is { } told && values.TryGetValue(told.Name, out string? value))
                 {
-                    return ((EfConnection?)new EfConnection(told.Name, value, database is null ? $"used by {context}'s migrations" : $"used by {context}'s migrations: {database.Where}",
+                    return ((EfConnection?)new EfConnection(told.Name, value, database is null ? MigrationsWords.UsedBy(context) : MigrationsWords.UsedThrough(context, database.Where),
                         folder, packages) { Running = database is not null && database.Environment.ContainsKey($"ConnectionStrings__{told.Name}") }, (Words?)null);
                 }
                 return EfConnections.WrittenOf(context, code, options) is { } written
-                    ? (new EfConnection(EfConnections.Assumed(context), written, $"used by {context}'s migrations", folder, packages), null)
+                    ? (new EfConnection(EfConnections.Assumed(context), written, MigrationsWords.UsedBy(context), folder, packages), null)
                     : (null, EfConnections.FactoryOf(context, code, options) is { } factory ? Refusals.NoEfFactoryConnection(context, factory) : Refusals.NoEfConnection(context, named));
             }, work.Stopping);
             if (found is null)
@@ -1082,17 +1084,9 @@ public sealed partial class MigrationsController(MigrationsParts parts)
     /// <summary>Whether dotnet ef warned that it could not reach the database, going on without it.</summary>
     private static bool Unreached(string warning) => warning.Contains("An error occurred while accessing the database", StringComparison.Ordinal);
 
-    private static string Title(string stage)
-    {
-        string words = stage.TrimEnd('…');
-        return words.Length == 0 ? "Migrations" : char.ToUpperInvariant(words[0]) + words[1..];
-    }
-
-    /// <summary>What a fix reaches beyond the folder, said in its question, since asking before the network is the rule.</summary>
-    private static string NetworkNote(EfGap gap) =>
-        gap.Fixes.Any(f => f.Kind == EfFixKind.AlignProvider) ? " Its fix reads the folder's package sources for the versions that fit, and downloads what the package cache lacks."
-        : gap.Fixes.Any(f => Reaches(f.Kind)) ? " Its fix downloads from the folder's package sources what the package cache lacks."
-        : string.Empty;
+    /// <summary>A gap asked about, with what its fix reaches beyond the folder, since asking before the network is the rule.</summary>
+    private static Words Question(EfGap gap) =>
+        MigrationsWords.GapQuestion(gap.Fixes.Any(f => f.Kind == EfFixKind.AlignProvider) ? "align" : gap.Fixes.Any(f => Reaches(f.Kind)) ? "download" : "none", gap.Said);
 
     /// <summary>Whether a fix can reach the network: a tool installed or restored, a package added or moved.</summary>
     private static bool Reaches(EfFixKind kind) => kind is EfFixKind.PinTool or EfFixKind.UpdateGlobalTool or EfFixKind.AddDesign or EfFixKind.RestoreTools
@@ -1127,7 +1121,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return Said(new EfDone(false, ActionWork.Busy(under))).Said;
         }
-        if (parts.Work.Begin(AppActions.MigrationsFix, $"{fix.Title}…") is not { } work)
+        if (parts.Work.Begin(AppActions.MigrationsFix, MigrationsWords.Going(fix.Title)) is not { } work)
         {
             return Said(new EfDone(false, ActionWork.Busy(parts.Work.Of(AppActions.MigrationsFix)!))).Said;
         }
@@ -1136,7 +1130,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             if (Reaches(fix.Kind) && !parts.AsksNoOne() && Mcp.AgentCall.Current is null
                 && Gaps.Concat(Failure is { } failed ? [failed] : []).FirstOrDefault(g => g.Fixes.Contains(fix)) is { } gap
-                && await parts.Choose(fix.Title, $"{gap.Said}.{NetworkNote(gap)}", [fix.Title], fix.Title) is null)
+                && await parts.Choose(fix.Title, Question(gap), [fix.Title], fix.Title) is null)
             {
                 return MigrationsWords.FixCancelled;
             }
@@ -1240,7 +1234,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         catch (FileNotFoundException missing)
         {
-            return missing.Message;
+            return Words.Verbatim(missing.Message);
         }
         parts.Views.Build.Append($"{ChildProcesses.Shown(start)}\n");
         Task<EfOutcome> running = EfRun.RunAsync(start, parts.Views.Build.Sink, work.Stopping);
@@ -1248,7 +1242,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         EfOutcome outcome = await running;
         return outcome.ExitCode == 0 ? null
             : outcome.Lines.LastOrDefault(l => l.Trim().Length > 0)?.Trim() is { } last ? Words.Verbatim(last)
-            : MigrationsWords.ToolEnded(arguments[0], arguments[1], ExitCodes.Said(outcome.ExitCode));
+            : MigrationsWords.ToolEnded(arguments[0], arguments[1], ExitCodes.Words(outcome.ExitCode));
     }
 
     /// <summary>A package added to a project through the NuGet window's one way, as one step of global undo.</summary>
@@ -1278,20 +1272,20 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         }
         catch (Exception failed) when (FeedSet.IsFeedFailure(failed) && !work.IsStopped)
         {
-            return MigrationsWords.FeedsUnread(failed.Message);
+            return MigrationsWords.FeedsUnread(Words.Verbatim(failed.Message));
         }
         if (alignment is null)
         {
             return MigrationsWords.NoFittingVersion(behind.Id, runtime);
         }
         work.Say(MigrationsWords.Going(alignment.Title));
-        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(alignment.Title);
+        using CommandHistory.Recording recording = parts.Editors.Commands.RecordWrites(alignment.Title.English);
         foreach (EfMove move in alignment.Moves)
         {
             IReadOnlyList<string> moved = Touched;
             PackageOutcome outcome = await parts.InstallSet(move.Project, move.Packages, recording, null);
             Touched = [.. Touched, .. outcome.Changed];
-            if (outcome.Failure($"{alignment.Title} failed in {move.Project.Name}") is { } failed)
+            if (outcome.Failure($"{alignment.Title.English} failed in {move.Project.Name}") is { } failed)
             {
                 return moved.Count == 0 ? failed : MigrationsWords.PartlyAligned(failed, PackageOutcome.Named(moved));
             }
@@ -1309,7 +1303,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
         {
             return Refusals.NoEfCore;
         }
-        string? named = (Failure?.Fixes.FirstOrDefault(f => f.Kind == EfFixKind.AddFactory)?.Title)?.Split(' ').Last() ?? Context;
+        string? named = Failure?.Fixes.FirstOrDefault(f => f.Kind == EfFixKind.AddFactory)?.On ?? Context;
         EfContext? context = Contexts.FirstOrDefault(c => c.Name == named || c.FullName == named) ?? (named is null ? null : new EfContext(named, named));
         if (context is null)
         {

@@ -98,26 +98,4 @@ public sealed record EfRestore(string? Runtime, string? Design, IReadOnlyList<Ef
     /// <summary>Whether a version is in a NuGet range as a restore writes it: "10.0.12" (that or later), "[9.0.1, 10.0.0)",
     /// "[10.0.0]".</summary>
     public static bool InRange(string range, string version) => VersionRange.Parse(range)?.Contains(version) == true;
-
-    /// <summary>The EF Core versions a range speaks of, said as a person would: "EF Core 9" for [9.0.1, 10.0.0).</summary>
-    public static string Supports(string range)
-    {
-        string given = range.Trim();
-        if (!given.StartsWith('[') && !given.StartsWith('('))
-        {
-            return $"EF Core {given} and later";
-        }
-        string[] ends = given[1..^1].Split(',');
-        string from = ends[0].Trim();
-        string to = ends.Length > 1 ? ends[1].Trim() : from;
-        if (from == to)
-        {
-            return $"EF Core {from}";
-        }
-        if (given[^1] == ')' && VersionOrder.Major(from) is { } major && VersionOrder.Major(to) == major + 1 && to.EndsWith(".0.0", StringComparison.Ordinal))
-        {
-            return $"EF Core {major}";
-        }
-        return to.Length == 0 ? $"EF Core {from} and later" : $"EF Core {from} to {to}";
-    }
 }

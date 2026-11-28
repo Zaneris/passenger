@@ -528,7 +528,7 @@ public sealed class TestTree
     public Func<TestNode, ulong?>? CodeOf { get; set; }
 
     private HashSet<TestState> outcomes = [];
-    private string emptyText = string.Empty;
+    private Words emptyText = Words.Verbatim(string.Empty);
     private readonly List<TestSession> sessions = [];
 
     /// <summary>The session shown; null while every test is.</summary>
@@ -573,12 +573,12 @@ public sealed class TestTree
     public string Search { get; private set; } = string.Empty;
 
     /// <summary>What the window says while the tree has no rows: why there are none yet.</summary>
-    public string EmptyText
+    public Words EmptyText
     {
         get => emptyText;
         set
         {
-            if (emptyText != value)
+            if (!emptyText.Equals(value))
             {
                 emptyText = value;
                 EmptyTextChanged?.Invoke(this, EventArgs.Empty);

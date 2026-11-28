@@ -42,7 +42,10 @@ dotnet_diagnostic.PSG0012.severity = warning
 [src/Passenger.App/MainWindow.GodotEditorPlay.cs]
 dotnet_diagnostic.PSG0012.severity = warning
 
-[src/Passenger.App/Migrations/MigrationsController.cs]
+[src/Passenger.App/{Migrations/**.cs,MainWindow.Migrations.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/{Testing/**.cs,MainWindow.Tests.cs,MainWindow.TestSessions.cs,MainWindow.Continuous.cs}]
 dotnet_diagnostic.PSG0012.severity = warning
 
 [src/Passenger.App/CSharp/WorkspaceEdits.cs]

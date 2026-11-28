@@ -321,7 +321,7 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
         Assert.True(window.Perform(AppActions.Save));
         Ui.WaitFor(() => window.Continuous is { IsRunning: false } && window.Continuous.Rounds > rounds,
             () => $"the round the broken save brought: {window.Continuous.Said}", TimeSpan.FromSeconds(300));
-        Assert.Contains("could not build", window.Continuous.Said, StringComparison.Ordinal);
+        Assert.Contains("could not build", window.Continuous.Said.English, StringComparison.Ordinal);
         int failed = window.Continuous.Rounds;
         Ui.Hold(TimeSpan.FromSeconds(3), "the second a round given back its changes would wait before it began again");
         Ui.Settle();
@@ -331,7 +331,7 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
         Assert.True(window.Perform(AppActions.Save));
         Ui.WaitFor(() => window.Continuous is { IsRunning: false } && window.Continuous.Rounds > failed,
             () => $"the round the mended save brought: {window.Continuous.Said}", TimeSpan.FromSeconds(300));
-        Assert.DoesNotContain("could not build", window.Continuous.Said, StringComparison.Ordinal);
+        Assert.DoesNotContain("could not build", window.Continuous.Said.English, StringComparison.Ordinal);
 
         // The person's next run asks nothing.
         Assert.True(window.Perform(AppActions.RunAllTests));

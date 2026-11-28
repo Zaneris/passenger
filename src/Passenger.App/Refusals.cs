@@ -218,7 +218,7 @@ public static partial class Refusals
 
     /// <summary>Run Tests at the caret took no test of the method or class there once the tests were looked for: why, where
     /// its project's tests could not be found (<see cref="TestsNotFound"/>), else what is likeliest.</summary>
-    public static Words NoTestOf(string name, string? unfound) => unfound is null ? NoTestFound(name) : NoTestFoundBecause(name, unfound);
+    public static Words NoTestOf(string name, Words? unfound) => unfound is null ? NoTestFound(name) : NoTestFoundBecause(name, unfound);
 
     /// <summary>A test chosen of one of the classes GoDotTest cannot tell apart (<see cref="Testing.GoDotTests.Alike"/>).</summary>
     public static Words GoDotTestAlike(string suite, IReadOnlyList<string> classes) => GoDotTestAlikeClasses(Plural.Listed(Words.Names(classes)), suite);

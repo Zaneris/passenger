@@ -187,7 +187,7 @@ public sealed class MigrationsTests
         {
             // Found as the projects are read, the window hidden.
             string found = string.Empty;
-            Ui.WaitFor(() => (found = string.Join(" | ", window.Migrations.Gaps.Select(g => g.Said))).Contains("dotnet ef is not installed here", StringComparison.Ordinal)
+            Ui.WaitFor(() => (found = string.Join(" | ", window.Migrations.Gaps.Select(g => g.Said.English))).Contains("dotnet ef is not installed here", StringComparison.Ordinal)
                 && found.Contains("lacks Microsoft.EntityFrameworkCore.Design", StringComparison.Ordinal), () => $"both gaps found with the window hidden ({found})");
             Assert.False(window.DockHost[ToolWindowIds.Migrations].IsBuilt, "Finding what dotnet ef lacks built the hidden Migrations window's view");
             window.ShowToolWindow(ToolWindowIds.Migrations);
@@ -368,7 +368,7 @@ public sealed class MigrationsTests
             Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
             EfFix align = window.Migrations.Gaps.SelectMany(g => g.Fixes).First(f => f.Kind == EfFixKind.AlignProvider);
             Task<Passenger.Core.Words?> fixing = window.Migrations.FixAsync(align);
-            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title);
+            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title.English);
             string? why = Ui.Await(fixing, "the alignment's end", Slow)?.English;
             string written = File.ReadAllText(project);
             Assert.True(why is null && written.Contains($"{ShopApp.Provider}\" Version=\"1.0.0\"", StringComparison.Ordinal)
@@ -399,7 +399,7 @@ public sealed class MigrationsTests
             Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
             EfFix align = window.Migrations.Gaps.SelectMany(g => g.Fixes).First(f => f.Kind == EfFixKind.AlignProvider);
             Task<Passenger.Core.Words?> fixing = window.Migrations.FixAsync(align);
-            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title);
+            Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title.English);
             string? why = Ui.Await(fixing, "the alignment's end", Slow)?.English;
 
             Assert.True(File.ReadAllBytes(project).AsSpan().SequenceEqual(before), $"The alignment whose restore failed left the project as:\n{File.ReadAllText(project)}\n(it said: {why})");

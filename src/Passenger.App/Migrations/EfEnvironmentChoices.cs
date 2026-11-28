@@ -8,7 +8,7 @@ namespace Passenger.App.Migrations;
 
 /// <summary>An environment the Migrations window offers dotnet ef's runs of a startup project, its name what the field shows,
 /// with what names it where that is not the person's choice (the run configuration, the default).</summary>
-public sealed record EfEnvironment(string Name, string? Note = null)
+public sealed record EfEnvironment(string Name, Words? Note = null)
 {
     public override string ToString() => Name;
 }
@@ -70,9 +70,9 @@ public sealed class EfEnvironmentChoices
 
     /// <summary>Why a name typed for an environment is none, as appsettings.{Environment}.json takes it: letters, digits and
     /// '.', '-' or '_' after the first; null for a name.</summary>
-    public static string? WhyNot(string name) =>
+    public static Words? WhyNot(string name) =>
         name.Length > 0 && char.IsLetterOrDigit(name[0]) && name.All(c => char.IsLetterOrDigit(c) || c is '.' or '-' or '_') ? null
-        : $"\"{name}\" names no environment: an environment's name is letters and digits, with '.', '-' or '_' after the first";
+        : MigrationsWords.NoEnvironmentName(name);
 
     /// <summary>The environments a startup project names: those its appsettings.{Environment}.json files are of, and those
     /// its launch profiles run it in (Development for a profile that names none, or where it has none), each once, in

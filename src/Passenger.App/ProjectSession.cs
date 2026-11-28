@@ -150,7 +150,7 @@ public sealed class ProjectSession : IAsyncDisposable
         Continuous = new ContinuousTests(Tests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
         {
             Work = setup.Work,
-            Refused = () => (Trusted ? null : Refusals.Untrusted)?.Shown,
+            Refused = () => Trusted ? null : Refusals.Untrusted,
             // Its builds and runs' copies, a cache of the folder's in Passenger's state, never in the folder.
             Root = folder is null ? null : Path.Combine(setup.StateFolder, "cache", "continuous", FileNames.Hash(folder, 12)),
         };

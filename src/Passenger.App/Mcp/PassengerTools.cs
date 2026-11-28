@@ -2064,9 +2064,9 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         // Those the code declares found first, as tests_list waits for them; looked at every 50 ms, as the finder raises nothing as it is done.
         await Until(() => !tests.IsLooking, TestsLookLimit, cancel);
         // Matched once built: a test written a moment ago, or one only a runner finds, is among them.
-        Task<string?> run = filter is null ? tests.RunAsync(folder, null, debug, cover: coverage)
+        Task<Words?> run = filter is null ? tests.RunAsync(folder, null, debug, cover: coverage)
             : tests.RunMatchingAsync(folder, m => m.FullName is { } name && name.Contains(filter, StringComparison.Ordinal),
-                unfound => $"No test's name contains '{filter}'" + (unfound is null ? string.Empty : $": {unfound}"), debug, coverage);
+                unfound => Core.Words.Verbatim($"No test's name contains '{filter}'" + (unfound is null ? string.Empty : $": {unfound.English}")), debug, coverage);
         if (debug)
         {
             // A debugged test's stop comes back to the agent; looked at every 50 ms: no pause of the test host is told.
@@ -2081,7 +2081,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
         if (await run.WaitAsync(cancel) is { } problem)
         {
-            throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
+            throw new InvalidOperationException(WithBuildErrors(problem.English, built.Ended));
         }
         TestRunInfo ran = TestInfo(tests, await StepsOfAsync([.. tests.RunOutcomes.Where(o => o.State == Testing.TestState.Failed)], cancel));
         return coverage && tests.Coverage is { } measured ? ran with { Coverage = CoverageOf(measured, tests.Unmeasured, Room(ran)) } : ran;
@@ -2192,7 +2192,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 Steps = its.Count > 0 ? its : null,
             });
         }
-        TestRunInfo run = new(tests.Summary, [])
+        TestRunInfo run = new(tests.Summary.English, [])
         {
             StepsLeftOut = stepsLeft == 0 ? null : $"The steps of {Plural.Of(stepsLeft, "more failed scenario")} are left out; tests_run with a filter naming one answers its steps",
         };
