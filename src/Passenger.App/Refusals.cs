@@ -1101,6 +1101,11 @@ public static class Refusals
     public static string NoConnectionReaching(string database, string at) =>
         $"No connection in the Database window reaches {database} at {at}: add one with New Database Connection…";
 
+    /// <summary>A context's database asked for where its design-time factory, which dotnet ef makes it by, makes its connection
+    /// in a way read from no code.</summary>
+    public static string NoEfFactoryConnection(string context, string factory) =>
+        $"{context}'s migrations take their connection from its design-time factory, {factory}, which names none Passenger can read: name it there through GetConnectionString or a connection string written whole";
+
     /// <summary>A context's database asked for where nothing tells the connection it uses.</summary>
     public static string NoEfConnection(string context, string environment) =>
         $"Nothing tells {context}'s connection string in the {environment} environment: name it in the startup project's settings or its run's ConnectionStrings__ variables";

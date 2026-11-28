@@ -908,8 +908,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
             ?? EfDatabases.OfAspire(session.Aspire, startup);
     }
 
-    /// <summary>The database the chosen context's migrations go to, as dotnet ef reaches it: the connection its registration
-    /// or the context names, read from the startup project's run as a command gives it (a compose run's or an AppHost's
+    /// <summary>The database the chosen context's migrations go to, as dotnet ef reaches it: the connection its design-time
+    /// factory, else its registration or the context, names (<see cref="EfConnections"/>), read from the startup project's run as a command gives it (a compose run's or an AppHost's
     /// database first) then the settings its environment reads; else the connection string its code writes whole. Why not
     /// where none is told or the window is busy, said.</summary>
     public async Task<(EfConnection? Found, string? Why)> ConnectionAsync(string action)
@@ -954,7 +954,8 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                     DatabaseDiscovery.Take(values, key, given);
                 }
                 (string Path, string Text)[] code = [.. reading.SelectMany(p => FolderWalk.ProjectFiles(p, ".cs")).Distinct(PathNames.Comparer).Select(f => (f, Code(f)))];
-                string[] packages = [.. startup.Packages.Select(p => p.Name)];
+                // The provider's package may be the context's project's alone, which the startup project only references.
+                string[] packages = [.. reading.SelectMany(p => p.Packages).Select(p => p.Name).Distinct(StringComparer.OrdinalIgnoreCase)];
                 if (EfConnections.NameOf(context, code, options, [.. values.Keys]) is { } told && values.TryGetValue(told.Name, out string? value))
                 {
                     return ((EfConnection?)new EfConnection(told.Name, value, database is null ? $"used by {context}'s migrations" : $"used by {context}'s migrations: {database.Where}",
@@ -962,7 +963,7 @@ public sealed partial class MigrationsController(MigrationsParts parts)
                 }
                 return EfConnections.WrittenOf(context, code, options) is { } written
                     ? (new EfConnection(EfConnections.Assumed(context), written, $"used by {context}'s migrations", folder, packages), null)
-                    : (null, Refusals.NoEfConnection(context, named));
+                    : (null, EfConnections.FactoryOf(context, code, options) is { } factory ? Refusals.NoEfFactoryConnection(context, factory) : Refusals.NoEfConnection(context, named));
             }, work.Stopping);
             if (found is null)
             {
