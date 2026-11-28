@@ -960,15 +960,21 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         });
     }
 
-    /// <summary>A stop above an if/else and a switch whose conditions read a local fades the else, and the switch's other
-    /// sections, shows the value a local ahead will take, and leaves both branches of an if whose condition calls a method as
-    /// they are; an agent's debug_state names the lines faded.</summary>
+    /// <summary>A stop above ifs and a switch whose conditions read a hidden base field, a float's sum, an unsigned value made
+    /// real and a local fades each else not taken, and the switch's other sections, shows the value a local ahead will take,
+    /// and leaves both branches of an if comparing or testing a method's result as they are; debug_state names the lines faded.</summary>
     private void A_stop_greys_the_branches_ahead_its_values_say_wont_run_and_shows_the_values_ahead()
     {
-        Write("Program.cs", "int mode = 2;\nstring name = \"tea\";\nif (mode > 1)\n{\n    name = \"coffee\";\n}\nelse\n{\n    name = \"water\";\n}\n"
+        const string Source = "int mode = 2;\nstring name = \"tea\"; Base hidden = new Derived();\nif (hidden.Status > 0)\n{\n    name += \" shown\";\n}\nelse\n{\n"
+            + "    name += \" hidden\";\n}\nif (mode > 1)\n{\n    name = \"coffee\";\n}\nelse\n{\n    name = \"water\";\n}\n"
             + "switch (mode)\n{\n    case 1:\n        name += \" one\";\n        break;\n    case 2:\n        name += \" two\";\n        break;\n    default:\n"
-            + "        name += \" many\";\n        break;\n}\nint doubled = mode * 2;\nif (Check(mode))\n{\n    Console.WriteLine(\"checked\");\n}\nelse\n{\n"
-            + "    Console.WriteLine(\"not\");\n}\nConsole.WriteLine($\"{name} {doubled}\");\n\nstatic bool Check(int value) => value > 0;\n");
+            + "        name += \" many\";\n        break;\n}\nfloat x = 16777216f;\nif (x + 1f == 16777216f)\n{\n    name += \" rounded\";\n}\nelse\n{\n    name += \" exact\";\n}\n"
+            + "uint u = uint.MaxValue;\nif ((double)u > 1e10)\n{\n    name += \" huge\";\n}\nint doubled = mode * 2;\nif (Count(mode) > 5)\n{\n    name += \" big\";\n}\nelse\n{\n"
+            + "    name += \" small\";\n}\nif (Check(mode))\n{\n    Console.WriteLine(\"checked\");\n}\nelse\n{\n"
+            + "    Console.WriteLine(\"not\");\n}\nConsole.WriteLine($\"{name} {doubled}\");\n\nstatic bool Check(int value) => value > 0;\nstatic int Count(int value) => value * 3;\n\n"
+            + "class Base\n{\n    public int Status = 1;\n}\n\nclass Derived : Base\n{\n    public new int Status = -1;\n}\n";
+        static int Line(string code) => Array.FindIndex(Source.Split('\n'), line => line.Contains(code, StringComparison.Ordinal));
+        Write("Program.cs", Source);
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
         Assert.True(window.Settings.GreyCodeAhead, "A stop does not grey the code ahead it won't run by default");
@@ -978,14 +984,16 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         Ui.WaitFor(() => editor.Faded.Count > 0, "the code the stop won't run faded");
         string text = editor.Document.Snapshot.ToString();
         string faded = string.Join(" | ", editor.Faded.Select(r => text.Substring(r.Start, r.Length)));
-        Assert.True(faded.Contains("water", StringComparison.Ordinal) && faded.Contains("one", StringComparison.Ordinal) && faded.Contains("many", StringComparison.Ordinal)
-            && !faded.Contains("coffee", StringComparison.Ordinal) && !faded.Contains("two", StringComparison.Ordinal)
-            && !faded.Contains("checked", StringComparison.Ordinal) && !faded.Contains("not", StringComparison.Ordinal),
-            $"The stop faded {faded}, where with mode 2 it is the else's water and the switch's one and many, and not either side of Check's if");
-        Assert.Contains(new LineAnnotation(22, "doubled: 4", LineAnnotationLook.Muted), editor.LineAnnotations);
+        string[] fadedWords = ["hidden", "water", "one", "many", "exact", "huge"];
+        string[] runWords = ["shown", "coffee", "two", "rounded", "big", "small", "checked", "not"];
+        Assert.True(fadedWords.All(w => faded.Contains(w, StringComparison.Ordinal)) && !runWords.Any(w => faded.Contains(w, StringComparison.Ordinal)),
+            $"The stop faded {faded}, where it is the elses not taken ({string.Join(", ", fadedWords)}), and not {string.Join(", ", runWords)}, "
+            + "the base's Status being 1, the float's sum rounding to 16777216 and the unsigned value 4294967295, nor either side of the ifs on Count's and Check's results");
+        Assert.Contains(new LineAnnotation(Line("int doubled"), "doubled: 4", LineAnnotationLook.Muted), editor.LineAnnotations);
         Passenger.App.Mcp.DebugSnapshot told = (Passenger.App.Mcp.DebugSnapshot)Ui.Await(new Passenger.App.Mcp.PassengerTools(window).GetDebugState(), "the stop as an agent is told it");
-        Assert.True(told.WontRun is { } lines && Covered(lines, 9) && Covered(lines, 14) && !Covered(lines, 26),
-            $"debug_state said the lines {string.Join(", ", told.WontRun ?? [])} won't run, where they hold line 9's water and line 14's one, not line 26's checked");
+        (int water, int one, int check) = (Line("\"water\"") + 1, Line("\" one\"") + 1, Line("\"checked\"") + 1);
+        Assert.True(told.WontRun is { } lines && Covered(lines, water) && Covered(lines, one) && !Covered(lines, check),
+            $"debug_state said the lines {string.Join(", ", told.WontRun ?? [])} won't run, where they hold line {water}'s water and line {one}'s one, not line {check}'s checked");
         Ui.Run(window, AppActions.StepOver);
         Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && editor.Faded.Count > 0, "the code ahead faded again after the step");
         Ui.Run(window, AppActions.Resume);
