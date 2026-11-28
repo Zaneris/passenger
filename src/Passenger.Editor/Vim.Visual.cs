@@ -1437,6 +1437,28 @@ public sealed partial class Vim
         return mark >= start && text[mark] is '.' or '!' or '?' && VimMotions.EndsSentence(text, mark, out int after) && after == white;
     }
 
+    /// <summary>Whether an offset is a blank of those opening a line of text below a line its sentence's mark ends, blanks
+    /// after the mark or not.</summary>
+    private static bool OpensAfterMark(TextSnapshot text, int offset)
+    {
+        LineSpan line = VimMotions.LineOf(text, offset);
+        if (line.Line == 0 || offset >= TextNavigation.IndentEnd(text, line) || TextNavigation.IndentEnd(text, line) == line.End)
+        {
+            return false;
+        }
+        LineSpan above = text.GetLine(line.Line - 1);
+        int mark = above.End - 1;
+        while (mark >= above.Start && text[mark] is ' ' or '\t')
+        {
+            mark--;
+        }
+        while (mark >= above.Start && text[mark] is ')' or ']' or '"' or '\'')
+        {
+            mark--;
+        }
+        return mark >= above.Start && text[mark] is '.' or '!' or '?' && VimMotions.EndsSentence(text, mark, out _);
+    }
+
     /// <summary>The last of the blanks after a character up to a line's end, null where none follows it.</summary>
     private static int? LastBlankAfter(TextSnapshot text, int character, int lineEnd)
     {
@@ -1577,7 +1599,7 @@ public sealed partial class Vim
             return new Region(span.Start, span.Start > 0 ? CharacterBefore(text, span.Start) : span.Start);
         }
         Region found = Spanned(text, OwnLine(text, span));
-        if (!inner && n >= 2 && AfterMark(text, r.Cursor) && found.Anchor <= r.Cursor && found.Cursor > r.Cursor
+        if (!inner && n >= 2 && (AfterMark(text, r.Cursor) || OpensAfterMark(text, r.Cursor)) && found.Anchor <= r.Cursor && found.Cursor > r.Cursor
             && VimMotions.LineOf(text, found.Cursor) is var closing && closing.Line < lastLine
             && (closing.Length == 0 || (CharEnd(text, found.Cursor) == closing.End && VimMotions.Blank(text, closing.Line + 1)))
             && span.EndKept && (closing.Length == 0 ? closing.Line : closing.Line + 1) is var runFirst)

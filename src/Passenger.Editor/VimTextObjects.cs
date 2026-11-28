@@ -317,13 +317,18 @@ public static class VimTextObjects
     }
 
     /// <summary>A sentence object's stretch as an operator takes it: an end in a later line's first column ends at the
-    /// end of the line before, and from a line's indent the stretch is whole lines, as Vim's exclusive end there is.</summary>
+    /// end of the line before, and from a line's indent the stretch is whole lines, as Vim's exclusive end there is; one
+    /// kept there (<see cref="VimSpan.EndKept"/>) takes that line too from an indent, else stays as it is.</summary>
     public static VimSpan EndingInFirstColumn(TextSnapshot text, VimSpan span)
     {
         LineSpan last = VimMotions.LineOf(text, span.End);
-        if (span.Linewise || span.EndKept || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
+        if (span.Linewise || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
         {
             return span;
+        }
+        if (span.EndKept)
+        {
+            return VimMotions.InIndent(text, span.Start) ? new VimSpan(VimMotions.LineOf(text, span.Start).Start, last.Start, true) : span;
         }
         return VimMotions.InIndent(text, span.Start)
             ? new VimSpan(VimMotions.LineOf(text, span.Start).Start, text.GetLineStart(last.Line - 1), true)
