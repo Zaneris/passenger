@@ -51,10 +51,15 @@ public sealed class ExplorerOpenedFileTests : IDisposable
     }
 
     /// <summary>An error in an open file waves the name of its row and of its folder's, its project's and the solution's,
-    /// leaving the rows that hold no error plain, and the error taken away takes every wave with it.</summary>
+    /// leaving the rows that hold no error plain, and the error taken away takes every wave with it; one in a file a project
+    /// links from outside its folder waves that project's row.</summary>
     private void A_file_with_an_error_waves_its_name_and_every_row_holding_it_until_the_error_is_gone()
     {
         string order = At("Shop.App/Models/Order.cs");
+        string linked = At("Shared/Linked.cs");
+        TestFolders.Write(folder, "Shared/Linked.cs", "namespace Shop.Core;\n\npublic class Linked\n{\n}\n");
+        TestFolders.Write(folder, "Shop.Core/Shop.Core.csproj",
+            TestProjects.Library().Replace("</Project>", "  <ItemGroup>\n    <Compile Include=\"../Shared/Linked.cs\" Link=\"Linked.cs\" />\n  </ItemGroup>\n</Project>", StringComparison.Ordinal));
         MainWindow window = Ui.OpenFolder(folder);
         Ui.WaitFor(() => window.ExplorerView.Tree.IsSolutionView && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project), "the Solution view's projects");
         window.OpenFile(order);
@@ -77,6 +82,17 @@ public sealed class ExplorerOpenedFileTests : IDisposable
         Ui.WaitFor(() => !document.Markers.Any(m => m.Kind == MarkerKind.Error), "the error undone unmarked");
         Ui.Settle();
         Assert.True(!Waved(window).Any(), $"With its error undone the Explorer still waves [{string.Join(", ", Waved(window))}]");
+
+        window.OpenFile(linked);
+        Ui.PlaceAfter(editor, "public class Linked\n{");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("int total = \"none\";");
+        OpenDocument shared = window.EditorArea.Active!;
+        Ui.WaitFor(() => shared.Markers.Any(m => m.Kind == MarkerKind.Error), "the error typed in the linked file marked");
+        Ui.Settle();
+        string[] linking = [.. Waved(window)];
+        Assert.True(linking.Contains("Shop.Core") && !linking.Contains("Shop.App"),
+            $"An error in Linked.cs, which Shop.Core links from outside its folder, waved [{string.Join(", ", linking)}], where Shop.Core holds it");
     }
 
     /// <summary>The names the Explorer's rows wave, in their order.</summary>

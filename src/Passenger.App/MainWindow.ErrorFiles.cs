@@ -5,13 +5,14 @@ using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
+using Passenger.Workspace;
 
 namespace Passenger.App;
 
-/// <summary>The Explorer's marks of the files with errors and of what holds them (<see cref="ErrorFiles"/>), as Problems
-/// knows a file's errors: an open file's by its own markers as its services report them, a closed one's by solution-wide
-/// analysis while it is on, and by the last build. A file is asked again only as what tells its errors changes, never as
-/// a key moves its markers.</summary>
+/// <summary>The Explorer's marks of the files with errors and of what holds them (<see cref="ErrorFiles"/>), a project by
+/// the files its evaluation lists, as Problems knows a file's errors: an open file's by its own markers as its services
+/// report them, a closed one's by solution-wide analysis while it is on, and by the last build. A file is asked again only
+/// as what tells its errors changes, never as a key moves its markers.</summary>
 public partial class MainWindow
 {
     private readonly ErrorFiles errorFiles = new();
@@ -55,6 +56,21 @@ public partial class MainWindow
         HashSet<string> analysed = analysedErrors;
         analysedErrors = new(PathNames.Comparer);
         FollowErrors(analysed);
+        errorFiles.FollowProjects(file => ProjectsHolding(next, file));
+        next.ProjectsEvaluated += (_, _) =>
+        {
+            if (session == next)
+            {
+                errorFiles.ProjectsChanged();
+            }
+        };
+        next.WorkspaceChanged += (_, _) =>
+        {
+            if (session == next)
+            {
+                errorFiles.ProjectsChanged();
+            }
+        };
         buildRun.BuildFinished += (_, _) =>
         {
             if (session == next)
@@ -101,6 +117,19 @@ public partial class MainWindow
             }
         }
         FollowErrors(files);
+    }
+
+    /// <summary>The projects a file is in, by their paths: those whose evaluations list it (or whose file it is), else the
+    /// project not yet evaluated whose folder nearest holds it.</summary>
+    private static IReadOnlyList<string> ProjectsHolding(ProjectSession of, string file)
+    {
+        IReadOnlyList<ProjectModel> projects = of.Projects;
+        List<string> holding = [.. projects.Where(p => p.IsEvaluated && (PathNames.Same(p.Path, file) || p.Evaluated!.Items.Any(i => PathNames.Same(i.Path, file)))).Select(p => p.Path)];
+        if (holding.Count == 0 && ProjectModel.Owning([.. projects.Where(p => !p.IsEvaluated)], file) is { } unread)
+        {
+            holding.Add(unread.Path);
+        }
+        return holding;
     }
 
     /// <summary>Asks again whether each file has errors.</summary>
