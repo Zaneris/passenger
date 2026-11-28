@@ -47,6 +47,9 @@ public sealed class Words : IEquatable<Words>
     /// <summary>Whether these are verbatim words rather than a resource's.</summary>
     public bool IsVerbatim => resources is null;
 
+    /// <summary>Whether these are verbatim words with nothing in them: nothing to say.</summary>
+    public bool IsEmpty => resources is null && name.Length == 0;
+
     /// <summary>The resource's key, or the verbatim text.</summary>
     public string Key => name;
 

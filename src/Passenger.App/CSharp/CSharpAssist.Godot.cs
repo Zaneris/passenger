@@ -475,7 +475,7 @@ internal sealed partial class CSharpAssist
         }
         // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
         actions.AskRename(document, caret, old, async (held, name, patience) => await GodotNodeAtAsync(document, held.Offset) is ({ } again, { } same, { Count: > 0 } now) && same == old
-            ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name).Shown));
+            ? await RenameNodesAsync(again, now, old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
         return true;
     }
 
@@ -555,7 +555,7 @@ internal sealed partial class CSharpAssist
         {
             if (paths is null)
             {
-                return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"a raw string of {Path.GetFileName(file)} can't say {name}").Shown);
+                return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"a raw string of {Path.GetFileName(file)} can't say {name}"));
             }
             if (paths.Count > 0)
             {

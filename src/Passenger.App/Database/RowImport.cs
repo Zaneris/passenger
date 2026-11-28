@@ -153,12 +153,12 @@ public static class RowImport
         ImportColumn[] mapped = [.. places.Select(i => choice.Columns[i])];
         if (mapped.Length == 0)
         {
-            throw new InvalidOperationException(Refusals.NoColumnImported.English);
+            throw new RefusedException(Refusals.NoColumnImported);
         }
         string make = $"CREATE TABLE {table} ({string.Join(", ", mapped.Select(c => $"{SqlText.QuotedName(kind, c.Into!)} {c.Type}"))})";
         if (!DatabaseKinds.HasTransactions(kind))
         {
-            throw new InvalidOperationException(Refusals.NoImport(DatabaseKinds.Title(kind)).English);
+            throw new RefusedException(Refusals.NoImport(DatabaseKinds.Title(kind)));
         }
         await using DbConnection connection = await DatabaseClient.OpenAsync(source, cancel);
         using CancellationTokenRegistration interrupt = DatabaseClient.Interrupt(connection, cancel);

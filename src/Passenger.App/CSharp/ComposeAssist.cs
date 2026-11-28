@@ -183,7 +183,7 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
     {
         if (context.WebOf(document) is not { Lsp: { } lsp })
         {
-            return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"the YAML language server does not run for {document.Name}").Shown);
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, $"the YAML language server does not run for {document.Name}"));
         }
         ComposeRenaming? renaming;
         try
@@ -192,11 +192,11 @@ internal sealed class ComposeAssist(AssistContext context, PopupPlacement popups
         }
         catch (LanguageServerFailed failed)
         {
-            return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Reason).Shown);
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, failed.Reason));
         }
         if (renaming is null || renaming.Name != old)
         {
-            return RefactorOutcome.Refused(Refusals.NotRenamed(old, "the file no longer names it there").Shown);
+            return RefactorOutcome.Refused(Refusals.NotRenamed(old, "the file no longer names it there"));
         }
         if (ComposeRename.Problem(renaming, name, context.ReadOpenOrDisk) is { } problem)
         {

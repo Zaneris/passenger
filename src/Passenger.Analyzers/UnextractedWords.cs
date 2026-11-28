@@ -7,8 +7,9 @@ namespace Passenger.Analyzers;
 /// a letter in it made Words (a Settings row's label, an action's title, a refusal, whatever takes Words) or given to a
 /// control's words (its Text, Content, Header, Title or PlaceholderText, its tip, its accessible name or help);
 /// and Words made a string by an interpolation, a + or ToString, which says them in one language at the moment written and
-/// breaks the sentence a translation keeps whole. Off until a folder's .editorconfig turns it on, as its area's words move
-/// into resources (src/Words.targets).</summary>
+/// breaks the sentence a translation keeps whole; and Words said in one language (Shown, English) made Words again, which
+/// an agent would read in the person's language, or a person in English. Off until a folder's .editorconfig turns it on,
+/// as its area's words move into resources (src/Words.targets).</summary>
 [Microsoft.CodeAnalysis.Diagnostics.DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class UnextractedWords() : HomeOnlyRule(Rules.UnextractedWord, "Passenger.Core.Words", OperationKind.Conversion,
     OperationKind.SimpleAssignment, OperationKind.Invocation, OperationKind.Interpolation, OperationKind.Binary)
@@ -26,6 +27,9 @@ public sealed class UnextractedWords() : HomeOnlyRule(Rules.UnextractedWord, "Pa
         {
             IConversionOperation { OperatorMethod.ContainingType: { } type, Operand: { } from } when SymbolEqualityComparer.Default.Equals(type, words) && Written(from) =>
                 [$"\"{Text(from)}\" is made Words", string.Empty],
+            IConversionOperation { OperatorMethod.ContainingType: { } type, Operand: IPropertyReferenceOperation { Property.Name: "Shown" or "English", Instance.Type: { } of } said }
+                when SymbolEqualityComparer.Default.Equals(type, words) && SymbolEqualityComparer.Default.Equals(of, words) =>
+                [$"Words said in one language ({said.Property.Name}) are made Words again", ", passing on the Words themselves"],
             ISimpleAssignmentOperation { Target: IPropertyReferenceOperation { Property: { } property }, Value: { } value }
                 when Shown.Contains(property.Name) && control is not null && Derives(property.ContainingType, control) && Written(Unconverted(value)) =>
                 [$"\"{Text(Unconverted(value))}\" is a control's {property.Name}", $", given through ShownWords.{property.Name}Property"],

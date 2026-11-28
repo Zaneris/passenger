@@ -25,8 +25,12 @@ public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictiona
     public IReadOnlyList<(string Project, string? Framework)> Referenced { get; init; } = [];
 }
 
-/// <summary>Why a configuration cannot be launched, in words for the person.</summary>
-public class LaunchException(string message) : Exception(message);
+/// <summary>Why a configuration cannot be launched: in the person's language where the window says it (<see cref="Why"/>),
+/// its message in English, as an agent's answer and a log say it.</summary>
+public class LaunchException(Words why) : Exception(why.English)
+{
+    public Words Why { get; } = why;
+}
 
 /// <summary>What a run configuration launches, worked out once: the program (the project's apphost, its built assembly under
 /// the <c>dotnet</c> that builds it, or another program), its arguments, working folder and environment, and the build that
@@ -312,7 +316,7 @@ public sealed partial record LaunchPlan
         if (configuration.IsScript)
         {
             // Run starts it with its package manager (BuildRunController.Scripts.cs): no .NET program to plan.
-            throw new LaunchException(Refusals.ScriptOnlyRuns(configuration.Name).English);
+            throw new LaunchException(Refusals.ScriptOnlyRuns(configuration.Name));
         }
         if (configuration.RunsScriptGame)
         {
@@ -352,11 +356,11 @@ public sealed partial record LaunchPlan
         Devices.TargetPlatform? platform = device?.Platform ?? Devices.DeviceTargets.PlatformOf(framework ?? project.TargetFrameworks.FirstOrDefault() ?? string.Empty);
         if (device is null && configuration.Program.Length == 0 && platform is Devices.TargetPlatform.Android or Devices.TargetPlatform.Ios)
         {
-            throw new LaunchException(Refusals.NoRunTarget(project.Name).English);
+            throw new LaunchException(Refusals.NoRunTarget(project.Name));
         }
         if (configuration.Program.Length == 0 && platform == Devices.TargetPlatform.MacCatalyst && !OperatingSystem.IsMacOS())
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: {Refusals.MacCatalystOnMacAlone}");
+            throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, Refusals.MacCatalystOnMacAlone));
         }
         // The project's own configuration, named for no platform, runs its platform's profile where the target is of that platform.
         if (platform is { } on && configuration is { LaunchProfile.Length: 0, Program.Length: 0 } && Devices.DeviceTargets.ProfileFor(LaunchProfile.Read(project), on) is { } tied)
@@ -447,7 +451,7 @@ public sealed partial record LaunchPlan
             if (assembly && (host is { X86: true } || X86Programs.Builds(properties)))
             {
                 // A 64-bit .NET loads no x86 assembly: Windows runs it on its x86 .NET, as its apphost or the x86 dotnet finds it.
-                x86 = OperatingSystem.IsWindows() ? X86Programs.Root(Variables()) : throw new LaunchException($"{configuration.Name} cannot run here: {Refusals.X86OnWindowsAlone}");
+                x86 = OperatingSystem.IsWindows() ? X86Programs.Root(Variables()) : throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, Refusals.X86OnWindowsAlone));
             }
             if (host is not null)
             {
@@ -519,7 +523,7 @@ public sealed partial record LaunchPlan
             return plan;
         }
         // A Functions app runs as dotnet run runs it, by func, whose SDK names it only in a target no evaluation runs.
-        string func = await BackgroundWork.Run(Aspire.FunctionsHost.Func, cancel) ?? throw new LaunchException(Refusals.NoFunc(project.Name).English);
+        string func = await BackgroundWork.Run(Aspire.FunctionsHost.Func, cancel) ?? throw new LaunchException(Refusals.NoFunc(project.Name));
         return Aspire.FunctionsHost.Plan(plan, func, [.. plan.OwnArguments]);
     }
 

@@ -51,11 +51,11 @@ public partial class MainWindow
     /// <summary>Inspect This: what the symbol at the caret offers to inspect, at the caret (where its value comes from and goes,
     /// its callers and callees, its supertypes and subtypes), the one chosen shown in the Hierarchy window; null once offered,
     /// else why not.</summary>
-    public async Task<string?> InspectThisAsync()
+    public async Task<Words?> InspectThisAsync()
     {
         // Held, so what comes next in the window finds the choices offered.
         using IDisposable held = BackgroundWork.Scope();
-        (Roslyn.Extension.Inspected? found, string? why) = await InspectedAsync();
+        (Roslyn.Extension.Inspected? found, Words? why) = await InspectedAsync();
         if (found is not { Name: { } name })
         {
             return why;
@@ -85,7 +85,7 @@ public partial class MainWindow
     }
 
     /// <summary>What the extension finds to inspect at the caret, or why nothing, said in the status bar.</summary>
-    private async Task<(Roslyn.Extension.Inspected? Found, string? Why)> InspectedAsync()
+    private async Task<(Roslyn.Extension.Inspected? Found, Words? Why)> InspectedAsync()
     {
         const string what = "Inspect This";
         if (Editors.Active is not { } active || session.CSharp is not { } csharp || (csharp.For(active) is null && !GeneratedCode.IsCopy(active.Path)))
@@ -116,7 +116,7 @@ public partial class MainWindow
 
     /// <summary>A value's flow in the Hierarchy window: its holder at the top, and under it where its value comes from, the
     /// server's own value tracking, or where it goes, each place opened on to where its own value comes from or goes.</summary>
-    public async Task<string?> ShowValueFlowAsync(string name, Roslyn.Extension.ValueFlowItem value, bool destinations)
+    public async Task<Words?> ShowValueFlowAsync(string name, Roslyn.Extension.ValueFlowItem value, bool destinations)
     {
         // Held, so what comes next in the window finds the first level listed.
         using IDisposable held = BackgroundWork.Scope();
@@ -165,9 +165,9 @@ public partial class MainWindow
 
     /// <summary>Call Hierarchy: who calls the symbol at the caret, and whom it calls (first with <paramref name="callees"/>);
     /// null when shown, else why not.</summary>
-    public async Task<string?> ShowCallHierarchyAsync(bool callees = false)
+    public async Task<Words?> ShowCallHierarchyAsync(bool callees = false)
     {
-        (HierarchyNode? top, string? why) = await Prepare("Call Hierarchy", "No method, property or event at the caret", (lsp, offset) => lsp.PrepareCallHierarchyAsync(offset));
+        (HierarchyNode? top, Words? why) = await Prepare("Call Hierarchy", "No method, property or event at the caret", (lsp, offset) => lsp.PrepareCallHierarchyAsync(offset));
         if (top is null)
         {
             return why;
@@ -181,9 +181,9 @@ public partial class MainWindow
 
     /// <summary>Type Hierarchy: the type at the caret's base types and interfaces, and the types that derive from it (first with
     /// <paramref name="subtypes"/>).</summary>
-    public async Task<string?> ShowTypeHierarchyAsync(bool subtypes = false)
+    public async Task<Words?> ShowTypeHierarchyAsync(bool subtypes = false)
     {
-        (HierarchyNode? top, string? why) = await Prepare("Type Hierarchy", "No type at the caret", (lsp, offset) => lsp.PrepareTypeHierarchyAsync(offset));
+        (HierarchyNode? top, Words? why) = await Prepare("Type Hierarchy", "No type at the caret", (lsp, offset) => lsp.PrepareTypeHierarchyAsync(offset));
         if (top is null)
         {
             return why;
@@ -197,7 +197,7 @@ public partial class MainWindow
 
     /// <summary>The symbol at the caret as a hierarchy's root, in a file of the server's or a generator's code copied, or
     /// why there is none, said in the status bar: nothing there, the server not ready, or its failure.</summary>
-    private async Task<(HierarchyNode? Top, string? Why)> Prepare(string what, string none, Func<LspDocument, int, Task<HierarchyItem?>> prepare)
+    private async Task<(HierarchyNode? Top, Words? Why)> Prepare(string what, string none, Func<LspDocument, int, Task<HierarchyItem?>> prepare)
     {
         if (Editors.Active is not { } active || session.CSharp is not { } csharp || (csharp.For(active) is null && !GeneratedCode.IsCopy(active.Path)))
         {
@@ -228,10 +228,10 @@ public partial class MainWindow
     private RoslynSession Running() =>
         session.CSharp?.Session ?? throw new LanguageServerFailed(Refusals.CSharpNotRunning.Shown);
 
-    private string Said(Words why)
+    private Words Said(Words why)
     {
         status.Text = why.Shown;
-        return why.Shown;
+        return why;
     }
 
     /// <summary>A level's rows, each landing at its place (a call, or the item's name) in the editor's lines of the file

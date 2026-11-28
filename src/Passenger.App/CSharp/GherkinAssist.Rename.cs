@@ -138,5 +138,5 @@ internal sealed partial class GherkinAssist
 
     /// <summary>An agent's Rename Step (<see cref="RenameStepAsync(BddSource, StepBinding, string)"/>).</summary>
     internal Task<RefactorOutcome> RenameStepAsync(StepBinding binding, string renamed) =>
-        Bdd is { } bdd ? RenameStepAsync(bdd, binding, renamed) : Task.FromResult(RefactorOutcome.Refused(Refusals.NoReqnrollProject.Shown));
+        Bdd is { } bdd ? RenameStepAsync(bdd, binding, renamed) : Task.FromResult(RefactorOutcome.Refused(Refusals.NoReqnrollProject));
 }

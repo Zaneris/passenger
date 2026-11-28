@@ -177,13 +177,13 @@ public partial class MainWindow
         }
         if (taker.Kind == RunningKind.Run)
         {
-            Bottom.Run.Append($"Hot Reload: {outcome.Said}\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+            Bottom.Run.Append(Debugging.DebuggingWords.HotReloadSaid(outcome.Said).Shown + "\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
         }
         else
         {
-            outcome = outcome with { Said = $"{taker.Name}: {outcome.Said}" };
+            outcome = outcome with { Said = Debugging.DebuggingWords.HotReloadOf(taker.Name, outcome.Said) };
         }
-        Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+        Bottom.Problems.ShowHotReload(outcome.Said.Shown, outcome.Problems);
         liveTree!.ShowHotReload(outcome.Problems);
         if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
         {
@@ -259,7 +259,7 @@ public partial class MainWindow
                 return;
             }
             // Words meaning what the last meant keep its words: "Restarting application" after the reason for it.
-            string words = last?.Result == meant.Result ? last.Said : meant.Said;
+            Words words = last?.Result == meant.Result ? last.Said : meant.Said;
             // dotnet watch writes the compiler's errors in the Run window.
             Say(words, meant.Result == HotReloadResult.Errors ? StatusPlace.Window(Dock, ToolWindowIds.Run) : null);
             last = new HotReloadOutcome(meant.Result, words);
@@ -421,7 +421,7 @@ public partial class MainWindow
         {
             if (session == next && next.Debug == debugger)
             {
-                Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+                Bottom.Problems.ShowHotReload(outcome.Said.Shown, outcome.Problems);
                 liveTree!.ShowHotReload(outcome.Problems);
                 if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
                 {
@@ -503,7 +503,7 @@ public partial class MainWindow
             {
                 return false;
             }
-            string? answer = await new ChoiceDialog("Hot Reload", $"{outcome.Said}\n\n{RestartQuestion}", RestartAnswers, "Yes").ShowDialog<string?>(this);
+            string? answer = await new ChoiceDialog("Hot Reload", $"{outcome.Said.Shown}\n\n{RestartQuestion}", RestartAnswers, "Yes").ShowDialog<string?>(this);
             if (session != next || next.IsEnded || debugger.Chosen != tab || tab.Session != debugged || !tab.IsLive)
             {
                 return false;
@@ -547,9 +547,9 @@ public partial class MainWindow
         }
         // The restart's build took Problems to its own tab; the edits that needed the restart are what to see.
         Bottom.Problems.Shown = ProblemsTab.HotReload;
-        string said = $"Restarted in {Durations.Said(took.Elapsed)} to apply changes: {outcome.Said}";
-        IdeLog.Write(IdeLog.Debugger, said);
-        tab.Console.Append($"Hot Reload: {said}\n");
+        Words said = Debugging.DebuggingWords.RestartedToApply(Durations.Said(took.Elapsed), outcome.Said);
+        IdeLog.Write(IdeLog.Debugger, said.English);
+        tab.Console.Append(Debugging.DebuggingWords.HotReloadSaid(said).Shown + "\n");
         // Each edit that needed it, in a compiler message's shape, at the compiler's line, which the console links to its line.
         foreach (Run.Problem rude in outcome.Problems.Where(p => p.Path is not null))
         {

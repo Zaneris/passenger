@@ -167,7 +167,7 @@ public sealed partial class BuildRunController
                     } : null, together.First().Workspace);
                 if (!built.Succeeded)
                 {
-                    return Checkpoint(work, chosen.Name) ?? built.Message;
+                    return Checkpoint(work, chosen.Name) ?? built.Message.Shown;
                 }
             }
             for (int i = 0; i < starts.Count; i++)

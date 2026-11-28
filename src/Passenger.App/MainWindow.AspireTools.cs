@@ -25,7 +25,7 @@ public partial class MainWindow
         foreach (AspireAppRun app in apps)
         {
             IReadOnlyList<AspireResource> resources = await (app.Interactions
-                ?? throw new InvalidOperationException(Refusals.AppHostStarting.English)).GetResourcesAsync(cancel);
+                ?? throw new RefusedException(Refusals.AppHostStarting)).GetResourcesAsync(cancel);
             CheckAspireToolTarget(current, app);
             matches.AddRange(resources.Where(resource => resource.Name == name || !qualified && resource.DisplayName == name)
                 .Select(resource => new AspireSelection(app.Configuration.Project, resource)));
@@ -88,7 +88,7 @@ public partial class MainWindow
         IReadOnlyList<AspireRunResource> resources = await ReadAspireConfigurationResourcesAsync(configuration, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed.English);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         AspireRunResource[] matches = resources.Where(resource => resource.Name == name).ToArray();
         if (matches.Length != 1 || resources.GroupBy(resource => resource.Name, StringComparer.Ordinal).Any(group => group.Count() != 1))
@@ -102,7 +102,7 @@ public partial class MainWindow
             : await buildRun.RunAspireAsync(selected, arguments, mode == RunStart.Debug ? RunStart.Debug : RunStart.Run, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed.English);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         if (problem is not null)
         {
@@ -282,7 +282,7 @@ public partial class MainWindow
     {
         if (session != current || current.IsEnded || app.Stopping || current.Aspire.FindApp(app.Configuration.Project) != app)
         {
-            throw new InvalidOperationException(Refusals.AppHostChanged.English);
+            throw new RefusedException(Refusals.AppHostChanged);
         }
     }
 

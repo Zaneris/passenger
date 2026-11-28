@@ -246,7 +246,7 @@ internal sealed class GodotAssist(AssistContext context, PopupPlacement popups, 
         string old = node.Name;
         // Read again for each attempt, as a file written a moment before is one the index has yet to hear of.
         actions.AskRename(document, caret, old, async (held, name, patience) => await NodeAtAsync(document, held.Offset) is ({ } again, { Name: var now } same) && now == old
-            ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name).Shown));
+            ? await csharp.RenameNodesAsync(again, [same], old, name, patience) : RefactorOutcome.Refused(Refusals.ChangedAsRead(old, document.Name)));
     }
 
     /// <summary>The node whose name a scene's offset is on, in its own scene's tree; null for any other place.</summary>

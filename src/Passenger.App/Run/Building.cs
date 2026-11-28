@@ -61,7 +61,7 @@ public enum BuildStatus
 
 /// <summary>A build's end and what to tell the person about it, with what it found and its last words: the build's own,
 /// whatever the Problems and Build windows show by the time a caller reads them.</summary>
-public sealed record BuildOutcome(BuildStatus Status, string Message)
+public sealed record BuildOutcome(BuildStatus Status, Words Message)
 {
     public bool Succeeded => Status == BuildStatus.Succeeded;
 

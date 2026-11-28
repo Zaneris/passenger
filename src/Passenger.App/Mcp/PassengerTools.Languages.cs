@@ -214,7 +214,7 @@ public sealed partial class PassengerTools
         }
         if (asked.Map(WebAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, WebAssist.IsPackageJson(document))) is not { } placed)
         {
-            throw new InvalidOperationException(Refusals.PropertyEditedMeanwhile.English);
+            throw new RefusedException(Refusals.PropertyEditedMeanwhile);
         }
         WorkspaceEdits.ApplyTo(Editors, document, placed);
         document.Save();
@@ -248,11 +248,11 @@ public sealed partial class PassengerTools
         RefactorOutcome made = await WebAssist.MakeLintFixAsync(Editors, web.Document, fix, $"'{fix.Title}'", null);
         if (made.Problem is not null)
         {
-            throw new InvalidOperationException(made.Problem);
+            throw new RefusedException(made.Problem);
         }
         if (made.Left.Count > 0)
         {
-            throw new InvalidOperationException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left).English);
+            throw new RefusedException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left));
         }
         if (web.Document.Text.Version == version)
         {
@@ -358,7 +358,7 @@ public sealed partial class PassengerTools
         }
         if (renamed.Problem is { } refused)
         {
-            throw new InvalidOperationException(refused);
+            throw new RefusedException(refused);
         }
         await SaveLandedAsync(cancel);
         return $"Renamed {old} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {AgentAnswers.Named([.. renamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
@@ -418,10 +418,10 @@ public sealed partial class PassengerTools
             RefactorOutcome set = await asks.Make(value ?? throw new InvalidOperationException($"'{fix.Title}' sets a value: give it as name"), patience);
             if (set.Problem is { } refused)
             {
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return set.Said;
+            return set.Said.English;
         }
         if (now.Confirms is { } confirms)
         {
@@ -430,17 +430,17 @@ public sealed partial class PassengerTools
             RefactorOutcome agreed = await confirms.Make(patience);
             if (agreed.Problem is { } declined)
             {
-                throw new InvalidOperationException(declined);
+                throw new RefusedException(declined);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return $"{agreed.Said}: {question.Replace("\n\n", " ", StringComparison.Ordinal)}";
+            return $"{agreed.Said.English}: {question.Replace("\n\n", " ", StringComparison.Ordinal)}";
         }
         if (now.Elsewhere is { } elsewhere)
         {
             RefactorOutcome made = await elsewhere(now.Range, patience);
             if (made.Problem is { } problem)
             {
-                throw new InvalidOperationException(problem);
+                throw new RefusedException(problem);
             }
             await SaveLandedAsync(CancellationToken.None);
             return $"Applied '{fix.Title}' to {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";

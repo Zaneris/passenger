@@ -20,7 +20,7 @@ public partial class MainWindow
             waiting.Token.ThrowIfCancellationRequested();
             if (session != current || current.IsEnded)
             {
-                throw new InvalidOperationException(Refusals.SolutionClosed.English);
+                throw new RefusedException(Refusals.SolutionClosed);
             }
         }
         finally
@@ -50,7 +50,7 @@ public partial class MainWindow
         {
             if (session != current || current.IsEnded)
             {
-                ready.TrySetException(new InvalidOperationException(Refusals.SolutionClosed.English));
+                ready.TrySetException(new RefusedException(Refusals.SolutionClosed));
             }
             else if (observed is { IsReady: true, Session: not null })
             {

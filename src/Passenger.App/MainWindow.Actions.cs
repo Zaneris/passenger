@@ -61,7 +61,7 @@ public partial class MainWindow
 
     /// <summary>Runs an action's work held under its id: begun at once with its first stage, ended with the task, telling
     /// what <paramref name="run"/> says it came to; asked for again while it works, it says what is under way.</summary>
-    private async Task WorkingAsync(string id, string stage, Func<Task<(bool Succeeded, string Said)>> run, bool stoppable = false)
+    private async Task WorkingAsync(string id, string stage, Func<Task<(bool Succeeded, Words Said)>> run, bool stoppable = false)
     {
         if (work.Begin(id, stage, stoppable) is not { } working)
         {
@@ -70,7 +70,7 @@ public partial class MainWindow
         }
         using (working)
         {
-            (bool succeeded, string said) = await run();
+            (bool succeeded, Words said) = await run();
             working.Tell(succeeded, said);
         }
     }

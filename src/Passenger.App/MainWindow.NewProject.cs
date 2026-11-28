@@ -293,7 +293,7 @@ public partial class MainWindow
                 IdeErrors.Observe(setUp);
                 return;
             }
-            opened.BuildSolution(made.Game ? built => opened.OfferGodotEditor(built.Message) : null);
+            opened.BuildSolution(made.Game ? built => opened.OfferGodotEditor(built.Message.Shown) : null);
         });
     }
 
@@ -315,7 +315,7 @@ public partial class MainWindow
         TaskCompletionSource<BuildOutcome> building = new(TaskCreationOptions.RunContinuationsAsynchronously);
         BuildSolution(ended => building.TrySetResult(ended));
         BuildOutcome built = await building.Task;
-        status.Say($"{said}; {built.Message}", problem is null ? null : ProblemSeverity.Warning, buildRun.Place(built));
+        status.Say($"{said}; {built.Message.Shown}", problem is null ? null : ProblemSeverity.Warning, buildRun.Place(built));
         return problem;
     }
 

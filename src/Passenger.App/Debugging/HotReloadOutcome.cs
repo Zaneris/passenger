@@ -1,4 +1,5 @@
 using Passenger.App.Run;
+using Passenger.Core;
 
 namespace Passenger.App.Debugging;
 
@@ -24,7 +25,7 @@ public enum HotReloadResult
 /// <summary>What an Apply Changes came to, in words for the status bar and the Debug console, with the edits that could not
 /// be applied (each at its line, as Problems' Hot Reload tab lists them), the files and modules the update changed, and
 /// how long it took.</summary>
-public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
+public sealed record HotReloadOutcome(HotReloadResult Result, Words Said)
 {
     public IReadOnlyList<Problem> Problems { get; init; } = [];
 
@@ -73,8 +74,8 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
         {
             return code ?? xaml;
         }
-        List<string> said = [.. new[] { code, xaml }.Where(o => o.Result != HotReloadResult.NothingToApply || o.Problems.Count > 0).Select(o => o.Said)];
-        return new HotReloadOutcome(Worse(code.Result, xaml.Result), said.Count == 0 ? code.Said : string.Join("; ", said))
+        List<Words> said = [.. new[] { code, xaml }.Where(o => o.Result != HotReloadResult.NothingToApply || o.Problems.Count > 0).Select(o => o.Said)];
+        return new HotReloadOutcome(Worse(code.Result, xaml.Result), said.Count == 0 ? code.Said : said.Aggregate(Clauses.Then))
         {
             Problems = [.. code.Problems, .. xaml.Problems],
             Files = [.. code.Files, .. xaml.Files],

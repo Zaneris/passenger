@@ -344,9 +344,9 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         if (made.Left.Count > 0)
         {
-            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left).Shown);
+            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left));
         }
-        if (made.Said.Length > 0)
+        if (!made.Said.IsEmpty)
         {
             context.Say(made.Said);
         }
@@ -401,7 +401,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
     {
         if (chosen.Command is { } run && (context.CSharp?.For(document)?.Lsp ?? context.WebOf(document)?.Lsp) is { } server && server.Runs(run))
         {
-            RefactorOutcome ran = await ServerCommands.RunAsync(context.Editors, what, what, chosen.Edit, taking => server.ExecuteCommandAsync(run, taking), asked, patience, context.Say);
+            RefactorOutcome ran = await ServerCommands.RunAsync(context.Editors, what, what, chosen.Edit, taking => server.ExecuteCommandAsync(run, taking), asked, patience, said => context.Say(said));
             return (ran, ran.Problem is null && ran.Left.Count == 0 && ran.Files.Count > 0);
         }
         if (chosen.Edit is { } changes && await StaleAsync(document, changes, asked, patience) is { } stale)
@@ -413,7 +413,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         {
             return (made, false);
         }
-        string said = chosen.Command is { } command ? NotRun(what, command) : chosen.Edit is null ? $"{what} changed nothing" : made.Said;
+        Words said = chosen.Command is { } command ? NotRun(what, command) : chosen.Edit is null ? $"{what} changed nothing" : made.Said;
         return (made with { Said = said }, chosen.Edit is not null && made.Left.Count == 0);
     }
 
@@ -892,7 +892,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording);
             ungodot = await GodotFollowAsync(edit, applied, recording, left);
             // Written whether or not every file moved: the code is renamed either way.
-            await WorkspaceEdits.LandedAsync(recording, context.Say);
+            await WorkspaceEdits.LandedAsync(recording, said => context.Say(said));
         }
         catch (WorkspaceEditFailed failed)
         {
@@ -1387,7 +1387,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
         }
         if (made.Left.Count > 0)
         {
-            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left).Shown);
+            context.Say(Refusals.NotAppliedEditedMeanwhile(what, made.Left));
         }
         return made.Left.Count == 0;
     }
@@ -1418,7 +1418,7 @@ internal sealed partial class CodeActions(AssistContext context, PopupPlacement 
             await context.ChangeFilesAsync([.. WorkspaceEdits.Paths(edit), .. moves.SelectMany(m => new[] { m.From, m.To })], recording,
                 () => applied = TypeRename.Apply(context.Editors, edit, moves, asked, dropped, recording));
             unfollowed = await GodotFollowAsync(edit, applied, recording, left);
-            waited = await WorkspaceEdits.LandedAsync(recording, context.Say);
+            waited = await WorkspaceEdits.LandedAsync(recording, said => context.Say(said));
         }
         catch (WorkspaceEditFailed failed)
         {

@@ -276,7 +276,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
             ((string Path, TextPosition Position)? place, string said) = await JsonDeclarationAsync(lsp, document, offset);
             if (context.Editors.Active != document || place is not { } found)
             {
-                context.Say((context.Editors.Active == document ? said : Refusals.NoDeclaration).Shown);
+                context.Say(context.Editors.Active == document ? said : Refusals.NoDeclaration);
                 return;
             }
             context.Navigate(found);
@@ -354,7 +354,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         if (JsonPropertyAt(outline, lines, offset) is not { } at || at.Path[^1].Name != old
             || asked.Map(JsonRenameEdits(at.Path, at.Key, lines, name, IsPackageJson(document))) is not { } placed)
         {
-            return RefactorOutcome.Refused(Refusals.PropertyEditedMeanwhile.Shown);
+            return RefactorOutcome.Refused(Refusals.PropertyEditedMeanwhile);
         }
         TextSnapshot was = document.Text.Snapshot;
         WorkspaceEdits.ApplyTo(context.Editors, document, placed);

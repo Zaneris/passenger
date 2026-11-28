@@ -860,7 +860,7 @@ public sealed class TestController : IAsyncDisposable
         if (build && Building([.. every.Where(Within), .. declaring.Select(d => d.Project).Where(Within)]) is { Count: > 0 } building
             && await this.build(building, cancel) is { Succeeded: false } unbuilt)
         {
-            return unbuilt.Message;
+            return unbuilt.Message.Shown;
         }
         cancel.ThrowIfCancellationRequested();
         if (build)

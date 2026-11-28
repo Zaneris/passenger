@@ -293,8 +293,8 @@ public partial class MainWindow
         if (!built.Succeeded)
         {
             edits?.Dispose();
-            status.Text = $"Godot's Play stopped: {built.Message}";
-            return new JsonObject { ["built"] = false, ["said"] = built.Message };
+            status.Text = $"Godot's Play stopped: {built.Message.Shown}";
+            return new JsonObject { ["built"] = false, ["said"] = built.Message.Shown };
         }
         JsonObject variables = [];
         bool debugs = peer.Debugs ?? settings.GodotDebugPlays;
@@ -311,7 +311,7 @@ public partial class MainWindow
         {
             edits?.Dispose();
         }
-        return new JsonObject { ["built"] = true, ["said"] = built.Message, ["variables"] = variables };
+        return new JsonObject { ["built"] = true, ["said"] = built.Message.Shown, ["variables"] = variables };
     }
 
     /// <summary>A game the editor's session began with, relayed into the window's session as a game of its own, named after

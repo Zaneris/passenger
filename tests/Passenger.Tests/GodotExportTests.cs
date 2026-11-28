@@ -161,7 +161,7 @@ public sealed class GodotExportTests
             dialog.Close();
 
             BuildOutcome refused = Ui.Await(window.Builds.ExportGodotAsync(new GodotExportRequest(PathNames.Canonical(folder), Preset)), "the export refused");
-            Assert.True(refused.Status == BuildStatus.Refused && refused.Message == dialog.Problem, $"An export Godot would build none of ended {refused.Status}: {refused.Message}");
+            Assert.True(refused.Status == BuildStatus.Refused && refused.Message.English == dialog.Problem, $"An export Godot would build none of ended {refused.Status}: {refused.Message}");
         }
         finally
         {

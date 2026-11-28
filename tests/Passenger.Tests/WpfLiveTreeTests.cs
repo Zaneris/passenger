@@ -320,11 +320,11 @@ public sealed class WpfLiveTreeTests : IClassFixture<RestoredFolders>, IDisposab
         HotReloadOutcome? before = window.Debugger.LastApplied;
         string? said = WinFormsDesignerTests.Type(window, window.FormProperties!, "Text", "Counted");
         string designer = Path.Combine(forms, "MainForm.Designer.cs");
-        Ui.WaitFor(() => window.Debugger.LastApplied is { } now && now != before && now.Said.Contains("Design changes", StringComparison.Ordinal),
+        Ui.WaitFor(() => window.Debugger.LastApplied is { } now && now != before && now.Said.English.Contains("Design changes", StringComparison.Ordinal),
             () => $"Hot Reload to say what the design's edit came to in the app, not {window.Debugger.LastApplied?.Result} \"{window.Debugger.LastApplied?.Said}\" "
                 + $"(the edit said \"{said}\", its designer code {(File.ReadAllText(designer).Contains("\"Counted\"", StringComparison.Ordinal) ? "written" : "not written")}, "
                 + $"the app's edits {(window.LiveApp?.Xaml is { } xaml ? (xaml.Has(designer) ? "waiting" : "none") : "unfollowed")}; {window.Status})");
-        Assert.Contains("Design changes applied: MainForm.Designer.cs (MainForm)", window.Debugger.LastApplied!.Said, StringComparison.Ordinal);
+        Assert.Contains("Design changes applied: MainForm.Designer.cs (MainForm)", window.Debugger.LastApplied!.Said.English, StringComparison.Ordinal);
         Choose(window, "Counter");
         Assert.Equal("\"Counted\"", Choose(window, "Count").Properties.Single(p => p.Name == "Text").Value);
         Stop(window);

@@ -538,7 +538,7 @@ public partial class MainWindow
     {
         if (session != running || running.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed.English);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
     }
 }

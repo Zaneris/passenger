@@ -120,12 +120,12 @@ internal sealed partial class WebAssist
             return;
         }
         using IDisposable held = BackgroundWork.Scope();
-        RefactorOutcome made = await MakeLintFixAsync(context.Editors, document, fix, fix.Title, context.Say);
+        RefactorOutcome made = await MakeLintFixAsync(context.Editors, document, fix, fix.Title, said => context.Say(said));
         if (made.Left.Count > 0)
         {
-            context.Say(Refusals.NotAppliedEditedMeanwhile(fix.Title, made.Left).Shown);
+            context.Say(Refusals.NotAppliedEditedMeanwhile(fix.Title, made.Left));
         }
-        else if ((made.Problem ?? made.Said) is { Length: > 0 } said)
+        else if ((made.Problem ?? made.Said) is { IsEmpty: false } said)
         {
             context.Say(said);
         }

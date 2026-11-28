@@ -27,7 +27,7 @@ public partial class MainWindow
     private CancellationTokenSource? clonesAsked;
 
     /// <summary>Why each group's clones can't share one method, as the extension said once the group was chosen; null where they can.</summary>
-    private readonly ConditionalWeakTable<CloneSet, StrongBox<string?>> clonesExtracted = [];
+    private readonly ConditionalWeakTable<CloneSet, StrongBox<Words?>> clonesExtracted = [];
 
     /// <summary>The Clones tool window, built as it is first shown or asked for.</summary>
     public ClonesView ClonesWindow => clones ?? (ClonesView)Dock[ToolWindowIds.Clones].Content;
@@ -36,7 +36,7 @@ public partial class MainWindow
     {
         Dock.Add(new Docking.ToolWindow(ToolWindowIds.Clones, "Clones", IconKeys.Copy, () =>
         {
-            ClonesView view = new() { WhyNotExtracted = set => clonesExtracted.TryGetValue(set, out StrongBox<string?>? why) ? why.Value : null };
+            ClonesView view = new() { WhyNotExtracted = set => clonesExtracted.TryGetValue(set, out StrongBox<Words?>? why) ? why.Value : null };
             clones = view;
             view.ActionRequested += (_, action) => Request(action);
             view.GoToRequested += (_, clone) => GoToClone(clone);
@@ -79,7 +79,7 @@ public partial class MainWindow
         actions.Add(new IdeAction(AppActions.ExtractClones, "Extract Method from Clones…", "Code", _ => IdeErrors.Observe(ExtractClonesAsync()))
         {
             WhyNot = _ => clones?.Chosen.Set is not { } set ? Refusals.NoCloneChosen
-                : clonesExtracted.TryGetValue(set, out StrongBox<string?>? why) && why.Value is { } refused ? refused
+                : clonesExtracted.TryGetValue(set, out StrongBox<Words?>? why) && why.Value is { } refused ? refused
                 : set.Clones.Select(c => ReadOnlyFiles.Refused(c.Path, Path.GetFileName(c.Path))).FirstOrDefault(w => w is not null),
         });
     }
@@ -291,7 +291,7 @@ public partial class MainWindow
         try
         {
             Refactored found = await BackgroundWork.Run(() => roslyn.ExtensionAsync<Refactored>(Handlers.ExtractClones, asked));
-            clonesExtracted.AddOrUpdate(set, new StrongBox<string?>(found.Problem));
+            clonesExtracted.AddOrUpdate(set, new StrongBox<Words?>(found.Problem));
         }
         catch (LanguageServerFailed)
         {
@@ -327,7 +327,7 @@ public partial class MainWindow
             files => $"Extracted a method from {Plural.Of(set.Clones.Count, "clone")} in {Plural.Of(files, "file")}", null);
         if (outcome.Problem is { } problem)
         {
-            clonesExtracted.AddOrUpdate(set, new StrongBox<string?>(problem));
+            clonesExtracted.AddOrUpdate(set, new StrongBox<Words?>(problem));
             work?.Tell(false, problem);
             Refuse(problem);
             return;

@@ -232,7 +232,7 @@ internal sealed partial class CodeActions
         {
             context.Say(made.Said);
         }
-        return made.Problem;
+        return made.Problem?.Shown;
     }
 
     /// <summary>A refactoring computed by Passenger's extension for a file and applied as one command, which Undo takes back
@@ -312,7 +312,7 @@ internal sealed partial class CodeActions
         using CommandHistory.Recording recording = context.Editors.Commands.Record(name);
         await context.ChangeFilesAsync([.. made.Changes.Select(c => c.Path), .. WorkspaceEdits.Paths(edit)], recording,
             () => WorkspaceEdits.ApplyAsCommand(context.Editors, edit, recording, asked, dropped));
-        await WorkspaceEdits.LandedAsync(recording, context.Say);
+        await WorkspaceEdits.LandedAsync(recording, said => context.Say(said));
         // Counted by file: a file made is its creation and its text, which the edit counts apart.
         string said = Refusals.EditedMeanwhile(done(made.Changes.Count - dropped.Count), dropped)
             + (unchanged.Count > 0 ? $", but left {Plural.Of(unchanged.Count, "use")} as {Plural.Agreeing(unchanged.Count, "it was", "they were")}: "

@@ -86,7 +86,7 @@ public partial class MainWindow
             BuildOutcome built = await buildRun.BuildForAsync(new BuildStep(project.Path, session.Frameworks.Of(project)), cancel);
             if (!built.Succeeded)
             {
-                return built.Message;
+                return built.Message.Shown;
             }
         }
         // Built here already: the editor plays without building again.

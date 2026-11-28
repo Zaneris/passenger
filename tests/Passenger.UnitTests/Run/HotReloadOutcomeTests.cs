@@ -3,7 +3,8 @@ using Passenger.App.Debugging;
 namespace Passenger.UnitTests.Run;
 
 /// <summary>A program's C# apply and its XAML's said as one: the worse result stands, while what its C# came to stays what the
-/// debugger follows, so XAML failing after C# applied takes no bookkeeping away from code the program now runs.</summary>
+/// debugger follows, so XAML failing after C# applied takes no bookkeeping away from code the program now runs; each part's
+/// words are said, C#'s first.</summary>
 public sealed class HotReloadOutcomeTests
 {
     private static HotReloadOutcome Code(HotReloadResult result) => new(result, "C# said") { Files = ["/app/MainWindow.axaml.cs"], Modules = ["App"], Methods = 1 };
@@ -26,6 +27,7 @@ public sealed class HotReloadOutcomeTests
         HotReloadOutcome code = Code(HotReloadResult.Applied);
         HotReloadOutcome both = HotReloadOutcome.Both(code, Xaml(failed))!;
         Assert.Equal(failed, both.Result);
+        Assert.Equal("C# said; XAML said", both.Said.English);
         Assert.Same(code, both.Code);
         Assert.Equal(["/app/MainWindow.axaml.cs"], both.Code.Files);
         Assert.Equal(["App"], both.Code.Modules);

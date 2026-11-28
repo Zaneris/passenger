@@ -357,7 +357,7 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
             Assert.Equal(3, rude.Position.Line);
             Assert.StartsWith("ENC", rude.Code, StringComparison.Ordinal);
             Assert.Contains(rude, window.BottomPanel.Problems.HotReloadProblems!);
-            Assert.Contains("Greeter.cs:4", outcome.Said, StringComparison.Ordinal);
+            Assert.Contains("Greeter.cs:4", outcome.Said.English, StringComparison.Ordinal);
 
             Ui.WaitFor(() => window.Debugger.Session is { } next && next != first && next.State == DebugState.Paused, "the restarted program to stop at the breakpoint");
             string message = $"{GreeterPath}(8,{rude.Position.Column + 1}): error {rude.Code}";
@@ -427,9 +427,9 @@ public sealed class HotReloadTests : IClassFixture<HotReloadTests.Greetings>, IC
             Passenger.App.Run.Problem stale = outcome.Problems.FirstOrDefault(p => p.Code == "ENC1008")
                 ?? throw new Xunit.Sdk.XunitException($"Roslyn did not say the project is stale: [{string.Join("; ", outcome.Problems.Select(p => $"{p.Code} {p.Message}"))}]");
             Assert.Equal(GreeterPath, stale.Path);
-            Assert.True(outcome.Said == $"No managed code changes to apply: {stale.Message.TrimEnd('.')}.", $"Hot Reload did not say Roslyn's reason for applying nothing: {outcome.Said}");
+            Assert.True(outcome.Said.English == $"No managed code changes to apply: {stale.Message.TrimEnd('.')}.", $"Hot Reload did not say Roslyn's reason for applying nothing: {outcome.Said}");
 
-            Ui.WaitFor(() => window.Status == outcome.Said, $"the status bar to say why nothing was applied, not \"{window.Status}\"");
+            Ui.WaitFor(() => window.Status == outcome.Said.Shown, $"the status bar to say why nothing was applied, not \"{window.Status}\"");
             window.DockHost.Hide(ToolWindowIds.Problems);
             Ui.Click(window.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => b.Name == "StatusMessage"));
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems) && window.BottomPanel.Problems.Shown == ProblemsTab.HotReload,

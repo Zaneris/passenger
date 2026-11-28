@@ -30,5 +30,14 @@ dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 generated_code = true
 
 # The areas whose words are resources', where words a person reads written in the code are refused (#2122).
-[src/Passenger.App/Refusals.cs]
+[src/Passenger.App/{Refusals.cs,RefusedException.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Debugging/HotReloadOutcome.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Run/Building.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/CSharp/WorkspaceEdits.cs]
 dotnet_diagnostic.PSG0012.severity = warning
