@@ -264,16 +264,15 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// window nobody sees, never asks.</summary>
     public bool AskBeforeRerun { get; init; } = true;
 
-    /// <summary>"Tool Window: when build is explicitly invoked, open the build progress view in a tool window": the
-    /// Build menu's builds, rebuilds and cleans open the Build window as they start.</summary>
+    /// <summary>"Open the Build window as a build starts": the Build menu's builds, rebuilds and cleans open the Build
+    /// window as they start.</summary>
     public bool OpenBuildWindowOnBuild { get; init; } = true;
 
-    /// <summary>"Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)":
-    /// the build before Run, Debug or Profile opens it too, while the setting above is on. Off at first, so a run's
-    /// build leaves the bottom panel as it was. A test run's build never opens it.</summary>
+    /// <summary>"Open it too for the build before Run, Debug or Profile": that build opens it too, while the setting above
+    /// is on. Off at first, so a run's build leaves the bottom panel as it was. A test run's build never opens it.</summary>
     public bool OpenBuildWindowOnImplicitBuild { get; init; }
 
-    /// <summary>"Showing build results after build completed": which builds bring the Build window forward as they end,
+    /// <summary>"Bring the Build window forward as a build ends": which builds bring the Build window forward as they end,
     /// whatever started them.</summary>
     public BuildResultsMode ShowBuildResults { get; init; } = BuildResultsMode.ForErrors;
 
@@ -817,7 +816,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     }
 }
 
-/// <summary>The choices for "Showing build results after build completed", in the order Settings lists them.</summary>
+/// <summary>The choices for "Bring the Build window forward as a build ends", in the order Settings lists them.</summary>
 public enum BuildResultsMode
 {
     Always,

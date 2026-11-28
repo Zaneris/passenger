@@ -93,7 +93,7 @@ public sealed partial class SettingsDialog : IdeWindow
     public static string PlaceOfRow(string page, string label) => $"{PlaceOfPage(page)} | {label}";
 
     /// <summary>The names of <see cref="BuildResultsMode"/>'s choices, in its order.</summary>
-    public static readonly string[] BuildResultsChoices = ["Always", "Only if errors or warnings received", "Only if errors received", "Never"];
+    public static readonly string[] BuildResultsChoices = ["Always", "Only with errors or warnings", "Only with errors", "Never"];
 
     /// <summary>The names of <see cref="OpenProjectIn"/>'s choices, in its order.</summary>
     public static readonly (OpenProjectIn Choice, string Name)[] OpenProjectChoices =
@@ -622,9 +622,9 @@ public sealed partial class SettingsDialog : IdeWindow
             });
             return (explicitly, implicitly);
         });
-        Add(BuildPage, "Tool Window: when build is explicitly invoked, open the build progress view in a tool window", () => buildWindow.Value.Explicitly,
+        Add(BuildPage, "Open the Build window as a build starts", () => buildWindow.Value.Explicitly,
             "build tool window open progress view start explicitly invoked solution rebuild clean toolset presentation");
-        Add(BuildPage, "Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)", () => buildWindow.Value.Implicitly,
+        Add(BuildPage, "Open it too for the build before Run, Debug or Profile", () => buildWindow.Value.Implicitly,
             "build tool window open progress view start implicitly run debug profile before launch toolset presentation");
         Add(Declared.ShowBuildResults);
         Add(Declared.ContinuousTesting);

@@ -823,9 +823,9 @@ public sealed partial class Vim
             if (Option(name) is not { } option)
             {
                 return Said(name is "sw" or "shiftwidth" or "ts" or "tabstop" or "et" or "expandtab" or "sts" or "softtabstop" or "ai" or "autoindent"
-                    ? $"{name} is the file's indent, which Settings › Editor and an .editorconfig set"
-                    : name is "nu" or "number" or "rnu" or "relativenumber" or "wrap" or "list" or "cursorline"
-                        ? $"{name} is one of Passenger's settings (Settings › Editor)"
+                    ? $"{name} is the file's indent, which its .editorconfig sets, else its own lines"
+                    : SettingOf(name) is { } setting
+                        ? $"{name} is Passenger's {setting} (Settings › Editor)"
                         : $"E518: Unknown option: {name}");
             }
             bool now = option.Get(Options);
@@ -843,6 +843,16 @@ public sealed partial class Vim
         }
         return new VimResult(true) { Message = answers.Count > 0 ? string.Join("  ", answers) : null, Highlight = highlight };
     }
+
+    /// <summary>The row of Settings' Editor page a Vim option is in Passenger, by the option's name or short name; null for
+    /// one Passenger has no row for.</summary>
+    private static string? SettingOf(string name) => name switch
+    {
+        "nu" or "number" => "Show line numbers",
+        "wrap" => "Soft-wrap these files",
+        "list" => "Show whitespaces",
+        _ => null,
+    };
 
     private static readonly (string Name, Func<VimOptions, bool> Get, Action<VimOptions, bool> Set)[] OptionTable =
     [

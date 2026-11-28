@@ -531,7 +531,7 @@ public static class Declared
 
     public static readonly ChoiceSetting<BuildResultsMode> ShowBuildResults = new(s => s.ShowBuildResults, (s, v) => s with { ShowBuildResults = v },
         Named<BuildResultsMode>(D.BuildResultsChoices),
-        new(D.BuildPage, "Showing build results after build completed",
+        new(D.BuildPage, "Bring the Build window forward as a build ends",
             "build tool window results after completed finished failed errors warnings always never toolset presentation"));
 
     /// <summary>Whether a repository's tests run continuously (<see cref="Testing.ContinuousTests"/>): off until the person says,

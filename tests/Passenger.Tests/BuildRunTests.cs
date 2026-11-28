@@ -1730,10 +1730,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         string Frame(int i) => $"   at Orders.Load{i}(String file) in {source}:line {(i % 3) + 1}\n";
     }
 
-    /// <summary>Settings' Toolset and Build, Presentation: Build opens the Build window as it starts, unless "when
-    /// build is explicitly invoked" is off, and a build's end brings it forward as "Showing build results after build
-    /// completed" says, by default only when errors were received; Run's build, an implicit one, opens it only with
-    /// "even when the build is invoked implicitly".</summary>
+    /// <summary>Settings' Build page: Build opens the Build window as it starts, unless "Open the Build window as a build
+    /// starts" is off, and a build's end brings it forward as "Bring the Build window forward as a build ends" says, by
+    /// default only with errors; Run's build opens it only with "Open it too for the build before Run, Debug or Profile".</summary>
     private void Build_opens_the_build_window_as_it_starts_and_its_end_brings_it_forward_as_settings_say()
     {
         MainWindow window = Open();
@@ -1748,7 +1747,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             window.ApplySettings(window.Settings with { OpenBuildWindowOnBuild = false });
             window.ShowToolWindow(ToolWindowIds.Problems);
             window.Perform(AppActions.Build);
-            Assert.True(window.IsBuilding && window.DockHost.IsShown(ToolWindowIds.Problems), "With Rider's \"when build is explicitly invoked\" off, Build Solution still opened the Build window");
+            Assert.True(window.IsBuilding && window.DockHost.IsShown(ToolWindowIds.Problems), "With \"Open the Build window as a build starts\" off, Build Solution still opened the Build window");
             BuildToEnd(window, "Build succeeded");
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems), "A build that succeeded brought the Build window forward, which Rider does only for errors by default");
             Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello\");\nint count = \"three\";\n");
@@ -1786,7 +1785,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello again\");\n");
             window.Perform(AppActions.RunProgram);
             Ui.PumpUntil(() => window.IsBuilding, "the second run's build to start", TimeSpan.FromMinutes(1));
-            Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "With Rider's \"even when the build is invoked implicitly\" on, Run's build did not open the Build window");
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "With \"Open it too for the build before Run, Debug or Profile\" on, Run's build did not open the Build window");
             Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the second program to finish", TimeSpan.FromMinutes(2));
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Run), "The program ran after a build in the Build window, but its Run window is not in front");
         }
