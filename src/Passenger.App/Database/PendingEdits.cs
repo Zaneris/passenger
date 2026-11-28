@@ -64,13 +64,13 @@ public sealed record PendingEdits
         : string.Join(", ", new[] { (Changed.Count, "changed"), (Deleted.Count, "deleted"), (Added.Count, "added") }
             .Where(c => c.Item1 > 0).Select(c => $"{Plural.Of(c.Item1, noun)} {c.Item2}")) + " pending";
 
-    /// <summary>What of it was written where <paramref name="left"/> still waits, said in a line.</summary>
-    public string Besides(PendingEdits left) => (this with
+    /// <summary>What of it was written where <paramref name="left"/> still waits, said in a line of what a row is.</summary>
+    public string Besides(PendingEdits left, string noun) => (this with
     {
         Changed = Changed.RemoveRange(left.Changed.Keys),
         Deleted = Deleted.RemoveRange(left.Deleted.Keys),
         Added = Added.RemoveAll(left.Added.Contains),
-    }).Said.Replace(" pending", string.Empty, StringComparison.Ordinal);
+    }).SaidOf(noun).Replace(" pending", string.Empty, StringComparison.Ordinal);
 
     /// <summary>A cell of a row read written, or put back as read where what is written is <paramref name="asRead"/>.</summary>
     public PendingEdits Write(RowKey key, object?[] read, int column, string? text, bool asRead)

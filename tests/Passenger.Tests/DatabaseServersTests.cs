@@ -63,12 +63,16 @@ public sealed class DatabaseServersTests
     /// <summary>Cassandra, which runs on Arm as on x86-64, pinned.</summary>
     private const string CassandraImage = "cassandra:5.0.8";
 
+    /// <summary>MySQL's own server, its long-term release, beside MariaDB's: functional index key parts and no sequences.</summary>
+    private const string MySqlImage = "mysql:8.4";
+
     /// <summary>The bastion's image, pinned to the one the test was written against.</summary>
     private const string SshImage = "lscr.io/linuxserver/openssh-server@sha256:c8431b8982e7eb3935ebf9c46607d19c6417e39c12ce884cc66945df2e9334e8";
 
     [AvaloniaTheory]
     [InlineData(DatabaseKind.Postgres, "postgres:17-alpine")]
     [InlineData(DatabaseKind.MySql, "mariadb:11.4")]
+    [InlineData(DatabaseKind.MySql, MySqlImage)]
     [InlineData(DatabaseKind.SqlServer, "mcr.microsoft.com/mssql/server:2022-latest")]
     [InlineData(DatabaseKind.ClickHouse, ClickHouseImage)]
     [InlineData(DatabaseKind.Snowflake, "")]
@@ -137,6 +141,7 @@ public sealed class DatabaseServersTests
         (int port, string[] environment) = kind switch
         {
             DatabaseKind.Postgres => (5432, (string[])["POSTGRES_PASSWORD=" + Password, "POSTGRES_DB=shop"]),
+            DatabaseKind.MySql when image == MySqlImage => (3306, ["MYSQL_ROOT_PASSWORD=" + Password, "MYSQL_DATABASE=shop"]),
             DatabaseKind.MySql => (3306, ["MARIADB_ROOT_PASSWORD=" + Password, "MARIADB_DATABASE=shop"]),
             _ => (1433, ["ACCEPT_EULA=Y", "MSSQL_SA_PASSWORD=" + Password]),
         };
@@ -455,7 +460,7 @@ public sealed class DatabaseServersTests
                 Replace(window, kind switch
                 {
                     DatabaseKind.Postgres => "SELECT CASE WHEN ssl THEN 'encrypted' ELSE 'plain' END FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
-                    DatabaseKind.MySql => "SELECT CASE WHEN LENGTH(VARIABLE_VALUE) > 0 THEN 'encrypted' ELSE 'plain' END FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME = 'Ssl_cipher'",
+                    DatabaseKind.MySql => $"SELECT CASE WHEN LENGTH(VARIABLE_VALUE) > 0 THEN 'encrypted' ELSE 'plain' END FROM {SessionStatus(image)} WHERE VARIABLE_NAME = 'Ssl_cipher'",
                     _ => "SELECT CASE WHEN encrypt_option = 'TRUE' THEN 'encrypted' ELSE 'plain' END FROM sys.dm_exec_connections WHERE session_id = @@SPID",
                 });
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
@@ -508,7 +513,7 @@ public sealed class DatabaseServersTests
                 {
                     DatabaseKind.Postgres => "SELECT CASE WHEN s.ssl THEN 'encrypted' ELSE 'plain' END || ' as ' || current_user FROM pg_stat_ssl s WHERE s.pid = pg_backend_pid()",
                     DatabaseKind.MySql => "SELECT CONCAT(CASE WHEN LENGTH(VARIABLE_VALUE) > 0 THEN 'encrypted' ELSE 'plain' END, ' as ', SUBSTRING_INDEX(CURRENT_USER(), '@', 1)) "
-                        + "FROM information_schema.SESSION_STATUS WHERE VARIABLE_NAME = 'Ssl_cipher'",
+                        + $"FROM {SessionStatus(image)} WHERE VARIABLE_NAME = 'Ssl_cipher'",
                     _ => "SELECT CASE WHEN encrypt_option = 'TRUE' THEN 'encrypted' ELSE 'plain' END + ' as ' + SUSER_NAME() FROM sys.dm_exec_connections WHERE session_id = @@SPID",
                 });
                 Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
@@ -594,7 +599,10 @@ public sealed class DatabaseServersTests
                 Assert.Contains(diagram.Shown.Panel.Lines, l => l.From == "shipments" && l.To == "orders");
 
                 // A second schema compared with it takes the script that makes it the same, objects, keys and defaults too, and is.
-                Execute(kind, connection, "CREATE SEQUENCE invoice_numbers START WITH 1000");
+                if (image != MySqlImage)
+                {
+                    Execute(kind, connection, "CREATE SEQUENCE invoice_numbers START WITH 1000");
+                }
                 Execute(kind, connection, kind switch
                 {
                     DatabaseKind.Postgres => "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS 'SELECT x + 1'",
@@ -603,15 +611,45 @@ public sealed class DatabaseServersTests
                 });
                 Execute(kind, connection, "CREATE TABLE notes (id int NOT NULL, code varchar(10) NOT NULL, flag int DEFAULT 0 NOT NULL, PRIMARY KEY (id))");
                 Execute(kind, target, "CREATE TABLE notes (id int NOT NULL, code varchar(10) NOT NULL, flag int DEFAULT 1 NOT NULL, PRIMARY KEY (code))");
+                if (kind != DatabaseKind.MySql)
+                {
+                    // A foreign key to another schema's table, and indexes of a predicate and of an expression, as the source has them.
+                    foreach (string on in (string[])[connection, target])
+                    {
+                        Execute(kind, on, "CREATE SCHEMA shared");
+                        Execute(kind, on, "CREATE TABLE shared.customers (id int PRIMARY KEY)");
+                    }
+                    Execute(kind, connection, "CREATE TABLE invoices (id int PRIMARY KEY, customer_id int, FOREIGN KEY (customer_id) REFERENCES shared.customers(id))");
+                    Execute(kind, connection, "CREATE UNIQUE INDEX notes_open ON notes (code) WHERE flag = 0");
+                    if (kind == DatabaseKind.Postgres)
+                    {
+                        Execute(kind, connection, "CREATE INDEX notes_lower ON notes (lower(code))");
+                    }
+                }
+                else if (image == MySqlImage)
+                {
+                    Execute(kind, connection, "CREATE INDEX notes_lower ON notes ((lower(code)))");
+                }
                 List<DatabaseSource> kinds = [.. window.Database.Sources.Where(s => s.Kind == kind)];
                 SchemaCompareDialog compare = CompareWith(window, kinds.FindIndex(s => s.Name == "Target"));
                 Ui.ClickButton(compare, "Compare");
                 Ui.WaitFor(() => !window.Database.Busy && window.EditorArea.Active?.Name == "Target.sql" && window.EditorArea.CodeEditor.Document.Snapshot.ToString().Contains("-- Makes", StringComparison.Ordinal),
                     () => window.Database.Said, TimeSpan.FromMinutes(1));
                 string script = window.EditorArea.CodeEditor.Document.Snapshot.ToString();
-                foreach (string made in (string[])["orders", "items", "price", "legacy", "cheap", "note", "invoice_numbers", "add_one", "stamp", "PRIMARY KEY", "flag"])
+                foreach (string made in (string[])["orders", "items", "price", "legacy", "cheap", "note", .. image == MySqlImage ? [] : (string[])["invoice_numbers"], "add_one",
+                    "stamp", "PRIMARY KEY", "flag"])
                 {
                     Assert.Contains(made, script, StringComparison.Ordinal);
+                }
+                Assert.True(image != MySqlImage || script.Split('\n').Any(l => l.Contains("notes_lower", StringComparison.Ordinal) && l.Contains("(lower(", StringComparison.Ordinal)),
+                    $"MySQL's functional key part was made otherwise: {string.Join("\n", script.Split('\n').Where(l => l.Contains("notes_", StringComparison.Ordinal)))}");
+                if (kind != DatabaseKind.MySql)
+                {
+                    string[] lines = script.Split('\n');
+                    Assert.Contains($"REFERENCES {SqlText.QuotedName(kind, "shared")}.{SqlText.QuotedName(kind, "customers")}", script, StringComparison.Ordinal);
+                    Assert.Contains(lines, l => l.Contains("notes_open", StringComparison.Ordinal) && l.Contains("WHERE", StringComparison.Ordinal));
+                    Assert.True(kind != DatabaseKind.Postgres || lines.Any(l => l.Contains("notes_lower", StringComparison.Ordinal) && l.Contains("lower(", StringComparison.Ordinal)),
+                        $"The expression's index was made otherwise: {string.Join("\n", lines.Where(l => l.Contains("notes_", StringComparison.Ordinal)))}");
                 }
                 Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the target's console");
                 SqlConsole applying = window.EditorArea.ActiveGroup.Console!.Console!;
@@ -634,6 +672,37 @@ public sealed class DatabaseServersTests
                 compare = CompareWith(window, kinds.FindIndex(s => s.Name == "Target"));
                 Ui.ClickButton(compare, "Compare");
                 Ui.WaitFor(() => !window.Database.Busy && window.Database.Said.Contains("holds the same", StringComparison.Ordinal), () => window.Database.Said, TimeSpan.FromMinutes(1));
+
+                // A name goes bare in the session's own schema alone, however many tables another holds (MySQL's catalog is one database's).
+                if (kind != DatabaseKind.MySql)
+                {
+                    Execute(kind, connection, "CREATE SCHEMA other");
+                    foreach (string table in (string[])["products", .. Enumerable.Range(0, 12).Select(i => $"t{i.ToString(CultureInfo.InvariantCulture)}")])
+                    {
+                        Execute(kind, connection, $"CREATE TABLE other.{table} (id int)");
+                    }
+                    window.EditorArea.Activate(sql);
+                    Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console is not null, "the console again");
+                    window.EditorArea.CodeEditor.Focus();
+                    Run(window, "SELECT 1");
+                    string own = kind == DatabaseKind.Postgres ? "public" : "dbo";
+                    foreach ((string wanted, string inserted) in (ReadOnlySpan<(string, string)>)[(own, "products"), ("other", "other.products")])
+                    {
+                        Replace(window, "SELECT * FROM ");
+                        window.EditorArea.CodeEditor.Selections = SelectionSet.Single("SELECT * FROM ".Length);
+                        window.KeyTextInput("p");
+                        Ui.WaitFor(() => window.Assist.CompletionDetails.Count(d => d.Label == "products") == 2,
+                            () => $"both schemas' products after {window.EditorArea.CodeEditor.Document.Snapshot} in {window.EditorArea.Active?.Name}, where the list shows "
+                                + string.Join(", ", window.Assist.CompletionDetails.Take(8)), TimeSpan.FromMinutes(1));
+                        int at = window.Assist.CompletionDetails.ToList().FindIndex(d => d.Label == "products" && d.Detail == wanted);
+                        for (int down = 0; down < at; down++)
+                        {
+                            Ui.Press(window, "DOWN");
+                        }
+                        Ui.Press(window, "ENTER");
+                        Assert.Equal($"SELECT * FROM {inserted}", window.EditorArea.CodeEditor.Document.Snapshot.ToString());
+                    }
+                }
             }
             finally
             {
@@ -653,6 +722,9 @@ public sealed class DatabaseServersTests
             Docker.Ask(["network", "rm", name]);
         }
     }
+
+    /// <summary>Where a session's status is read: MySQL's performance_schema, MariaDB's information_schema.</summary>
+    private static string SessionStatus(string image) => image == MySqlImage ? "performance_schema.session_status" : "information_schema.SESSION_STATUS";
 
     /// <summary>Show Schema Diagram on the shop's connection, waited for until its boxes are laid out.</summary>
     private static SchemaDiagramTab Diagram(MainWindow window)
@@ -820,6 +892,32 @@ public sealed class DatabaseServersTests
         Ui.Press(window, "ENTER");
     }
 
+    /// <summary>Filters a table tab's rows by a column as the person does: the column and comparison chosen, the words and Enter.</summary>
+    private static void Filter(MainWindow window, string column, string comparison, string words)
+    {
+        Tab<ComboBox>(window, "DatabaseFilterColumn").SelectedItem = column;
+        Tab<ComboBox>(window, "DatabaseFilterOperator").SelectedItem = comparison;
+        TextBox value = Tab<TextBox>(window, "DatabaseFilterValue");
+        value.Text = words;
+        value.Focus();
+        Ui.Press(window, "ENTER");
+    }
+
+    /// <summary>A connection made by hand in New Database Connection from its connection string whole, connected.</summary>
+    private static void MadeByHand(MainWindow window, DatabaseKind kind, string name, string connection)
+    {
+        Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+        Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+        DatabaseConnectionDialog dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+        T Field<T>(string field) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == field);
+        Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)kind;
+        Field<TextBox>("DatabaseConnectionName").Text = name;
+        Field<TextBox>("DatabaseConnectionString").Text = connection;
+        Ui.ClickButton(dialog, "Connect");
+        Ui.WaitFor(() => !dialog.IsVisible && !window.Database.Busy && window.Database.Sources.Any(s => s.Name == name),
+            () => $"{Field<TextBlock>("DatabaseConnectionError").Text} {window.Database.Said}", TimeSpan.FromMinutes(1));
+    }
+
     private static void Replace(MainWindow window, string statement)
     {
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -830,8 +928,8 @@ public sealed class DatabaseServersTests
 
     /// <summary>ClickHouse in a container of the test's own: its connection found in the folder's settings by its project's
     /// driver, its explorer down to a table's key column with its sorting key, a table's rows and DDL, a console's query run
-    /// and explained as a plan's tree, completion of a table's columns, and a table's changes and a manual transaction each
-    /// refused, saying why, as ClickHouse writes no row by its key and runs each statement alone.</summary>
+    /// and explained as a plan's tree, completion of a table's columns, an agent's read; a table's changes, a manual
+    /// transaction and an import each refused, saying why, as ClickHouse writes no row by its key and runs each statement alone.</summary>
     private static void ClickHouse()
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbclickhouse";
@@ -891,6 +989,14 @@ public sealed class DatabaseServersTests
                 Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("name") && window.Assist.CompletionLabels.Contains("price"),
                     () => $"products' columns after p., where the list shows {string.Join(", ", window.Assist.CompletionLabels.Take(8))}");
                 Ui.Press(window, "ESCAPE");
+
+                // An agent reads with no transaction, which ClickHouse holds none of; an import, which needs one, is refused saying so.
+                object counted = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Shop", sql: "SELECT count() FROM products"),
+                    "an agent's count of the products", TimeSpan.FromMinutes(1));
+                Passenger.App.Mcp.DatabaseQueryResult count = Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(counted));
+                Assert.True(count.Error is null && count.Sets[0].Rows[0][0] == "3", $"An agent's count answered {count.Error}");
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "products"));
+                Assert.Equal(Refusals.NoImport("ClickHouse").Shown, window.Actions[AppActions.DatabaseImport]!.WhyNot(window.Actions.Context())?.Shown);
             }
             finally
             {
@@ -903,11 +1009,10 @@ public sealed class DatabaseServersTests
         }
     }
 
-    /// <summary>MongoDB in a container of the test's own: its connection found by its URI, its explorer down to fields and
-    /// indexes, its documents as rows (a missing field apart from null) with the chosen one's tree beside them, fields written,
-    /// one added to a document that lacked it, a document deleted and one added, submitted, one changed since read refusing
-    /// them; a console of its shell running a find and a pipeline, completion of the collections and a collection's calls, a
-    /// read-only mark refusing a delete, and an agent's count read while its insert is refused.</summary>
+    /// <summary>MongoDB in a container of the test's own: found by its URI, explored to fields and indexes, its documents as rows
+    /// with the chosen one's tree; changes submitted, one changed since read refusing them, a write stopped partway keeping the
+    /// rest waiting, a number past Int32 and a Decimal128 each read as itself; a console's find and pipeline, completion, a
+    /// read-only mark, an agent's count read while its insert is refused, and one made by hand signing in by its URI.</summary>
     private static void Mongo()
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbmongo";
@@ -980,6 +1085,53 @@ public sealed class DatabaseServersTests
                 Assert.Equal(6, Order("coffee")!["qty"].AsInt32);
                 Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
 
+                // A deletion is held to the document as read, so coffee, changed since, stays; while it waits, another sort is refused.
+                grid.Choose((Row("coffee"), named), (Row("coffee"), named));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Ui.Click(grid, grid.SortArrow(named).Center);
+                Assert.True(data.Said == Refusals.DocumentChangesPending.Shown && data.Rows.OrderedBy is null, $"A sort with a deletion waiting read the page again: {data.Said}");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !data.Reading && data.Said.Contains("changed since it was read", StringComparison.Ordinal), () => data.Said);
+                Assert.NotNull(Order("coffee"));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+
+                // A submission a refused insert stops partway keeps what it did not write waiting, saying what it wrote.
+                orders.Indexes.CreateOne(new MongoDB.Driver.CreateIndexModel<MongoDB.Bson.BsonDocument>(new MongoDB.Bson.BsonDocument("name", 1),
+                    new MongoDB.Driver.CreateIndexOptions { Unique = true, Name = "one_name" }));
+                Write(window, grid, (data.Shown!.RowCount - 1, named), "juice");
+                Write(window, grid, (data.Shown!.RowCount - 1, named), "tea");
+                Assert.Equal("2 documents added pending", data.EditsSaid);
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !data.Reading && data.Said.Contains("Written before it: 1 document added", StringComparison.Ordinal), () => data.Said);
+                Assert.Equal("1 document added pending", data.EditsSaid);
+                Assert.NotNull(Order("juice"));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+                orders.DeleteOne(new MongoDB.Bson.BsonDocument("name", "juice"));
+                orders.Indexes.DropOne("one_name");
+
+                // A number past Int32's reach matches only itself; a Decimal128 reads and is written as itself, 1E+100 too.
+                orders.InsertMany([
+                    MongoDB.Bson.BsonDocument.Parse("{ name: 'most', qty: 2147483647 }"),
+                    MongoDB.Bson.BsonDocument.Parse("{ name: 'huge', price: NumberDecimal('1E+100') }"),
+                    MongoDB.Bson.BsonDocument.Parse("{ name: 'exact', price: NumberDecimal('2.50') }"),
+                ]);
+                Ui.Await(data.ReadAgainAsync(), "the orders read again");
+                Ui.WaitFor(() => !data.Reading && data.Rows?.RowCount == 6, () => $"the orders with a Decimal128 of 1E+100 read ({data.Said})");
+                int price = Array.IndexOf(data.Rows!.Columns, "price");
+                Assert.True(price > named && data.Rows.Columns[named] == "name", $"The orders' columns read again as {string.Join(", ", data.Rows.Columns)}");
+                Assert.Equal(("1E+100", "2.50"), (data.Rows.Cell(Row("huge"), price), data.Rows.Cell(Row("exact"), price)));
+                Filter(window, "qty", "Equals", "2147483648");
+                Ui.WaitFor(() => !data.Reading && data.Rows?.RowCount == 0, () => $"no order of qty 2147483648, where {data.Rows?.RowCount} are read ({data.Said})");
+                Filter(window, "name", "Contains", string.Empty);
+                Ui.WaitFor(() => !data.Reading && data.Rows?.RowCount == 6, () => data.Said);
+                Write(window, grid, (Row("exact"), price), "2.75");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                Assert.True(Order("exact")!["price"] is MongoDB.Bson.BsonDecimal128 { Value: var written } && written.ToString() == "2.75",
+                    $"A Decimal128 written as {Order("exact")!["price"].BsonType} {Order("exact")!["price"]}");
+                orders.DeleteMany(new MongoDB.Bson.BsonDocument("name", new MongoDB.Bson.BsonDocument("$in", new MongoDB.Bson.BsonArray { "most", "huge", "exact" })));
+                Ui.Await(data.ReadAgainAsync(), "the orders read again");
+
                 // A console of MongoDB's shell: a find and a pipeline, the documents' tree beside the rows.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
@@ -1020,6 +1172,13 @@ public sealed class DatabaseServersTests
                 Ui.WaitFor(() => inserting.IsCompleted, "an agent's insert to be refused");
                 Assert.True(inserting.Exception?.InnerException?.Message.Contains("changes data", StringComparison.Ordinal) == true, $"An agent's insert answered: {inserting.Status}");
                 Assert.DoesNotContain(Password, console.Said + window.Database.Said, StringComparison.Ordinal);
+
+                // Made by hand, its password inside its URI kept apart, the connection signs in by it where an agent reads through it.
+                MadeByHand(window, DatabaseKind.MongoDb, "Hand", uri);
+                object handCounted = Ui.Await(tools.Database(connection: "Hand", sql: "db.orders.countDocuments({})"), "an agent's count through the connection made by hand",
+                    TimeSpan.FromMinutes(1));
+                Passenger.App.Mcp.DatabaseQueryResult hand = Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(handCounted));
+                Assert.True(hand.Error is null && hand.Sets[0].Rows[0][0] == "3", $"An agent's count through the connection made by hand answered {hand.Error}");
             }
             finally
             {
@@ -1055,10 +1214,10 @@ public sealed class DatabaseServersTests
         }
     }
 
-    /// <summary>Cosmos DB's emulator in a container of the test's own: its connection found in the folder's settings, its
-    /// explorer down to a container's fields and its partition key, its documents as rows with the chosen one's tree beside
-    /// them, a field written and submitted, a console's query of the container its FROM names, completion of an alias's
-    /// fields, and an agent's count.</summary>
+    /// <summary>Cosmos DB's emulator in a container of the test's own: found in the folder's settings, explored to a container's
+    /// partition key, its items as rows with the chosen one's tree; items of one id in two partitions, of a null partition
+    /// and of none written apart, one changed since refusing its deletion, a write stopped partway keeping the rest waiting,
+    /// and a hierarchical key's container written; a console's query, completion of an alias's fields, an agent's count.</summary>
     private static void Cosmos()
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbcosmos";
@@ -1091,21 +1250,79 @@ public sealed class DatabaseServersTests
 
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "orders"));
                 Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
-                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 3 }, () => $"the orders as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 4 }, () => $"the orders as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
                 DatabaseTableTab data = window.EditorArea.Active!.DatabaseTable!;
                 CellGrid grid = Tab<CellGrid>(window, "DatabaseTabResults");
                 int named = Array.IndexOf(data.Rows!.Columns, "name");
                 int qty = Array.IndexOf(data.Rows.Columns, "qty");
-                int tea = Enumerable.Range(0, data.Rows.RowCount).Single(r => data.Rows.Cell(r, named) == "tea");
-                grid.Choose((tea, named), (tea, named));
+                int Row(string order) => Enumerable.Range(0, data.Rows!.RowCount).Single(r => data.Rows.Cell(r, named) == order);
+                int Qty(string id, string category) => Convert.ToInt32(Ui.Await(orders.ReadItemAsync<Dictionary<string, object>>(id, new Microsoft.Azure.Cosmos.PartitionKey(category)),
+                    $"order {id} of {category} as Cosmos DB has it").Resource["qty"], CultureInfo.InvariantCulture);
+                grid.Choose((Row("tea"), named), (Row("tea"), named));
                 DocumentTree tree = Tab<DocumentTree>(window, "DatabaseTabDocument");
                 Ui.WaitFor(() => tree.Rows.Any(r => r.Name == "category" && r.Value == "drink"), () => string.Join(", ", tree.Rows.Select(r => $"{r.Name}={r.Value}")));
-                Write(window, grid, (tea, qty), "7");
+                // Tea and toast share an id in two partitions: each is its own row and its own change.
+                Write(window, grid, (Row("tea"), qty), "7");
+                Write(window, grid, (Row("toast"), qty), "0");
+                Assert.Equal("2 documents changed pending", data.EditsSaid);
                 Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
                 Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
-                Microsoft.Azure.Cosmos.ItemResponse<Dictionary<string, object>> written = Ui.Await(orders.ReadItemAsync<Dictionary<string, object>>("1", new Microsoft.Azure.Cosmos.PartitionKey("drink")),
-                    "the tea order as Cosmos DB has it");
-                Assert.Equal(7, Convert.ToInt32(written.Resource["qty"], CultureInfo.InvariantCulture));
+                Assert.Equal((7, 0), (Qty("1", "drink"), Qty("1", "food")));
+
+                // A deletion is held to the item's _etag as read, so coffee, changed since, stays.
+                Ui.Await(orders.UpsertItemAsync(new Dictionary<string, object> { ["id"] = "2", ["category"] = "drink", ["name"] = "coffee", ["qty"] = 6 },
+                    new Microsoft.Azure.Cosmos.PartitionKey("drink")), "coffee changed elsewhere");
+                grid.Choose((Row("coffee"), named), (Row("coffee"), named));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !data.Reading && data.Said.Contains("changed since it was read", StringComparison.Ordinal), () => data.Said);
+                Assert.Equal(6, Qty("2", "drink"));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+
+                // A submission an insert's conflict stops partway keeps what it did not write waiting, saying what it wrote.
+                int idAt = Array.IndexOf(data.Rows.Columns, "id");
+                int categoryAt = Array.IndexOf(data.Rows.Columns, "category");
+                foreach ((string key, string item) in (ReadOnlySpan<(string, string)>)[("9", "juice"), ("2", "again")])
+                {
+                    Write(window, grid, (data.Shown!.RowCount - 1, idAt), key);
+                    Write(window, grid, (data.Shown.RowCount - 2, categoryAt), "drink");
+                    Write(window, grid, (data.Shown.RowCount - 2, named), item);
+                }
+                Assert.Equal("2 documents added pending", data.EditsSaid);
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !data.Reading && data.Said.Contains("Written before it: 1 document added", StringComparison.Ordinal), () => data.Said);
+                Assert.Equal("1 document added pending", data.EditsSaid);
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+                Ui.Await(orders.DeleteItemAsync<Dictionary<string, object>>("9", new Microsoft.Azure.Cosmos.PartitionKey("drink")), "juice taken out");
+
+                // An item whose partition value is null and one that has none are each found in its own partition.
+                Ui.Await(orders.CreateItemAsync(new Dictionary<string, object?> { ["id"] = "n1", ["category"] = null, ["name"] = "nil", ["qty"] = 1 },
+                    Microsoft.Azure.Cosmos.PartitionKey.Null), "an order of a null category");
+                Ui.Await(orders.CreateItemAsync(new Dictionary<string, object> { ["id"] = "n2", ["name"] = "none", ["qty"] = 1 }, Microsoft.Azure.Cosmos.PartitionKey.None),
+                    "an order of no category");
+                Ui.Await(data.ReadAgainAsync(), "the orders read again");
+                Ui.WaitFor(() => !data.Reading && data.Rows?.RowCount == 6, () => data.Said);
+                Write(window, grid, (Row("nil"), qty), "0");
+                Write(window, grid, (Row("none"), qty), "0");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
+                Assert.Equal((0, 0), (Convert.ToInt32(Ui.Await(orders.ReadItemAsync<Dictionary<string, object>>("n1", Microsoft.Azure.Cosmos.PartitionKey.Null), "nil").Resource["qty"],
+                    CultureInfo.InvariantCulture), Convert.ToInt32(Ui.Await(orders.ReadItemAsync<Dictionary<string, object>>("n2", Microsoft.Azure.Cosmos.PartitionKey.None), "none")
+                    .Resource["qty"], CultureInfo.InvariantCulture)));
+
+                // A container of a hierarchical partition key is browsed and written by its paths whole.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "lines"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 2, Table.Name: "lines" }, () => $"the lines as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                DatabaseTableTab lines = window.EditorArea.Active!.DatabaseTable!;
+                CellGrid lined = Tab<CellGrid>(window, "DatabaseTabResults");
+                int region = Array.IndexOf(lines.Rows!.Columns, "region");
+                Write(window, lined, (Enumerable.Range(0, 2).Single(r => lines.Rows.Cell(r, region) == "north"), Array.IndexOf(lines.Rows.Columns, "qty")), "4");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => lines.Edits.IsEmpty && !lines.Reading, () => lines.Said);
+                Microsoft.Azure.Cosmos.PartitionKey north = new Microsoft.Azure.Cosmos.PartitionKeyBuilder().Add("acme").Add("north").Build();
+                Assert.Equal(4, Convert.ToInt32(Ui.Await(cosmos.GetContainer("shop", "lines").ReadItemAsync<Dictionary<string, object>>("1", north), "acme's north line")
+                    .Resource["qty"], CultureInfo.InvariantCulture));
 
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Shop"));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
@@ -1125,7 +1342,7 @@ public sealed class DatabaseServersTests
                 Ui.Press(window, "ESCAPE");
                 object counted = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Shop", sql: "SELECT VALUE COUNT(1) FROM orders o"),
                     "an agent's count of the orders", TimeSpan.FromMinutes(1));
-                Assert.Equal("3", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(counted)).Sets[0].Rows[0][0]);
+                Assert.Equal("6", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(counted)).Sets[0].Rows[0][0]);
             }
             finally
             {
@@ -1153,9 +1370,21 @@ public sealed class DatabaseServersTests
                 new() { ["id"] = "1", ["category"] = "drink", ["name"] = "tea", ["qty"] = 2 },
                 new() { ["id"] = "2", ["category"] = "drink", ["name"] = "coffee", ["qty"] = 5 },
                 new() { ["id"] = "3", ["category"] = "food", ["name"] = "bread", ["qty"] = 1 },
+                new() { ["id"] = "1", ["category"] = "food", ["name"] = "toast", ["qty"] = 1 },
             ])
             {
                 await orders.UpsertItemAsync(order, new Microsoft.Azure.Cosmos.PartitionKey((string)order["category"]));
+            }
+            foreach ((string id, Microsoft.Azure.Cosmos.PartitionKey partition) in ((string, Microsoft.Azure.Cosmos.PartitionKey)[])[
+                ("n1", Microsoft.Azure.Cosmos.PartitionKey.Null), ("n2", Microsoft.Azure.Cosmos.PartitionKey.None), ("9", new("drink"))])
+            {
+                using Microsoft.Azure.Cosmos.ResponseMessage gone = await orders.DeleteItemStreamAsync(id, partition);
+            }
+            Microsoft.Azure.Cosmos.Container lines = (await shop.CreateContainerIfNotExistsAsync(new Microsoft.Azure.Cosmos.ContainerProperties("lines", ["/tenant", "/region"]))).Container;
+            foreach ((string id, string region) in ((string, string)[])[("1", "north"), ("1", "south")])
+            {
+                await lines.UpsertItemAsync(new Dictionary<string, object> { ["id"] = id, ["tenant"] = "acme", ["region"] = region, ["qty"] = 1 },
+                    new Microsoft.Azure.Cosmos.PartitionKeyBuilder().Add("acme").Add(region).Build());
             }
             return true;
         }
@@ -1165,10 +1394,10 @@ public sealed class DatabaseServersTests
         }
     }
 
-    /// <summary>Redis (or Valkey) in a container of the test's own: its connection found in the folder's settings by its project's
-    /// client, its keys grouped by type with their times to live, each type's value opened, written, added to and deleted
-    /// from and submitted, a value changed since it was read refusing them; a key's time to live set; a console of its
-    /// commands, completion of its commands and keys, a read-only mark refusing a delete, and an agent's read.</summary>
+    /// <summary>Redis (or Valkey) in a container of the test's own: found by its project's client, its keys by type with their
+    /// times to live, each type's value written and submitted, one changed since refusing it, a commit Stop came during said
+    /// written, a long value and many keys each said cut; a time to live set; a console of its commands, completion, a
+    /// read-only mark, an agent's read, and a connection made by hand signing in by its configuration's password.</summary>
     private static void Redis(string image)
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}db{(image == ValkeyImage ? "valkey" : "redis")}";
@@ -1181,7 +1410,8 @@ public sealed class DatabaseServersTests
             string configuration = $"127.0.0.1:{Published(name, 6379)},password={Password}";
             Assert.True(Ui.Await(Waiting.Apart(() => Waiting.UntilAsync(() => RedisMadeAsync(configuration), TimeSpan.FromMinutes(2))),
                 $"{image} to take connections and hold the shop's keys", TimeSpan.FromMinutes(3)), $"{image} never took connections");
-            using StackExchange.Redis.ConnectionMultiplexer redis = Ui.Await(StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(configuration), "the test's own client");
+            using StackExchange.Redis.ConnectionMultiplexer redis = Ui.Await(StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(configuration + ",allowAdmin=true"),
+                "the test's own client");
             StackExchange.Redis.IDatabase keys = redis.GetDatabase();
             string folder = TestFolders.Create("database-redis");
             TestFolders.Write(folder, "Shop.csproj", TestProjects.Console().With("  <ItemGroup>\n    <PackageReference Include=\"StackExchange.Redis\" Version=\"3.4.35\" />\n  </ItemGroup>\n"));
@@ -1237,6 +1467,18 @@ public sealed class DatabaseServersTests
                 Assert.Equal("Paris", (string?)keys.HashGet("user:1", "city"));
                 Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
 
+                // Stop while EXEC waits on the server, writes held a moment: the transaction it then commits is said written, none left pending.
+                Ui.Await(hash.ReadAgainAsync(), "user:1 read again");
+                Write(window, Grid(), (RowOf(hash, "city"), 1), "Turin");
+                keys.Execute("CLIENT", "PAUSE", "3000", "WRITE");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.PumpUntil(() => hash.Reading, "the submission under way", TimeSpan.FromSeconds(2));
+                Ui.Click(Tab<Button>(window, "DatabaseTableCancel"), settle: false);
+                Ui.WaitFor(() => !hash.Reading, () => hash.Said);
+                Assert.True(hash.Edits.IsEmpty && hash.Said.Contains("written; stopped before the table was read again", StringComparison.Ordinal)
+                    && (string?)keys.HashGet("user:1", "city") == "Turin",
+                    $"A transaction committed as Stop came was said: {hash.Said}, with {hash.EditsSaid}, the city {keys.HashGet("user:1", "city")}");
+
                 DatabaseTableTab list = Open("queue", 3);
                 Write(window, Grid(), (1, 1), "B");
                 Grid().Choose((2, 0), (2, 0));
@@ -1244,6 +1486,10 @@ public sealed class DatabaseServersTests
                 Write(window, Grid(), (list.Shown!.RowCount - 1, 1), "d");
                 Submit(list);
                 Assert.Equal(["a", "B", "d"], keys.ListRange("queue").Select(v => (string?)v));
+
+                // A list longer than a tab reads says so beside its rows.
+                DatabaseTableTab longer = Open("long", 100);
+                Assert.Contains($"the first {Numbers.Said(10000)} elements of {Numbers.Said(10001)} read", longer.Header, StringComparison.Ordinal);
 
                 DatabaseTableTab set = Open("tags", 2);
                 Assert.Equal("set · no expiry", set.Header);
@@ -1257,6 +1503,20 @@ public sealed class DatabaseServersTests
                 Write(window, Grid(), (RowOf(sorted, "bob"), 1), "7");
                 Submit(sorted);
                 Assert.Equal(7, keys.SortedSetScore("scores", "bob"));
+                // A member is deleted only at the score read, and added only where it is none: ada, changed since, stays; bob added again is refused.
+                keys.SortedSetAdd("scores", "ada", 4);
+                Grid().Choose((RowOf(sorted, "ada"), 0), (RowOf(sorted, "ada"), 0));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Rows did not run");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !sorted.Reading && sorted.Said == Refusals.KeyChanged("scores").Shown, () => sorted.Said);
+                Assert.Equal(4, keys.SortedSetScore("scores", "ada"));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+                Write(window, Grid(), (sorted.Shown!.RowCount - 1, 0), "bob");
+                Write(window, Grid(), (sorted.Shown!.RowCount - 2, 1), "1");
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !sorted.Reading && sorted.Said == Refusals.KeyChanged("scores").Shown, () => sorted.Said);
+                Assert.Equal(7, keys.SortedSetScore("scores", "bob"));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
 
                 DatabaseTableTab stream = Open("events", 1);
                 int who = Array.IndexOf(stream.Rows!.Columns, "who");
@@ -1266,6 +1526,8 @@ public sealed class DatabaseServersTests
 
                 DatabaseTableTab text = Open("greeting", 1);
                 Assert.StartsWith("string · expires in", text.Header, StringComparison.Ordinal);
+                Assert.True((text.WhyNotAddRow?.Shown, text.WhyNotDeleteRows?.Shown, text.Shown!.RowCount) == (Refusals.RowsFixed.Shown, Refusals.RowsFixed.Shown, 1),
+                    $"A string's one value took a row added or deleted: {text.WhyNotAddRow}, {text.WhyNotDeleteRows}, {text.Shown.RowCount} rows");
                 Write(window, Grid(), (0, 1), "hi");
                 Submit(text);
                 Assert.True((string?)keys.StringGet("greeting") == "hi" && keys.KeyTimeToLive("greeting") is { } kept && kept > TimeSpan.Zero,
@@ -1311,6 +1573,17 @@ public sealed class DatabaseServersTests
                 object read = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Cache", sql: "GET greeting"), "an agent's read of a string", TimeSpan.FromMinutes(1));
                 Assert.Equal("hi", Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(read)).Sets[0].Rows[0][0]);
                 Assert.DoesNotContain(Password, console.Said + window.Database.Said, StringComparison.Ordinal);
+
+                // A database of more keys than are listed says so under them.
+                DatabaseTests.Open(window, "db1");
+                Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == DatabaseNodeKind.Note && r.Title.StartsWith($"Only the first {Numbers.Said(1000)} keys are listed", StringComparison.Ordinal));
+
+                // Made by hand, its password inside its configuration kept apart, the connection signs in by it where an agent reads through it.
+                MadeByHand(window, DatabaseKind.Redis, "Hand", configuration);
+                object handRead = Ui.Await(new Passenger.App.Mcp.PassengerTools(window).Database(connection: "Hand", sql: "GET greeting"),
+                    "an agent's read through the connection made by hand", TimeSpan.FromMinutes(1));
+                Passenger.App.Mcp.DatabaseQueryResult hand = Assert.Single(Assert.IsType<Passenger.App.Mcp.DatabaseQueryResult[]>(handRead));
+                Assert.True(hand.Error is null && hand.Sets[0].Rows[0][0] == "hi", $"An agent's read through the connection made by hand answered {hand.Error}");
             }
             finally
             {
@@ -1334,13 +1607,19 @@ public sealed class DatabaseServersTests
             options.ConnectTimeout = 2000;
             await using StackExchange.Redis.ConnectionMultiplexer redis = await StackExchange.Redis.ConnectionMultiplexer.ConnectAsync(options);
             StackExchange.Redis.IDatabase keys = redis.GetDatabase();
-            await keys.KeyDeleteAsync(["greeting", "user:1", "queue", "tags", "scores", "events"]);
+            await keys.KeyDeleteAsync(["greeting", "user:1", "queue", "tags", "scores", "events", "long"]);
             await keys.StringSetAsync("greeting", "hello", TimeSpan.FromHours(1));
             await keys.HashSetAsync("user:1", [new("name", "Ada"), new("city", "Oslo")]);
             await keys.ListRightPushAsync("queue", ["a", "b", "c"]);
             await keys.SetAddAsync("tags", ["red", "blue"]);
             await keys.SortedSetAddAsync("scores", [new("ada", 3), new("bob", 5)]);
             await keys.StreamAddAsync("events", [new("kind", "signup"), new("who", "ada")]);
+            await keys.ListRightPushAsync("long", [.. Enumerable.Range(0, 10001).Select(i => (StackExchange.Redis.RedisValue)i)]);
+            StackExchange.Redis.IDatabase more = redis.GetDatabase(1);
+            KeyValuePair<StackExchange.Redis.RedisKey, StackExchange.Redis.RedisValue>[] many = [.. Enumerable.Range(0, 1001)
+                .Select(i => KeyValuePair.Create((StackExchange.Redis.RedisKey)$"k{i.ToString(CultureInfo.InvariantCulture)}", (StackExchange.Redis.RedisValue)i))];
+            await more.KeyDeleteAsync([.. many.Select(k => k.Key)]);
+            await more.StringSetAsync(many);
             return true;
         }
         catch (Exception unready) when (unready is StackExchange.Redis.RedisException or TimeoutException)
@@ -1349,11 +1628,10 @@ public sealed class DatabaseServersTests
         }
     }
 
-    /// <summary>DynamoDB Local in a container of the test's own: its connection found in the folder's settings by its project's
-    /// SDK, its explorer down to a table's attributes and keys, its items as rows with the chosen one's tree beside them,
-    /// attributes written (one added to an item that lacked it), an item deleted and one added, submitted in one
-    /// transaction, one changed since it was read refusing them; a console's PartiQL, completion of a table's attributes,
-    /// a read-only mark refusing an UPDATE, and an agent's read.</summary>
+    /// <summary>DynamoDB Local in a container of the test's own: found by its project's SDK, explored to a table's keys, its
+    /// items as rows with the chosen one's tree; changes submitted in one transaction, one changed since refusing them, keys
+    /// of long numbers and of bytes written exactly, more changes than one transaction refused, paging past a sort's 10,000;
+    /// a console's PartiQL, completion of a table's attributes, a read-only mark refusing an UPDATE, and an agent's read.</summary>
     private static void Dynamo()
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbdynamo";
@@ -1422,6 +1700,71 @@ public sealed class DatabaseServersTests
                 Assert.Equal("6", Order("2")!["qty"].N);
                 Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
 
+                DatabaseTableTab Items(string table, int rows)
+                {
+                    window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == table));
+                    Assert.True(window.Perform(AppActions.DatabaseOpenTable), $"Open Items of {table} did not run");
+                    Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: var read } tab && tab.Table.Name == table && read == rows,
+                        () => $"{table}'s items as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                    return window.EditorArea.Active!.DatabaseTable!;
+                }
+                bool Held(string table, string key, Amazon.DynamoDBv2.Model.AttributeValue value) =>
+                    Ui.Await(dynamo.GetItemAsync(table, new() { [key] = value }), $"{table}'s item").Item is { Count: > 0 };
+                void Submitted(DatabaseTableTab tab)
+                {
+                    Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                    Ui.WaitFor(() => tab.Edits.IsEmpty && !tab.Reading, () => tab.Said);
+                }
+
+                // A number key is read and found again by its digits exactly, past a decimal's 28 too: each item deleted is its own.
+                DatabaseTableTab ledger = Items("ledger", 4);
+                int n = Array.IndexOf(ledger.Rows!.Columns, "n");
+                foreach (string number in (string[])["100000000000000000001", "123456789012345678901234567890123"])
+                {
+                    int at = Enumerable.Range(0, 4).Single(r => ledger.Rows.Cell(r, n) == number);
+                    Tab<CellGrid>(window, "DatabaseTabResults").Choose((at, n), (at, n));
+                    Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Items did not run");
+                }
+                Submitted(ledger);
+                Assert.Equal([false, true, false, true], ((string[])["100000000000000000001", "100000000000000000000", "123456789012345678901234567890123", "123456789012345678901234567890124"])
+                    .Select(number => Held("ledger", "n", new Amazon.DynamoDBv2.Model.AttributeValue { N = number })));
+
+                // A binary key is written as bytes: an item changed and one deleted by the key read, one added by its 0x hex.
+                DatabaseTableTab blobs = Items("blobs", 2);
+                CellGrid blobbed = Tab<CellGrid>(window, "DatabaseTabResults");
+                (int b, int v) = (Array.IndexOf(blobs.Rows!.Columns, "b"), Array.IndexOf(blobs.Rows.Columns, "v"));
+                int Blob(string base64) => Enumerable.Range(0, blobs.Rows!.RowCount).Single(r => blobs.Rows.Cell(r, b) == base64);
+                Write(window, blobbed, (Blob("AQID"), v), "z");
+                blobbed.Choose((Blob("BAUG"), v), (Blob("BAUG"), v));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Items did not run");
+                Write(window, blobbed, (blobs.Shown!.RowCount - 1, b), "0x0708");
+                Write(window, blobbed, (blobs.Shown.RowCount - 2, v), "c");
+                Assert.Equal("1 item changed, 1 item deleted, 1 item added pending", blobs.EditsSaid);
+                Submitted(blobs);
+                Amazon.DynamoDBv2.Model.AttributeValue Bytes(params byte[] bytes) => new() { B = new MemoryStream(bytes) };
+                Assert.Equal("z", Ui.Await(dynamo.GetItemAsync("blobs", new() { ["b"] = Bytes(1, 2, 3) }), "the first blob").Item["v"].S);
+                Assert.Equal((false, true), (Held("blobs", "b", Bytes(4, 5, 6)), Held("blobs", "b", Bytes(7, 8))));
+
+                // More changes than one transaction writes are refused whole; the own order pages past the 10,000 items a sort reads.
+                DatabaseTableTab bulk = Items("bulk", 100);
+                CellGrid bulked = Tab<CellGrid>(window, "DatabaseTabResults");
+                int k = Array.IndexOf(bulk.Rows!.Columns, "k");
+                string first = bulk.Rows.Cell(0, k);
+                bulked.Choose((0, k), (99, k));
+                Assert.True(window.Perform(AppActions.DatabaseDeleteRows), "Delete Items did not run");
+                Write(window, bulked, (bulk.Shown!.RowCount - 1, k), "extra");
+                Assert.Equal("100 items deleted, 1 item added pending", bulk.EditsSaid);
+                Assert.True(window.Perform(AppActions.DatabaseSubmit), "Submit did not run");
+                Ui.WaitFor(() => !bulk.Reading && bulk.Said == Refusals.TooManyItemChanges(101, 100).Shown, () => bulk.Said);
+                Assert.Equal((true, false), (Held("bulk", "k", new() { S = first }), Held("bulk", "k", new() { S = "extra" })));
+                Assert.True(window.Perform(AppActions.DatabaseRevert), "Revert did not run");
+                Ui.Await(bulk.LoadAsync(11900), "the bulk items' last page");
+                Ui.WaitFor(() => !bulk.Reading && bulk.Rows is { RowCount: 100, More: false, Offset: 11900 }, () => $"{bulk.Rows?.RowCount} items read past 10,000 ({bulk.Said})");
+                bulked = Tab<CellGrid>(window, "DatabaseTabResults");
+                Ui.Click(bulked, bulked.SortArrow(Array.IndexOf(bulk.Rows!.Columns, "v")).Center);
+                Ui.WaitFor(() => !bulk.Reading && bulk.Rows?.OrderedBy is not null, () => bulk.Said);
+                Assert.Contains($"the first {Numbers.Said(10000)} items read", bulk.Header, StringComparison.Ordinal);
+
                 // A console of PartiQL, completion of a table's attributes, a read-only mark and an agent's read.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
                 Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
@@ -1460,8 +1803,8 @@ public sealed class DatabaseServersTests
 
     /// <summary>Cassandra in a container of the test's own, its heap held small: its connection found in the folder's settings
     /// by the driver's keys, its explorer down to a table's partition and clustering keys and its index, its rows in the
-    /// grid in the table's order, edits refused as CQL's own; a console of CQL, completion of a table's columns, a
-    /// read-only mark refusing an UPDATE, and an agent's read.</summary>
+    /// grid in the table's order, edits refused as CQL's own, a filter among the first rows read saying so; a console of
+    /// CQL, completion of a table's columns, a read-only mark refusing an UPDATE, and an agent's read.</summary>
     private static void CassandraCluster()
     {
         string name = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}dbcassandra";
@@ -1501,6 +1844,17 @@ public sealed class DatabaseServersTests
                     .OrderBy(r => r[..3], StringComparer.Ordinal));
                 Assert.Equal("[\"hot\"]", data.Rows.Cell(Enumerable.Range(0, 3).Single(r => data.Rows.Cell(r, 2) == "tea"), 4));
                 Assert.Equal(Refusals.NoRowEdits("Cassandra").Shown, data.WhyNotEdited?.Shown);
+
+                // A table filtered here among the rows a tab reads says it read the first 10,000 alone, its pages those of what was read.
+                window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "events"));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), "Open Table Data did not run");
+                Ui.WaitFor(() => window.EditorArea.Active?.DatabaseTable is { Reading: false, Rows.RowCount: 100, Table.Name: "events" },
+                    () => $"the events as rows ({window.EditorArea.Active?.DatabaseTable?.Said})");
+                DatabaseTableTab events = window.EditorArea.Active!.DatabaseTable!;
+                Filter(window, "what", "Equals", "e10000");
+                Ui.WaitFor(() => !events.Reading && events.Rows?.RowCount <= 1, () => $"the events filtered ({events.Said})");
+                Assert.True(events.Rows is { More: false } && events.Header?.Contains($"the first {Numbers.Said(10000)} rows read", StringComparison.Ordinal) == true,
+                    $"A filter among the first rows read said {events.Header}, {events.Rows?.RowCount} rows, more: {events.Rows?.More}");
 
                 // A console of CQL, completion of a table's columns, a read-only mark and an agent's read.
                 window.DatabaseExplorer.Choose(window.DatabaseExplorer.Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Title == "Orders"));
@@ -1905,9 +2259,16 @@ public sealed class DatabaseServersTests
                 "INSERT INTO shop.orders (customer, at, name, qty, tags) VALUES ('ann', 1, 'tea', 2, ['hot'])",
                 "INSERT INTO shop.orders (customer, at, name, qty) VALUES ('ann', 2, 'coffee', 5)",
                 "INSERT INTO shop.orders (customer, at, name, qty) VALUES ('bob', 1, 'milk', 1)",
+                "CREATE TABLE IF NOT EXISTS shop.events (id int PRIMARY KEY, what text)",
             ])
             {
                 await session.ExecuteAsync(new global::Cassandra.SimpleStatement(cql));
+            }
+            // 10,001 rows, one past what a tab filters among.
+            global::Cassandra.PreparedStatement insert = await session.PrepareAsync("INSERT INTO shop.events (id, what) VALUES (?, ?)");
+            foreach (int[] chunk in Enumerable.Range(0, 10001).Chunk(200))
+            {
+                await Task.WhenAll(chunk.Select(i => session.ExecuteAsync(insert.Bind(i, $"e{i.ToString(CultureInfo.InvariantCulture)}"))));
             }
             return true;
         }
@@ -1942,6 +2303,40 @@ public sealed class DatabaseServersTests
             ])
             {
                 await dynamo.PutItemAsync("orders", Amazon.DynamoDBv2.DocumentModel.Document.FromJson(item).ToAttributeMap());
+            }
+            List<string> tables = (await dynamo.ListTablesAsync()).TableNames ?? [];
+            foreach ((string table, string key, Amazon.DynamoDBv2.ScalarAttributeType type) in ((string, string, Amazon.DynamoDBv2.ScalarAttributeType)[])[
+                ("ledger", "n", Amazon.DynamoDBv2.ScalarAttributeType.N), ("blobs", "b", Amazon.DynamoDBv2.ScalarAttributeType.B), ("bulk", "k", Amazon.DynamoDBv2.ScalarAttributeType.S)])
+            {
+                if (!tables.Contains(table))
+                {
+                    await dynamo.CreateTableAsync(new Amazon.DynamoDBv2.Model.CreateTableRequest
+                    {
+                        TableName = table, BillingMode = Amazon.DynamoDBv2.BillingMode.PAY_PER_REQUEST, KeySchema = [new(key, Amazon.DynamoDBv2.KeyType.HASH)],
+                        AttributeDefinitions = [new(key, type)],
+                    });
+                }
+            }
+            foreach (string number in (string[])["100000000000000000001", "100000000000000000000", "123456789012345678901234567890123", "123456789012345678901234567890124"])
+            {
+                await dynamo.PutItemAsync("ledger", new() { ["n"] = new() { N = number }, ["v"] = new() { S = number[^3..] } });
+            }
+            foreach (byte[] bytes in (byte[][])[[1, 2, 3], [4, 5, 6]])
+            {
+                await dynamo.PutItemAsync("blobs", new() { ["b"] = new() { B = new MemoryStream(bytes) }, ["v"] = new() { S = "a" } });
+            }
+            await dynamo.DeleteItemAsync("blobs", new() { ["b"] = new() { B = new MemoryStream([7, 8]) } });
+            // 12,000 items of a kilobyte each, more than a sort reads and more than one scan's page holds, 25 to a request.
+            foreach (int[] chunk in Enumerable.Range(0, 12000).Chunk(25))
+            {
+                await dynamo.BatchWriteItemAsync(new Dictionary<string, List<Amazon.DynamoDBv2.Model.WriteRequest>>
+                {
+                    ["bulk"] = [.. chunk.Select(i => new Amazon.DynamoDBv2.Model.WriteRequest(new Amazon.DynamoDBv2.Model.PutRequest(new()
+                    {
+                        ["k"] = new() { S = $"k{i.ToString("D5", CultureInfo.InvariantCulture)}" }, ["v"] = new() { N = (i % 97).ToString(CultureInfo.InvariantCulture) },
+                        ["pad"] = new() { S = new string('x', 1000) },
+                    })))],
+                });
             }
             return true;
         }

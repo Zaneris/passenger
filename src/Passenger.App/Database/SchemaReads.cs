@@ -83,6 +83,10 @@ internal static class SchemaReads
                     + "AND s.name=l.name) END FROM sqlite_schema m JOIN pragma_index_list(m.name) l WHERE m.type='table' AND l.origin='c' ORDER BY 1, 2",
                 "SELECT name, sql FROM sqlite_schema WHERE type='view' ORDER BY 1"),
         };
+        if (kind == DatabaseKind.MySql && await ReadsExpressionsAsync(connection, cancel))
+        {
+            sql.Indexes = MySqlExpressionIndexes;
+        }
         DatabaseRows columnRows = await DatabaseClient.ReadAsync(connection, sql.Columns, named, cancel, limit: 100_000);
         List<object?[]> keyRows = kind == DatabaseKind.Sqlite ? await SqliteKeysAsync(connection, cancel) : [.. (await DatabaseClient.ReadAsync(connection, sql.Keys, named, cancel, limit: 100_000)).Rows];
         DatabaseRows indexRows = await DatabaseClient.ReadAsync(connection, sql.Indexes, named, cancel, limit: 100_000);
@@ -112,6 +116,21 @@ internal static class SchemaReads
             Sequences = await SequencesAsync(connection, kind, schema, named, cancel),
         };
     }
+
+    /// <summary>MySQL's indexes as its catalog gives them where a key part may be an expression (8.0.13 on): such an index's
+    /// definition its key parts in turn, a column's quoted and an expression's in its brackets, as CREATE INDEX takes them.</summary>
+    private const string MySqlExpressionIndexes =
+        "SELECT s.TABLE_NAME, s.INDEX_NAME, MAX(s.NON_UNIQUE)=0, GROUP_CONCAT(s.COLUMN_NAME ORDER BY s.SEQ_IN_INDEX), "
+        + "CASE WHEN MAX(s.EXPRESSION IS NOT NULL) THEN CONCAT('(', GROUP_CONCAT(COALESCE(CONCAT('`', REPLACE(s.COLUMN_NAME, '`', '``'), '`'), "
+        + "CONCAT('(', s.EXPRESSION, ')')) ORDER BY s.SEQ_IN_INDEX SEPARATOR ', '), ')') ELSE '' END FROM information_schema.STATISTICS s "
+        + "WHERE s.TABLE_SCHEMA=@schema AND s.INDEX_NAME<>'PRIMARY' AND NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS t "
+        + "WHERE t.CONSTRAINT_SCHEMA=s.TABLE_SCHEMA AND t.TABLE_NAME=s.TABLE_NAME AND t.CONSTRAINT_NAME=s.INDEX_NAME) GROUP BY s.TABLE_NAME, s.INDEX_NAME ORDER BY 1, 2";
+
+    /// <summary>Whether the server's catalog says an index's key part may be an expression, as MySQL's does and MariaDB's not.</summary>
+    private static async Task<bool> ReadsExpressionsAsync(DbConnection connection, CancellationToken cancel) =>
+        (await DatabaseClient.ReadAsync(connection, "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='information_schema' "
+            + "AND TABLE_NAME='STATISTICS' AND COLUMN_NAME='EXPRESSION'", [], cancel, limit: 1)).Rows is [[{ } count, ..], ..]
+        && Convert.ToInt64(count, CultureInfo.InvariantCulture) > 0;
 
     private static string Triggers(DatabaseKind kind) => kind switch
     {

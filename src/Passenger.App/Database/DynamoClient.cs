@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using Amazon;
 using Amazon.DynamoDBv2;
@@ -86,11 +87,13 @@ internal static class DynamoClient
         {
             request.ExpressionAttributeNames = new Dictionary<string, string> { ["#f"] = filter.Column };
             Dictionary<string, AttributeValue> values = [];
+            // A number's words of any length match a number too, its digits sent as written.
+            bool number = double.TryParse(filter.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double read) && double.IsFinite(read);
             request.FilterExpression = filter.Operator switch
             {
                 "Is NULL" => "attribute_not_exists(#f) OR #f = :nul",
                 "Is not NULL" => "attribute_exists(#f) AND #f <> :nul",
-                "Equals" => decimal.TryParse(filter.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out _) ? "#f = :s OR #f = :n" : "#f = :s",
+                "Equals" => number ? "#f = :s OR #f = :n" : "#f = :s",
                 _ => "contains(#f, :s)",
             };
             if (filter.Operator is "Is NULL" or "Is not NULL")
@@ -100,7 +103,7 @@ internal static class DynamoClient
             else
             {
                 values[":s"] = new AttributeValue { S = filter.Value };
-                if (filter.Operator == "Equals" && decimal.TryParse(filter.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                if (filter.Operator == "Equals" && number)
                 {
                     values[":n"] = new AttributeValue { N = filter.Value };
                 }
@@ -162,7 +165,7 @@ internal static class DynamoClient
                 foreach ((int column, string? text) in row.Written)
                 {
                     names[$"#a{at}"] = page.Columns[column];
-                    values[$":w{at}"] = Attribute(DocumentClient.Written(text, row.Read[column]));
+                    values[$":w{at}"] = Written(text, row.Read[column]);
                     sets.Add($"#a{at} = :w{at}");
                     if (row.Read[column] is AbsentField)
                     {
@@ -170,7 +173,7 @@ internal static class DynamoClient
                     }
                     else if (row.Read[column] is not JsonText)
                     {
-                        values[$":r{at}"] = Attribute(row.Read[column] is null ? BsonNull.Value : BsonValue.Create(row.Read[column]));
+                        values[$":r{at}"] = Held(row.Read[column]);
                         holds.Add($"#a{at} = :r{at}");
                     }
                     at++;
@@ -215,7 +218,7 @@ internal static class DynamoClient
                         continue;
                     }
                     values[$":r{column}"] = held.B is not null && read[column] is string base64 && ImportTypes.TryConvert(base64, typeof(byte[]), out object bytes)
-                        ? new AttributeValue { B = new MemoryStream((byte[])bytes) } : Attribute(BsonValue.Create(read[column]));
+                        ? new AttributeValue { B = new MemoryStream((byte[])bytes) } : Held(read[column]);
                     holds.Add($"#a{column} = :r{column}");
                 }
                 writes.Add(new TransactWriteItem
@@ -230,7 +233,7 @@ internal static class DynamoClient
             foreach (AddedRow added in edits.Added)
             {
                 Dictionary<string, AttributeValue> item = added.Written.Where(w => w.Value is not null)
-                    .ToDictionary(w => page.Columns[w.Key], w => Attribute(DocumentClient.Written(w.Value, null)), StringComparer.Ordinal);
+                    .ToDictionary(w => page.Columns[w.Key], w => Written(w.Value, null), StringComparer.Ordinal);
                 if (keys.FirstOrDefault(k => !item.ContainsKey(k)) is { } lacking)
                 {
                     throw new InvalidOperationException(Refusals.ItemLacksKey(lacking).English);
@@ -342,6 +345,20 @@ internal static class DynamoClient
         BsonInt32 or BsonInt64 or BsonDouble => new AttributeValue { N = Convert.ToString(BsonTypeMapper.MapToDotNetValue(value), CultureInfo.InvariantCulture) },
         BsonDateTime at => new AttributeValue { S = at.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture) },
         _ => new AttributeValue { S = value.ToString() },
+    };
+
+    /// <summary>A cell's text written as the attribute its value was read as, a whole number past a decimal's digits as its
+    /// own digits, never rounded.</summary>
+    private static AttributeValue Written(string? text, object? read) =>
+        read is BigInteger && text is not null && BigInteger.TryParse(text.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out BigInteger whole)
+            ? new AttributeValue { N = whole.ToString(CultureInfo.InvariantCulture) } : Attribute(DocumentClient.Written(text, read));
+
+    /// <summary>A value as it was read, which a condition holds an attribute to: a whole number past a decimal's digits as its digits.</summary>
+    private static AttributeValue Held(object? read) => read switch
+    {
+        null => new AttributeValue { NULL = true },
+        BigInteger whole => new AttributeValue { N = whole.ToString(CultureInfo.InvariantCulture) },
+        _ => Attribute(BsonValue.Create(read)),
     };
 
     /// <summary>An item's key by its primary attributes' values as read, each of the type its table declares.</summary>

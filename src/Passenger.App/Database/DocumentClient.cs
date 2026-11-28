@@ -483,8 +483,11 @@ internal static class DocumentClient
         JsonValue plain when plain.GetValueKind() == JsonValueKind.String => plain.GetValue<string>(),
         JsonValue plain when plain.GetValueKind() is JsonValueKind.True or JsonValueKind.False => plain.GetValue<bool>(),
         JsonValue plain when plain.TryGetValue(out long whole) => whole,
+        // A whole number past a long's reach is read as its digits are, never rounded through a double: a decimal's, else a BigInteger's.
         JsonValue plain when plain.GetValueKind() == JsonValueKind.Number && plain.ToJsonString() is var digits && !digits.AsSpan().ContainsAny(".eE")
             && decimal.TryParse(digits, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out decimal exact) => exact,
+        JsonValue plain when plain.GetValueKind() == JsonValueKind.Number && plain.ToJsonString() is var digits && !digits.AsSpan().ContainsAny(".eE")
+            && System.Numerics.BigInteger.TryParse(digits, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out System.Numerics.BigInteger whole) => whole,
         JsonValue plain when plain.TryGetValue(out double number) => number,
         _ => value.ToJsonString(),
     };

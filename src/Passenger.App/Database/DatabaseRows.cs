@@ -209,7 +209,8 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public override int ColumnCount => Columns.Length;
     public override string Header(int column) => ContainerSecrets.InSaid(Columns[column]);
     public override int RowNumber(int row) => Offset + row + 1;
-    public override bool IsNumber(int row, int column) => Rows[row][column] is byte or short or int or long or float or double or decimal;
+    public override bool IsNumber(int row, int column) => Rows[row][column] is byte or short or int or long or float or double or decimal
+        or System.Numerics.BigInteger or MongoDB.Bson.BsonDecimal128;
 
     public override bool IsAbsent(int row, int column) => Rows[row][column] is AbsentField;
 
@@ -217,6 +218,8 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     {
         null or AbsentField => new CellValue(CellKind.Empty),
         byte or short or int or long or float or double or decimal => new CellValue(CellKind.Number, Convert.ToDouble(Rows[row][column], CultureInfo.InvariantCulture)),
+        System.Numerics.BigInteger whole => new CellValue(CellKind.Number, (double)whole),
+        MongoDB.Bson.BsonDecimal128 exact => new CellValue(CellKind.Number, MongoDB.Bson.Decimal128.ToDouble(exact.Value)),
         DateTime date => new CellValue(CellKind.Date, date.Ticks),
         _ => new CellValue(CellKind.Text),
     };
@@ -230,7 +233,8 @@ public sealed class DatabaseRows(string[] columns, object?[][] rows, bool more =
     public override bool IsEditable(int row, int column) => Schema is { } schema && schema.Columns.Any(c => c.Primary)
         && schema.Columns.Where(c => c.Primary).Select((c, at) => (c, at)).All(k => Array.IndexOf(Columns, k.c.Name) switch { < 0 => false, int key => k.at > 0 || Rows[row][key] is not null })
         && schema.Columns.FirstOrDefault(c => c.Name == Columns[column]) is { Primary: false, Generated: false }
-        && Rows[row][column] is null or AbsentField or string or long or int or short or byte or double or float or decimal or bool;
+        && Rows[row][column] is null or AbsentField or string or long or int or short or byte or double or float or decimal or bool
+            or System.Numerics.BigInteger or MongoDB.Bson.BsonDecimal128;
 
     public override string Cell(int row, int column) => ContainerSecrets.InSaid(Text(row, column));
 

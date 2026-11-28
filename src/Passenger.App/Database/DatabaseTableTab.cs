@@ -199,7 +199,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
         DatabaseSource source = Now;
         PendingEdits writing = edits;
         if (source.Mark == DatabaseMark.Production && !await ask("Submit to Production",
-            $"{source.Name} is marked production. Write {writing.Said.Replace(" pending", string.Empty, StringComparison.Ordinal)} to {Table}?", "Submit"))
+            $"{source.Name} is marked production. Write {writing.SaidOf(Noun.ToLowerInvariant()).Replace(" pending", string.Empty, StringComparison.Ordinal)} to {Table}?", "Submit"))
         {
             return;
         }
@@ -221,16 +221,27 @@ public sealed class DatabaseTableTab : IDatabaseTab
                 edits = partly.Left;
                 done.Clear();
                 undone.Clear();
-                said = $"{Containers.ContainerSecrets.InSaid(partly.Message)} Written before it: {writing.Besides(partly.Left)}; {partly.Left.Said}.";
+                said = $"{Containers.ContainerSecrets.InSaid(partly.Message)} Written before it: {writing.Besides(partly.Left, Noun.ToLowerInvariant())}; "
+                    + $"{partly.Left.SaidOf(Noun.ToLowerInvariant())}.";
                 Show(page);
                 return;
             }
             edits = PendingEdits.None;
             done.Clear();
             undone.Clear();
-            said = $"{writing.Said.Replace(" pending", " written", StringComparison.Ordinal)}.";
+            string written = writing.SaidOf(Noun.ToLowerInvariant()).Replace(" pending", " written", StringComparison.Ordinal);
+            said = $"{written}.";
             (string Column, bool Descending)? order = sort;
-            Show(await BackgroundWork.Run(() => DatabaseClient.PageAsync(source, read, page.Offset, cancel, filter, order), cancel));
+            try
+            {
+                Show(await BackgroundWork.Run(() => DatabaseClient.PageAsync(source, read, page.Offset, cancel, filter, order), cancel));
+            }
+            catch (Exception stopped) when (cancel.IsCancellationRequested && stopped is OperationCanceledException or System.Data.Common.DbException)
+            {
+                // Stop came once the changes were the database's: they stay said written, the page as it was read until read again.
+                said = $"{written}; stopped before the table was read again.";
+                Show(page);
+            }
         });
     }
 
