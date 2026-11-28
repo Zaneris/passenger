@@ -16,6 +16,10 @@ public sealed record DockLayout : IStateDocument<DockLayout>
     public double RightWidth { get; init; }
     public double BottomHeight { get; init; }
 
+    /// <summary>The areas' sizes in the wide layout (<see cref="DockHost.IsWide"/>), or null where it has never stood
+    /// apart and takes the sizes above.</summary>
+    public AreaSizes? Wide { get; init; }
+
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
 
     /// <summary>A window placed where this build has no place (a later build's) stays where it was added, one in a mode it
@@ -32,10 +36,14 @@ public sealed record DockLayout : IStateDocument<DockLayout>
         LeftWidth = Size(LeftWidth),
         RightWidth = Size(RightWidth),
         BottomHeight = Size(BottomHeight),
+        Wide = Wide is { } wide ? new AreaSizes(Size(wide.LeftWidth), Size(wide.RightWidth), Size(wide.BottomHeight)) : null,
     };
 
     private static double Size(double value) => value is >= 0 and <= LargestArea ? value : 0;
 }
+
+/// <summary>The side areas' widths and the bottom area's height, as one of the layouts keeps them.</summary>
+public sealed record AreaSizes(double LeftWidth, double RightWidth, double BottomHeight);
 
 /// <summary>One tool window's place: its anchor, its order among that anchor's buttons, and whether it was open.</summary>
 public sealed record DockedWindow(ToolAnchor Anchor, int Order, bool Shown)

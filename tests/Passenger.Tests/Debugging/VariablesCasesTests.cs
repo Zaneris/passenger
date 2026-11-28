@@ -110,6 +110,84 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
         Assert.Equal(("42", "int"), (read.Result, read.Type));
     }
 
+    /// <summary>A pointer's row and its evaluation name its address for Memory, which reads the value it points at there,
+    /// and an address expression (the pointer, past it, cast, a local's address) resolves in the stopped frame; one that
+    /// writes is refused.</summary>
+    private async Task A_pointers_memory_reads_at_its_address_and_its_address_expressions_resolve_in_the_stopped_frame()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"pointers");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(line, stop.ReadStopInfo().line);
+        DapVariable pointer = Assert.Single(await host.LocalsAsync(stop), v => v.Name == "pointer");
+        int frame = (await host.TopFrameAsync(stop.ThreadId!.Value)).Id;
+        EvaluateResponse address = await host.EvaluateAsync(frame, "pointer");
+        Assert.Equal(pointer.Value, pointer.MemoryReference);
+        Assert.Equal(pointer.MemoryReference, address.MemoryReference);
+        ReadMemoryResponse memory = await host.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory,
+            new ReadMemoryArguments(pointer.MemoryReference!, sizeof(int)));
+        Assert.Equal(BitConverter.GetBytes(42), memory.Data);
+        Assert.Null(memory.UnreadableBytes);
+        Assert.True(MemoryAddresses.TryParse(memory.Address, out ulong start));
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start + sizeof(int)), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer + 1", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("(nuint)pointer", frame))).Address);
+        Assert.Equal(MemoryAddresses.Show(start), (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("&number", frame))).Address);
+        await Assert.ThrowsAsync<DapException>(() => host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments("pointer++", frame)));
+    }
+
+    /// <summary>A managed reference's row names its object's address, which Memory reads (an object's field, an array's
+    /// elements, a string's UTF-16), an address expression following the reference as it is reassigned and saying so once
+    /// it is null.</summary>
+    private async Task A_managed_reference_leads_to_the_bytes_of_its_current_object()
+    {
+        int line = Debuggees.Line("PassengerCases", "Console.WriteLine($\"managed memory");
+        await using DebugSession host = await DebugSession.LaunchToBreakpoint(testOutputHelper, "PassengerCases", line, []);
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        Assert.Equal(line, stop.ReadStopInfo().line);
+        int thread = stop.ThreadId!.Value;
+        int frame = (await host.TopFrameAsync(thread)).Id;
+        List<DapVariable> locals = await host.LocalsAsync(stop);
+        string? ReferenceOf(string name) => Assert.Single(locals, row => row.Name == name).MemoryReference;
+        async Task<string> AddressOf(string expression) =>
+            (await host.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments(expression, frame))).Address;
+        Task<ReadMemoryResponse> Read(string address, int count = 40) =>
+            host.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory, new ReadMemoryArguments(address, count));
+
+        string first = await AddressOf("item");
+        Assert.Equal(ReferenceOf("item"), first, ignoreCase: true);
+        Assert.True((await Read(first)).Data.AsSpan().IndexOf(BitConverter.GetBytes(0x12345678)) >= 0);
+
+        string buffer = await AddressOf("buffer");
+        Assert.Equal(ReferenceOf("buffer"), buffer, ignoreCase: true);
+        byte[] known = [0xd1, 0xe2, 0xf3, 0xa4];
+        Assert.True((await Read(buffer)).Data.AsSpan().IndexOf(known) >= 0);
+        Assert.Equal(known, (await Read(await AddressOf("data"), known.Length)).Data);
+
+        string label = await AddressOf("label");
+        Assert.Equal(ReferenceOf("label"), label, ignoreCase: true);
+        ReadMemoryResponse text = await Read(label, 64);
+        System.Text.Encoding encoding = text.LittleEndian ? System.Text.Encoding.Unicode : System.Text.Encoding.BigEndianUnicode;
+        Assert.True(text.Data.AsSpan().IndexOf(encoding.GetBytes("managed memory")) >= 0);
+
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        Assert.Equal(Debuggees.Line("PassengerCases", "item = replacement;"), stop.ReadStopInfo().line);
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        Assert.Equal(Debuggees.Line("PassengerCases", "item = null;"), stop.ReadStopInfo().line);
+        frame = (await host.TopFrameAsync(thread)).Id;
+        string second = await AddressOf("item");
+        Assert.NotEqual(first, second);
+        Assert.Equal(await AddressOf("replacement"), second);
+        Assert.True((await Read(second)).Data.AsSpan().IndexOf(BitConverter.GetBytes(0x23456789)) >= 0);
+
+        stop = await host.StepOverAsync(thread).WaitForStoppedEvent();
+        frame = (await host.TopFrameAsync(thread)).Id;
+        locals = await host.LocalsAsync(stop);
+        Assert.Null(ReferenceOf("item"));
+        DapException nullAddress = await Assert.ThrowsAsync<DapException>(() => AddressOf("item"));
+        Assert.Contains("resolved to null", nullAddress.Reason, StringComparison.Ordinal);
+    }
+
     private async Task DebuggerDisplay_renders_as_Visual_Studio_does()
     {
         int line = Debuggees.Line("PassengerCases", "Console.WriteLine(\"displays\");");
@@ -167,12 +245,15 @@ public class VariablesCasesTests(ITestOutputHelper testOutputHelper)
     }
 
     /// <summary>A multi-dimensional array's long outer dimension opens in ranges of 100, and an element under a range
-    /// takes a value set through the array.</summary>
+    /// takes a value set through the array; memory reads at what a pointer or a managed reference holds, and an address
+    /// expression resolves in the stopped frame, as one flow.</summary>
     [Fact]
-    public async Task A_multi_dimensional_arrays_rows_open_in_ranges_and_take_a_value_set_through_the_array()
+    public async Task Arrays_open_in_ranges_and_take_values_set_through_them_and_memory_reads_where_a_variable_points()
     {
         await Flow.StepApartAsync<VariablesCasesTests>("a multi dimensional array's long outer dimension opens in ranges of 100", () => new VariablesCasesTests(testOutputHelper), t => t.A_multi_dimensional_arrays_long_outer_dimension_opens_in_ranges_of_100());
         await Flow.StepApartAsync<VariablesCasesTests>("an element under a multi dimensional array's range takes a value set through the array", () => new VariablesCasesTests(testOutputHelper), t => t.An_element_under_a_multi_dimensional_arrays_range_takes_a_value_set_through_the_array());
+        await Flow.StepApartAsync<VariablesCasesTests>("a pointer's memory reads at its address and its address expressions resolve in the stopped frame", () => new VariablesCasesTests(testOutputHelper), t => t.A_pointers_memory_reads_at_its_address_and_its_address_expressions_resolve_in_the_stopped_frame());
+        await Flow.StepApartAsync<VariablesCasesTests>("memory can follow a managed reference and read objects, arrays and strings", () => new VariablesCasesTests(testOutputHelper), t => t.A_managed_reference_leads_to_the_bytes_of_its_current_object());
     }
 
     /// <summary>A multi-dimensional array's outer dimension over 100 long opens in ranges of 100, as a long array does, each

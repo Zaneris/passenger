@@ -106,7 +106,7 @@ public sealed partial class PassengerTools
             }
             return web.Lsp is { } server ? new ServerServed(document, LanguageOf(document), server, web)
                 : languages.CannotStart(document) ? throw new InvalidOperationException(languages.Unready("Its code help", document))
-                : throw new TimeoutException(Refusals.StillStarting(WebLanguages.Name(web.Kind), ServerLimit));
+                : throw new TimeoutException(Refusals.StillStarting(WebLanguages.Name(web.Kind), ServerLimit).English);
         }
         if (Passenger.Workspace.GodotFileKinds.IsText(document.Path) && Session.GodotOf(document.Path) is not null)
         {
@@ -214,7 +214,7 @@ public sealed partial class PassengerTools
         }
         if (asked.Map(WebAssist.JsonRenameEdits(at.Path, at.Key, lines, newName, WebAssist.IsPackageJson(document))) is not { } placed)
         {
-            throw new InvalidOperationException(Refusals.PropertyEditedMeanwhile);
+            throw new RefusedException(Refusals.PropertyEditedMeanwhile);
         }
         WorkspaceEdits.ApplyTo(Editors, document, placed);
         document.Save();
@@ -248,11 +248,11 @@ public sealed partial class PassengerTools
         RefactorOutcome made = await WebAssist.MakeLintFixAsync(Editors, web.Document, fix, $"'{fix.Title}'", null);
         if (made.Problem is not null)
         {
-            throw new InvalidOperationException(made.Problem);
+            throw new RefusedException(made.Problem);
         }
         if (made.Left.Count > 0)
         {
-            throw new InvalidOperationException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left));
+            throw new RefusedException(Refusals.NotAppliedEditedMeanwhile($"'{fix.Title}'", made.Left));
         }
         if (web.Document.Text.Version == version)
         {
@@ -358,40 +358,19 @@ public sealed partial class PassengerTools
         }
         if (renamed.Problem is { } refused)
         {
-            throw new InvalidOperationException(refused);
+            throw new RefusedException(refused);
         }
         await SaveLandedAsync(cancel);
         return $"Renamed {old} to {newName} in {Plural.Of(renamed.Files.Count, "file")}: {AgentAnswers.Named([.. renamed.Files.Select(f => Relative(f.Path))], "file", FilesOfTheChange)}";
     }
 
-    /// <summary>A XAML file's elements, indented, each with what names it (x:Class, x:Name, x:Key, a style's selector or
-    /// target type) and its line.</summary>
+    /// <summary>A XAML file's elements, indented, each as File Structure shows it (<see cref="Xaml.XamlOutline"/>: by what names
+    /// it, x:Class, x:Name, x:Key, a style's selector or target type, its type and x:DataType after) with its line.</summary>
     private static string XamlOutline(XamlServed xaml)
     {
-        System.Text.StringBuilder text = new();
-        TextSnapshot snapshot = TextSnapshot.From(xaml.File.Text);
-        // Walked with a stack of its own, so a tree as deep as it is read costs no thread its stack.
-        Stack<(XmlElement Element, int Depth)> left = new(xaml.File.Tree.Roots.Reverse().Select(r => (r, 0)));
-        while (left.TryPop(out (XmlElement Element, int Depth) at))
-        {
-            Write(at.Element, at.Depth);
-            for (int i = at.Element.Children.Count - 1; i >= 0; i--)
-            {
-                left.Push((at.Element.Children[i], at.Depth + 1));
-            }
-        }
-        return text.Length == 0 ? "The file has no elements" : text.ToString().TrimEnd();
-
-        void Write(XmlElement element, int depth)
-        {
-            text.Append(' ', depth * 2).Append(element.Name);
-            foreach (XmlAttribute attribute in element.Attributes.Where(a => a.Name is "Name" or "Selector" or "TargetType"
-                || (a.LocalName is "Class" or "Name" or "Key" or "DataType" && XamlFile.Directive(element, a.LocalName) == a)))
-            {
-                text.Append(' ').Append(attribute.Name).Append("=\"").Append(attribute.Value).Append('"');
-            }
-            text.Append(" (line ").Append(snapshot.GetLineFromOffset(Math.Min(element.Start, snapshot.Length)) + 1).Append(")\n");
-        }
+        Outline<Navigation.SymbolRow> outline = Xaml.XamlOutline.Of(xaml.File.Tree, TextSnapshot.From(xaml.File.Text), xaml.Document.Path);
+        return outline.Rows.Count == 0 ? "The file has no elements"
+            : string.Join('\n', outline.Rows.Select(row => $"{new string(' ', row.Depth * 2)}{row.Name}{row.Detail} (line {row.Position.Line + 1})"));
     }
 
     /// <summary>What a scene with no fix at a place says: its fixes are its marks', a line at a time.</summary>
@@ -411,43 +390,43 @@ public sealed partial class PassengerTools
     {
         if (fix.On(document.Text.Snapshot) is not { } now)
         {
-            throw new InvalidOperationException($"'{fix.Title}' was not applied: the file changed, so it no longer fits");
+            throw new InvalidOperationException($"'{fix.Title.English}' was not applied: the file changed, so it no longer fits");
         }
         if (now.Asks is { } asks)
         {
-            RefactorOutcome set = await asks.Make(value ?? throw new InvalidOperationException($"'{fix.Title}' sets a value: give it as name"), patience);
+            RefactorOutcome set = await asks.Make(value ?? throw new InvalidOperationException($"'{fix.Title.English}' sets a value: give it as name"), patience);
             if (set.Problem is { } refused)
             {
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return set.Said;
+            return set.Said.English;
         }
         if (now.Confirms is { } confirms)
         {
             // The agent's call is its agreeing; what it wrote is said back.
-            string question = await confirms.Question() ?? throw new InvalidOperationException($"'{fix.Title}' was not applied: the file changed, so it no longer fits");
+            string question = await confirms.Question() ?? throw new InvalidOperationException($"'{fix.Title.English}' was not applied: the file changed, so it no longer fits");
             RefactorOutcome agreed = await confirms.Make(patience);
             if (agreed.Problem is { } declined)
             {
-                throw new InvalidOperationException(declined);
+                throw new RefusedException(declined);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return $"{agreed.Said}: {question.Replace("\n\n", " ", StringComparison.Ordinal)}";
+            return $"{agreed.Said.English}: {question.Replace("\n\n", " ", StringComparison.Ordinal)}";
         }
         if (now.Elsewhere is { } elsewhere)
         {
             RefactorOutcome made = await elsewhere(now.Range, patience);
             if (made.Problem is { } problem)
             {
-                throw new InvalidOperationException(problem);
+                throw new RefusedException(problem);
             }
             await SaveLandedAsync(CancellationToken.None);
-            return $"Applied '{fix.Title}' to {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
+            return $"Applied '{fix.Title.English}' to {AgentAnswers.Named([.. made.Files.Select(f => Relative(f.Path)).Distinct()], "file", FilesOfTheChange)}";
         }
         WorkspaceEdits.ApplyTo(Editors, document, now.Edits ?? [new TextEdit(now.Range.Start, now.Range.Length, now.Text)]);
         await SaveLandedAsync(CancellationToken.None);
-        return $"Applied '{fix.Title}' to {Relative(document.Path)}";
+        return $"Applied '{fix.Title.English}' to {Relative(document.Path)}";
     }
 
     /// <summary>One of XAML's fixes or refactorings at a place, as code_actions lists it and apply_code_action makes it.</summary>
@@ -460,7 +439,7 @@ public sealed partial class PassengerTools
     {
         // Passenger's own fixes (a translation a language lacks) stand on the file's check of the text as the agent wrote it.
         await xaml.Xaml.CheckedAsync();
-        List<XamlAction> offered = [.. window.Assist.OwnFixes(xaml.Document, offset).Select(f => new XamlAction(f.Title, "quickfix", [], f))];
+        List<XamlAction> offered = [.. window.Assist.OwnFixes(xaml.Document, offset).Select(f => new XamlAction(f.Title.English, "quickfix", [], f))];
         XamlFile file = xaml.File;
         IReadOnlyList<XamlDiagnostic> found = await BackgroundWork.Run(() => XamlDiagnostics.Of(file));
         TextSnapshot text = TextSnapshot.From(file.Text);

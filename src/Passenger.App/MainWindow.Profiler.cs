@@ -25,14 +25,14 @@ public partial class MainWindow
         ChooseProfiledAsync, ProfiledInContainerAsync, ShowInFileManager, (title, text, yes) => Confirm(title, text, yes), ProfileAspireAsync, ShowInTerminal));
 
     /// <summary>Profiles the chosen configuration as Profile does: null once it runs, else what stopped it.</summary>
-    public Task<string?> ProfileAsync(string? arguments = null) => profiler!.ProfileAsync(arguments);
+    public Task<Passenger.Core.Words?> ProfileAsync(string? arguments = null) => profiler!.ProfileAsync(arguments);
 
     /// <summary>Profiles a configuration not chosen in the toolbar (a gutter icon's one service) as Profile does.</summary>
-    public Task<string?> ProfileAsync(Run.RunConfiguration configuration) => profiler!.ProfileAsync(configuration: configuration);
+    public Task<Passenger.Core.Words?> ProfileAsync(Run.RunConfiguration configuration) => profiler!.ProfileAsync(configuration: configuration);
 
     /// <summary>Attach Profiler: the program being debugged (else the one Run runs), or a program in a running container
     /// (as Attach to Process lists it), profiled from now; null once it is, else why not.</summary>
-    public Task<string?> AttachProfilerAsync(Passenger.Core.DotnetProcess? inContainer = null) => profiler!.AttachAsync(inContainer);
+    public Task<Passenger.Core.Words?> AttachProfilerAsync(Passenger.Core.DotnetProcess? inContainer = null) => profiler!.AttachAsync(inContainer);
 
     /// <summary>Get Snapshot: the run ended and its snapshot read, or why there is none.</summary>
     public Task<SnapshotRead> SnapshotAsync() => profiler!.SnapshotAsync();

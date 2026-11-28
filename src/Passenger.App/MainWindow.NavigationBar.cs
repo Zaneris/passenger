@@ -14,7 +14,7 @@ public partial class MainWindow
     {
         Editors.NavigationOutlineOf = document => document.Syntax is { } syntax ? new CSharp.CSharpOutline(syntax, document.Text) : session.OutlineOf(document);
         Editors.NavigationListRequested += (_, list) => ShowNavigationList(list);
-        Add(A.JumpToNavigationBar, "Jump to Navigation Bar", "Navigate", _ => IdeErrors.Observe(JumpToNavigationBarAsync()),
+        Add(A.JumpToNavigationBar, ActionTitles.JumpToNavigationBar, ActionGroups.Navigate, _ => IdeErrors.Observe(JumpToNavigationBarAsync()),
             c => c.ByAgent ? Refusals.PersonsKeys : Refusals.NeedsFile(c) ?? (Editors.Active is { } file && Editors.NavigationOutlineOf(file) is null ? Refusals.NoOutline(file.Name) : null),
             ("Navigate", 1, 6), words: ["Breadcrumbs", "Navigation Bar", "Focus Breadcrumbs"]);
     }
@@ -38,7 +38,7 @@ public partial class MainWindow
     /// chosen gone to in the bar's group with the keys given to its editor.</summary>
     private void ShowNavigationList(NavigationList list)
     {
-        SymbolPopup popup = new(list.Title, "Filter by name, CamelHumps too", async (query, cancel) =>
+        SymbolPopup popup = new(list.Title, NavigationWords.OutlineFilter, async (query, cancel) =>
         {
             string filter = query.Trim();
             return filter.Length == 0 ? list.Rows : await BackgroundWork.Run(() => Navigator.FilterOutline(list.Rows, filter), cancel);

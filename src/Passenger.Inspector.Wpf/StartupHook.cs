@@ -37,6 +37,8 @@ internal static class StartupHook
     private static void Start(string socket, string? project)
     {
         InspectorTrace.Step($"the startup hook, on thread {Environment.CurrentManagedThreadId} ({Thread.CurrentThread.GetApartmentState()})");
+        // Before the app's first page loads, so a breakpoint in its XAML stops as that page is made.
+        Passenger.Inspector.Wpf.XamlStops.Begin();
         Passenger.Inspector.Wpf.Agent.Start(socket, Thread.CurrentThread, project);
     }
 

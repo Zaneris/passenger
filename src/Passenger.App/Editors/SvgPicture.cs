@@ -140,6 +140,11 @@ public sealed class SvgPicture : IImage
     /// <inheritdoc/>
     public void Draw(DrawingContext context, Rect sourceRect, Rect destRect) => context.Custom(new Drawing(this, sourceRect, destRect));
 
+    /// <summary>The whole picture drawn into a frame's place as an icon is: every colour of it as a look draws it, at an
+    /// opacity.</summary>
+    public void Draw(DrawingContext context, Rect destRect, IconLook look, double opacity) =>
+        context.Custom(new Drawing(this, new Rect(Size), destRect) { Look = look, Opacity = opacity });
+
     /// <summary>The picture drawn into a frame's place, the part of it asked for scaled to fill it.</summary>
     private sealed class Drawing(SvgPicture owner, Rect source, Rect dest) : ICustomDrawOperation
     {
@@ -147,7 +152,14 @@ public sealed class SvgPicture : IImage
 
         public bool HitTest(Point p) => dest.Contains(p);
 
-        public bool Equals(ICustomDrawOperation? other) => other is Drawing drawn && drawn.Owner == owner && drawn.Source == source && drawn.Dest == dest;
+        public bool Equals(ICustomDrawOperation? other) =>
+            other is Drawing drawn && drawn.Owner == owner && drawn.Source == source && drawn.Dest == dest && drawn.Look == Look && drawn.Opacity == Opacity;
+
+        /// <summary>How its colours are drawn.</summary>
+        public IconLook Look { get; init; } = IconLook.AsDrawn;
+
+        /// <summary>How much of it shows.</summary>
+        public double Opacity { get; init; } = 1;
 
         private SvgPicture Owner => owner;
 
@@ -164,14 +176,49 @@ public sealed class SvgPicture : IImage
             using ISkiaSharpApiLease lease = feature.Lease();
             SKCanvas canvas = lease.SkCanvas;
             SKRect cull = owner.picture.CullRect;
+            SKRect place = new((float)dest.Left, (float)dest.Top, (float)dest.Right, (float)dest.Bottom);
+            using SKColorFilter? filter = Filter(Look);
+            using SKPaint? washed = Look.Changes || Opacity < 1 ? new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(Math.Clamp(Opacity, 0, 1) * 255)), ColorFilter = filter } : null;
+            if (washed is not null)
+            {
+                canvas.SaveLayer(place, washed);
+            }
             canvas.Save();
-            canvas.ClipRect(new SKRect((float)dest.Left, (float)dest.Top, (float)dest.Right, (float)dest.Bottom));
+            canvas.ClipRect(place);
             canvas.Translate((float)dest.X, (float)dest.Y);
             canvas.Scale((float)(dest.Width / source.Width), (float)(dest.Height / source.Height));
             canvas.Translate((float)-source.X - cull.Left, (float)-source.Y - cull.Top);
             canvas.DrawPicture(owner.picture);
             canvas.Restore();
+            if (washed is not null)
+            {
+                canvas.Restore();
+            }
             GC.KeepAlive(owner.svg);
+        }
+
+        /// <summary>A look's steps as one filter, each after the one before it; null where it changes nothing.</summary>
+        private static SKColorFilter? Filter(IconLook look)
+        {
+            if (!look.Changes)
+            {
+                return null;
+            }
+            SKColorFilter? filter = null;
+            foreach (float[] step in look.Steps)
+            {
+                SKColorFilter next = SKColorFilter.CreateColorMatrix(step);
+                if (filter is null)
+                {
+                    filter = next;
+                    continue;
+                }
+                SKColorFilter both = SKColorFilter.CreateCompose(next, filter);
+                filter.Dispose();
+                next.Dispose();
+                filter = both;
+            }
+            return filter;
         }
 
         public void Dispose()

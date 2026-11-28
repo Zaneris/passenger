@@ -33,7 +33,7 @@ public sealed record BrowserDebugging(ChromiumFound Browser, string Proxy, Uri P
         (string Program, IReadOnlyList<string> Arguments)? named = PageBrowsers.Named(chosen?.Line);
         if (chosen is not null && named is ({ } program, _) && ChromiumBrowsers.NotChromium(program))
         {
-            return (null, Refusals.NotChromium(chosen.Where, program));
+            return (null, Refusals.NotChromium(chosen.Where, program).Shown);
         }
         if (ChromiumBrowsers.Find(named) is not { } browser)
         {

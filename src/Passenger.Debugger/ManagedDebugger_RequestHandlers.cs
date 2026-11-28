@@ -14,10 +14,16 @@ using ZLinq;
 namespace Passenger.Debugger;
 
 /// <summary>A line breakpoint as asked for; <paramref name="RunTo"/> holds it for Run to Cursor, its next hit stopping whatever
-/// its condition, hit count and <paramref name="Suspend"/> say.</summary>
+/// its condition, hit count and <paramref name="Suspend"/> say; <paramref name="Key"/>, <paramref name="WaitFor"/>,
+/// <paramref name="Temporary"/>, <paramref name="Snapshot"/>, <paramref name="Captures"/> and <paramref name="CaptureLimit"/>
+/// as <see cref="IHitBreakpoint"/> has them.</summary>
 public record BreakpointRequest(int Line, string? Condition = null, string? HitCondition = null, int? Column = null, string? LogMessage = null, bool? Suspend = null,
-    bool RunTo = false) : IAskedBreakpoint;
-public record FunctionBreakpointRequest(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null) : IAskedBreakpoint;
+    bool RunTo = false, int? Key = null, int? WaitFor = null, bool Temporary = false, bool Snapshot = false, string? Captures = null, int? CaptureLimit = null) : IAskedBreakpoint;
+
+/// <summary>A function breakpoint as asked for: a method by its name (<see cref="FunctionBreakpointPattern"/>), and what a line
+/// breakpoint asks of its hits.</summary>
+public record FunctionBreakpointRequest(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
+    int? Key = null, int? WaitFor = null, bool Temporary = false, bool Snapshot = false, string? Captures = null, int? CaptureLimit = null) : IAskedBreakpoint;
 public record ExceptionBreakpointRequest(ExceptionBreakpointFilter Filter, string? Condition = null);
 public enum ExceptionBreakpointFilter { All, UserUnhandled }
 
@@ -241,7 +247,7 @@ public partial class ManagedDebugger
     /// saying why.</summary>
     private static bool RefusedUnread(BreakpointManager.BreakpointInfo bp)
     {
-        if (Unreadable(bp.Condition, bp.HitCondition, bp.LogMessage) is not { } unreadable)
+        if ((Unreadable(bp.Condition, bp.HitCondition, bp.LogMessage) ?? (bp.Snapshot ? UnreadableCapture(bp.Captures, bp.CaptureLimit) : null)) is not { } unreadable)
         {
             return false;
         }
@@ -351,10 +357,12 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>The client's continue: the program runs on from the stop shown, all its threads.</summary>
-    public void Continue()
+    /// <summary>The client's continue: the program runs on from the stop shown, all its threads; forced (Force Run to Cursor)
+    /// past every breakpoint but Run to Cursor's.</summary>
+    public void Continue(bool force = false)
     {
-        _logger?.Invoke("Continue");
+        _logger?.Invoke(force ? "Continue, forced" : "Continue");
+        _forcing = force;
         ForgetReturnedValues();
         Continue(clearVariables: true, allowSuperfluous: true);
     }
@@ -429,21 +437,21 @@ public partial class ManagedDebugger
     private bool StepOutToManagedCode(ICorDebugThread thread)
     {
         ICorDebugFrame? top = TopFrame(thread);
-        if (!_justMyCode && _stoppedByEvent != thread.Id && LibraryInNativeCall(thread) is { } caller)
+        if (!JustMyCodeNow && _stoppedByEvent != thread.Id && LibraryInNativeCall(thread) is { } caller)
         {
             _logger?.Invoke($"Paused in native code {FrameTold(caller)} called: the step runs out of it");
             BeginStep(caller.CreateStepper(), thread, caller, justMyCode: false, stepper => stepper.StepOut());
             Continue(clearVariables: true);
             return true;
         }
-        if (top is ICorDebugILFrame && (!_justMyCode || _stoppedByEvent == thread.Id || IsUserCodeFrame(top)))
+        if (top is ICorDebugILFrame && (!JustMyCodeNow || _stoppedByEvent == thread.Id || IsUserCodeFrame(top)))
         {
             return false;
         }
         _logger?.Invoke(top is ICorDebugILFrame
             ? $"Paused in {FrameTold(top)}, outside the user's code: the step runs out to the user's code"
             : $"Paused in {(top is null ? "native code" : FrameTold(top))}: the step runs out to managed code");
-        BeginStep(thread.CreateStepper(), thread, null, _justMyCode, stepper => stepper.StepOut());
+        BeginStep(thread.CreateStepper(), thread, null, JustMyCodeNow, stepper => stepper.StepOut());
         Continue(clearVariables: true);
         return true;
     }
@@ -483,10 +491,11 @@ public partial class ManagedDebugger
     }
 
     /// <summary>Steps a thread on, or refuses saying why: a step answered as taken that never set the program going would
-    /// leave the IDE waiting for a stop that never comes. An async method's step over an await is the async stepper's.</summary>
-    public async Task Step(int threadId, StepType type)
+    /// leave the IDE waiting for a stop that never comes. An async method's step over an await is the async stepper's. A
+    /// forced one (Force Step Into and Over) steps without Just My Code and passes every breakpoint by.</summary>
+    public async Task Step(int threadId, StepType type, bool force = false)
     {
-        _logger?.Invoke($"{type} on thread {threadId}");
+        _logger?.Invoke($"{type} on thread {threadId}{(force ? ", forced" : string.Empty)}");
         _lastStep = type;
         ArgumentNullException.ThrowIfNull(_process);
         if (!_threads.TryGetValue(threadId, out ThreadInfo? threadInfo))
@@ -503,6 +512,7 @@ public partial class ManagedDebugger
         {
             throw new InvalidOperationException("A step operation is already in progress");
         }
+        _forcing = force;
         ForgetReturnedValues();
         _stepBegan = null;
         if (StepsAfterEvaluation(threadId, type))
@@ -566,6 +576,8 @@ public partial class ManagedDebugger
             BreakpointRequest request = breakpoints[i];
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateBreakpoint(filePath, request.Line, request.Column, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.Request = request;
+            (bp.Key, bp.WaitFor, bp.Temporary) = (request.Key, request.WaitFor, request.Temporary);
+            (bp.Snapshot, bp.Captures, bp.CaptureLimit) = (request.Snapshot, request.Captures, request.CaptureLimit);
             bp.HitCount = matched[i].Hits;
             if (RefusedUnread(bp))
             {
@@ -609,6 +621,8 @@ public partial class ManagedDebugger
             FunctionBreakpointRequest request = breakpoints[i];
             BreakpointManager.BreakpointInfo bp = _breakpointManager.CreateFunctionBreakpoint(request.Name, request.Condition, request.HitCondition, request.LogMessage, request.Suspend);
             bp.FunctionRequest = request;
+            (bp.Key, bp.WaitFor, bp.Temporary) = (request.Key, request.WaitFor, request.Temporary);
+            (bp.Snapshot, bp.Captures, bp.CaptureLimit) = (request.Snapshot, request.Captures, request.CaptureLimit);
             bp.HitCount = matched[i].Hits;
             if (RefusedUnread(bp))
             {
@@ -869,7 +883,7 @@ public partial class ManagedDebugger
             stackFrameInfo.Name = GetMethodFormattedName(module, kickoffMethodToken ?? function.Token, ilFrame.TypeParameters);
             SourceInfo? sourceInfo = GetSourceInfoAtFrame(ilFrame, decompiled);
             // A method its own code says is not the user's ([DebuggerNonUserCode] and kin) is shown as external code.
-            stackFrameInfo.IsUserCode = module.IsUserCode && !(_justMyCode && module.MetadataReader.IsNonUserCode(function.Token));
+            stackFrameInfo.IsUserCode = module.IsUserCode && !(JustMyCodeNow && module.MetadataReader.IsNonUserCode(function.Token));
             stackFrameInfo.IsResolved = module.MetadataReader.HasSymbols;
             if (sourceInfo is not null)
             {
@@ -947,12 +961,12 @@ public partial class ManagedDebugger
             return result;
         }
 
-        ICorDebugValue[] localVariables = ilFrame.LocalVariables;
+        int localVariables = LocalCountOf(ilFrame);
         ICorDebugValue[] arguments = ilFrame.Arguments;
         ICorDebugThread? thread = _threads.GetValueOrDefault(threadId.Value)?.Thread;
         ArgumentNullException.ThrowIfNull(thread);
         bool hasCurrentException = thread.TryGetCurrentException(out _) is Cor.S_OK;
-        if (localVariables.Length is 0 && arguments.Length is 0 && !hasCurrentException && !HasReturnedValues(threadId, frameStackDepth))
+        if (localVariables is 0 && arguments.Length is 0 && !hasCurrentException && !HasReturnedValues(threadId, frameStackDepth))
         {
             return result;
         }
@@ -969,7 +983,11 @@ public partial class ManagedDebugger
 
     /// <summary>What a reference names: a frame's locals, an object's members, an array's elements, a collection's
     /// results. One from an earlier stop is refused, the program having run on since.</summary>
-    public async Task<List<VariableInfo>> GetVariables(int variablesReferenceInt)
+    public Task<List<VariableInfo>> GetVariables(int variablesReferenceInt) => GetVariables(variablesReferenceInt, int.MaxValue);
+
+    /// <summary>What a reference names, an array's ranges and elements made only to <paramref name="most"/> rows, as a capture
+    /// reads within what it has left.</summary>
+    public async Task<List<VariableInfo>> GetVariables(int variablesReferenceInt, int most)
     {
         List<VariableInfo> result = new List<VariableInfo>();
 
@@ -1026,11 +1044,18 @@ public partial class ManagedDebugger
                 if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
                 {
                     await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, referenceValue: variablesReference.ObjectValue, declared: variablesReference.Declared,
-                        expression: AsOwnType(variablesReference.Expression, variablesReference.Declared, arrayValue.ExactType));
+                        expression: AsOwnType(variablesReference.Expression, variablesReference.Declared, arrayValue.ExactType), most: most);
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {
-                    if (OpenedBy(objectValue.ExactType) is ({ } presentation, int own))
+                    if (CodeMayNotRun && StoredOf(objectValue) is { } stored)
+                    {
+                        // Its items as its debugger view gives them, read from what it stores, its fields under them.
+                        await AddStoredItems(stored, variablesReference.ThreadId, variablesReference.FrameStackDepth, variablesReference.Expression, result);
+                        result.Add(GroupRow(DapRows.RawView, new VariablesReference(StoredReferenceKind.RawView, variablesReference.ObjectValue, variablesReference.ThreadId,
+                            variablesReference.FrameStackDepth, null, Declared: variablesReference.Declared, Expression: variablesReference.Expression)));
+                    }
+                    else if (OpenedBy(objectValue.ExactType) is ({ } presentation, int own))
                     {
                         await AddPresentedRows(variablesReference, objectValue, presentation, own, result);
                     }
@@ -1080,7 +1105,7 @@ public partial class ManagedDebugger
             {
                 ICorDebugArrayValue arrayValue = (ICorDebugArrayValue)variablesReference.ObjectValue!.UnwrapDebugValue();
                 await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, variablesReference.ArrayIndices, variablesReference.ArrayStartOffset, variablesReference.ArrayCount, variablesReference.ObjectValue,
-                    variablesReference.Declared, variablesReference.Expression);
+                    variablesReference.Declared, variablesReference.Expression, most);
             }
             if (variablesReference.Copied)
             {
@@ -1190,6 +1215,10 @@ public partial class ManagedDebugger
     private async Task<VariableInfo> EvaluateInFrame(string expression, int? frameId, string named)
     {
         _logger?.Invoke($"Evaluate: {expression}");
+        if (CollectedMark(expression.Trim()) is { } collected)
+        {
+            return FailedRow(named, collected);
+        }
         CompiledExpressionEvaluationContext evalContext = ContextOf(frameId);
         (ThreadId threadId, FrameStackDepth frameStackDepth) = (evalContext.ThreadId, evalContext.StackDepth);
         ArgumentNullException.ThrowIfNull(_expressionEvaluator);

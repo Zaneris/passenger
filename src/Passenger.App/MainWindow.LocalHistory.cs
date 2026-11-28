@@ -35,31 +35,31 @@ public partial class MainWindow
 
     private void AddLocalHistory()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, "Local History", IconKeys.History, () => localHistoryView = new LocalHistoryView(),
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, ToolWindowTitles.LocalHistory, IconKeys.History, () => localHistoryView = new LocalHistoryView(),
             Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Tools = () => localHistoryView?.Tabs,
         });
         // The menus' names, and Find Action's (Show Local History...) beside the Git window's Show History.
-        actions!.Add(new IdeAction(AppActions.ShowLocalHistory, "Show Local History…", "Local History", context => ShowLocalHistory(Target(context, fileOnly: false)!))
+        actions!.Add(new IdeAction(AppActions.ShowLocalHistory, ActionTitles.ShowLocalHistory, ActionGroups.LocalHistory, context => ShowLocalHistory(Target(context, fileOnly: false)!))
         {
-            TitleIn = _ => "Show History…",
+            TitleIn = _ => ActionTitles.ShowLocalHistoryInMenu,
             WhyNot = context => NeedsFolder(context) ?? WhyNoTarget(context, fileOnly: false),
             Menus = [new MenuPlace(LocalHistoryMenu, 0, 0)],
         });
-        actions.Add(new IdeAction(AppActions.ShowProjectHistory, "Show Local History for Project…", "Local History", _ => ShowLocalHistory(Folder!))
+        actions.Add(new IdeAction(AppActions.ShowProjectHistory, ActionTitles.ShowProjectHistory, ActionGroups.LocalHistory, _ => ShowLocalHistory(Folder!))
         {
-            TitleIn = _ => "Show Project History…",
+            TitleIn = _ => ActionTitles.ShowProjectHistoryInMenu,
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 0)],
         });
-        actions.Add(new IdeAction(AppActions.RecentChanges, "Recent Changes", "Local History", context => IdeErrors.Observe(ShowRecentChangesAsync()))
+        actions.Add(new IdeAction(AppActions.RecentChanges, ActionTitles.RecentChanges, ActionGroups.LocalHistory, context => IdeErrors.Observe(ShowRecentChangesAsync()))
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 1)],
         });
-        actions.Add(new IdeAction(AppActions.PutLabel, "Put Label…", "Local History", _ => ShowPutLabel())
+        actions.Add(new IdeAction(AppActions.PutLabel, ActionTitles.PutLabel, ActionGroups.LocalHistory, _ => ShowPutLabel())
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 2)],
@@ -68,7 +68,7 @@ public partial class MainWindow
         // What an agent's Passenger on the same state kept while the person was away is listed as they come back.
         Activated += (_, _) => session.LocalHistory?.LookAgain();
         // A refactoring's activity; another action since (a quick fix) is not the refactoring.
-        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.TrimEnd('…') : null;
+        actions.Running += (_, running) => refactoring = running.Action.Menus.Any(m => m.Path == "Refactor") ? running.Action.Title.Shown.TrimEnd('…') : null;
         // What a refactoring writes to files not open is one change set under its name; a quick fix's is not named.
         Editors.Recording = () =>
         {
@@ -120,7 +120,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history || Folder is not { } folder)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         string full = PathNames.Canonical(path);
@@ -141,7 +141,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history || Folder is not { } open)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         using Working? reading = BeginWork(AppActions.RecentChanges, "Reading the recent changes…");
@@ -151,8 +151,8 @@ public partial class MainWindow
         }
         IReadOnlyList<HistoryEvent> events = history.Snapshot().Events;
         IReadOnlyList<HistoryRow> rows = await BackgroundWork.Run(() => HistoryRows.OfFolder(events, open));
-        ChoicePopup popup = new("Recent Changes", "Search by name",
-            [.. rows.Select(r => new Choice(r.Title, ToolWindows.GitLogView.When(r.Time), r))], "There are no changes");
+        ChoicePopup popup = new(History.HistoryWords.RecentChanges, History.HistoryWords.SearchByName,
+            [.. rows.Select(r => new Choice(r.Title, ToolWindows.GitLogView.When(r.Time), r))], History.HistoryWords.NoRecentChanges);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is HistoryRow row)
@@ -168,7 +168,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history)
         {
-            status.Text = Refusals.NoFolder;
+            status.Text = Refusals.NoFolder.Shown;
             return null;
         }
         NamePopup popup = new("Put Label", string.Empty, name =>
@@ -192,7 +192,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history || Folder is not { } folder)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         string full = PathNames.Canonical(path);
         bool isFolder = Directory.Exists(full);
@@ -217,7 +217,7 @@ public partial class MainWindow
     {
         if (session.LocalHistory is not { } history)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         List<string> refused = [];
         // A file deleted then is followed as its delete goes; one written may come back, with the folders it was in.

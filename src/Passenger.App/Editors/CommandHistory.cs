@@ -67,6 +67,12 @@ public sealed class CommandHistory
     /// file's next undo step would take; in the Solution view (no file), the first being made that has changed anything.</summary>
     public Recording? Making(OpenDocument? document) => making.FirstOrDefault(r => r.Changed(document));
 
+    /// <summary>Whether a command is being made, its recording not yet ended, or taken back or made again.</summary>
+    public bool IsMaking => making.Count > 0 || putting is not null;
+
+    /// <summary>A command's recording ended, kept or not, or an Undo or Redo of one did.</summary>
+    public event EventHandler? Ended;
+
     /// <summary>Whether a write of a file not open is asked for or under way and has yet to end.</summary>
     public bool IsWriting(string path) => turns.Any(t => !t.Ended && t.Paths.Contains(path));
 
@@ -155,7 +161,7 @@ public sealed class CommandHistory
         {
             writing = Work?.Begin(WritingFiles, stage, stoppable: false);
         }
-        else if (writing.Stage != stage)
+        else if (writing.Stage.Shown != stage)
         {
             writing.Say(stage);
         }
@@ -293,6 +299,7 @@ public sealed class CommandHistory
         {
             putting = null;
             ended.SetResult();
+            Ended?.Invoke(this, EventArgs.Empty);
             if (putDropped)
             {
                 putDropped = false;
@@ -1309,7 +1316,7 @@ public sealed class CommandHistory
             // None is written where one is read-only by where it lies (a package's), whatever queued it.
             if (files.Select(f => f.At).FirstOrDefault(ReadOnlyFiles.Holds) is { } kept)
             {
-                return (kept, new IOException(ReadOnlyFiles.Refused(kept, Path.GetFileName(kept))));
+                return (kept, new IOException(ReadOnlyFiles.Refused(kept, Path.GetFileName(kept))?.English));
             }
             (List<ChangeMade> made, (string Path, Exception Refused)? refused) = await history.InTurnAsync(name, [.. files.Select(f => f.At).Distinct(PathNames.Comparer)], wrote =>
             {
@@ -1440,6 +1447,7 @@ public sealed class CommandHistory
             finally
             {
                 ending.SetResult();
+                history.Ended?.Invoke(history, EventArgs.Empty);
             }
         }
 

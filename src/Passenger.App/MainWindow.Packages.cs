@@ -16,7 +16,7 @@ public partial class MainWindow
 
     private void AddPackages()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.NuGet, "NuGet", IconKeys.Package, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.NuGet, ToolWindowTitles.NuGet, IconKeys.Package, () =>
         {
             ToolWindows.NuGetView view = nuget = new ToolWindows.NuGetView(session.Packages);
             view.LinkClicked += (_, link) => Browse(link);
@@ -31,10 +31,20 @@ public partial class MainWindow
             Tools = () => nuget?.Tabs,
             Menus = [new MenuPlace("Tools", 0, 0)],
         });
-        actions!.Add(new IdeAction(AppActions.NuGetRefresh, "Refresh NuGet", "NuGet", _ => IdeErrors.Observe(NuGet.RefreshAskedAsync())) { WhyNot = NeedsFolder });
-        actions.Add(new IdeAction(AppActions.NuGetUpdateAll, "Update All NuGet Packages", "NuGet", _ => IdeErrors.Observe(NuGet.UpdateAllAsync()))
+        actions!.Add(new IdeAction(AppActions.NuGetRefresh, ActionTitles.NuGetRefresh, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.RefreshAskedAsync())) { WhyNot = NeedsFolder });
+        actions.Add(new IdeAction(AppActions.NuGetUpdateAll, ActionTitles.NuGetUpdateAll, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.UpdateAllAsync()))
         {
             WhyNot = c => NeedsFolder(c) ?? NuGet.UpdateAllWhyNot,
+        });
+        // The NuGet window's chosen package, so asked of its view only once built: no package is chosen before.
+        actions.Add(new IdeAction(AppActions.NuGetUpdateEverywhere, ActionTitles.NuGetUpdateEverywhere, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.UpdateEverywhereAsync()))
+        {
+            WhyNot = c => NeedsFolder(c) ?? (nuget is { } shown ? shown.UpdateEverywhereWhyNot : Refusals.NoPackageChosen),
+            Words = ["Update Package Everywhere", "Update in Every Project"],
+        });
+        actions.Add(new IdeAction(AppActions.NuGetUpdateSelected, ActionTitles.NuGetUpdateSelected, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.UpdateSelectedAsync()))
+        {
+            WhyNot = c => NeedsFolder(c) ?? (nuget is { } shown ? shown.UpdateSelectedWhyNot : Refusals.UpdatesNotShown),
         });
     }
 
@@ -144,6 +154,35 @@ public partial class MainWindow
                     : CSharp.RefactorOutcome.Refused(outcome.Failure($"{outcome.Name} failed") ?? $"{outcome.Name} failed");
             },
         })];
+    }
+
+    /// <summary>A project's restore read off the window's thread for the Explorer, whose packages then open to the packages
+    /// each brings (<see cref="Explorer.ExplorerTree.ShowRestored"/>); never a restore of its own.</summary>
+    private async Task ShowRestoredAsync(string project)
+    {
+        ProjectSession at = session;
+        if (at.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model)
+        {
+            return;
+        }
+        RestoredVersions read = await BackgroundWork.Run(() => at.Packages.RestoredSince(model));
+        if (session == at)
+        {
+            Explorer.Tree.ShowRestored(project, read);
+        }
+    }
+
+    /// <summary>A restore written, by whatever ran it, or changes lost: each restore the Explorer shows read again, which a
+    /// file not written since costs only a look at its time and length.</summary>
+    private void RestoresWritten(FolderChanges changes)
+    {
+        if (changes.Restored.Count > 0 || changes.Lost)
+        {
+            foreach (string project in Explorer.Tree.RestoresShown.ToList())
+            {
+                IdeErrors.Observe(ShowRestoredAsync(project));
+            }
+        }
     }
 
     /// <summary>A nuget.config written, made or deleted on disk: the folder's sources read again, once they have been, and

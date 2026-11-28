@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Mcp;
 
@@ -8,26 +10,19 @@ namespace Passenger.App.Mcp;
 /// no answer, and Escape and closing answer no.</summary>
 public sealed class AgentAdmissionDialog : IdeWindow
 {
-    public const string Allow = "Allow";
-    public const string DontAllow = "Don't allow";
-
-    private readonly CheckBox always = new() { Content = "Always for this folder" };
+    private readonly CheckBox always = new() { [ShownWords.ContentProperty] = McpWords.AlwaysHere };
 
     public AgentAdmissionDialog(string agent, string? folder)
     {
-        Button allow = new() { Content = Allow, Classes = { StyleClasses.Primary } };
-        Button dontAllow = new() { Content = DontAllow, IsCancel = true };
+        Button allow = new() { [ShownWords.ContentProperty] = McpWords.Allow, Classes = { StyleClasses.Primary } };
+        Button dontAllow = new() { [ShownWords.ContentProperty] = McpWords.DontAllow, IsCancel = true };
         allow.Click += (_, _) => Answer(Admission.Allowed);
         dontAllow.Click += (_, _) => Answer(Admission.NotAllowed);
 
-        string where = folder is null ? "this window" : Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        DialogFooter.Question(this, $"{agent} wants to work in this window",
+        Words where = folder is null ? McpWords.ThisWindow : Words.Verbatim(Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+        DialogFooter.Question(this, McpWords.WantsWindow(Words.Verbatim(agent)),
         [
-            DialogFooter.Paragraph($"It asked through Passenger's MCP server. Allowed, it can read and search {where}, see the window, save files, stop "
-                + "what runs and step through what is debugged; Passenger asks you before each other kind of change, such as an edit, a "
-                + "build, a run, a breakpoint or code run in the debugged program, which you allow once or for its session, or every "
-                + "tool at once when it asks. Enable MCP Server in Settings lets agents in without asking, and Settings' MCP Server page "
-                + "lists the folders allowed always, each to take back."),
+            DialogFooter.Paragraph(McpWords.AdmissionSays(where)),
         ], DialogFooter.Answers(allow, dontAllow), always);
     }
 

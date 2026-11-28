@@ -8,6 +8,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Workspace;
 
@@ -31,11 +32,11 @@ public sealed class WelcomeView : UserControl
         Classes.Add(StyleClasses.Welcome);
         Image mark = new() { Classes = { StyleClasses.WelcomeMark }, Source = new Bitmap(AssetLoader.Open(new Uri("avares://Passenger/Assets/passenger.png"))) };
         RenderOptions.SetBitmapInterpolationMode(mark, BitmapInterpolationMode.HighQuality);
-        TextBlock title = new() { Classes = { StyleClasses.WelcomeTitle }, Text = "Welcome to Passenger" };
+        TextBlock title = new() { Classes = { StyleClasses.WelcomeTitle }, [ShownWords.TextProperty] = WelcomeWords.WelcomeTitle };
         TextBlock subtitle = new()
         {
             Classes = { StyleClasses.WelcomeSubtitle },
-            Text = $"Version {Product.Version}. Start a new solution, open a solution, project, folder or file, or clone a repository.",
+            [ShownWords.TextProperty] = WelcomeWords.Subtitle(Words.Verbatim(Product.Version)),
             TextWrapping = TextWrapping.Wrap,
         };
         Grid hero = new() { Classes = { StyleClasses.WelcomeHero }, ColumnDefinitions = new ColumnDefinitions("Auto,*") };
@@ -44,15 +45,15 @@ public sealed class WelcomeView : UserControl
         hero.Children.Add(mark);
         hero.Children.Add(new StackPanel { [Grid.ColumnProperty] = 1, VerticalAlignment = VerticalAlignment.Center, Children = { title, subtitle } });
 
-        NewSolutionButton = Action(IconKeys.Add, "New Solution", "From a template");
+        NewSolutionButton = Action(IconKeys.Add, WelcomeWords.NewSolution, WelcomeWords.FromTemplate);
         NewSolutionButton.Click += (_, _) => NewSolutionRequested?.Invoke(this, EventArgs.Empty);
-        Button openSolution = Action(IconKeys.Solution, "Open Solution", "A solution or project");
+        Button openSolution = Action(IconKeys.Solution, WelcomeWords.OpenSolution, WelcomeWords.SolutionOrProject);
         openSolution.Click += (_, _) => OpenSolutionRequested?.Invoke(this, EventArgs.Empty);
-        Button openFolder = Action(IconKeys.FolderOpen, "Open Folder", "A folder of code");
+        Button openFolder = Action(IconKeys.FolderOpen, WelcomeWords.OpenFolder, WelcomeWords.FolderOfCode);
         openFolder.Click += (_, _) => OpenFolderRequested?.Invoke(this, EventArgs.Empty);
-        Button openFile = Action(IconKeys.DocumentText, "Open File", "Any file, on its own");
+        Button openFile = Action(IconKeys.DocumentText, WelcomeWords.OpenFile, WelcomeWords.AnyFile);
         openFile.Click += (_, _) => OpenFileRequested?.Invoke(this, EventArgs.Empty);
-        Button clone = Action(IconKeys.Branch, "Clone Repository", "From a Git URL");
+        Button clone = Action(IconKeys.Branch, WelcomeWords.CloneRepository, WelcomeWords.FromGitUrl);
         clone.Click += (_, _) => CloneRequested?.Invoke(this, EventArgs.Empty);
         WrapPanel actions = new() { Classes = { StyleClasses.WelcomeActions }, Children = { NewSolutionButton, openSolution, openFolder, openFile, clone } };
         // As many across as fit whole, in rows as even as they go, so no tile is cut off at its edge or left alone in a row.
@@ -65,8 +66,8 @@ public sealed class WelcomeView : UserControl
             actions.ItemWidth = Math.Floor((e.NewSize.Width - (across - 1) * gap) / across);
         };
 
-        TextBlock recent = new() { Classes = { StyleClasses.WelcomeSection }, Text = "Recent solutions", VerticalAlignment = VerticalAlignment.Center };
-        search = SearchBox.Of("Search recent solutions");
+        TextBlock recent = new() { Classes = { StyleClasses.WelcomeSection }, [ShownWords.TextProperty] = WelcomeWords.RecentSolutions, VerticalAlignment = VerticalAlignment.Center };
+        search = SearchBox.Of(WelcomeWords.SearchRecent);
         search.Classes.Add(StyleClasses.WelcomeSearch);
         Grid.SetColumn(search, 1);
         search.TextChanged += (_, _) => Filter();
@@ -93,11 +94,11 @@ public sealed class WelcomeView : UserControl
         ListKeys.Search(search, list, OpenChosen);
         ListMenus.Attach(list, () => list.SelectedItem is not RecentRow chosen ? [] :
         [
-            ListMenus.Open("Open", () => Chosen?.Invoke(this, chosen)),
+            ListMenus.Open(WelcomeWords.Open, () => Chosen?.Invoke(this, chosen)),
             ListMenus.Item(FileManager.Showing, () => RevealRequested?.Invoke(this, chosen), chosen.Missing ? Refusals.RecentGone : null),
-            ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
+            ListMenus.Item(SharedWords.CopyPath, () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
             new Separator(),
-            ListMenus.Remove("Remove from Recent Solutions", () => RemoveRequested?.Invoke(this, chosen)),
+            ListMenus.Remove(WelcomeWords.RemoveFromRecent, () => RemoveRequested?.Invoke(this, chosen)),
         ]);
         empty = new EmptyState();
 
@@ -160,13 +161,13 @@ public sealed class WelcomeView : UserControl
     private const double ActionWidth = 200;
 
     /// <summary>One of the page's actions: its icon, its name, and in a few words what it opens.</summary>
-    private static Button Action(string icon, string name, string hint)
+    private static Button Action(string icon, Words name, Words hint)
     {
         PathIcon glyph = new() { Classes = { StyleClasses.WelcomeActionIcon } };
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(icon));
         Border chip = new() { Classes = { StyleClasses.WelcomeActionChip }, Child = glyph, VerticalAlignment = VerticalAlignment.Center };
-        TextBlock label = new() { Classes = { StyleClasses.WelcomeActionTitle }, Text = name, TextTrimming = TextTrimming.CharacterEllipsis };
-        TextBlock what = new() { Classes = { StyleClasses.WelcomeActionHint }, Text = hint, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock label = new() { Classes = { StyleClasses.WelcomeActionTitle }, [ShownWords.TextProperty] = name, TextTrimming = TextTrimming.CharacterEllipsis };
+        TextBlock what = new() { Classes = { StyleClasses.WelcomeActionHint }, [ShownWords.TextProperty] = hint, TextTrimming = TextTrimming.CharacterEllipsis };
         DockPanel.SetDock(chip, Dock.Left);
         return new Button
         {
@@ -246,7 +247,7 @@ public sealed class WelcomeView : UserControl
         list.ItemsSource = shown;
         int chosen = was is null ? -1 : shown.FindIndex(r => r.Path == was.Path);
         list.SelectedIndex = shown.Count == 0 ? -1 : chosen >= 0 ? chosen : Math.Min(at, shown.Count - 1);
-        empty.Text = all.Count == 0 ? "No recent solutions yet\nThe solutions, projects and folders you open are listed here" : "Nothing matches";
+        empty.Say(all.Count == 0 ? WelcomeWords.NoRecent : SharedWords.NothingMatches);
         empty.IsVisible = shown.Count == 0;
         if (focused && list.SelectedIndex >= 0)
         {
@@ -279,7 +280,7 @@ public sealed class WelcomeView : UserControl
         DockPanel.SetDock(badge, Dock.Left);
         line.Children.Add(badge);
         TextBlock gone = ListRow.DetailText();
-        gone.Text = "Missing";
+        ShownWords.Set(gone, TextBlock.TextProperty, WelcomeWords.Missing);
         gone.Bind(TextBlock.ForegroundProperty, gone.GetResourceObservable(TokenKeys.Warning));
         line.Children.Add(gone);
         Border kind = Tags.Of(null, TokenKeys.Text, TokenKeys.Hover);
@@ -295,11 +296,11 @@ public sealed class WelcomeView : UserControl
             name.Classes.Set(StyleClasses.Muted, row.Missing);
             where.Text = row.Shown;
             gone.IsVisible = row.Missing;
-            Tags.WordsOf(kind).Text = Kind(row.Path);
+            ShownWords.Set(Tags.WordsOf(kind), TextBlock.TextProperty, Kind(row.Path));
         });
     }
 
     /// <summary>What a recent path opens as: a solution file, a solution filter, a project opened alone, or a folder.</summary>
-    private static string Kind(string path) =>
-        SolutionFilter.Is(path) ? "Solution Filter" : WorkspaceModel.IsSolution(path) ? "Solution" : WorkspaceModel.IsProject(path) ? "Project" : "Folder";
+    private static Words Kind(string path) =>
+        SolutionFilter.Is(path) ? WelcomeWords.SolutionFilter : WorkspaceModel.IsSolution(path) ? WelcomeWords.Solution : WorkspaceModel.IsProject(path) ? WelcomeWords.Project : WelcomeWords.Folder;
 }

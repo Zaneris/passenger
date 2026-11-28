@@ -9,8 +9,9 @@ using Passenger.Languages;
 namespace Passenger.App.Settings;
 
 /// <summary>Where a setting's own row stands in Settings and what finds it: its page, its label, the words a search
-/// matches beside those, and a note under its editor where what it does needs saying.</summary>
-public sealed record SettingRow(string Page, string Label, string Words, string? Note = null)
+/// matches beside those, and a note under its editor where what it does needs saying. Its label and note are words said in
+/// the person's language; their English names the row wherever code and agents name it.</summary>
+public sealed record SettingRow(string Page, Words Label, string Searched, Words? Note = null)
 {
     /// <summary>Whether its row takes effect under the settings as they stand, and why not where not: a row another greys
     /// while it is off (a line length while wrapping is off).</summary>
@@ -21,7 +22,7 @@ public sealed record SettingRow(string Page, string Label, string Words, string?
     public EditorConfigOver? Over { get; init; }
 
     /// <summary>The note as Settings shows it: its own words, then the keys that say over it.</summary>
-    public string? NoteShown => Over is null ? Note : Note is null ? Over.Words : $"{Note} {Over.Words}";
+    public Words? NoteShown => Over is null ? Note : Note is null ? Over.Words : SettingsWords.NoteThenOver(Note, Over.Words);
 }
 
 /// <summary>What a row takes effect under, and the words said on it while it does not.</summary>
@@ -35,6 +36,10 @@ public sealed record EditorConfigOver(IReadOnlyList<string> Keys, Language? File
 
     /// <summary>What the row's note says of them.</summary>
     public string Words => $"A file's .editorconfig says over this by {Plural.Either(Keys)}.";
+
+    /// <summary>What a file's .editorconfig sets of them, as "key = value", where it sets one; null where it sets none.</summary>
+    public string? SetIn(Func<string, string?> conventions) =>
+        Keys.Concat(Aliases).Select(k => conventions(k) is { } value ? $"{k} = {value}" : null).FirstOrDefault(s => s is not null);
 
     /// <summary>Whether a key (as an .editorconfig's reader lowers it) is one of them.</summary>
     public bool Names(string key) => Keys.Contains(key, StringComparer.Ordinal) || Aliases.Contains(key, StringComparer.Ordinal);
@@ -96,16 +101,39 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
     public override AppSettings Other(AppSettings settings) => set(settings, !get(settings));
 
     public override IReadOnlyList<string> EditorConfigValues => ["true", "false"];
+
+    /// <summary>Whether it is on in <paramref name="settings"/>.</summary>
+    public bool Of(AppSettings settings) => get(settings);
+
+    /// <summary>The settings with it turned on or off.</summary>
+    public AppSettings With(AppSettings settings, bool on) => set(settings, on);
 }
 
 /// <summary>A number held between <paramref name="min"/> and <paramref name="max"/>, edited by a spin box in steps of
 /// <paramref name="step"/>, its unit after it where it has one; one that may be left unset (<paramref name="given"/> false)
 /// shows the value in force and stays unset until changed.</summary>
 public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSettings, double, AppSettings> set, double min, double max, double step,
-    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null) : Setting(row)
+    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null, Func<AppSettings, string?>? refused = null,
+    (string Words, Func<AppSettings, AppSettings> Unset)? same = null) : Setting(row)
 {
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) =>
-        unit is null ? Box(now, change) : WithUnit(Box(now, change), unit);
+        same is { } follows && given is not null ? Following(now, change, follows) : unit is null ? Box(now, change) : WithUnit(Box(now, change), unit);
+
+    /// <summary>The box beside a check of <paramref name="follows"/>'s words, which, checked, gives the value back to what it
+    /// follows where none is given, the box greyed showing that value; unchecked, the value shown is given.</summary>
+    private NarrowingField Following(AppSettings now, Action<Func<AppSettings, AppSettings>> change, (string Words, Func<AppSettings, AppSettings> Unset) follows)
+    {
+        NumericUpDown box = Box(now, change);
+        CheckBox check = new() { Content = follows.Words, IsChecked = !given!(now), VerticalAlignment = VerticalAlignment.Center };
+        box.IsEnabled = !check.IsChecked.Value;
+        check.IsCheckedChanged += (_, _) =>
+        {
+            bool following = check.IsChecked == true;
+            box.IsEnabled = !following;
+            change(s => following ? follows.Unset(s) : set(s, get(s)));
+        };
+        return new NarrowingField(box, check) { Most = OptionRow.NumberWidth };
+    }
 
     /// <summary>A number box with its unit after it, the box as wide as a number's where there is room.</summary>
     public static NarrowingField WithUnit(NumericUpDown box, string unit) =>
@@ -135,6 +163,11 @@ public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSetting
     public override AppSettings FilledIn(AppSettings settings) => given is not null && !given(settings) ? set(settings, get(settings)) : settings;
 
     public override AppSettings Other(AppSettings settings) => set(settings, get(settings) == min ? max : min);
+
+    /// <summary>Why the value the settings come to with it changed is refused (<paramref name="refused"/>, which may weigh it
+    /// against another setting's), naming the setting; null where it is left as it was or allowed.</summary>
+    public override string? Refused(AppSettings was, AppSettings now) =>
+        refused is not null && get(now) != get(was) && refused(now) is { } why ? $"{Row!.Label.English} ({SettingsDialog.PlaceOfPage(Row.Page)}) {why}" : null;
 }
 
 /// <summary>A size chosen from a drop-down of <paramref name="sizes"/> (1.5 shown as 150%), from the least to the most: the
@@ -330,7 +363,7 @@ public sealed class VimKeysSetting(string property, Func<AppSettings, string> ge
 
     public override string? Refused(AppSettings was, AppSettings now) =>
         get(now) != get(was) && Named(get(now)).FirstOrDefault(k => !Keys.Contains(k)) is { } unknown
-            ? $"{Row!.Label} ({SettingsDialog.PlaceOfPage(Row.Page)}) has no key {unknown}: its keys are {Plural.Listed(Keys)}, a space between each"
+            ? $"{Row!.Label.English} ({SettingsDialog.PlaceOfPage(Row.Page)}) has no key {unknown}: its keys are {Plural.Listed(Keys)}, a space between each"
             : null;
 
     public override AppSettings Other(AppSettings settings) => set(settings, Joined(Given(settings), Keys[0], !Given(settings).Contains(Keys[0])));
@@ -398,7 +431,7 @@ public sealed class ProgramSetting(Func<AppSettings, string?> get, Func<AppSetti
     public override AppSettings Other(AppSettings settings) => set(settings, get(settings) is null ? "program" : null);
 
     public override string? Refused(AppSettings was, AppSettings now) => get(now) is { } line && line != get(was) && Run.CommandLine.NamesNoProgram(line)
-        ? $"{Row!.Label} {line.Trim()} ({SettingsDialog.PlaceOfPage(Row.Page)}) {NamesNone}"
+        ? $"{Row!.Label.English} {line.Trim()} ({SettingsDialog.PlaceOfPage(Row.Page)}) {NamesNone}"
         : null;
 }
 
@@ -509,7 +542,7 @@ public sealed class FontSetting(string property, Func<AppSettings, string?> get,
 
     public override string? Refused(AppSettings was, AppSettings now) =>
         Trimmed(get(now)) is { } name && !string.Equals(name, Trimmed(get(was)), StringComparison.OrdinalIgnoreCase) && fonts.WhyNot(name) is { } why
-            ? $"{Row!.Label} {name} ({SettingsDialog.PlaceOfPage(Row.Page)}) {why}"
+            ? $"{Row!.Label.English} {name} ({SettingsDialog.PlaceOfPage(Row.Page)}) {why}"
             : null;
 
     private static string? Trimmed(string? name) => string.IsNullOrWhiteSpace(name) ? null : name.Trim();

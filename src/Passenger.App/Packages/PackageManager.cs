@@ -140,7 +140,7 @@ public sealed class PackageManager
         // dotnet's restore runs the project's MSBuild and its packages' build targets.
         if (!WorkspaceTrust.Trusts(folder))
         {
-            Line?.Invoke(this, Refusals.Untrusted);
+            Line?.Invoke(this, Refusals.Untrusted.Shown);
             return false;
         }
         for (int attempt = 1; ; attempt++)

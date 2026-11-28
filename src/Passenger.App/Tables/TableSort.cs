@@ -77,6 +77,12 @@ public sealed class SortedTable(Table source, int by, bool descending, int[] ord
 
     public override CellValue ValueOf(int row, int column) => source.ValueOf(order[row], column);
 
+    public override object? ValueAt(int row, int column) => source.ValueAt(order[row], column);
+
+    public override string TypeOf(int column) => source.TypeOf(column);
+
+    public override RowWriter? Inserts(TextWriter into, string lineBreak) => source.Inserts(into, lineBreak);
+
     public override string Header(int column) => source.Header(column);
 
     public override int RowNumber(int row) => source.RowNumber(order[row]);
@@ -89,7 +95,13 @@ public sealed class SortedTable(Table source, int by, bool descending, int[] ord
 
     public override bool IsNewRow(int row) => source.IsNewRow(order[row]);
 
+    public override bool IsAbsent(int row, int column) => source.IsAbsent(order[row], column);
+
     public override string? DeleteTitle(int rows) => source.DeleteTitle(rows);
+
+    public override CellMark MarkOf(int row, int column) => source.MarkOf(order[row], column);
+
+    public override CellMark RowMark(int row) => source.RowMark(order[row]);
 
     public override Table Unsorted => source;
 

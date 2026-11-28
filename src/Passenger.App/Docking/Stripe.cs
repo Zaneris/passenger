@@ -1,5 +1,4 @@
 using Avalonia;
-using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
@@ -52,7 +51,7 @@ internal sealed class Stripe : Border
         PathIcon dots = new();
         dots.Bind(PathIcon.DataProperty, dots.GetResourceObservable(IconKeys.More));
         more = new ToggleButton { Classes = { StyleClasses.Stripe }, Content = dots, IsVisible = false, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, Gaps.Tight, 0, 0) };
-        ToolButtons.Tip(more, "More Tool Windows");
+        ToolButtons.Tip(more, DockingWords.MoreToolWindows);
         more.Click += (_, _) => ShowMore();
         StackPanel sides = new() { [DockPanel.DockProperty] = Dock.Top, Children = { groups[upper], gap, groups[lower], more } };
         groups[bottom].VerticalAlignment = VerticalAlignment.Bottom;
@@ -152,7 +151,7 @@ internal sealed class Stripe : Border
             shortcuts[window] = window.Action is { } action ? KeyWords.Of(keymap, action) : null;
         }
         button.IsChecked = window.IsShown;
-        ToolTip.SetTip(button, ActionTips.Named(window.Title, shortcuts[window]));
+        ShownWords.Set(button, ToolTip.TipProperty, ActionTips.Named(window.Title, shortcuts[window]));
         return button;
     }
 
@@ -160,8 +159,7 @@ internal sealed class Stripe : Border
     {
         PathIcon glyph = new();
         glyph.Bind(PathIcon.DataProperty, glyph.GetResourceObservable(window.Icon));
-        ToggleButton button = new() { Classes = { StyleClasses.Stripe }, Content = glyph, Tag = window.Id };
-        AutomationProperties.SetName(button, window.Title);
+        ToggleButton button = new() { Classes = { StyleClasses.Stripe }, Content = glyph, Tag = window.Id, [ShownWords.NameProperty] = window.Title };
         button.AddHandler(PointerPressedEvent, (_, e) => host.Drag.Begin(window, e), RoutingStrategies.Tunnel, handledEventsToo: true);
         button.AddHandler(PointerMovedEvent, (_, e) => host.Drag.Continue(e), RoutingStrategies.Tunnel, handledEventsToo: true);
         button.AddHandler(PointerReleasedEvent, (_, e) =>

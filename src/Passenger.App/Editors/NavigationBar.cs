@@ -476,12 +476,6 @@ public sealed class NavigationBar
         }
 
         /// <summary>A row's kind in words, as a screen reader says it after the row's name.</summary>
-        private static string KindWords(SymbolKind kind) => kind switch
-        {
-            SymbolRow.HeadingKind => "heading",
-            SymbolRow.NodeKind => "node",
-            SymbolRow.FileKind => "file",
-            _ => SymbolKinds.Name(kind),
-        };
+        private static string KindWords(SymbolKind kind) => SymbolRow.KindWords(kind)[0];
     }
 }

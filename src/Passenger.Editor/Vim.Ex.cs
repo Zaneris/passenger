@@ -29,8 +29,8 @@ public sealed partial class Vim
     private VimResult OneEx(string line, TextSnapshot text, SelectionSet selections, IVimView view)
     {
         VimResult result = ExCommand(line, text, selections, view);
-        // One that changes the text or moves the carets sets the column j and k aim for afresh.
-        wantedFor = result.Edits is { Count: > 0 } || (result.Selections is { } moved && !moved.SameAs(selections)) ? null : wantedFor;
+        // One that changes the text or places the carets, even where they stand, sets the column j and k aim for afresh.
+        wantedFor = result.Edits is { Count: > 0 } || result.Selections is not null ? null : wantedFor;
         return view.Refuses is { } why && result.Edits is { Count: > 0 } ? Refused(why) : result;
     }
 
@@ -135,10 +135,11 @@ public sealed partial class Vim
             case "m" or "mo" or "move" or "t" or "co" or "cop" or "copy":
                 return MovedOrCopied(name[0] == 'm', trimmed, first, end, caretLine, text, view);
             case "j" or "join":
-                // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column.
+                // Equal ends join nothing, nor the last line: the caret goes to the range's line, in its column, j and k's kept where it stays.
                 return (bothEnds && first == end ? null : Join(text, SelectionSet.Single(text.GetLineStart(first)), Math.Max(2, end - first + 1), view, spaced: !bang, Options.JoinSpaces)) is { } joined
                     ? new VimResult(true, Edits: [OnFirstNonBlank(text, joined, first)])
-                    : new VimResult(true, SelectionSet.Single(InColumn(text, first, selections.Primary.Caret)));
+                    : InColumn(text, first, selections.Primary.Caret) is var stays && stays == selections.Primary.Caret
+                        ? new VimResult(true) : new VimResult(true, SelectionSet.Single(stays));
             case ">" or ">>" or ">>>" or "<" or "<<" or "<<<":
                 Stretch shifted = Whole(text, first, end, text.GetLineStart(first));
                 VimResult moved = Shift(text, SelectionSet.Single(text.GetLineStart(first)), [shifted], name[0] == '>', view, name.Length);
@@ -676,7 +677,8 @@ public sealed partial class Vim
         int at = op == "y" ? caret : text.GetLineStart(first);
         VimResult result = Act(new Command([], 0, register, op, "line", null), op, [Whole(text, first, end, at) with { Landing = at }], text, SelectionSet.Single(at), view);
         lastChange = keep;
-        return result;
+        // :y places no caret, so the column j and k aim for is kept.
+        return op == "y" ? result with { Selections = null } : result;
     }
 
     /// <summary>:m and :t: the lines named moved, or copied, below the line the address after them names (0 for above the
@@ -821,9 +823,9 @@ public sealed partial class Vim
             if (Option(name) is not { } option)
             {
                 return Said(name is "sw" or "shiftwidth" or "ts" or "tabstop" or "et" or "expandtab" or "sts" or "softtabstop" or "ai" or "autoindent"
-                    ? $"{name} is the file's indent, which Settings › Editor and an .editorconfig set"
-                    : name is "nu" or "number" or "rnu" or "relativenumber" or "wrap" or "list" or "cursorline"
-                        ? $"{name} is one of Passenger's settings (Settings › Editor)"
+                    ? $"{name} is the file's indent, which its .editorconfig sets, else its own lines"
+                    : SettingOf(name) is { } setting
+                        ? $"{name} is Passenger's {setting} (Settings › Editor)"
                         : $"E518: Unknown option: {name}");
             }
             bool now = option.Get(Options);
@@ -841,6 +843,16 @@ public sealed partial class Vim
         }
         return new VimResult(true) { Message = answers.Count > 0 ? string.Join("  ", answers) : null, Highlight = highlight };
     }
+
+    /// <summary>The row of Settings' Editor page a Vim option is in Passenger, by the option's name or short name; null for
+    /// one Passenger has no row for.</summary>
+    private static string? SettingOf(string name) => name switch
+    {
+        "nu" or "number" => "Show line numbers",
+        "wrap" => "Soft-wrap these files",
+        "list" => "Show whitespaces",
+        _ => null,
+    };
 
     private static readonly (string Name, Func<VimOptions, bool> Get, Action<VimOptions, bool> Set)[] OptionTable =
     [

@@ -786,9 +786,7 @@ public sealed class GodotSceneTests : IClassFixture<GodotSceneTests.Game>
         Ui.Press(window, "ESCAPE");
         window.MouseMove(new Point(0, 0), RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
-        int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
-        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, RawInputModifiers.None);
+        Ui.RestOn(editor, editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains(until, StringComparison.Ordinal) == true, () => $"the card on {text}: {window.Assist.HoverText}");
         return window.Assist.HoverText!;
     }

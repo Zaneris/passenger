@@ -5,6 +5,7 @@ using Passenger.App.LiveTree;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.App.ToolWindows;
 
@@ -31,6 +32,9 @@ public enum ProblemsTab
 
     /// <summary>The breakpoints the programs debugged will not stop at, each at its line with why and how to put it right.</summary>
     Breakpoints,
+
+    /// <summary>The places the rule Run Inspection by Name ran last reports, by file, under what it ran.</summary>
+    Inspection,
 }
 
 /// <summary>A row of Problems: a group (a project or a file, with its count) or a problem, at its depth. A problem of the
@@ -107,6 +111,10 @@ public sealed class ProblemsModel
     private IReadOnlyList<Problem> containers = [];
     private IReadOnlyList<Problem> containerFiles = [];
     private IReadOnlyList<Problem>? godot;
+
+    /// <summary>The places the rule run by name last reports, and what that run came to; null before one.</summary>
+    private IReadOnlyList<Problem>? inspection;
+    private string inspectionSaid = string.Empty;
 
     /// <summary>What the Godot game launched last has raised, those not yet shown among them (<see cref="RaiseGodot"/>).</summary>
     private readonly List<Problem> godotRaised = [];
@@ -228,6 +236,7 @@ public sealed class ProblemsModel
         ProblemsTab.Containers => containers.Concat(containerFiles),
         ProblemsTab.Godot => godot ?? [],
         ProblemsTab.Breakpoints => breakpoints,
+        ProblemsTab.Inspection => inspection ?? [],
         _ => Problems,
     };
 
@@ -285,6 +294,7 @@ public sealed class ProblemsModel
         ProblemsTab.Containers => "Containers",
         ProblemsTab.Godot => "Godot",
         ProblemsTab.Breakpoints => "Breakpoints",
+        ProblemsTab.Inspection => "Inspection",
         _ => "Build",
     };
 
@@ -301,6 +311,7 @@ public sealed class ProblemsModel
             ProblemsTab.Containers => (TitleOf(tab), containers.Count + containerFiles.Count),
             ProblemsTab.Godot => (TitleOf(tab), godot?.Count ?? 0),
             ProblemsTab.Breakpoints => (TitleOf(tab), breakpoints.Count),
+            ProblemsTab.Inspection => (TitleOf(tab), inspection?.Count ?? 0),
             _ => (TitleOf(tab), Problems.Count),
         };
         // A filter counts what it shows.
@@ -309,7 +320,7 @@ public sealed class ProblemsModel
     }
 
     /// <summary>Whether a tab's button shows: the Solution tab with solution-wide analysis on, Hot Reload's after one, the
-    /// Containers tab while it has problems or is shown, Godot's once a Godot game was launched.</summary>
+    /// Containers tab while it has problems or is shown, Godot's once a Godot game was launched, Inspection's once a rule ran.</summary>
     internal bool HasTab(ProblemsTab tab) => tab switch
     {
         ProblemsTab.Solution => solution is not null,
@@ -317,16 +328,17 @@ public sealed class ProblemsModel
         ProblemsTab.Containers => containers.Count + containerFiles.Count > 0 || Shown == ProblemsTab.Containers,
         ProblemsTab.Godot => godot is not null,
         ProblemsTab.Breakpoints => breakpoints.Count > 0 || Shown == ProblemsTab.Breakpoints,
+        ProblemsTab.Inspection => inspection is not null,
         _ => true,
     };
 
     /// <summary>Why a problem of the tab shown has no fixes to offer, null where it has: none in Toolset, and a failed
     /// binding's are the nearest members of its source's type, when it has any.</summary>
     internal string? WhyNotFix(Problem problem) =>
-        problem.Path is null ? Refusals.ProblemNamesNoFile
+        (problem.Path is null ? Refusals.ProblemNamesNoFile
         : Shown == ProblemsTab.Toolset ? Refusals.ToolsetUnfixed
         : Shown == ProblemsTab.Bindings && !bindings.Any(b => b.Problem == problem && b.Failure.Nearest.Count > 0) ? Refusals.BindingUnfixed
-        : null;
+        : null)?.Shown;
 
     /// <summary>A problem gone to, as a double-click, Enter or Go to does.</summary>
     internal void GoTo(Problem problem) => Chosen?.Invoke(this, problem);
@@ -353,13 +365,60 @@ public sealed class ProblemsModel
         }
     }
 
+    /// <summary>The solution's errors the filter shows, in the Solution tab's order: by project, file, line and column.</summary>
+    public IReadOnlyList<Problem> SolutionErrorsListed
+    {
+        get
+        {
+            Problem[] errors = [.. (SolutionProblems ?? []).Where(p => p.Severity == ProblemSeverity.Error && Filter.Passes(p))];
+            Array.Sort(errors, ErrorOrder);
+            return errors;
+        }
+    }
+
+    /// <summary>The solution's error after a place (before it, going back), as the Solution tab lists them, wrapping at
+    /// either end: from a file listing none, the first (or the last); null where none is listed.</summary>
+    public Problem? SolutionErrorFrom(string? path, TextPosition at, bool forward)
+    {
+        IReadOnlyList<Problem> errors = SolutionErrorsListed;
+        if (errors.Count == 0)
+        {
+            return null;
+        }
+        if (path is null || errors.FirstOrDefault(e => PathNames.Same(e.Path ?? string.Empty, path)) is not { } there)
+        {
+            return forward ? errors[0] : errors[^1];
+        }
+        Problem here = there with { Position = at };
+        return forward ? errors.FirstOrDefault(e => ErrorOrder(e, here) > 0, errors[0]) : errors.LastOrDefault(e => ErrorOrder(e, here) < 0, errors[^1]);
+    }
+
+    /// <summary>Errors as the Solution tab lists them: by project, file, line and column.</summary>
+    private static readonly Comparison<Problem> ErrorOrder = static (a, b) =>
+    {
+        int order = string.CompareOrdinal(GroupOf(a), GroupOf(b));
+        order = order != 0 ? order : string.CompareOrdinal(a.Path ?? string.Empty, b.Path ?? string.Empty);
+        return order != 0 ? order : a.Position.CompareTo(b.Position);
+    };
+
+    /// <summary>A solution's problem chosen and scrolled to while the Solution tab shows, as a step to it goes there.</summary>
+    public void ChooseInSolution(Problem problem)
+    {
+        if (Shown == ProblemsTab.Solution && rows.FirstOrDefault(r => r.Problem == problem) is { } row)
+        {
+            chosen = row;
+            ChosenRowChanged?.Invoke(this, true);
+        }
+    }
+
     /// <summary>The tab shown.</summary>
     public ProblemsTab Shown
     {
         get;
         set
         {
-            field = (value == ProblemsTab.Solution && solution is null) || (value == ProblemsTab.HotReload && hotReload is null) ? ProblemsTab.File : value;
+            field = (value == ProblemsTab.Solution && solution is null) || (value == ProblemsTab.HotReload && hotReload is null)
+                || (value == ProblemsTab.Inspection && inspection is null) ? ProblemsTab.File : value;
             Refresh();
         }
     }
@@ -671,6 +730,31 @@ public sealed class ProblemsModel
     /// <summary>The breakpoints the programs debugged will not stop at, as the Breakpoints tab lists them.</summary>
     public IReadOnlyList<Problem> BreakpointProblems => breakpoints;
 
+    /// <summary>What a rule run by name reports, in the Inspection tab, shown, under what the run came to: the filter shows every
+    /// severity it reports at, as the rule was asked for whatever severity it has.</summary>
+    public void ShowInspection(string said, IReadOnlyList<Problem> problems)
+    {
+        inspection = Ordered(problems);
+        inspectionSaid = said;
+        ProblemFilter showing = Filter with
+        {
+            Errors = Filter.Errors || problems.Any(p => p.Severity == ProblemSeverity.Error),
+            Warnings = Filter.Warnings || problems.Any(p => p.Severity == ProblemSeverity.Warning),
+            Messages = Filter.Messages || problems.Any(p => p.Severity is not (ProblemSeverity.Error or ProblemSeverity.Warning)),
+        };
+        if (showing != Filter)
+        {
+            Filter = showing;
+        }
+        Shown = ProblemsTab.Inspection;
+    }
+
+    /// <summary>The places the rule run by name last reports, in their order; null before one ran.</summary>
+    public IReadOnlyList<Problem>? InspectionProblems => inspection;
+
+    /// <summary>What the rule run by name last came to, as the Inspection tab's first row says it.</summary>
+    public string InspectionSaid => inspectionSaid;
+
     /// <summary>The errors and warnings the Godot game launched last raised, in the order it raised them.</summary>
     public IReadOnlyList<Problem> GodotProblems => godot ?? [];
 
@@ -777,7 +861,7 @@ public sealed class ProblemsModel
         {
             case ProblemsTab.File:
                 FileRows(made, again);
-                EmptyText = fileName is null ? Refusals.NoFile : "No problems in this file";
+                EmptyText = (fileName is null ? Refusals.NoFile : "No problems in this file").Shown;
                 break;
             case ProblemsTab.Solution:
                 Grouped(made, (SolutionProblems ?? []).Where(Filter.Passes));
@@ -808,7 +892,7 @@ public sealed class ProblemsModel
                 {
                     made.Add(new ProblemRow(0, said, why, null));
                 }
-                EmptyText = "No failed bindings: those of an Avalonia or WPF app run or debugged here are listed as they fail";
+                EmptyText = "No failed bindings: those of an Avalonia, WPF or WinUI app run or debugged here are listed as they fail";
                 break;
             case ProblemsTab.HotReload:
                 made.Add(new ProblemRow(0, hotReloadSaid, null, null));
@@ -837,6 +921,11 @@ public sealed class ProblemsModel
             case ProblemsTab.Breakpoints:
                 Grouped(made, breakpoints.Where(Filter.Passes));
                 EmptyText = "Every breakpoint binds, or may yet as its code loads";
+                break;
+            case ProblemsTab.Inspection:
+                made.Add(new ProblemRow(0, inspectionSaid, null, null));
+                Grouped(made, (inspection ?? []).Where(Filter.Passes));
+                EmptyText = "The rule reports no place in the solution";
                 break;
             default:
                 Grouped(made, Problems.Where(Filter.Passes));

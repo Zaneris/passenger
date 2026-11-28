@@ -80,6 +80,13 @@ public sealed class Language
     private static readonly (string Scope, string Carried)[] EmbeddedAs =
         [("source.json.comments", "source.json"), ("source.json.lines", "source.json"), ("text.html.derivative", "text.html.basic")];
 
+    /// <summary>The grammars of what only a C# string holds, by the names <c>[StringSyntax]</c> and <c>lang=</c> give it: .NET's
+    /// date and time formats, coloured by Passenger's own grammar.</summary>
+    private static readonly (string[] Names, GrammarFile Grammar)[] StringsAlone =
+    [
+        (["Date", "Time", "DateTime", "DateTimeFormat", "DateOnlyFormat", "TimeOnlyFormat"], new GrammarFile("source.datetime-format", "datetime-format.tmLanguage.json")),
+    ];
+
     /// <summary>Grammars carried only for another's includes, each by the scope it names: YAML's, a grammar for each version
     /// of YAML and one for YAML embedded in another document, which YAML's own grammar reads by.</summary>
     private static readonly (string Scope, string File)[] Included =
@@ -89,8 +96,8 @@ public sealed class Language
         ("source.yaml.embedded", "yaml-embedded.tmLanguage.json"),
     ];
 
-    /// <summary>Each grammar's file by the scope it names, every language's and every one of <see cref="Included"/>, for
-    /// the grammars that embed others, and by the scopes of <see cref="EmbeddedAs"/>.</summary>
+    /// <summary>Each grammar's file by the scope it names, every language's, every one of <see cref="Included"/>, for the
+    /// grammars that embed others, and of <see cref="StringsAlone"/>, and by the scopes of <see cref="EmbeddedAs"/>.</summary>
     private static readonly Lazy<Dictionary<string, string>> GrammarFiles = new(() =>
     {
         Dictionary<string, string> files = All.Select(l => l.Grammar).OfType<GrammarFile>()
@@ -98,6 +105,10 @@ public sealed class Language
         foreach ((string scope, string file) in Included)
         {
             files[scope] = file;
+        }
+        foreach ((_, GrammarFile alone) in StringsAlone)
+        {
+            files[alone.Scope] = alone.File;
         }
         foreach ((string scope, string carried) in EmbeddedAs)
         {
@@ -196,6 +207,9 @@ public sealed class Language
     public static readonly Language Yaml = new("yaml", "YAML", ["*.yml", "*.yaml"], line: "#", indent: 2,
         grammar: new("source.yaml", "yaml.tmLanguage.json"), service: LanguageService.Yaml, spacesAlone: true);
 
+    public static readonly Language Protobuf = new("proto", "Protocol Buffers", ["*.proto"], line: "//", block: ("/*", "*/"), indent: 2,
+        grammar: new("source.proto", "proto3.tmLanguage.json"));
+
     public static readonly Language Markdown = new("markdown", "Markdown", ["*.md", "*.markdown"], block: ("<!--", "-->"), indent: 2,
         grammar: new("text.html.markdown", "markdown.tmLanguage.json"), reindentsPaste: false);
 
@@ -255,6 +269,25 @@ public sealed class Language
     public static readonly Language Gherkin = new("gherkin", "Gherkin", ["*.feature"], line: "#", indent: 2,
         grammar: new("text.gherkin.feature", "feature.tmLanguage.json"), folds: FoldScan.Gherkin, literals: Passenger.Workspace.Gherkin.FeatureReading.DocStringLines);
 
+    /// <summary>SQL, coloured by the SQL grammar VS Code carries, whichever database a console of it runs against.</summary>
+    public static readonly Language Sql = new("sql", "SQL", ["*.sql"], line: "--", block: ("/*", "*/"),
+        grammar: new("source.sql", "sql.tmLanguage.json"));
+
+    /// <summary>MongoDB's shell, as a console of a MongoDB connection is written (db.orders.find(…)), coloured by JavaScript's
+    /// grammar, which its calls and values are, and served by no language server.</summary>
+    public static readonly Language MongoDb = new("mongodb", "MongoDB", ["*.mongodb"], line: "//", block: ("/*", "*/"), indent: 2,
+        grammar: new("source.js", "JavaScript.tmLanguage.json"));
+
+    /// <summary>Redis's commands, as a console of a Redis connection is written (a command a line, a line of # a comment),
+    /// coloured by the shell's grammar, whose words, quotes and comments they are, and served by no language server.</summary>
+    public static readonly Language Redis = new("redis", "Redis", ["*.redis"], line: "#", indent: 2,
+        grammar: new("source.shell", "shell-unix-bash.tmLanguage.json"));
+
+    /// <summary>Cassandra's CQL, as a console of a Cassandra connection is written, coloured by SQL's grammar, whose words,
+    /// strings, names and comments it shares, and served by no language server.</summary>
+    public static readonly Language Cql = new("cql", "CQL", ["*.cql"], line: "--", block: ("/*", "*/"),
+        grammar: new("source.sql", "sql.tmLanguage.json"));
+
     /// <summary>Languages with no grammar here, commented as C's are or as scripts are.</summary>
     public static readonly Language Code = new("code", "Code", ["*.rs", "*.go", "*.java", "*.kt", "*.swift", "*.c", "*.h", "*.cpp"],
         line: "//", block: ("/*", "*/"));
@@ -313,6 +346,13 @@ public sealed class Language
     /// <summary>The file names it claims, though a language declared before it may claim a file first.</summary>
     public IReadOnlyList<FilePattern> Patterns => patterns;
 
+    /// <summary>The grammar a C# string marked by <c>[StringSyntax]</c> or a <c>lang=</c> comment is coloured by: its language's,
+    /// by its name as either gives it (Sql, Xml) compared with a language's id without case, else that of what only a string
+    /// holds (<see cref="StringsAlone"/>); null for one Passenger has none of.</summary>
+    internal static GrammarFile? GrammarOfEmbedded(string name) =>
+        All.FirstOrDefault(language => string.Equals(language.Id, name, StringComparison.OrdinalIgnoreCase))?.Grammar
+        ?? StringsAlone.FirstOrDefault(alone => alone.Names.Contains(name, StringComparer.OrdinalIgnoreCase)).Grammar;
+
     /// <summary>Every language's id, in the order declared, as a theme names a language it colours.</summary>
     public static IEnumerable<string> Ids => All.Select(l => l.Id);
 
@@ -328,6 +368,10 @@ public sealed class Language
         }
         return PlainText;
     }
+
+    /// <summary>The language whose names a file's name (and its folders, where a pattern names them) matches, or null where
+    /// none claims it.</summary>
+    public static Language? Claiming(string path) => All.FirstOrDefault(language => language.PatternOf(path) is not null);
 
     /// <summary>Whether a file can have no line that begins inside a string with nothing here to read it by: ignore patterns,
     /// and prose by its name, where a file matching no language may be any program's.</summary>

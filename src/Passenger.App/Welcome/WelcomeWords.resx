@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="WelcomeTitle" xml:space="preserve">
+    <value>Welcome to Passenger</value>
+    <comment>The Welcome page's and the first start's title.</comment>
+  </data>
+  <data name="Subtitle" xml:space="preserve">
+    <value>Version {version}. Start a new solution, open a solution, project, folder or file, or clone a repository.</value>
+    <comment>The Welcome page's words under its title; {version} is Passenger's.</comment>
+  </data>
+  <data name="NewSolution" xml:space="preserve">
+    <value>New Solution</value>
+    <comment>The Welcome page's action making a new solution.</comment>
+  </data>
+  <data name="FromTemplate" xml:space="preserve">
+    <value>From a template</value>
+    <comment>What New Solution makes its solution from.</comment>
+  </data>
+  <data name="OpenSolution" xml:space="preserve">
+    <value>Open Solution</value>
+    <comment>The Welcome page's action opening a solution or project.</comment>
+  </data>
+  <data name="SolutionOrProject" xml:space="preserve">
+    <value>A solution or project</value>
+    <comment>What Open Solution opens.</comment>
+  </data>
+  <data name="OpenFolder" xml:space="preserve">
+    <value>Open Folder</value>
+    <comment>The Welcome page's action opening a folder.</comment>
+  </data>
+  <data name="FolderOfCode" xml:space="preserve">
+    <value>A folder of code</value>
+    <comment>What Open Folder opens.</comment>
+  </data>
+  <data name="OpenFile" xml:space="preserve">
+    <value>Open File</value>
+    <comment>The Welcome page's action opening a file.</comment>
+  </data>
+  <data name="AnyFile" xml:space="preserve">
+    <value>Any file, on its own</value>
+    <comment>What Open File opens.</comment>
+  </data>
+  <data name="CloneRepository" xml:space="preserve">
+    <value>Clone Repository</value>
+    <comment>The Welcome page's action cloning a repository.</comment>
+  </data>
+  <data name="FromGitUrl" xml:space="preserve">
+    <value>From a Git URL</value>
+    <comment>What Clone Repository clones from.</comment>
+  </data>
+  <data name="RecentSolutions" xml:space="preserve">
+    <value>Recent solutions</value>
+    <comment>The Welcome page's heading over what was opened before.</comment>
+  </data>
+  <data name="SearchRecent" xml:space="preserve">
+    <value>Search recent solutions</value>
+    <comment>The Welcome page's search field.</comment>
+  </data>
+  <data name="Open" xml:space="preserve">
+    <value>Open</value>
+    <comment>A recent solution's row menu item opening it.</comment>
+  </data>
+  <data name="RemoveFromRecent" xml:space="preserve">
+    <value>Remove from Recent Solutions</value>
+    <comment>A recent solution's row menu item.</comment>
+  </data>
+  <data name="NoRecent" xml:space="preserve">
+    <value>No recent solutions yet
+The solutions, projects and folders you open are listed here</value>
+    <comment>The Welcome page's list before anything was opened.</comment>
+  </data>
+  <data name="Missing" xml:space="preserve">
+    <value>Missing</value>
+    <comment>A recent solution's mark where its file or folder is gone.</comment>
+  </data>
+  <data name="SolutionFilter" xml:space="preserve">
+    <value>Solution Filter</value>
+    <comment>What a recent path opens as.</comment>
+  </data>
+  <data name="Solution" xml:space="preserve">
+    <value>Solution</value>
+    <comment>What a recent path opens as.</comment>
+  </data>
+  <data name="Project" xml:space="preserve">
+    <value>Project</value>
+    <comment>What a recent path opens as.</comment>
+  </data>
+  <data name="Folder" xml:space="preserve">
+    <value>Folder</value>
+    <comment>What a recent path opens as.</comment>
+  </data>
+  <data name="Back" xml:space="preserve">
+    <value>Back</value>
+    <comment>The first start's link to the question before.</comment>
+  </data>
+  <data name="KeepDefaults" xml:space="preserve">
+    <value>Keep the Defaults</value>
+    <comment>The first start's link leaving every choice as it is.</comment>
+  </data>
+  <data name="VimOverKeys" xml:space="preserve">
+    <value>Vim mode over these keys</value>
+    <comment>The first start's switch turning Vim mode on over the keymap chosen.</comment>
+  </data>
+  <data name="PassengerLook" xml:space="preserve">
+    <value>Roomy and rounded, in deep blues</value>
+    <comment>Passenger's own theme in a few words, on its tile.</comment>
+  </data>
+  <data name="ChooseThemeContrast" xml:space="preserve">
+    <value>Your system asks for high contrast, so {contrast} shows while it does. Choose the theme for when it no longer asks, then dark or light. {place} changes either at any time.</value>
+    <comment>The first start's theme question while the system asks for high contrast; {place} is where Settings changes it.</comment>
+  </data>
+  <data name="ChooseTheme" xml:space="preserve">
+    <value>Choose a theme to begin, then dark or light. {place} changes either at any time.</value>
+    <comment>The first start's theme question; {place} is where Settings changes it.</comment>
+  </data>
+  <data name="DarkOrLight" xml:space="preserve">
+    <value>Dark or light</value>
+    <comment>The first start's second question's title.</comment>
+  </data>
+  <data name="ComesInBoth" xml:space="preserve">
+    <value>{theme} comes in both. {place} changes it at any time.</value>
+    <comment>The first start's dark or light question.</comment>
+  </data>
+  <data name="Dark" xml:space="preserve">
+    <value>Dark</value>
+    <comment>The first start's dark tile.</comment>
+  </data>
+  <data name="Light" xml:space="preserve">
+    <value>Light</value>
+    <comment>The first start's light tile.</comment>
+  </data>
+  <data name="YourKeys" xml:space="preserve">
+    <value>Your keys</value>
+    <comment>The first start's keymap question's title.</comment>
+  </data>
+  <data name="ChooseKeys" xml:space="preserve">
+    <value>Choose the keys your hands know. {keymap} changes them and any shortcut at any time, and {typing} turns Vim mode on or off.</value>
+    <comment>The first start's keymap question; {keymap} and {typing} are where Settings changes them.</comment>
+  </data>
+  <data name="VisualStudioMacKeys" xml:space="preserve">
+    <value>Visual Studio for Mac's keys</value>
+    <comment>A keymap tile's words on the Mac.</comment>
+  </data>
+  <data name="VisualStudioKeys" xml:space="preserve">
+    <value>Visual Studio's keys</value>
+    <comment>A keymap tile's words.</comment>
+  </data>
+  <data name="VsCodeMacKeys" xml:space="preserve">
+    <value>VS Code's keys on macOS</value>
+    <comment>A keymap tile's words on the Mac.</comment>
+  </data>
+  <data name="VsCodeKeys" xml:space="preserve">
+    <value>VS Code's keys</value>
+    <comment>A keymap tile's words.</comment>
+  </data>
+  <data name="IntelliJMacKeys" xml:space="preserve">
+    <value>IntelliJ IDEA's keys on macOS</value>
+    <comment>A keymap tile's words on the Mac.</comment>
+  </data>
+  <data name="IntelliJKeys" xml:space="preserve">
+    <value>IntelliJ IDEA's keys</value>
+    <comment>A keymap tile's words.</comment>
+  </data>
+  <data name="EmacsKeys" xml:space="preserve">
+    <value>Emacs's keys on every system</value>
+    <comment>A keymap tile's words.</comment>
+  </data>
+  <data name="FollowSystem" xml:space="preserve">
+    <value>Follow the system</value>
+    <comment>The first start's choice following the system's dark or light.</comment>
+  </data>
+  <data name="FollowSystemNow" xml:space="preserve">
+    <value>Follow the system ({variant, select, dark {dark} other {light}} now)</value>
+    <comment>The first start's choice following the system, saying what it is now.</comment>
+  </data>
+</root>

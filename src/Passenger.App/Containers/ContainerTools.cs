@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Formats.Tar;
-using System.IO.Compression;
 using System.Text.Json;
 using Passenger.App.Updates;
 using Passenger.Core;
@@ -109,10 +107,9 @@ public sealed record ContainerReach(ContainerEngine Engine, string Container, st
 }
 
 /// <summary>Passenger's container tools on this side (src/Passenger.ContainerTools runs inside): a copy for a container's
-/// system found on this machine or downloaded once (its own version's release, checked against that release's
-/// SHA256SUMS, into the state's cache through a temporary folder renamed), a container's system read once per image,
-/// and the tools put into a container: mounted at <see cref="Mounted"/> where Passenger starts it (<see cref="MountFor"/>),
-/// else copied to <see cref="Copied"/>. Any thread: nothing here touches the window.</summary>
+/// system found on this machine or downloaded once into the state's cache (<see cref="ReleaseAssets"/>), a container's
+/// system read once per image, and the tools put into a container: mounted at <see cref="Mounted"/> where Passenger starts
+/// it (<see cref="MountFor"/>), else copied to <see cref="Copied"/>. Any thread: nothing here touches the window.</summary>
 public static class ContainerTools
 {
     public const string Executable = "passenger-tools";
@@ -161,111 +158,24 @@ public static class ContainerTools
                 return folder;
             }
         }
-        string cached = Path.Combine(source.Cache, version, rid);
-        if (File.Exists(Path.Combine(cached, Executable)))
-        {
-            return cached;
-        }
-        // One download a system at a time in this process; another process's is kept as it lands (DownloadAsync).
-        SemaphoreSlim one = Downloads.GetOrAdd(cached, _ => new SemaphoreSlim(1, 1));
-        await one.WaitAsync(cancel).ConfigureAwait(false);
         try
         {
-            if (File.Exists(Path.Combine(cached, Executable)))
-            {
-                return cached;
-            }
-            return await DownloadAsync(source, version, rid, cached, say, cancel).ConfigureAwait(false);
+            return await ReleaseAssets.FolderAsync(source.Releases, Asset(rid), source.Cache, rid, Executable,
+                $"Passenger's container tools for {rid}", say, cancel,
+                unreached: Product.Version.StartsWith("0.1.", StringComparison.Ordinal) || !File.Exists(Path.Combine(AppContext.BaseDirectory, "LICENSE.txt"))
+                    ? $"a build of your own makes them with just container-tools {rid}" : null).ConfigureAwait(false);
         }
-        catch (ContainerToolsException failed) when (stale is not null)
+        catch (ReleaseAssetException failed)
         {
-            throw new ContainerToolsException($"{failed.Message} ({stale}, not this Passenger's {version}: just container-tools {rid} makes this version's)");
-        }
-        finally
-        {
-            one.Release();
+            throw new ContainerToolsException(stale is null ? failed.Message
+                : $"{failed.Message} ({stale}, not this Passenger's {version}: just container-tools {rid} makes this version's)");
         }
     }
-
-    /// <summary>The downloads under way, one a system's folder.</summary>
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Downloads = new(StringComparer.Ordinal);
 
     /// <summary>The version a folder's tools say they are (their assembly's informational version, less its commit), read
     /// from their files without running them; null when it cannot be read.</summary>
     public static string? VersionOf(string folder) =>
         AssemblyFacts.Read(Path.Combine(folder, $"{Executable}.dll"))?.InformationalVersion?.Split('+')[0];
-
-    /// <summary>The tools of a release downloaded, checked and unpacked into <paramref name="cached"/>.</summary>
-    private static async Task<string> DownloadAsync(ContainerToolsSource source, string version, string rid, string cached, Action<string>? say, CancellationToken cancel)
-    {
-        string tag = $"v{version}";
-        Uri release = new(source.Releases.Downloads, $"{tag}/");
-        string asset = Asset(rid);
-        string parent = Path.GetDirectoryName(cached)!;
-        Directory.CreateDirectory(parent);
-        string archive = Path.Combine(parent, $".{asset}.{Guid.NewGuid():N}");
-        string unpacking = Path.Combine(parent, $".{rid}.{Guid.NewGuid():N}");
-        try
-        {
-            say?.Invoke($"Downloading Passenger's container tools for {rid}");
-            string sums = await Releases.ReadTextAsync(new ReleaseFile("SHA256SUMS", new Uri(release, "SHA256SUMS"), 0), cancel).ConfigureAwait(false);
-            string? expected = sums.Split('\n').Select(line => line.Trim().Split(' ', 2, StringSplitOptions.TrimEntries))
-                .FirstOrDefault(parts => parts.Length == 2 && parts[1].TrimStart('*') == asset)?[0].ToLowerInvariant();
-            if (expected is null)
-            {
-                throw new ContainerToolsException($"The {tag} release's SHA256SUMS lists no {asset}");
-            }
-            string got = await Releases.DownloadAsync(new ReleaseFile(asset, new Uri(release, asset), 0), archive,
-                percent => say?.Invoke($"Downloading Passenger's container tools for {rid}: {percent}%"), cancel).ConfigureAwait(false);
-            if (got != expected)
-            {
-                IdeLog.Write(IdeLog.Debugger, $"{asset} of {tag} has SHA-256 {got}, where SHA256SUMS says {expected}: refused");
-                throw new ContainerToolsException($"The container tools downloaded for {rid} are not what the {tag} release's SHA256SUMS says they are, and were not used");
-            }
-            Directory.CreateDirectory(unpacking);
-            await using (FileStream file = File.OpenRead(archive))
-            await using (GZipStream unzipped = new(file, CompressionMode.Decompress))
-            {
-                await TarFile.ExtractToDirectoryAsync(unzipped, unpacking, overwriteFiles: false, cancel).ConfigureAwait(false);
-            }
-            if (!File.Exists(Path.Combine(unpacking, Executable)))
-            {
-                throw new ContainerToolsException($"{asset} of {tag} holds no {Executable}");
-            }
-            if (Directory.Exists(cached) && !File.Exists(Path.Combine(cached, Executable)))
-            {
-                // Something left with no tools in it, never a copy another Passenger put there whole.
-                Directory.Delete(cached, recursive: true);
-            }
-            try
-            {
-                Directory.Move(unpacking, cached);
-            }
-            catch (IOException) when (File.Exists(Path.Combine(cached, Executable)))
-            {
-                // Another Passenger's download landed while this one unpacked: theirs stays, and this one goes below.
-            }
-            return cached;
-        }
-        catch (Exception failed) when (failed is UpdateFailedException or UpdateRefusedException)
-        {
-            throw new ContainerToolsException($"Passenger's container tools for {rid} could not be downloaded ({failed.Message})"
-                + (Product.Version.StartsWith("0.1.", StringComparison.Ordinal) || !File.Exists(Path.Combine(AppContext.BaseDirectory, "LICENSE.txt"))
-                    ? $"; a build of your own makes them with just container-tools {rid}" : string.Empty));
-        }
-        catch (Exception failed) when (failed is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            throw new ContainerToolsException($"Passenger's container tools for {rid} could not be unpacked: {failed.Message}");
-        }
-        finally
-        {
-            File.Delete(archive);
-            if (Directory.Exists(unpacking))
-            {
-                Directory.Delete(unpacking, recursive: true);
-            }
-        }
-    }
 
     /// <summary>A container's programs reached through Passenger's tools: the tools there, else copied in for its system (a
     /// copy found here or downloaded from <paramref name="source"/>, <paramref name="say"/> telling each stage and a download's
@@ -297,8 +207,9 @@ public static class ContainerTools
     /// <summary>The engine's own processor, docker's name for it (amd64, arm64).</summary>
     public static async Task<string> EngineArchitectureAsync(ContainerEngine engine, CancellationToken cancel)
     {
-        // Podman's own docker has no server apart, nor Arch: the state reads its system from what it has.
-        if ((await engine.StateAsync(cancel: cancel).ConfigureAwait(false)) is { PodmanCli: true, ServerArch: { } arch })
+        // Podman's own docker has no server apart, nor Arch, WSL Containers' wslc no template: the state reads their systems.
+        EngineState read = await engine.StateAsync(cancel: cancel).ConfigureAwait(false);
+        if ((read.PodmanCli || read.IsWslc) && read.ServerArch is { } arch)
         {
             return arch;
         }
@@ -395,7 +306,7 @@ public static class ContainerTools
         }
         finally
         {
-            await engine.RunAsync(["rm", "-f", container], cancel: CancellationToken.None).ConfigureAwait(false);
+            await engine.RunAsync(ContainerLabels.RemovingWhole([container]), cancel: CancellationToken.None).ConfigureAwait(false);
         }
     }
 

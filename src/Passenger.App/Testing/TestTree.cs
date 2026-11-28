@@ -43,6 +43,7 @@ public sealed class TestNode : Observable, ITreeRow
     private long ticks;
     private bool isExpanded;
     private bool codeChanged;
+    private int shownTests;
 
     /// <summary>How many outcomes the method's run is waiting for.</summary>
     private int expected;
@@ -156,6 +157,14 @@ public sealed class TestNode : Observable, ITreeRow
     public bool HasChildren => Children.Count > 0;
 
     bool ITreeRow.Expands => HasChildren;
+
+    /// <summary>How many of the tests under it the tree's outcomes, search and session let through, as the outcomes' filters
+    /// count them: each data row, else each method, a test under two categories once.</summary>
+    public int ShownTests
+    {
+        get => shownTests;
+        internal set => Set(ref shownTests, value);
+    }
 
     /// <summary>The methods under this row, or the method itself; none under a data row.</summary>
     public IEnumerable<TestNode> Methods => Kind switch
@@ -519,7 +528,14 @@ public sealed class TestTree
     public Func<TestNode, ulong?>? CodeOf { get; set; }
 
     private HashSet<TestState> outcomes = [];
-    private string emptyText = string.Empty;
+    private Words emptyText = Words.Verbatim(string.Empty);
+    private readonly List<TestSession> sessions = [];
+
+    /// <summary>The session shown; null while every test is.</summary>
+    private TestSession? shown;
+
+    /// <summary>The session last shown, which Append to Session and Run Current Session take while every test is shown.</summary>
+    private TestSession? lastShown;
 
     public TreeRows<TestNode> Rows { get; } = [];
 
@@ -529,8 +545,17 @@ public sealed class TestTree
     /// <summary>Results came in during a run, of which there may be thousands: worth following a moment later.</summary>
     public event EventHandler? ResultApplied;
 
-    /// <summary>The grouping, the outcomes shown or the search changed.</summary>
+    /// <summary>The grouping, the outcomes shown, the search, the sessions or the one shown changed.</summary>
     public event EventHandler? ViewChanged;
+
+    /// <summary>The test sessions, in their tabs' order.</summary>
+    public IReadOnlyList<TestSession> Sessions => sessions;
+
+    /// <summary>The session the tree shows the tests of; null while it shows every test.</summary>
+    public TestSession? Shown => shown;
+
+    /// <summary>The session Append to Session adds to and Run Current Session runs: the one shown, else the one last shown.</summary>
+    public TestSession? Current => shown ?? lastShown;
 
     /// <summary>The tree's top rows: its projects in the default grouping, else the first level's groups.</summary>
     public IReadOnlyList<TestNode> Roots { get; private set; } = [];
@@ -548,12 +573,12 @@ public sealed class TestTree
     public string Search { get; private set; } = string.Empty;
 
     /// <summary>What the window says while the tree has no rows: why there are none yet.</summary>
-    public string EmptyText
+    public Words EmptyText
     {
         get => emptyText;
         set
         {
-            if (emptyText != value)
+            if (!emptyText.Equals(value))
             {
                 emptyText = value;
                 EmptyTextChanged?.Invoke(this, EventArgs.Empty);
@@ -624,7 +649,7 @@ public sealed class TestTree
     }
 
     /// <summary>How many tests are in each state, indexed by <see cref="TestState"/>: each data row of a method that has
-    /// them, else each method, counted once whatever it is grouped by.</summary>
+    /// them, else each method, counted once whatever it is grouped by; of the session shown alone.</summary>
     public int[] Counts()
     {
         int[] counts = new int[Enum.GetValues<TestState>().Length];
@@ -632,16 +657,106 @@ public sealed class TestTree
         {
             if (method.Children.Count == 0)
             {
-                counts[(int)method.State]++;
+                Count(method);
                 continue;
             }
             foreach (TestNode row in method.Children)
             {
-                counts[(int)row.State]++;
+                Count(row);
             }
         }
         return counts;
+
+        void Count(TestNode test)
+        {
+            if (shown is null || shown.Holds(test))
+            {
+                counts[(int)test.State]++;
+            }
+        }
     }
+
+    /// <summary>A new session of these tests, under this name or, where another has it, the name with a number after it;
+    /// shown at once.</summary>
+    public TestSession NewSession(string name, IEnumerable<SessionTest> tests)
+    {
+        string unique = name;
+        for (int number = 2; sessions.Any(s => s.Name == unique); number++)
+        {
+            unique = $"{name} ({number})";
+        }
+        TestSession made = new(unique, tests);
+        sessions.Add(made);
+        ShowSession(made);
+        return made;
+    }
+
+    /// <summary>Adds these tests to a session; false where it held them all already.</summary>
+    public bool AddTo(TestSession session, IEnumerable<SessionTest> tests) => Changed(session, session.Add(tests));
+
+    /// <summary>Takes these tests out of a session; false where it held none of them.</summary>
+    public bool TakeOut(TestSession session, IEnumerable<SessionTest> tests) => Changed(session, session.Remove(tests));
+
+    private bool Changed(TestSession session, bool changed)
+    {
+        if (changed)
+        {
+            if (session == shown)
+            {
+                OpenPassing();
+                ShowRows();
+            }
+            ViewChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return changed;
+    }
+
+    /// <summary>Closes a session, the one beside it shown where it was, every test where it was the last.</summary>
+    public void CloseSession(TestSession session)
+    {
+        int at = sessions.IndexOf(session);
+        if (at < 0)
+        {
+            return;
+        }
+        sessions.RemoveAt(at);
+        TestSession? beside = sessions.Count == 0 ? null : sessions[Math.Min(at, sessions.Count - 1)];
+        if (lastShown == session)
+        {
+            lastShown = beside;
+        }
+        if (shown == session)
+        {
+            ShowSession(beside);
+            return;
+        }
+        ViewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Shows a session's tests alone, or every test for none; one shown is the one Append and Run Current take.</summary>
+    public void ShowSession(TestSession? session)
+    {
+        shown = session is not null && sessions.Contains(session) ? session : null;
+        lastShown = shown ?? lastShown;
+        OpenPassing();
+        ShowRows();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The sessions as the folder kept them, the one it showed shown again.</summary>
+    public void Restore(IEnumerable<TestSession> kept, string? showing)
+    {
+        sessions.Clear();
+        sessions.AddRange(kept);
+        lastShown = sessions.FirstOrDefault(s => s.Name == showing) ?? sessions.LastOrDefault();
+        shown = sessions.FirstOrDefault(s => s.Name == showing);
+        OpenPassing();
+        ShowRows();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What a run of a session runs: each method it holds whole, and the data rows it holds of the others.</summary>
+    public List<TestNode> RunsOf(TestSession session, IEnumerable<TestNode> methods) => [.. methods.SelectMany(session.Runs).Distinct()];
 
     /// <summary>Opens every row that has rows under it.</summary>
     public void ExpandAll()
@@ -725,7 +840,7 @@ public sealed class TestTree
         }
     }
 
-    /// <summary>A method with no results of its own takes what was kept of it; whether it made rows that show.</summary>
+    /// <summary>A method with no results of its own takes what was kept of it; whether it made rows.</summary>
     private bool TakeKept(TestNode method)
     {
         if (method.Results.Count > 0 || method.Identity is not { } identity || running.Contains(identity))
@@ -870,7 +985,7 @@ public sealed class TestTree
                 method.Children.Remove(stale);
                 stale.Leave();
                 method.RaiseShape();
-                reshaped |= method.IsExpanded;
+                reshaped = true;
             }
             node.End();
         }
@@ -939,18 +1054,79 @@ public sealed class TestTree
     private void ShowRows()
     {
         HashSet<TestNode>? passing = Passing();
+        CountShown(passing);
         Rows.Show([.. Roots.SelectMany(r => Visible(r, includeSelf: true, passing))]);
     }
 
-    /// <summary>The rows the outcomes and search chosen let through: each test with one of the outcomes whose name, or
-    /// the name of a row above it, has the text, and every row above such a test; null while every row is.</summary>
+    /// <summary>Gives each row with tests under it how many of them <paramref name="passing"/> lets through (every one for
+    /// null), a test under two categories counted once by the groups above them.</summary>
+    private void CountShown(HashSet<TestNode>? passing)
+    {
+        HashSet<TestIdentity>? seen = Grouping.Contains(TestGroupLevel.Category) ? [] : null;
+        Stack<TestNode>? left = seen is null ? null : new();
+        foreach (TestNode root in Roots)
+        {
+            Count(root);
+        }
+
+        int Count(TestNode node)
+        {
+            if (node.IsLeaf)
+            {
+                return Passes(node) ? 1 : 0;
+            }
+            int sum = 0;
+            foreach (TestNode child in node.Children)
+            {
+                sum += Count(child);
+            }
+            node.ShownTests = seen is not null && left is not null && node.Kind is TestNodeKind.Project or TestNodeKind.Framework or TestNodeKind.Folder or TestNodeKind.Namespace
+                ? Distinct(node, seen, left)
+                : sum;
+            return sum;
+        }
+
+        // A group the categories are under: each test once, by its identity.
+        int Distinct(TestNode group, HashSet<TestIdentity> tests, Stack<TestNode> under)
+        {
+            tests.Clear();
+            int unknown = 0;
+            under.Push(group);
+            while (under.TryPop(out TestNode? node))
+            {
+                if (!node.IsLeaf)
+                {
+                    foreach (TestNode child in node.Children)
+                    {
+                        under.Push(child);
+                    }
+                }
+                else if (Passes(node) && node.Identity is { } identity)
+                {
+                    tests.Add(identity);
+                }
+                else if (Passes(node))
+                {
+                    unknown++;
+                }
+            }
+            return tests.Count + unknown;
+        }
+
+        bool Passes(TestNode test) => passing is null || passing.Contains(test);
+    }
+
+    /// <summary>The rows the outcomes and search chosen let through: each test of the session shown with one of the
+    /// outcomes whose name, or the name of a row above it, has the text, and every row above such a test; null while every
+    /// row is.</summary>
     private HashSet<TestNode>? Passing()
     {
-        if (outcomes.Count == 0 && Search.Length == 0)
+        if (outcomes.Count == 0 && Search.Length == 0 && shown is null)
         {
             return null;
         }
         HashSet<TestNode> passing = new(ReferenceEqualityComparer.Instance);
+        TestSession? session = this.shown;
         foreach (TestNode root in Roots)
         {
             Walk(root, named: false);
@@ -963,7 +1139,7 @@ public sealed class TestTree
             bool shown = false;
             if (node.IsLeaf)
             {
-                shown = named && (outcomes.Count == 0 || outcomes.Contains(node.State));
+                shown = named && (outcomes.Count == 0 || outcomes.Contains(node.State)) && (session is null || session.Holds(node));
             }
             else
             {
@@ -1349,7 +1525,8 @@ public sealed class TestTree
         TestNode row = new(TestNodeKind.Row, name, method) { Identity = method.Identity is { } identity ? identity with { Row = name } : null };
         method.Children.Add(row);
         method.RaiseShape();
-        reshaped |= method.IsExpanded;
+        // One more test the groups above it count, though its method is closed.
+        reshaped = true;
         return row;
     }
 

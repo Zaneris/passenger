@@ -114,7 +114,7 @@ public partial class MainWindow
         HashSet<string> dependents = [.. following.Values.SelectMany(d => d)];
         // One whose name there is a folder holding it would go to the Trash with what it replaced: it stays, said, unasked.
         string[] holding = [.. paths.Where(p => !dependents.Contains(p) && PathNames.IsUnder(p, Path.Combine(into, Path.GetFileName(p))))];
-        List<string> unput = [.. holding.Select(p => Refusals.ReplacesItsFolder(Path.GetFileName(p)))];
+        List<string> unput = [.. holding.Select(p => Refusals.ReplacesItsFolder(Path.GetFileName(p)).Shown)];
         if (holding.Length > 0)
         {
             HashSet<string> staying = new([.. holding, .. holding.SelectMany(p => following[p])], PathNames.Comparer);
@@ -198,6 +198,8 @@ public partial class MainWindow
         string? unfollowed = !copy ? FollowMoved(moved, recording) ?? await FollowGodotAsync(moved, recording, kept)
             : put.Count > 0 && InShared(put) ? IntoShared([.. put.SelectMany(FilesAt)], recording)
             : null;
+        // A folder a project kept empty lets its item go once something came into it, as does one moved out of its project.
+        unfollowed ??= put.Count > 0 ? KeepFolders([], put, [.. moved.Select(m => m.From)], recording) : null;
         if (unfollowed is not null)
         {
             refused.Add(unfollowed);
@@ -359,6 +361,11 @@ public partial class MainWindow
                 naming.Add((Now(launches), false, path => SolutionLaunch.Move(path, before, after, moved)));
             }
         }
+        if (Folder is { } top)
+        {
+            // The folder's runs name their parts' projects, packages and folders from its top, which stays.
+            naming.Add((RunsFile.PathIn(top), false, path => RunsFile.Move(path, moved)));
+        }
         foreach (ProjectModel project in session.Workspace?.Projects ?? [])
         {
             string now = Now(project.Path);
@@ -474,13 +481,14 @@ public partial class MainWindow
 
     /// <summary>Whether the editor's Cut, Copy, Paste, Delete (Backspace too), Undo or Redo is the Explorer's here: its
     /// row's menu asked, or its rows have the keys (the Edit menu of the Mac's menu bar runs them where the keys
-    /// are).</summary>
+    /// are); Undo and Redo the window's commands too while the Commit window has the keys outside its message, so a stage
+    /// or a stash dropped there is taken back there.</summary>
     private bool ExplorerEdits(string action, ActionContext context) =>
-        action is E.Undo or E.Redo ? ExplorerHasKeys(context)
+        action is E.Undo or E.Redo ? ExplorerHasKeys(context) || context.ToolWindow?.Id == ToolWindowIds.Commit && context.Focused is not Avalonia.Controls.TextBox
         : action is E.Cut or E.Copy or E.Paste or E.Delete or E.Backspace && RowOf(context) is not null;
 
     /// <summary>Why one of the editor's actions cannot run on the Explorer's row; null when it can.</summary>
-    private string? WhyNotOnRow(string action, ActionContext context) => RowOf(context) is not { } row ? null : action switch
+    private Words? WhyNotOnRow(string action, ActionContext context) => RowOf(context) is not { } row ? null : action switch
     {
         E.Cut or E.Copy when !row.IsMovable => $"{row.Name} cannot be moved",
         E.Cut when RowsHeld(row).FirstOrDefault(n => n.Kept is not null) is { Kept: { } kept } => kept,
@@ -493,8 +501,8 @@ public partial class MainWindow
 
     /// <summary>The editor's Delete as the Explorer's menu names it: Remove for what only leaves the solution, chosen
     /// alone.</summary>
-    private string? DeleteTitle(ActionContext context) =>
-        ExplorerEdits(E.Delete, context) && RowOf(context) is { } row ? RowsDeleted(row) is [{ LeavesFilesBehind: true }] ? "Remove…" : "Delete…" : null;
+    private Words? DeleteTitle(ActionContext context) =>
+        ExplorerEdits(E.Delete, context) && RowOf(context) is { } row ? RowsDeleted(row) is [{ LeavesFilesBehind: true }] ? ActionTitles.RemoveRow : ActionTitles.DeleteRow : null;
 
     /// <summary>The editor's Cut, Copy, Paste or Delete run on the Explorer's row; its Undo and Redo on the last command
     /// that renamed or moved files.</summary>
@@ -522,8 +530,8 @@ public partial class MainWindow
     /// or makes all of it again, once the person agrees, said done once the files not open it wrote have landed; in an
     /// editor, only when that command is its file's next step. One pressed while another is under way, or while a command
     /// it would take is being made, waits for it and then takes what it reaches then. False when Undo there is the file's
-    /// own.</summary>
-    private bool UndoCommand(bool redo, OpenDocument? document)
+    /// own. Where what it takes back is shown as it is undone (a form's design), it is taken back unasked (<paramref name="asks"/>).</summary>
+    private bool UndoCommand(bool redo, OpenDocument? document, bool asks = true)
     {
         if (undoing.IsCompleted && Editors.Commands.Making(document) is null)
         {
@@ -531,11 +539,11 @@ public partial class MainWindow
             {
                 return false;
             }
-            undoing = UndoCommandAsync(command, redo);
+            undoing = UndoCommandAsync(command, redo, asks);
         }
         else
         {
-            undoing = UndoInTurnAsync(undoing, redo, document);
+            undoing = UndoInTurnAsync(undoing, redo, document, asks);
         }
         IdeErrors.Observe(undoing);
         return true;
@@ -546,7 +554,7 @@ public partial class MainWindow
 
     /// <summary>Undo or Redo pressed while another was under way (<paramref name="before"/>) or while a command it would take
     /// was being made: once those have ended, the command it reaches then, else the file's own step.</summary>
-    private async Task UndoInTurnAsync(Task before, bool redo, OpenDocument? document)
+    private async Task UndoInTurnAsync(Task before, bool redo, OpenDocument? document, bool asks)
     {
         string verb = redo ? "Redo" : "Undo";
         if (!before.IsCompleted)
@@ -565,7 +573,7 @@ public partial class MainWindow
         }
         if ((redo ? Editors.Commands.ToRedo(document) : Editors.Commands.ToUndo(document)) is { } command)
         {
-            await UndoCommandAsync(command, redo);
+            await UndoCommandAsync(command, redo, asks);
         }
         else if (document is not null)
         {
@@ -573,7 +581,7 @@ public partial class MainWindow
         }
     }
 
-    private async Task UndoCommandAsync(CommandHistory.Command command, bool redo)
+    private async Task UndoCommandAsync(CommandHistory.Command command, bool redo, bool asks = true)
     {
         string verb = redo ? "Redo" : "Undo";
         if (await Editors.Commands.BlockedAsync(command, redo) is { } changed)
@@ -587,7 +595,7 @@ public partial class MainWindow
             [.. (redo ? command.Created.Select(c => c.Path) : command.Deleted.Select(d => d.Path))],
             [.. (redo ? command.Deleted.Select(d => d.Path) : command.Created.Select(c => c.Path))], [.. command.Parts.Select(p => p.Name)],
             [.. command.Copied.Select(c => c.Path)]);
-        if (!await Confirm(verb, question, verb))
+        if (asks && !await Confirm(verb, question, verb))
         {
             return;
         }

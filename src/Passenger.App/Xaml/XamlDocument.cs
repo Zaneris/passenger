@@ -217,28 +217,38 @@ public sealed class XamlDocument : IDisposable
         }
     }
 
-    /// <summary>A MAUI file checked by the language server as its text stands (<see cref="Passenger.Lsp.RoslynSession.MauiChecksAsync"/>):
-    /// MAUI's source generator run again over it, before any build, its problems placed on the attribute they name, and
-    /// each C# expression's compiled as the generator writes it, placed in the expression. Nothing without a server loaded,
-    /// until its load checks the file again (<see cref="XamlService.ServerLoaded"/>).</summary>
+    /// <summary>A file checked by the language server as its text stands: a MAUI file's
+    /// (<see cref="Passenger.Lsp.RoslynSession.MauiChecksAsync"/>) by MAUI's source generator run again over it, before any
+    /// build, its problems placed on the attribute they name, and each C# expression's compiled as the generator writes it,
+    /// placed in the expression; any page's x:Code compiled in its class (<see cref="Passenger.Lsp.RoslynSession.XamlCodeChecksAsync"/>).
+    /// Nothing without a server loaded, until its load checks the file again (<see cref="XamlService.ServerLoaded"/>).</summary>
     private async Task GeneratorCheckAsync(XamlFile file, int version)
     {
-        AsksServer = file.Dialect.ReadsExpressions;
+        Roslyn.Extension.XamlCode? code = CSharp.XamlAssist.Asked(file);
+        AsksServer = file.Dialect.ReadsExpressions || code is not null;
         if (!AsksServer || service.Server?.Invoke() is not { IsLoaded: true } server)
         {
             return;
         }
-        IReadOnlyList<XamlExpression> expressions = await BackgroundWork.Run(() => XamlExpressions.In(file));
-        IReadOnlyList<Roslyn.Extension.MauiCheck>? checks;
+        IReadOnlyList<XamlExpression> expressions = file.Dialect.ReadsExpressions ? await BackgroundWork.Run(() => XamlExpressions.In(file)) : [];
+        IReadOnlyList<Roslyn.Extension.MauiCheck>? checks = [];
+        IReadOnlyList<Roslyn.Extension.XamlCodeCheck>? coded = [];
         try
         {
-            checks = await server.MauiChecksAsync(file.Path, file.Text, [.. expressions.Select(XamlService.Asked)]);
+            if (file.Dialect.ReadsExpressions)
+            {
+                checks = await server.MauiChecksAsync(file.Path, file.Text, [.. expressions.Select(XamlService.Asked)]);
+            }
+            if (code is not null)
+            {
+                coded = await server.XamlCodeChecksAsync(file.Path, code);
+            }
         }
         catch (Passenger.Lsp.LanguageServerFailed)
         {
             return;
         }
-        if (checks is null || disposed || Document.Text.Version != version)
+        if (checks is null || coded is null || disposed || Document.Text.Version != version)
         {
             return;
         }
@@ -274,6 +284,14 @@ public sealed class XamlDocument : IDisposable
             int start = expression.ValueStart + check.Start;
             int end = Math.Max(expression.ValueStart + check.End, Math.Min(start + 1, expression.Attribute.ValueEnd));
             found.Add(new GeneratedMarker(Marker.Coded(TextRange.FromBounds(start, end), MarkerKind.Error, check.Code, check.Message) with
+            {
+                StartGravity = AnchorGravity.After,
+            }, true));
+        }
+        foreach (Roslyn.Extension.XamlCodeCheck check in coded.Where(c => c.Start >= 0 && c.End <= text.Length))
+        {
+            found.Add(new GeneratedMarker(Marker.Coded(TextRange.FromBounds(check.Start, Math.Max(check.End, Math.Min(check.Start + 1, text.Length))),
+                check.Error ? MarkerKind.Error : MarkerKind.Warning, check.Code, check.Message) with
             {
                 StartGravity = AnchorGravity.After,
             }, true));

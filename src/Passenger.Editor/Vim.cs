@@ -108,6 +108,13 @@ public sealed partial class Vim(VimRegisters registers)
     /// <summary>The line an exclusive motion just ended at the start of, which the operator's stretch leaves out; null with none.</summary>
     private int? reachedPast;
 
+    /// <summary>Set where an operator's ` went to a mark not set, so the next command, a delete or change however small,
+    /// goes to register 1 as one over a ` does; the next command or command line takes it (<see cref="jumpCarried"/>).</summary>
+    private bool jumpOwed;
+
+    /// <summary>Whether the command under way took <see cref="jumpOwed"/>, for the length of that command alone.</summary>
+    private bool jumpCarried;
+
     /// <summary>Set while a command writes into a text a delete emptied (<see cref="OnOneEmptyLine"/>), whose one empty line
     /// a delete or change takes nothing of, as Vim's empty buffer gives its registers nothing.</summary>
     private bool intoEmptied;
@@ -215,6 +222,7 @@ public sealed partial class Vim(VimRegisters registers)
         }
         if (key is ":" or "/" or "?" && TakesCommandLine(pending, search: key != ":"))
         {
+            jumpOwed = false;
             return OpenCommandLine(key[0], string.Empty);
         }
         pending.Add(key == VimKeys.Delete ? "x" : key);
@@ -227,16 +235,25 @@ public sealed partial class Vim(VimRegisters registers)
         searchSaid = null;
         // A command Vim mode doesn't know is swallowed whole, so its keys never type into the text.
         SelectionSet? aimedFor = wantedFor;
-        VimResult result = command is null ? VimResult.Held
-            : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
-            : Run(command, text, selections, view);
-        if ((command is { Operator: null, Name: "." or "p" or "P" or "gp" or "gP" or "~" or "r" or "h" or "l" or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
-                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" }
+        (jumpCarried, jumpOwed) = (jumpOwed, false);
+        VimResult result;
+        try
+        {
+            result = command is null ? VimResult.Held
+                : WritesIntoEmpty(command, text, view) ? OnOneEmptyLine(command, text, view)
+                : Run(command, text, selections, view);
+        }
+        finally
+        {
+            jumpCarried = false;
+        }
+        if ((command is { Operator: null, Name: "." or "p" or "P" or "gp" or "gP" or "~" or "r" or "h" or "l" or " " or VimKeys.Backspace or "f" or "F" or "t" or "T" or ";" or "," or "*" or "#"
+                or "S" or "Y" or "s" or "x" or "X" or "J" or "gJ" or "%" or "+" or "-" or "_" or "[(" or "])" or "[{" or "]}" }
             && (ReferenceEquals(result, VimResult.Held) || result is { Edits: null, Selections: null, ReadsClipboard: false }))
-            || (command is { Operator: not null, Name: not ("i" or "a" or "$" or "(" or ")" or "{" or "}" or "b" or "B" or "ge" or "gE" or "n" or "N") }
+            || (command is { Operator: not null, Name: not ("i" or "a" or "$" or "(" or ")" or "{" or "}" or "[[" or "]]" or "[]" or "][" or "b" or "B" or "ge" or "gE" or "n" or "N") }
                 && ReferenceEquals(result, VimResult.Held)))
         {
-            // One that can't act (nothing to repeat or put, nowhere to go, its operator's motion failing but by sentence, paragraph, word back or search) keeps j and k's column.
+            // One that can't act (nothing to repeat or put, nowhere to go, its operator's motion failing but by sentence, paragraph, section, word back or search) keeps j and k's column.
             wantedFor = aimedFor;
         }
         if (command is { Operator: not null, Name: "$" } or { Operator: null, Name: "C" or "D" } && ReferenceEquals(result, VimResult.Held))
@@ -512,6 +529,24 @@ public sealed partial class Vim(VimRegisters registers)
             plans.Add(kept);
             (text, selections) = (text.Apply(kept.Edits), kept.Selections);
         }
+        if (blockCutPads is { } cuts && typed is "" && selections.Count == cuts.Length)
+        {
+            // A block's I that typed nothing leaves no spaces before the characters its edge cut.
+            List<TextEdit> uncut = [.. selections.Items.Select((c, i) => (c.Caret, Pad: cuts[i])).Where(p => p.Pad > 0).Select(p => new TextEdit(p.Caret - p.Pad, p.Pad, string.Empty))];
+            EditPlan kept = new(uncut, TextEditing.MapThrough(selections, uncut), EditKind.Joined);
+            plans.Add(kept);
+            (text, selections) = (text.Apply(kept.Edits), kept.Selections);
+        }
+        if (blockCutRest is { } rest && typed is { } cutTyped && !cutTyped.Contains('\n', StringComparison.Ordinal) && cutTyped.Length > rest.Skip && rest.Places.Length > 0)
+        {
+            // A block's I that went in before a character its edge cut on its first line types on the lines below what it typed past the columns cut.
+            List<TextEdit> copies = [.. rest.Places.Select(p => new TextEdit(text.GetLineStart(p.Line) + p.Offset, 0, cutTyped[rest.Skip..]))];
+            EditPlan copied = new(copies, TextEditing.MapThrough(selections, copies), EditKind.Joined);
+            plans.Add(copied);
+            (text, selections) = (text.Apply(copied.Edits), copied.Selections);
+        }
+        blockCutRest = null;
+        blockCutPads = null;
         blockStart = null;
         if (typingIntoEmptied && typed is "" && text.Length == view.LineEnding.Length && text.GetText(0, text.Length) == view.LineEnding)
         {

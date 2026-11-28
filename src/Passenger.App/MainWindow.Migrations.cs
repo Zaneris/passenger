@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Migrations;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -21,7 +22,7 @@ public partial class MainWindow
     private void AddMigrations()
     {
         MigrationsController controller = migrations = new MigrationsController(new MigrationsParts(Editors, Bottom, Dock, work, Say, () => session, () => buildRun,
-            ChooseAsync, (project, id, version, recording) => session.Packages.InstallAsync(project, id, version, recording),
+            AskAsync, (project, id, version, recording) => session.Packages.InstallAsync(project, id, version, recording),
             (project, packages, recording, alongside) => session.Packages.InstallSetAsync(project, packages, recording, alongside),
             () => session.Packages.FeedAsync(null), FollowWritten, OpenFile, () => StateFolder, ShowPendingModelChanges)
         {
@@ -42,7 +43,7 @@ public partial class MainWindow
             }
             MigrationsView.OpenChooser(kind);
         };
-        Docking.ToolWindow shown = new(ToolWindowIds.Migrations, "Migrations", IconKeys.Database, () =>
+        Docking.ToolWindow shown = new(ToolWindowIds.Migrations, ToolWindowTitles.Migrations, IconKeys.Migrations, () =>
         {
             MigrationsView view = migrationsView = new MigrationsView(controller);
             view.ActionRequested += (_, action) => Request(action);
@@ -68,32 +69,32 @@ public partial class MainWindow
         };
         controller.Changed += (_, _) => ListMigrationsIfShown();
         // dotnet ef builds the project and runs its code.
-        Func<ActionContext, string?> none = _ => Folder is null ? Refusals.NoFolder : Untrusted() ?? (controller.Projects.Count == 0 ? Refusals.NoEfCore : null);
-        actions!.Add(new IdeAction(A.MigrationsRefresh, "Refresh Migrations", "Migrations", c => IdeErrors.Observe(controller.ListAsync(A.MigrationsRefresh)))
+        Func<ActionContext, Words?> none = _ => Folder is null ? Refusals.NoFolder : Untrusted() ?? (controller.Projects.Count == 0 ? Refusals.NoEfCore : null);
+        actions!.Add(new IdeAction(A.MigrationsRefresh, ActionTitles.MigrationsRefresh, ActionGroups.Migrations, c => IdeErrors.Observe(controller.ListAsync(A.MigrationsRefresh)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 0, 0)],
             Words = ["dotnet ef migrations list", "Entity Framework Core", "EF Core"],
         });
-        actions.Add(new IdeAction(A.AddMigration, "Add Migration…", "Migrations", c => IdeErrors.Observe(AddMigrationAsync()))
+        actions.Add(new IdeAction(A.AddMigration, ActionTitles.AddMigration, ActionGroups.Migrations, c => IdeErrors.Observe(AddMigrationAsync()))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 0, 1)],
             Words = ["dotnet ef migrations add", "Entity Framework Core", "EF Core"],
         });
-        actions.Add(new IdeAction(A.RemoveLastMigration, "Remove Last Migration", "Migrations", c => IdeErrors.Observe(controller.RemoveLastAsync(A.RemoveLastMigration)))
+        actions.Add(new IdeAction(A.RemoveLastMigration, ActionTitles.RemoveLastMigration, ActionGroups.Migrations, c => IdeErrors.Observe(controller.RemoveLastAsync(A.RemoveLastMigration)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 0, 2)],
             Words = ["dotnet ef migrations remove"],
         });
-        actions.Add(new IdeAction(A.UpdateDatabase, "Update Database", "Migrations", c => IdeErrors.Observe(controller.UpdateAsync(A.UpdateDatabase, null)))
+        actions.Add(new IdeAction(A.UpdateDatabase, ActionTitles.UpdateDatabase, ActionGroups.Migrations, c => IdeErrors.Observe(controller.UpdateAsync(A.UpdateDatabase, null)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 1, 0)],
             Words = ["dotnet ef database update", "Apply Migrations"],
         });
-        actions.Add(new IdeAction(A.UpdateDatabaseTo, "Update Database to Chosen Migration", "Migrations", c =>
+        actions.Add(new IdeAction(A.UpdateDatabaseTo, ActionTitles.UpdateDatabaseTo, ActionGroups.Migrations, c =>
         {
             if (migrationsView?.Chosen is { } chosen)
             {
@@ -101,24 +102,24 @@ public partial class MainWindow
             }
         })
         {
-            WhyNot = context => none(context) ?? (migrationsView?.Chosen is null ? "No migration is chosen in the Migrations window" : null),
-            TitleIn = _ => migrationsView?.Chosen is { } chosen ? $"Update Database to {chosen.Name}" : "Update Database to Chosen Migration",
+            WhyNot = context => none(context) ?? (migrationsView?.Chosen is null ? MigrationsWords.NoMigrationChosen : null),
+            TitleIn = _ => migrationsView?.Chosen is { } chosen ? ActionTitles.UpdateDatabaseToNamed(chosen.Name) : ActionTitles.UpdateDatabaseTo,
             Menus = [new MenuPlace("Tools/Migrations", 1, 1)],
             Words = ["Roll Back Migration", "dotnet ef database update"],
         });
-        actions.Add(new IdeAction(A.ScriptMigrations, "Script Migrations…", "Migrations", c => IdeErrors.Observe(ScriptMigrationsAsync()))
+        actions.Add(new IdeAction(A.ScriptMigrations, ActionTitles.ScriptMigrations, ActionGroups.Migrations, c => IdeErrors.Observe(ScriptMigrationsAsync()))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 2, 0)],
             Words = ["dotnet ef migrations script", "SQL Script"],
         });
-        actions.Add(new IdeAction(A.BundleMigrations, "Bundle Migrations", "Migrations", c => IdeErrors.Observe(controller.BundleAsync(A.BundleMigrations)))
+        actions.Add(new IdeAction(A.BundleMigrations, ActionTitles.BundleMigrations, ActionGroups.Migrations, c => IdeErrors.Observe(controller.BundleAsync(A.BundleMigrations)))
         {
             WhyNot = none,
             Menus = [new MenuPlace("Tools/Migrations", 2, 1)],
             Words = ["dotnet ef migrations bundle", "efbundle"],
         });
-        actions.Add(new IdeAction(A.MigrationsEnvironment, "Choose Migrations Environment…", "Migrations", c =>
+        actions.Add(new IdeAction(A.MigrationsEnvironment, ActionTitles.MigrationsEnvironment, ActionGroups.Migrations, c =>
         {
             ShowToolWindow(ToolWindowIds.Migrations);
             MigrationsView.OpenEnvironments();
@@ -128,7 +129,14 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools/Migrations", 3, 0)],
             Words = [Core.AspNetCoreVariables.AspNetCoreEnvironment, Core.AspNetCoreVariables.DotnetEnvironment, "appsettings", "Staging", "Production"],
         });
-        actions.Add(new IdeAction(A.MigrationsFix, "Fix What Migrations Lack", "Migrations", c =>
+        actions.Add(new IdeAction(A.MigrationsDatabase, ActionTitles.MigrationsDatabase, ActionGroups.Migrations, c => IdeErrors.Observe(OpenMigrationsDatabaseAsync()))
+        {
+            WhyNot = context => none(context) ?? (controller.Startup is null ? Refusals.NoEfCore : null),
+            TitleIn = _ => controller.Context is { } context ? ActionTitles.MigrationsDatabaseOf(context) : ActionTitles.MigrationsDatabase,
+            Menus = [new MenuPlace("Tools/Migrations", 1, 2)],
+            Words = ["Database window", "connection string", "query console"],
+        });
+        actions.Add(new IdeAction(A.MigrationsFix, ActionTitles.MigrationsFix, ActionGroups.Migrations, c =>
         {
             if (FirstFix() is { } fix)
             {
@@ -136,12 +144,32 @@ public partial class MainWindow
             }
         })
         {
-            WhyNot = context => none(context) ?? (FirstFix() is null ? "The Migrations window shows nothing to fix" : null),
-            TitleIn = _ => FirstFix()?.Title ?? "Fix What Migrations Lack",
+            WhyNot = context => none(context) ?? (FirstFix() is null ? MigrationsWords.NothingToFix : null),
+            TitleIn = _ => FirstFix()?.Title ?? ActionTitles.MigrationsFix,
             Words = ["dotnet tool install dotnet-ef", "Microsoft.EntityFrameworkCore.Design"],
         });
 
         EfFix? FirstFix() => controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes).FirstOrDefault();
+    }
+
+    /// <summary>The chosen context's database, by the connection its migrations use, opened in the Database window: what came
+    /// of it.</summary>
+    private async Task<EfDone> OpenMigrationsDatabaseAsync()
+    {
+        (EfConnection? connection, Words? unfound) = await Migrations.ConnectionAsync(A.MigrationsDatabase);
+        if (connection is null)
+        {
+            return new EfDone(false, unfound!);
+        }
+        // In English, as the Database window keeps a found connection's own settings by where it was found.
+        if (Passenger.App.Database.DatabaseDiscovery.Source(connection.Name, connection.Used.English, connection.Value, connection.Folder, connection.Packages) is not { } wanted)
+        {
+            Refuse(Refusals.NoDatabaseOf(connection.Name));
+            return new EfDone(false, Refusals.NoDatabaseOf(connection.Name));
+        }
+        (Passenger.App.Database.DatabaseSource? used, Words? why) = await ShowDatabaseOfAsync(wanted, lasting: !connection.Running);
+        return used is null ? new EfDone(false, why!)
+            : new EfDone(true, MigrationsWords.DatabaseShown(Migrations.Context ?? Migrations.Contexts.FirstOrDefault()?.Name ?? string.Empty, connection.Name, used.Name));
     }
 
     /// <summary>The session's projects as the Migrations window follows them, from the session's first moment: what they
@@ -188,18 +216,18 @@ public partial class MainWindow
         bool startup = controller.Startup is { } project && Core.PathNames.Same(project.Path, file.Path);
         bool declared = controller.Declared.Any(d => d.File is { } at && Core.PathNames.Same(at, file.Path) && d.Position.Line == line);
         List<CSharp.EditorFix> fixes = [.. controller.Pending.Where(p => p.File is { } at && Core.PathNames.Same(at, file.Path) && p.Position.Line == line)
-            .Select(p => new CSharp.EditorFix("Add Migration…", $"for {p.Context}'s model changes", new Text.TextRange(offset, 0), string.Empty)
+            .Select(p => new CSharp.EditorFix(ActionTitles.AddMigration, MigrationsWords.ForModelChanges(p.Context), new Text.TextRange(offset, 0), string.Empty)
             {
                 Elsewhere = (_, _) =>
                 {
                     if (Mcp.AgentCall.Current is not null)
                     {
-                        return Task.FromResult(CSharp.RefactorOutcome.Refused($"Add Migration takes its name: {A.AddMigration} with the name as input"));
+                        return Task.FromResult(CSharp.RefactorOutcome.Refused(MigrationsWords.AddTakesName(A.AddMigration)));
                     }
                     controller.ChooseContext(p.Context);
                     // Not awaited: its name is asked of the person, which no fix's own work waits on.
                     IdeErrors.Observe(AddMigrationAsync());
-                    return Task.FromResult(new CSharp.RefactorOutcome($"Add Migration: a name for {p.Context}'s migration", null, [], []));
+                    return Task.FromResult(new CSharp.RefactorOutcome(MigrationsWords.AddAsksName(p.Context), null, [], []));
                 },
             })];
         if (startup || declared)
@@ -211,7 +239,7 @@ public partial class MainWindow
                     fixes.Add(new CSharp.EditorFix(fix.Title, gap.Said, new Text.TextRange(offset, 0), string.Empty)
                     {
                         Elsewhere = async (_, _) => await controller.FixAsync(fix) is { } why ? CSharp.RefactorOutcome.Refused(why)
-                            : new CSharp.RefactorOutcome($"{fix.Title}: done", null, [.. controller.Touched.Select(t => new CSharp.RefactoredFile(t, CSharp.RefactoredChange.Changed, []))], []),
+                            : new CSharp.RefactorOutcome(MigrationsWords.FixDone(fix.Title), null, [.. controller.Touched.Select(t => new CSharp.RefactoredFile(t, CSharp.RefactoredChange.Changed, []))], []),
                     });
                 }
             }
@@ -271,7 +299,7 @@ public partial class MainWindow
         }
         EfDone done = await controller.ScriptAsync(A.ScriptMigrations, asked.From, asked.To, asked.Idempotent);
         if (!done.Done && controller.Failure?.Fixes.Any(f => f.Kind == EfFixKind.ScriptPlain) == true
-            && await ChooseAsync("Script Migrations", $"{controller.Failure.Said}. Script them without idempotence?", ["Script Without Idempotence"], "Script Without Idempotence") is not null)
+            && await AskAsync(MigrationsWords.ScriptPlainTitle, MigrationsWords.ScriptPlainQuestion(controller.Failure.Said), [MigrationsWords.ScriptPlainFix], MigrationsWords.ScriptPlainFix) is not null)
         {
             await controller.ScriptAsync(A.ScriptMigrations, asked.From, asked.To, idempotent: false);
         }
@@ -300,7 +328,7 @@ public partial class MainWindow
         MigrationsController controller = migrations!;
         if (actions![A.MigrationsRefresh]!.WhyNot(actions.Context()) is { } why)
         {
-            throw new InvalidOperationException($"{action} did not run: {why}");
+            throw new InvalidOperationException($"{action} did not run: {why.English}");
         }
         string? given = input?.Trim() is { Length: > 0 } words ? words : null;
         Mcp.AgentCall.Follow(actions.Work, action);
@@ -317,15 +345,15 @@ public partial class MainWindow
             case A.AddMigration:
                 if (await ListedForAsync(controller, action, cancel) is { } unlisted)
                 {
-                    throw new InvalidOperationException($"{action} did not run: {unlisted.Said}\n{MigrationsShown(controller)}");
+                    throw new InvalidOperationException($"{action} did not run: {unlisted.Said.English}\n{MigrationsShown(controller)}");
                 }
                 // Its name, then the folder its files go in, else the one last given for the context, as the question fills in.
                 string[] named = given?.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
-                (string? folder, string? unfit) = named.Length > 1 && controller.Project is { } project
+                (string? folder, EfFolderUnfit? unfit) = named.Length > 1 && controller.Project is { } project
                     ? EfOutputFolders.Read(named[1], project) : (controller.KeptFolder, null);
                 done = named.Length == 0 || MigrationsController.WhyNotNamed(named[0]) is not null
                     ? throw new InvalidOperationException($"{action} takes the migration's name as input, a C# name, then its output folder where it is not the one last given")
-                    : unfit is not null ? throw new InvalidOperationException($"{action} did not run: {unfit}")
+                    : unfit is not null ? throw new InvalidOperationException($"{action} did not run: {MigrationsController.WhyNotInto(unfit, controller.Project!).English}")
                     : await controller.AddAsync(action, named[0], folder, cancel);
                 break;
             case A.RemoveLastMigration:
@@ -345,23 +373,26 @@ public partial class MainWindow
                 done = await controller.BundleAsync(action, cancel);
                 break;
             case A.MigrationsEnvironment:
-                done = given is null ? new EfDone(true, $"Offered: {Core.Plural.Listed([.. controller.Environments.Select(e => e.Name)])}; input one, or another name, to choose it")
+                done = given is null ? new EfDone(true, MigrationsWords.EnvironmentsOffered(Core.Plural.Listed(Words.Names(controller.Environments.Select(e => e.Name)))))
                     : controller.ChooseEnvironment(given) is { } unchosen ? new EfDone(false, unchosen)
-                    : new EfDone(true, $"dotnet ef runs {controller.Startup?.Name} in {controller.Environment?.Name}");
+                    : new EfDone(true, MigrationsWords.RunsIn(controller.Startup?.Name ?? string.Empty, controller.Environment?.Name ?? string.Empty));
+                break;
+            case A.MigrationsDatabase:
+                done = await OpenMigrationsDatabaseAsync();
                 break;
             case A.MigrationsFix:
                 EfFix fix = controller.Gaps.Concat(controller.Failure is { } failed ? [failed] : []).SelectMany(g => g.Fixes)
                     .FirstOrDefault(f => f.Kind is not (EfFixKind.ChooseStartup or EfFixKind.ChooseContext))
                     ?? throw new InvalidOperationException($"{action} did not run: the Migrations window shows nothing to fix");
-                done = await controller.FixAsync(fix) is { } unfixed ? new EfDone(false, unfixed) : new EfDone(true, $"{fix.Title}: done");
+                done = await controller.FixAsync(fix) is { } unfixed ? new EfDone(false, unfixed) : new EfDone(true, MigrationsWords.FixDone(fix.Title));
                 break;
             default:
-                return actions.Run(action) is { } refused ? throw new InvalidOperationException($"{action} did not run: {refused}") : $"Ran {action}";
+                return actions.Run(action) is { } refused ? throw new InvalidOperationException($"{action} did not run: {refused.English}") : $"Ran {action}";
         }
         // The folders holding the context's migrations as the command left them, which its build has read again.
         await session.EfProjects.WholeAsync(() => session.Projects);
         string shown = MigrationsShown(controller);
-        return done.Done ? $"{done.Said}\n{shown}" : throw new InvalidOperationException($"{done.Said}\n{shown}");
+        return done.Done ? $"{done.Said.English}\n{shown}" : throw new InvalidOperationException($"{done.Said.English}\n{shown}");
     }
 
     /// <summary>The Migrations window as an agent reads it: the context and its migrations, then what keeps dotnet ef from
@@ -372,7 +403,7 @@ public partial class MainWindow
         if (controller.Project is { } project)
         {
             lines.Add($"{controller.Context ?? "Its context"} of {project.Name}, started from {controller.Startup?.Name ?? project.Name}"
-                + (controller.Environment is { } environment ? $" in {environment.Name}{(environment.Note is { } note ? $" ({note})" : string.Empty)}" : string.Empty)
+                + (controller.Environment is { } environment ? $" in {environment.Name}{(environment.Note is { } note ? $" ({note.English})" : string.Empty)}" : string.Empty)
                 + (controller.Contexts.Count > 1 ? $" (contexts: {string.Join(", ", controller.Contexts.Select(c => c.Name))})" : string.Empty)
                 + (controller.Listed ? $": {Core.Plural.Of(controller.Migrations.Count, "migration")}" : ": not listed yet")
                 + (controller.OutputFolders is { Count: > 0 } folders ? $" in {string.Join(", ", folders)}" : string.Empty)
@@ -380,13 +411,13 @@ public partial class MainWindow
                 + (controller.Database is { } database ? $", against {database}" : string.Empty));
         }
         lines.AddRange(controller.Migrations.Select(m => $"- {m.Id}: {m.Applied switch { true => "applied", false => "pending", null => "not read" }}"));
-        IEnumerable<EfGap> gaps = controller.Gaps.Concat(controller.Pending.Select(p => new EfGap($"{p.Context}'s model has changes no migration covers",
-            [new EfFix(EfFixKind.AddMigration, $"{A.AddMigration} with the name as input")], Blocks: false)));
+        IEnumerable<EfGap> gaps = controller.Gaps.Concat(controller.Pending.Select(p => new EfGap(MigrationsWords.ModelChanged(p.Context),
+            [new EfFix(EfFixKind.AddMigration, Words.Verbatim($"{A.AddMigration} with the name as input"))], Blocks: false)));
         string where = controller.Startup is { } startup ? $"{Mcp.McpTools.CodeActions} on {Path.GetFileName(startup.Path)}:1:1" : Mcp.McpTools.CodeActions;
         foreach (EfGap gap in gaps.Concat(controller.Failure is { } failed ? [failed] : []))
         {
-            string[] titles = [.. gap.Fixes.Where(f => f.Kind is not (EfFixKind.ChooseStartup or EfFixKind.ChooseContext or EfFixKind.ScriptPlain)).Select(f => f.Title)];
-            lines.Add($"! {gap.Said}{(titles.Length == 0 ? string.Empty : gap.Fixes[0].Kind == EfFixKind.AddMigration ? $" (fix: {titles[0]})" : $" (fix: {string.Join("; ", titles)}, by {where})")}");
+            string[] titles = [.. gap.Fixes.Where(f => f.Kind is not (EfFixKind.ChooseStartup or EfFixKind.ChooseContext or EfFixKind.ScriptPlain)).Select(f => f.Title.English)];
+            lines.Add($"! {gap.Said.English}{(titles.Length == 0 ? string.Empty : gap.Fixes[0].Kind == EfFixKind.AddMigration ? $" (fix: {titles[0]})" : $" (fix: {string.Join("; ", titles)}, by {where})")}");
         }
         return string.Join('\n', lines);
     }
@@ -394,4 +425,9 @@ public partial class MainWindow
     /// <summary>Asks which of several ways to go on (<see cref="ChoiceDialog"/>): the words of the one chosen, or null.</summary>
     private Task<string?> ChooseAsync(string title, string text, IReadOnlyList<string> choices, string? chosen) =>
         new ChoiceDialog(title, text, choices, chosen).ShowDialog<string?>(this);
+
+    /// <summary>Asks which of several ways to go on in the person's language (<see cref="ChoiceDialog"/>): the words of the
+    /// one chosen, or null.</summary>
+    private Task<Words?> AskAsync(Words title, Words text, IReadOnlyList<Words> choices, Words? chosen) =>
+        new ChoiceDialog(title, text, choices, chosen).ShowDialog<Words?>(this);
 }

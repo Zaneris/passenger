@@ -95,5 +95,5 @@ public interface ITestRunner : IDisposable
     /// launcher is given, with these variables in the test hosts' environment, and a Godot it starts started as
     /// <paramref name="godot"/> says.</summary>
     Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default);
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default);
 }

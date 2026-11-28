@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Passenger.Core;
 
 namespace Passenger.App.Docking;
 
@@ -20,11 +21,11 @@ public enum ToolMode
 /// <summary>A tool window (Explorer, Debug, Unit Tests): its content, its button on a stripe, and where it docks.
 /// The person moves it by dragging its button or its header, or with Move to in its header's menu. One given how to
 /// build its view builds it when first shown or asked for, so a window's start makes no view it hides (#233).</summary>
-public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, string title, string icon, Func<Control> build, ToolAnchor anchor) : Observable
+public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, Words title, string icon, Func<Control> build, ToolAnchor anchor) : Observable
 {
     private ToolAnchor anchor = anchor;
     private bool isShown;
-    private string title = title;
+    private Words title = title;
     private Control? content;
     private Control? headerTools;
 
@@ -35,7 +36,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     private RowWithKeys? hadRow;
 
     /// <summary>A tool window whose view is made already (the Explorer's, open at first).</summary>
-    public ToolWindow(string id, string title, string icon, Control content, ToolAnchor anchor) : this(id, title, icon, () => content, anchor)
+    public ToolWindow(string id, Words title, string icon, Control content, ToolAnchor anchor) : this(id, title, icon, () => content, anchor)
     {
         this.content = content;
         FollowKeys(content);
@@ -44,8 +45,8 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     [IdentifierOf(typeof(ToolWindowIds))]
     public string Id { get; } = id;
 
-    /// <summary>Its name on its header and button, a count with it when it has one ("Problems 3").</summary>
-    public string Title
+    /// <summary>Its name on its header and button, a count with it when it has one ("Problems 3"): ToolWindowTitles' words.</summary>
+    public Words Title
     {
         get => title;
         set => Set(ref title, value);
@@ -161,7 +162,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     public string? Action { get; init; }
 
     /// <summary>Its action's name in Find Action, where the window's own would be another action's ("Run Tool Window").</summary>
-    public string? ActionTitle { get; init; }
+    public Words? ActionTitle { get; init; }
 
     /// <summary>Where the menus list its action, besides View's Tool Windows.</summary>
     public IReadOnlyList<MenuPlace> Menus { get; init; } = [];
@@ -179,7 +180,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
 
     /// <summary>One of the window's actions its header carries as a button before Expand All, with the button's icon and
     /// the action's title for its tip (the Explorer's Select Opened File).</summary>
-    public (string Action, string Icon, string Title)? HeaderAction { get; init; }
+    public (string Action, string Icon, Words Title)? HeaderAction { get; init; }
 
     /// <summary>Opens every row of its tree, for Expand All, its button in the header.</summary>
     public Action? ExpandAll { get; init; }
@@ -190,6 +191,10 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Open in the layout the IDE starts with (the Explorer), and so after Restore Default Layout.</summary>
     public bool OpenAtFirst { get; init; }
 
+    /// <summary>A tab among the editors in the layout the IDE starts with, and so after Restore Default Layout, where a
+    /// window that needs the room (the Dependency Map) has it; docked at its anchor once the person docks it.</summary>
+    public bool InEditorAtFirst { get; init; }
+
     /// <summary>What it serves, declared as it is made: every folder, or kinds of project the open folder must hold one of
     /// for it to show (<see cref="Unserved"/>).</summary>
     public required ToolWindowServes Serves { get; init; }
@@ -197,11 +202,11 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     /// <summary>Why it serves nothing in the open folder (<see cref="ToolWindowServes.WhyNot"/>), which keeps it off the
     /// stripes, its place and its tabs, its action greyed saying so, its place in the layout kept; null while it serves the
     /// folder, as a window of every folder always does.</summary>
-    public string? Unserved { get; internal set; }
+    public Words? Unserved { get; internal set; }
 
     /// <summary>The action that shows it, as the dock adds it: an agent's shows it with the keys left where they are.</summary>
     internal IdeAction? ShowAction(DockHost dock) => Action is { } id
-        ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", context =>
+        ? new IdeAction(id, ActionTitle ?? Title, ActionGroups.ToolWindows, context =>
         {
             if (context.ByAgent)
             {
@@ -247,13 +252,13 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
     public bool IsClosed { get; internal set; }
 
     /// <summary>The name a menu gives a place: "Left Top", "Bottom Right".</summary>
-    public static string Name(ToolAnchor anchor) => anchor switch
+    public static Words Name(ToolAnchor anchor) => anchor switch
     {
-        ToolAnchor.LeftTop => "Left Top",
-        ToolAnchor.LeftBottom => "Left Bottom",
-        ToolAnchor.RightTop => "Right Top",
-        ToolAnchor.RightBottom => "Right Bottom",
-        ToolAnchor.BottomLeft => "Bottom Left",
-        _ => "Bottom Right",
+        ToolAnchor.LeftTop => DockingWords.LeftTop,
+        ToolAnchor.LeftBottom => DockingWords.LeftBottom,
+        ToolAnchor.RightTop => DockingWords.RightTop,
+        ToolAnchor.RightBottom => DockingWords.RightBottom,
+        ToolAnchor.BottomLeft => DockingWords.BottomLeft,
+        _ => DockingWords.BottomRight,
     };
 }

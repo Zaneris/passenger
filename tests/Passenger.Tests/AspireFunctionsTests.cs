@@ -105,7 +105,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
                 TimeSpan.FromMinutes(2));
             Assert.Contains("Azure Functions Core Tools", ran(), StringComparison.Ordinal);
             Assert.Equal(AspireFunctionsApp.Answer, Ui.AwaitPumped(http.GetStringAsync(Listening(function)), "the function's answer under Run"));
-            Assert.Contains(Refusals.FunctionsUnreloaded, window.Status, StringComparison.Ordinal);
+            Assert.Contains(Refusals.FunctionsUnreloaded.Shown, window.Status, StringComparison.Ordinal);
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => Leftovers().Count == 0, () => $"Stop to end func and its worker: {string.Join("; ", Leftovers().Values)}");
 
@@ -174,7 +174,7 @@ public sealed class AspireFunctionsTests : IClassFixture<AspireFunctionsApp>, ID
             string own = window.Configurations.First(configuration => PathNames.Same(configuration.Project, project.FunctionProject) && configuration.LaunchProfile == "Fn").Name;
             Assert.True(window.SelectConfiguration(own));
             window.Debugger.RefuseNextAttach(own, Refused);
-            string? refused = Ui.Await(window.DebugAsync(), "func's start, the attach to its worker refused", TimeSpan.FromMinutes(3));
+            string? refused = Ui.Await(window.DebugAsync(), "func's start, the attach to its worker refused", TimeSpan.FromMinutes(3))?.English;
             Assert.True(refused is not null && refused.Contains(Refused, StringComparison.Ordinal) && refused.Contains("all it started end", StringComparison.Ordinal),
                 $"Debug with the attach to the worker refused said \"{refused}\", not why and that func ends");
             Ui.WaitFor(() => Leftovers().Count == 0, () => $"func and its worker to end with the refused start: {string.Join("; ", Leftovers().Values)}");

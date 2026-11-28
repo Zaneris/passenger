@@ -126,8 +126,8 @@ public sealed class ShprojTests : IDisposable
         try
         {
             ExplorerNode shared = Row(window, "Shop.Shared");
-            Assert.True(shared is { Kind: NodeKind.Project, Detail: "shared" }, $"Shop.Shared shows as a {shared.Kind} saying '{shared.Detail}', not as a shared project");
-            Assert.Equal("Shared project: its files are compiled into Shop.Api and Shop.Web, which import Shop.Shared.projitems", shared.Tip);
+            Assert.True(shared is { Kind: NodeKind.Project, Detail.English: "shared" }, $"Shop.Shared shows as a {shared.Kind} saying '{shared.Detail}', not as a shared project");
+            Assert.Equal("Shared project: its files are compiled into Shop.Api and Shop.Web, which import Shop.Shared.projitems", shared.Tip?.English);
             Assert.Equal(["Models", "Greeting.cs"], shared.Children!.Select(r => r.Name));
             Assert.Equal(["Order.cs"], shared.Children![0].Children!.Select(r => r.Name));
             foreach (string importing in (string[])["Shop.Api", "Shop.Web"])
@@ -201,6 +201,16 @@ public sealed class ShprojTests : IDisposable
             Assert.Equal(["Undo", "Undo", "Delete", "Undo"], asked);
             Assert.True(File.ReadAllText(Path.Combine(folder, "Shop.Api", "Shop.Api.csproj")).EndsWith("Label=\"Shared\" />\n</Project>\n", StringComparison.Ordinal),
                 "An importing project's file was written");
+
+            string reports = Path.Combine(Shared, "Reports");
+            Assert.Null(Ui.Await(window.CreateFolderAsync(Shared, "Reports"), "New Folder"));
+            string kept = Items.Replace("</Project>", "  <ItemGroup>\n    <Folder Include=\"$(MSBuildThisFileDirectory)Reports\\\" />\n  </ItemGroup>\n</Project>", StringComparison.Ordinal);
+            Assert.True(kept == File.ReadAllText(ItemsFile), $"New Folder in the shared project did not keep Reports in its items file:\n{File.ReadAllText(ItemsFile)}");
+            Assert.Null(window.CreateClass(reports, "Summary"));
+            Assert.Equal(Items.Replace("Models\\Order.cs\" />", "Models\\Order.cs\" />\n    <Compile Include=\"$(MSBuildThisFileDirectory)Reports\\Summary.cs\" />", StringComparison.Ordinal),
+                File.ReadAllText(ItemsFile));
+            Undo(window, reports);
+            Assert.Equal(kept, File.ReadAllText(ItemsFile));
         }
         finally
         {
@@ -476,7 +486,7 @@ public sealed class ShprojTests : IDisposable
             Ui.ChooseFromRowMenu(window, Row(window, "Shop.Api"), "Add", "Reference…");
             AddReferenceDialog dialog = Assert.Single(window.OwnedWindows.OfType<AddReferenceDialog>());
             ReferenceChoice offered = Assert.Single(dialog.Choices, c => c.Name == "Shop.Shared");
-            Assert.True(offered is { IsChosen: true, CanChoose: true } && offered.Detail.StartsWith("shared", StringComparison.Ordinal),
+            Assert.True(offered is { IsChosen: true, CanChoose: true } && offered.Detail.English.StartsWith("shared", StringComparison.Ordinal),
                 $"Shop.Shared was offered chosen {offered.IsChosen}, saying {offered.Detail}, where Shop.Api imports it");
             offered.IsChosen = false;
             dialog.Accept();
@@ -524,7 +534,7 @@ public sealed class ShprojTests : IDisposable
                 return Task.FromResult<IReadOnlyList<string>>([Path.Combine(Shared, "Shop.Shared.shproj")]);
             };
             Ui.ChooseFromRowMenu(window, window.ExplorerView.Tree.Root!, "Add", "Existing Project…");
-            Ui.WaitFor(() => window.ExplorerView.Tree.Root!.Children!.Any(r => r is { Name: "Shop.Shared", Detail: "shared" }), () => $"Shop.Shared added as a shared project: {window.Status}");
+            Ui.WaitFor(() => window.ExplorerView.Tree.Root!.Children!.Any(r => r is { Name: "Shop.Shared", Detail.English: "shared" }), () => $"Shop.Shared added as a shared project: {window.Status}");
             Assert.Contains("<Project Path=\"Shop.Shared/Shop.Shared.shproj\" />", File.ReadAllText(solution), StringComparison.Ordinal);
         }
         finally

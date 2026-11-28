@@ -69,7 +69,7 @@ public sealed class NewGodotGameTests : IDisposable
             Assert.Contains($"<TargetFramework>{framework}</TargetFramework>", project, StringComparison.Ordinal);
             Ui.WaitFor(() => !window.IsBuilding && window.Status?.Contains("Make Passenger Godot's Script Editor…", StringComparison.Ordinal) == true,
                 () => $"the new game to be built and Passenger offered as Godot's script editor ({window.Status})", TimeSpan.FromMinutes(4));
-            Assert.Equal("make Passenger Godot's Script Editor", window.StatusPlace?.Name);
+            Assert.Equal("make Passenger Godot's Script Editor", window.StatusPlace?.Name.English);
             Runs(window, "Spinner");
         }
         finally

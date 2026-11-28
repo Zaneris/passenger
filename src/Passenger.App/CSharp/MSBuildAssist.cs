@@ -258,7 +258,7 @@ internal sealed class MSBuildAssist : LanguageAssist
             context.Say($"{package.Id}'s version could not be added to {Path.GetFileName(props)}: {failed.Message}");
             return;
         }
-        if (await recording.LandedAsync(context.Say) is [(string unwritten, Exception why), ..])
+        if (await recording.LandedAsync(said => context.Say(said)) is [(string unwritten, Exception why), ..])
         {
             context.Say($"{package.Id}'s version could not be added to {Path.GetFileName(props)}: {await recording.TakenBackAsync(WorkspaceEdits.Unwritten(unwritten, why))}");
             return;

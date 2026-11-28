@@ -33,7 +33,7 @@ public partial class MainWindow
     /// dotnet watch applies.</summary>
     private void AddHotReload()
     {
-        Add(AppActions.ApplyHotReloadChanges, "Apply Hot Reload Changes", "Run", context =>
+        Add(AppActions.ApplyHotReloadChanges, ActionTitles.ApplyHotReloadChanges, ActionGroups.Run, context =>
         {
             // A game whose GDScript Godot reloads as each file is saved takes its edits as they are saved.
             if (UnsavedGameScripts() is { Count: > 0 } unsaved)
@@ -66,10 +66,10 @@ public partial class MainWindow
         Editors.Opened += (_, document) => document.Saved += (_, _) => UnfollowWatch();
         // A GDScript file saved reaches the Godot game that runs it with Hot Reload.
         Editors.Opened += (_, document) => document.Saved += (_, _) => IdeErrors.Observe(buildRun.ReloadScriptAsync(document.Path));
-        // A XAML file's edits are followed for each app run or debugged, and reach Run's on its save as Settings say.
+        // A XAML file's edits, and a Windows Forms form's designer code's, are followed for each app run or debugged, and reach Run's on its save as Settings say.
         Editors.Opened += (_, document) =>
         {
-            if (!Xaml.XamlService.IsXaml(document.Path))
+            if (!Passenger.App.LiveTree.XamlHotReload.Reaches(document.Path))
             {
                 return;
             }
@@ -94,7 +94,7 @@ public partial class MainWindow
     private async Task XamlWrittenAsync(IEnumerable<string> paths)
     {
         ProjectSession current = session;
-        List<string> closed = [.. paths.Where(p => Xaml.XamlService.IsXaml(p) && Editors.Find(p) is null).Distinct(PathNames.Comparer)];
+        List<string> closed = [.. paths.Where(p => Passenger.App.LiveTree.XamlHotReload.Reaches(p) && Editors.Find(p) is null).Distinct(PathNames.Comparer)];
         if (closed.Count == 0 || !current.Inspecting.Any(a => a.App.Xaml is not null))
         {
             return;
@@ -177,13 +177,13 @@ public partial class MainWindow
         }
         if (taker.Kind == RunningKind.Run)
         {
-            Bottom.Run.Append($"Hot Reload: {outcome.Said}\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
+            Bottom.Run.Append(Debugging.DebuggingWords.HotReloadSaid(outcome.Said).Shown + "\n", outcome.Result is not (HotReloadResult.Applied or HotReloadResult.NothingToApply));
         }
         else
         {
-            outcome = outcome with { Said = $"{taker.Name}: {outcome.Said}" };
+            outcome = outcome with { Said = Debugging.DebuggingWords.HotReloadOf(taker.Name, outcome.Said) };
         }
-        Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+        Bottom.Problems.ShowHotReload(outcome.Said.Shown, outcome.Problems);
         liveTree!.ShowHotReload(outcome.Problems);
         if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
         {
@@ -194,7 +194,7 @@ public partial class MainWindow
     }
 
     /// <summary>Why Godot's editor Run started takes no Hot Reload (<see cref="GodotLaunch.EditorReloads"/>).</summary>
-    public static string GodotEditorRunsWithout(string name) => $"{name} runs without Hot Reload: {GodotLaunch.EditorReloads}";
+    public static Words GodotEditorRunsWithout(string name) => LaunchWords.RunsUnreloaded(name, GodotLaunch.EditorReloads);
 
     /// <summary>The words dotnet watch says an apply came to with, on a line of its own that begins "dotnet watch" (as Run
     /// starts it, its emojis suppressed), what each means, and what it came to.</summary>
@@ -259,7 +259,7 @@ public partial class MainWindow
                 return;
             }
             // Words meaning what the last meant keep its words: "Restarting application" after the reason for it.
-            string words = last?.Result == meant.Result ? last.Said : meant.Said;
+            Words words = last?.Result == meant.Result ? last.Said : meant.Said;
             // dotnet watch writes the compiler's errors in the Run window.
             Say(words, meant.Result == HotReloadResult.Errors ? StatusPlace.Window(Dock, ToolWindowIds.Run) : null);
             last = new HotReloadOutcome(meant.Result, words);
@@ -338,7 +338,7 @@ public partial class MainWindow
     }
 
     /// <summary>Why Apply Hot Reload Changes cannot run, as the action says it, or null.</summary>
-    internal string? WhyNoHotReload() => actions!.WhyNot(AppActions.ApplyHotReloadChanges, actions.Context());
+    internal Words? WhyNoHotReload() => actions!.WhyNot(AppActions.ApplyHotReloadChanges, actions.Context());
 
     /// <summary>What Apply Hot Reload Changes says where Godot reloads a game's GDScript as each file is saved, there being
     /// nothing else to apply: the chosen debugged game's GDScript session (<see cref="DebugController.ReloadedAsSaved"/>), or a
@@ -421,7 +421,7 @@ public partial class MainWindow
         {
             if (session == next && next.Debug == debugger)
             {
-                Bottom.Problems.ShowHotReload(outcome.Said, outcome.Problems);
+                Bottom.Problems.ShowHotReload(outcome.Said.Shown, outcome.Problems);
                 liveTree!.ShowHotReload(outcome.Problems);
                 if (outcome.Problems.Any(p => p.Severity == Run.ProblemSeverity.Error))
                 {
@@ -503,7 +503,7 @@ public partial class MainWindow
             {
                 return false;
             }
-            string? answer = await new ChoiceDialog("Hot Reload", $"{outcome.Said}\n\n{RestartQuestion}", RestartAnswers, "Yes").ShowDialog<string?>(this);
+            string? answer = await new ChoiceDialog("Hot Reload", $"{outcome.Said.Shown}\n\n{RestartQuestion}", RestartAnswers, "Yes").ShowDialog<string?>(this);
             if (session != next || next.IsEnded || debugger.Chosen != tab || tab.Session != debugged || !tab.IsLive)
             {
                 return false;
@@ -534,7 +534,7 @@ public partial class MainWindow
             return restarted && session == next && !next.IsEnded;
         }
         Stopwatch took = Stopwatch.StartNew();
-        string? refused = await buildRun.RestartDebugAsync(tab.Name);
+        Words? refused = await buildRun.RestartDebugAsync(tab.Name);
         if (session != next || next.IsEnded)
         {
             return false;
@@ -542,14 +542,14 @@ public partial class MainWindow
         LastHotReloadRestart = took.Elapsed;
         if (refused is not null)
         {
-            status.Text = $"Could not restart to apply changes: {refused}";
+            status.Text = DebuggingWords.NotRestartedToApply(refused).Shown;
             return false;
         }
         // The restart's build took Problems to its own tab; the edits that needed the restart are what to see.
         Bottom.Problems.Shown = ProblemsTab.HotReload;
-        string said = $"Restarted in {Durations.Said(took.Elapsed)} to apply changes: {outcome.Said}";
-        IdeLog.Write(IdeLog.Debugger, said);
-        tab.Console.Append($"Hot Reload: {said}\n");
+        Words said = Debugging.DebuggingWords.RestartedToApply(Durations.Words(took.Elapsed), outcome.Said);
+        IdeLog.Write(IdeLog.Debugger, said.English);
+        tab.Console.Append(Debugging.DebuggingWords.HotReloadSaid(said).Shown + "\n");
         // Each edit that needed it, in a compiler message's shape, at the compiler's line, which the console links to its line.
         foreach (Run.Problem rude in outcome.Problems.Where(p => p.Path is not null))
         {

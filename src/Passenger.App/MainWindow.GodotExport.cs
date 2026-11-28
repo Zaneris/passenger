@@ -17,7 +17,7 @@ public partial class MainWindow
 
     private void AddGodotExport()
     {
-        actions!.Add(new IdeAction(AppActions.InstallGodotTemplates, "Install Godot Export Templates…", "Godot",
+        actions!.Add(new IdeAction(AppActions.InstallGodotTemplates, ActionTitles.InstallGodotTemplates, ActionGroups.Godot,
             c => IdeErrors.Observe(InstallGodotTemplatesAsync(GodotProjectOf(c)!, GodotExports.ReadIn(GodotProjectOf(c)!))))
         {
             WhyNot = c => Folder is null ? Refusals.NoFolder : GodotProjectOf(c) is null ? Refusals.NoGodotProject : null,
@@ -130,7 +130,7 @@ public partial class MainWindow
         }
         if (this.work.Begin(AppActions.InstallGodotTemplates, $"Reading {Path.GetFileName(archive)}…") is not { } work)
         {
-            status.Text = ActionWork.Busy(this.work.Of(AppActions.InstallGodotTemplates)!);
+            status.Text = ActionWork.Busy(this.work.Of(AppActions.InstallGodotTemplates)!).Shown;
             return false;
         }
         using (work)

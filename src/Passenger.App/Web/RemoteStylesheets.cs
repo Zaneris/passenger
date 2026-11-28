@@ -92,7 +92,7 @@ public sealed class RemoteStylesheets(Func<bool> download)
         {
             if (!download())
             {
-                return new Fetched(null, null, $"{address} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.StylesheetsPage)} does not allow it");
+                return new Fetched(null, null, $"{address} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.WebPage)} does not allow it");
             }
             try
             {

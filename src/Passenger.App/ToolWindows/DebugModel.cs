@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Passenger.App.Debugging;
+using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Editor;
 using Passenger.Text;
@@ -181,6 +182,15 @@ public sealed class DebugModel
     /// <summary>A row to run again with every thread let go (<see cref="VariablesList.RunWithThreadsRequested"/>).</summary>
     public event EventHandler<VariableNode>? RunWithThreadsRequested;
 
+    /// <summary>A row's expression to pin to the line the chosen frame stands at (<see cref="VariablesList.PinRequested"/>).</summary>
+    public event EventHandler<VariableNode>? PinRequested;
+
+    /// <summary>A row's object to mark, or a marked one to let go (<see cref="VariablesList.MarkRequested"/>).</summary>
+    public event EventHandler<VariableNode>? MarkRequested;
+
+    /// <summary>Why the chosen session's debugger marks no object, where it cannot.</summary>
+    public Func<Words?> MarksWhyNot { get; set; } = () => null;
+
     /// <summary>Read Again, over Variables once every thread ran in an evaluation: the frame's values to be read anew.</summary>
     public event EventHandler? ReadAgainRequested;
 
@@ -189,6 +199,21 @@ public sealed class DebugModel
 
     /// <summary>A link in a session's console was clicked.</summary>
     public event EventHandler<LinkTarget>? ConsoleLinkClicked;
+
+    /// <summary>A snapshot opened from the Snapshots tab, to be shown as a past stop.</summary>
+    public event EventHandler<TakenSnapshot>? SnapshotChosen;
+
+    /// <summary>A recorded moment opened from the Timeline tab, to be shown as a past stop.</summary>
+    public event EventHandler<DapMoment>? MomentChosen;
+
+    /// <summary>The live stop asked for again in place of a recorded moment.</summary>
+    public event EventHandler? LiveStopRequested;
+
+    /// <summary>The Timeline tab shown, whose moments are to be read.</summary>
+    public event EventHandler? TimelineRequested;
+
+    /// <summary>The timeline read again, or the moment shown changed.</summary>
+    internal event EventHandler? TimelineChanged;
 
     /// <summary>A session's tab was pressed.</summary>
     public event EventHandler<DebugTab>? SessionChosen;
@@ -211,7 +236,7 @@ public sealed class DebugModel
     /// <summary>Each frame's place to be said again, an edit made while paused perhaps having moved its code.</summary>
     internal event EventHandler? PlacesMoved;
 
-    /// <summary>What Variables says over its rows changed (<see cref="Moved"/>).</summary>
+    /// <summary>What Variables says over its rows changed (<see cref="Moved"/>), or the snapshot shown (<see cref="ShownSnapshot"/>).</summary>
     internal event EventHandler? MovedChanged;
 
     /// <summary>What the chosen program's console offers over its output changed, which the Debugger tab offers too.</summary>
@@ -235,6 +260,46 @@ public sealed class DebugModel
     /// <summary>The programs debugged, a tab each, in the order they started.</summary>
     public ObservableCollection<DebugTab> Sessions { get; } = [];
 
+    /// <summary>Why the chosen program takes no debugger action now: nothing is being debugged, or the tab chosen is one
+    /// that ended.</summary>
+    public Words? NotLive() => !Sessions.Any(tab => tab.IsLive && tab.Session is not null) ? Refusals.NothingDebugged
+        : Chosen is not { Session.State: not DebugState.Ended } ? Refusals.DebuggingEnded(Chosen?.Name ?? string.Empty)
+        : null;
+
+    /// <summary>Why the chosen program takes no action of a stop now: it takes none (<see cref="NotLive"/>), or it runs or
+    /// is still starting.</summary>
+    public Words? NotPaused() => NotLive() ?? (Chosen!.Session!.State != DebugState.Paused ? Refusals.NotPaused : null);
+
+    /// <summary>The tab shown, whose program's frames, values and console are the window's.</summary>
+    private DebugTab? Chosen => Sessions.FirstOrDefault(tab => tab.IsChosen);
+
+    /// <summary>The most snapshots the window keeps of a folder: past them, the oldest go.</summary>
+    public const int MostSnapshots = 500;
+
+    /// <summary>The folder's snapshots, kept through its sessions and after them, the newest first.</summary>
+    public ObservableCollection<TakenSnapshot> Snapshots { get; } = [];
+
+    /// <summary>The snapshot the frames and values show, as a past stop; null while they show a stop or nothing.</summary>
+    public TakenSnapshot? ShownSnapshot { get; private set; }
+
+    /// <summary>Whether the Snapshots tab is shown.</summary>
+    public bool IsSnapshotsShown { get; private set; }
+
+    /// <summary>The chosen program's recorded moments on its stopped thread as last read, oldest first.</summary>
+    public IReadOnlyList<DapMoment> Moments { get; private set; } = [];
+
+    /// <summary>What the Timeline tab says over its moments: what the recording keeps, let go and costs.</summary>
+    public string? TimelineSaid { get; private set; }
+
+    /// <summary>The recorded moment shown as a past stop, null while none is.</summary>
+    public DapMoment? MomentShown { get; private set; }
+
+    /// <summary>Whether the Timeline tab is shown.</summary>
+    public bool IsTimelineShown { get; private set; }
+
+    /// <summary>Whether Record Calls is on, as its toggle shows.</summary>
+    public bool ShowsRecording { get; private set; }
+
     public ObservableCollection<DapThread> Threads { get; } = [];
 
     public ObservableCollection<DapStackFrame> Frames { get; } = [];
@@ -247,12 +312,13 @@ public sealed class DebugModel
 
     /// <summary>Whether the Console tab is shown, rather than the Debugger's.</summary>
     public bool IsConsoleShown { get; private set; }
+    public bool IsMemoryShown { get; private set; }
 
     /// <summary>Whether the Telemetry tab is shown, the chosen program's logs and traces, rather than the Debugger's or its console.</summary>
     public bool IsTelemetryShown { get; private set; }
 
     /// <summary>The chosen program's run's dashboard, while it collects logs and traces; null for any other.</summary>
-    public Telemetry.RunDashboard? ChosenDashboard => Sessions.FirstOrDefault(tab => tab.IsChosen)?.Plan?.Dashboard is { IsStopped: false } dashboard ? dashboard : null;
+    public Telemetry.RunDashboard? ChosenDashboard => Chosen?.Plan?.Dashboard is { IsStopped: false } dashboard ? dashboard : null;
 
     /// <summary>What Variables says over its rows once every thread ran in an evaluation: that the values read before it
     /// may have moved; null while it says nothing.</summary>
@@ -355,6 +421,35 @@ public sealed class DebugModel
         ToolsChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Shows Record Calls on or off.</summary>
+    public void ShowRecording(bool on)
+    {
+        ShowsRecording = on;
+        ToolsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The timeline read (<paramref name="read"/>, kept as it was where null) and the moment shown of it.</summary>
+    public void ShowTimeline(TimelineResponse? read, DapMoment? shown)
+    {
+        if (read is not null)
+        {
+            Moments = read.Moments;
+            TimelineSaid = Said(read);
+        }
+        MomentShown = shown;
+        TimelineChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What a timeline keeps, let go and cost the program, plainly.</summary>
+    internal static string Said(TimelineResponse read)
+    {
+        string kept = $"{Core.Plural.Of(read.Moments.Count, "moment")} of the run this stop is in, of {Core.Numbers.Said(read.Recorded)} recorded";
+        string dropped = read.Dropped > 0 ? $"; the oldest {Core.Numbers.Said(read.Dropped)} were let go, as a recording keeps {Core.Numbers.Said(read.MostMoments)} moments and "
+            + $"{Core.Sizes.Said(read.MostBytes)} of values" : "";
+        string cost = read.Recorded > 0 ? $". Each held the program {Core.Durations.Said(TimeSpan.FromMilliseconds(read.HeldMilliseconds / read.Recorded))} on average" : "";
+        return $"{(read.Recording ? "Recording" : "Not recording now")}: {kept}{dropped}{cost}.";
+    }
+
     /// <summary>Shows Apply Hot Reload Changes while the session has Hot Reload, pressable while its program runs.</summary>
     public void ShowHotReload(bool on, bool canApply)
     {
@@ -362,13 +457,15 @@ public sealed class DebugModel
         ToolsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Clears what the last folder's sessions left, as another opens: their tabs, and every console but the first,
-    /// which is shown empty.</summary>
+    /// <summary>Clears what the last folder's sessions left, as another opens: their tabs, their snapshots, and every console
+    /// but the first, which is shown empty.</summary>
     public void Clear()
     {
         ShowFrames([], null, [], null);
         Tree.Show([]);
         ForgetSessions();
+        Snapshots.Clear();
+        ShowSnapshot(null);
         first.Input = null;
         first.Clear();
     }
@@ -395,19 +492,70 @@ public sealed class DebugModel
         EvaluateFocused?.Invoke(this, EventArgs.Empty);
     }
 
-    public void ShowTab(bool console)
+    public void ShowTab(bool console, bool memory = false)
     {
-        IsConsoleShown = console;
+        IsConsoleShown = console && !memory;
+        IsMemoryShown = memory;
         IsTelemetryShown = false;
+        IsSnapshotsShown = false;
+        IsTimelineShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
     }
+
+    public void ShowMemory() => ShowTab(console: false, memory: true);
 
     /// <summary>Shows the Telemetry tab, where the chosen program's run collects logs and traces.</summary>
     public void ShowTelemetry()
     {
+        IsMemoryShown = false;
         IsConsoleShown = false;
         IsTelemetryShown = true;
+        IsSnapshotsShown = false;
+        IsTimelineShown = false;
         TabShown?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Shows the Snapshots tab, the folder's snapshot points' captures.</summary>
+    public void ShowSnapshots()
+    {
+        IsMemoryShown = false;
+        IsConsoleShown = false;
+        IsTelemetryShown = false;
+        IsSnapshotsShown = true;
+        IsTimelineShown = false;
+        TabShown?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Shows the Timeline tab, the chosen program's recorded moments, read anew.</summary>
+    public void ShowTimelineTab()
+    {
+        IsMemoryShown = false;
+        IsConsoleShown = false;
+        IsTelemetryShown = false;
+        IsSnapshotsShown = false;
+        IsTimelineShown = true;
+        TabShown?.Invoke(this, EventArgs.Empty);
+        TimelineRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Keeps a snapshot, the newest first, the oldest past <see cref="MostSnapshots"/> let go.</summary>
+    public void Keep(TakenSnapshot snapshot)
+    {
+        Snapshots.Insert(0, snapshot);
+        while (Snapshots.Count > MostSnapshots)
+        {
+            Snapshots.RemoveAt(Snapshots.Count - 1);
+        }
+    }
+
+    /// <summary>Has the frames and values show a snapshot as a past stop, or no snapshot (null), Variables saying which.</summary>
+    public void ShowSnapshot(TakenSnapshot? snapshot)
+    {
+        if (ShownSnapshot != snapshot)
+        {
+            ShownSnapshot = snapshot;
+            MovedChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>A run's dashboard came up, was kept or went: the Telemetry tab follows.</summary>
@@ -456,11 +604,22 @@ public sealed class DebugModel
 
     internal void RunWithThreads(VariableNode node) => RunWithThreadsRequested?.Invoke(this, node);
 
+    internal void Pin(VariableNode node) => PinRequested?.Invoke(this, node);
+
+    internal void Mark(VariableNode node) => MarkRequested?.Invoke(this, node);
+
     internal void ToggleDataBreakpoint(VariableNode node) => DataBreakpointRequested?.Invoke(this, node);
 
     internal void OpenText(VariableNode node) => TextOpened?.Invoke(this, node);
 
+
     internal void Choose(DebugTab tab) => SessionChosen?.Invoke(this, tab);
+
+    internal void Choose(TakenSnapshot snapshot) => SnapshotChosen?.Invoke(this, snapshot);
+
+    internal void Choose(DapMoment moment) => MomentChosen?.Invoke(this, moment);
+
+    internal void BackToLive() => LiveStopRequested?.Invoke(this, EventArgs.Empty);
 
     internal void Close(DebugTab tab) => SessionClosed?.Invoke(this, tab);
 }

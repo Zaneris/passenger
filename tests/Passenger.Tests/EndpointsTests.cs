@@ -149,6 +149,13 @@ public sealed class EndpointsTests : IDisposable
         window.ShowToolWindow(ToolWindowIds.Endpoints);
         Ui.WaitFor(() => window.Endpoints.Requests.Count == 3, "the requests");
         EndpointRequest add = window.Endpoints.Requests[1];
+        // The query's pairs fill the table as they are written, the URL left as the request has it.
+        InteractiveTestDialog written = window.OpenInteractiveTest(add with { Url = "{{base}}/items?notify=&" });
+        Ui.Settle();
+        Assert.Equal([(true, "notify", string.Empty)], written.Params.Pairs);
+        Assert.Equal("{{base}}/items?notify=&", written.Url.Text);
+        written.Close();
+        Ui.Settle();
         Ui.Click(RowButton(window, add, "endpointInteractive"));
         InteractiveTestDialog dialog = DialogButtonsTests.Check(window.InteractiveTest ?? throw new Xunit.Sdk.XunitException("Interactive Test opened no dialog"));
         Ui.Settle();

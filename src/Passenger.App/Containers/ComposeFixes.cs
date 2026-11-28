@@ -72,7 +72,7 @@ public static partial class ComposeFixes
         {
             fixes.Add(new EditorFix($"Change to {near}", $"a {fault.Kind} the file declares", first.Name, near));
         }
-        return [.. fixes.Select(f => f with { Again = now => For(now, fault).FirstOrDefault(again => again.Title == f.Title) })];
+        return [.. fixes.Select(f => f with { Again = now => For(now, fault).FirstOrDefault(again => again.Title.Equals(f.Title)) })];
     }
 
     /// <summary>Set a variable in a service's environment, as the file writes it there: a <c>NAME: "value"</c> after the

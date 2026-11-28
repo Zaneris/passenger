@@ -148,7 +148,7 @@ public sealed class LaunchUpToDateTests
         {
             if (!change.Ended)
             {
-                stages.Add(change.Work.Stage);
+                stages.Add(change.Work.Stage.Shown);
             }
         };
         window.Actions.Work.Changed += worked;
@@ -159,7 +159,7 @@ public sealed class LaunchUpToDateTests
             File.WriteAllText(Path.Combine(folder, "hold"), string.Empty);
             Assert.True(window.Perform(AppActions.Build));
             Ui.PumpUntil(() => File.Exists(Path.Combine(folder, "held")), "the build to reach its hold", Slow);
-            Task<string?> run = window.RunAsync();
+            Task<Words?> run = window.RunAsync();
             Ui.PumpUntil(() => stages.Contains(waiting) || run.IsCompleted, "the run to wait for the build under way", Slow);
             File.WriteAllText(Path.Combine(folder, "go"), string.Empty);
             Ui.Launched(window, run, "the run begun while the build worked", Slow);
@@ -551,7 +551,7 @@ public sealed class LaunchUpToDateTests
         }
         window.BottomPanel.Build.Flush();
         string console = window.BottomPanel.Build.Document.Snapshot.ToString();
-        bool skipped = console.Contains(BuildRunController.UpToDateSaid("App"), StringComparison.Ordinal);
+        bool skipped = console.Contains(BuildRunController.UpToDateSaid("App").English, StringComparison.Ordinal);
         Assert.True(built ? ran == 1 && !skipped : ran == 0 && skipped,
             $"{what} {(built ? "was not built first" : "was built though nothing it reads changed")}: {ran} dotnet builds started, and the Build window says:\n{console}");
         Assert.True(Output(window).Contains($"said: {said}", StringComparison.Ordinal), $"{what} did not run what was built, saying:\n{Output(window)}");

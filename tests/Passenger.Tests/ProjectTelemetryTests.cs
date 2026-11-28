@@ -63,7 +63,7 @@ public sealed class ProjectTelemetryTests : McpRig
         string? project = null;
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             RunDashboard dashboard = Assert.Single(window.Session.Dashboards);
@@ -103,7 +103,7 @@ public sealed class ProjectTelemetryTests : McpRig
 
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> logs = Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["limit"] = 50 }));
-            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Press(Admission(window, "the window to ask whether the agent may work there"), McpWords.Allow.English);
             JsonElement read = Await(logs, "the agent's telemetry of the project run, the only run there is");
             Assert.Contains(read.GetProperty("logs").EnumerateArray(), item => item.GetProperty("message").GetString()?.Contains("Passenger order 42", StringComparison.Ordinal) == true);
             JsonElement named = Await(Waiting.Apart(() => Call(client, McpTools.Telemetry, new() { ["resource"] = "shop-web", ["kind"] = "traces", ["traceId"] = log.TraceId })),
@@ -139,7 +139,7 @@ public sealed class ProjectTelemetryTests : McpRig
         Collect(window);
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run without a dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run without a dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             string? answered = null;
@@ -170,7 +170,7 @@ public sealed class ProjectTelemetryTests : McpRig
         OwnEnvironment.Set(OtelVariables.ExporterEndpoint, "http://collector.passenger-test.invalid:4318");
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run on its inherited endpoint", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run on its inherited endpoint", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             string? answered = null;
@@ -202,7 +202,7 @@ public sealed class ProjectTelemetryTests : McpRig
         string? project = null;
         try
         {
-            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the project to run with its dashboard", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             held.LetGo(HeldPort.GateIn(folder));
             project = Assert.Single(window.Session.Dashboards).ProjectName;
@@ -213,7 +213,7 @@ public sealed class ProjectTelemetryTests : McpRig
             Ui.WaitFor(() => !window.IsRunning, $"web to end with its error\n{ContainerRunsTests.Run(window)}", TimeSpan.FromMinutes(1));
             string said = ContainerRunsTests.Run(window);
             Assert.Contains($"{Name}'s logs and traces stay in its Telemetry tab until Stop or its next run", said, StringComparison.Ordinal);
-            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is null, "Stop is greyed while a run that ended keeps its dashboard");
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown is null, "Stop is greyed while a run that ended keeps its dashboard");
 
             // Read once the program has gone: its dashboard kept them.
             Ui.Click(tab);
@@ -294,7 +294,7 @@ public sealed class ProjectTelemetryTests : McpRig
         {
             client = Await(Waiting.Apart(() => Start(["--mcp-attach", ProcessId])), "the agent attaching");
             Task<JsonElement> looked = Waiting.Apart(() => Call(client, McpTools.Workspace));
-            Press(Admission(window, "the window to ask whether the agent may work there"), AgentAdmissionDialog.Allow);
+            Press(Admission(window, "the window to ask whether the agent may work there"), McpWords.Allow.English);
             Await(looked, "the agent's look at the workspace");
             JsonElement ran = Asked(window, client, McpTools.Run, "run a configuration", new() { ["telemetry"] = true, ["waitSeconds"] = 120 });
             Assert.True(ran.GetProperty("stillRunning").GetBoolean(), $"The agent's run with telemetry answered: {ran}");

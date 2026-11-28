@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="RenamedLeaving" xml:space="preserve">
+    <value>{renamed}, leaving {places, plural, one {# place it can't see as it is} other {# places it can't see as they are}} ({where})</value>
+    <comment>A GDScript rename made, and the places in scripts it could not read that may name what it renamed, listed in brackets.</comment>
+  </data>
+  <data name="FillOf" xml:space="preserve">
+    <value>{fill} of {library}</value>
+    <comment>A fix filling a call's missing arguments with one of several mocking libraries' doubles; {fill} is the action's title, {library} the library's name.</comment>
+  </data>
+  <data name="TitleOfType" xml:space="preserve">
+    <value>{title} of {type}</value>
+    <comment>A fix making a fake of a type; {title} is the action's title, Create Fake.</comment>
+  </data>
+  <data name="SeamThen" xml:space="preserve">
+    <value>{seam}: {extract}, then {introduce}</value>
+    <comment>Beside a fake no class can make, why and the refactorings, by their titles, that give the code a seam; {seam} is as is sealed.</comment>
+  </data>
+  <data name="NotVirtualStay" xml:space="preserve">
+    <value>its members that are not virtual stay {type}'s own</value>
+    <comment>Beside a fake of a type with members a fake cannot override.</comment>
+  </data>
+  <data name="FakeIn" xml:space="preserve">
+    <value>{title} of {type} in {project}</value>
+    <comment>A fix making a fake of a type in a test project; {title} is the action's title, Create Fake.</comment>
+  </data>
+  <data name="FakeExists" xml:space="preserve">
+    <value>Fakes/{file} is there already</value>
+    <comment>Beside a fake a test project has already; {file} is its file's name.</comment>
+  </data>
+</root>

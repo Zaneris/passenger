@@ -9,11 +9,17 @@ namespace Passenger.Tests;
 
 /// <summary>The Migrations window against the database a compose run uses: a web app's Postgres, which the app reaches by
 /// its service's name inside the run, updated by dotnet ef at the port Compose published it on, as this machine reaches it,
-/// its password in none of the command lines Passenger ran nor in the IDE's log. Skipped, saying why, without a Linux engine
-/// or the Postgres image, which it never pulls.</summary>
+/// its password in none of the command lines Passenger ran nor in the IDE's log; and the run's Redis, its password holding a
+/// comma, opened in the Database window. Skipped, saying why, without a Linux engine or the Postgres or Redis image, which it
+/// never pulls.</summary>
 public sealed class MigrationsPostgresTests
 {
     private const string Postgres = "postgres:17-alpine";
+
+    /// <summary>The run's cache, signed in to by a password a Redis configuration string cannot carry, its comma ending a value.</summary>
+    private const string Redis = "redis:8.2.11-alpine";
+
+    private const string CachePassword = "pa,ss;w=rd";
 
     /// <summary>The database's password, in the connection string the run gives web.</summary>
     private const string Password = "sesame-4c1d";
@@ -23,6 +29,7 @@ public sealed class MigrationsPostgresTests
     {
         Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
         Assert.SkipWhen(Docker.Said("image", "inspect", Postgres) is null, $"The engine lacks {Postgres}, which this test never pulls: pull it to run the test");
+        Assert.SkipWhen(Docker.Said("image", "inspect", Redis) is null, $"The engine lacks {Redis}, which this test never pulls: pull it to run the test");
         string project = $"ptest{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}efpg";
         string folder = Make(project);
         List<string> ran = [];
@@ -38,9 +45,13 @@ public sealed class MigrationsPostgresTests
         window.ApplySettings(window.Settings with { LogEveryProgram = true });
         try
         {
+            // The Database window, shown before the run, finds the run's database as it comes up, with no Refresh.
+            window.ShowToolWindow(ToolWindowIds.Database);
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            Assert.DoesNotContain(window.Database.Sources, s => s.Found?.Contains("running service", StringComparison.Ordinal) == true);
             RunConfiguration compose = window.Configurations.First(c => c.Kind == RunKind.Compose);
             Assert.True(window.SelectConfiguration(compose.Name));
-            string? refused = Ui.Await(window.RunAsync(), "the compose run to come up", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the compose run to come up", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
 
             // A new database, whose history table EF does not find, has no migration applied.
@@ -65,6 +76,33 @@ public sealed class MigrationsPostgresTests
             string applied = Docker.Run("compose", "-p", project, "exec", "-T", "db", "psql", "-U", "postgres", "-d", "shop", "-tAc", "select \"MigrationId\" from \"__EFMigrationsHistory\"");
             Assert.EndsWith("_Initial", applied.Trim(), StringComparison.Ordinal);
 
+            // The Database window finds the running service's database, opening it only as asked, down to the migrated table.
+            window.ShowToolWindow(ToolWindowIds.Database);
+            Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Found?.Contains("running service", StringComparison.Ordinal) == true),
+                () => $"the run's database among the connections: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Found}"))} ({window.Database.Said})");
+            Passenger.App.Database.DatabaseSource found = Assert.Single(window.Database.Sources, s => s.Found?.Contains("running service", StringComparison.Ordinal) == true
+                && s.Database == "shop");
+            Assert.False(window.Database.IsConnected(found));
+            foreach (string row in (string[])[found.Name, "shop", "public", "Tables", "Products", "Columns"])
+            {
+                DatabaseTests.Open(window, row);
+            }
+            Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == Passenger.App.Database.DatabaseNodeKind.Column && r.Title == "Id"
+                && r.Detail.Contains("primary key", StringComparison.Ordinal));
+            // The run's other database, which no project uses, is listed too, by its service and as its image's variables make it.
+            Passenger.App.Database.DatabaseSource reports = Assert.Single(window.Database.Sources, s => s.Found?.EndsWith("running service reports", StringComparison.Ordinal) == true);
+            Assert.Equal(("reports", Passenger.App.Database.DatabaseKind.Postgres, "reports"), (reports.Name, reports.Kind, reports.Database));
+            DatabaseTests.Open(window, reports.Name);
+            Assert.Contains(window.DatabaseExplorer.Rows, r => r.Kind == Passenger.App.Database.DatabaseNodeKind.Database && r.Title == "reports");
+            // Its Redis, whose password holds a comma, opens signed in by the password whole.
+            Passenger.App.Database.DatabaseSource cache = Assert.Single(window.Database.Sources, s => s.Found?.EndsWith("running service cache", StringComparison.Ordinal) == true);
+            Assert.Equal(Passenger.App.Database.DatabaseKind.Redis, cache.Kind);
+            DatabaseTests.Open(window, cache.Name);
+            Assert.True(window.DatabaseExplorer.Rows.Any(r => r.Kind == Passenger.App.Database.DatabaseNodeKind.Database && r.Title == "db0"),
+                $"The run's Redis did not open: {window.Database.Said}");
+            Assert.DoesNotContain(CachePassword, window.Database.Said, StringComparison.Ordinal);
+            Assert.DoesNotContain(Password, window.Database.Said, StringComparison.Ordinal);
+
             // The connection string goes to dotnet ef through the environment, never a command line any process can read.
             string[] commands;
             lock (ran)
@@ -79,6 +117,10 @@ public sealed class MigrationsPostgresTests
             Assert.True(!log.Contains(Password, StringComparison.Ordinal),
                 $"The IDE's log has the database's password:\n{string.Join('\n', log.Split('\n').Where(l => l.Contains(Password, StringComparison.Ordinal)))}");
             Assert.DoesNotContain(Password, window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
+
+            // Stopped, the run's database is no connection any more, with no Refresh.
+            Docker.Stopped(window, project, "Stop to take the shop down", "com.docker.compose.service=web");
+            Ui.WaitFor(() => !window.Database.Busy && !window.Database.Sources.Any(s => s.Id == found.Id || s.Id == reports.Id), () => $"the run's databases gone from the connections ({window.Database.Said})");
         }
         finally
         {
@@ -167,6 +209,15 @@ public sealed class MigrationsPostgresTests
                 environment: { POSTGRES_PASSWORD: {{Password}}, POSTGRES_DB: shop }
                 ports: ["5432"]
                 healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 1s, retries: 60 }
+              reports:
+                image: {{Postgres}}
+                environment: { POSTGRES_PASSWORD: {{Password}}, POSTGRES_DB: reports }
+                ports: ["5432"]
+              cache:
+                image: {{Redis}}
+                command: ["redis-server", "--requirepass", "{{CachePassword}}"]
+                environment: { REDIS_PASSWORD: "{{CachePassword}}" }
+                ports: ["6379"]
 
             """);
         TestFolders.Write(folder, "dotnet-tools.json", $$"""

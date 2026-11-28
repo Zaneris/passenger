@@ -65,8 +65,8 @@ public sealed class KeyValueGrid : EditableTable
         rows.Add(row);
         Table.Children.Add(view);
         Mark(row);
-        keyBox.TextChanged += (_, _) => Typed(row);
-        valueBox.TextChanged += (_, _) => Typed(row);
+        TypedText.Hear(keyBox, () => Typed(row));
+        TypedText.Hear(valueBox, () => Typed(row));
         check.IsCheckedChanged += (_, _) => Tell();
         remove.Click += (_, _) =>
         {

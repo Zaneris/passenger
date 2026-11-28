@@ -77,7 +77,7 @@ public sealed class AspireContainerRecoveryTests
             Assert.Same(sharedBefore, ContainerEngine.Shared.Known);
             string[] commands = File.ReadAllLines(log);
             string inspect = $"--context {Context} ps -a --no-trunc --filter id={RecordedId} --format json";
-            string remove = $"--context {Context} rm -f {RecordedId}";
+            string remove = $"--context {Context} {string.Join(' ', ContainerLabels.Removing([RecordedId]))}";
             bool eligible = scenario is "dead-owner" or "renamed" or "engine-mismatch" or "unknown-id" or "persistent" or "gone";
             if (eligible)
             {
@@ -146,7 +146,7 @@ public sealed class AspireContainerRecoveryTests
             $" 'context inspect --format json'|'context inspect {Context}') cat \"$here/context.json\" ;;",
             " 'compose version --format json'|'buildx version') exit 1 ;;",
             $" '--context {Context} ps -a --no-trunc --filter id={RecordedId} --format json') cat \"$here/inspect.json\" ;;",
-            $" '--context {Context} rm -f {RecordedId}') ;;",
+            $" '--context {Context} {string.Join(' ', ContainerLabels.Removing([RecordedId]))}') ;;",
             " *) exit 1 ;;",
             "esac",
             string.Empty));

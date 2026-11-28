@@ -89,12 +89,14 @@ public sealed class FindInFilesTests : IDisposable
     }
 
     /// <summary>Find in Files searches and replaces only in the scope chosen: a directory scope inside node_modules or
-    /// bin is searched though the folder's search passes over it, and the popup closed is let go with its preview and
-    /// the file it showed.</summary>
+    /// bin is searched though the folder's search passes over it, Find and Replace in Files turn the open popup to each
+    /// other keeping what it was asked and found, and the popup closed is let go with its preview and the file it
+    /// showed.</summary>
     [AvaloniaFact]
     public void Find_in_files_searches_and_replaces_only_in_the_scope_chosen_and_lets_go_once_closed()
     {
         Flow.StepApart<FindInFilesTests>("a directory scope inside node_modules or bin is searched and replaced in though the folder's search passes over it", t => t.A_directory_scope_inside_node_modules_or_bin_is_searched_and_replaced_in_though_the_folders_search_passes_over_it());
+        Flow.StepApart<FindInFilesTests>("Find and Replace in Files turn the open popup to each other keeping what it was asked and found", t => t.Find_and_replace_in_files_turn_the_open_popup_to_each_other_keeping_what_it_was_asked_and_found());
         Flow.StepApart<FindInFilesTests>("Find in Files closed is let go with its preview and the file it showed", t => t.Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed());
     }
 
@@ -287,14 +289,14 @@ public sealed class FindInFilesTests : IDisposable
             popup.RequestReplace();
             Ui.PumpUntil(() => held.IsCompleted, "Replace All's find of every match to be held");
             Assert.Equal("Finding every match to replace…", window.Status);
-            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is null, "Stop is not offered while Replace All finds every match");
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown is null, "Stop is not offered while Replace All finds every match");
             Ui.Run(window, AppActions.Stop, settle: false);
             Ui.WaitFor(() => window.Status == "Stopped finding every match to replace: nothing was replaced",
                 () => $"Replace All's find to end once stopped; the status says '{window.Status}'");
             Assert.True(asked.Count == 0, $"Replace All stopped while it found every match asked '{string.Join("; ", asked)}'");
             string[] changed = [.. Directory.GetFiles(folder, "Tally*.txt").Where(f => !File.ReadAllText(f).StartsWith("tally 0 of", StringComparison.Ordinal)).Select(Path.GetFileName)!];
             Assert.True(changed.Length == 0, $"Replace All stopped while it found every match replaced in {string.Join(", ", changed)}");
-            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context()) is not null, "Replace All's find, stopped, left work under way for Stop to end");
+            Assert.True(window.Actions.WhyNot(AppActions.Stop, window.Actions.Context())?.Shown is not null, "Replace All's find, stopped, left work under way for Stop to end");
 
             popup.RequestReplace();
             Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"Replace All asked again; the status says '{window.Status}'");
@@ -401,8 +403,8 @@ public sealed class FindInFilesTests : IDisposable
 
         Assert.True(window.Perform(AppActions.ShowProjectHistory), "Show Project History did not run");
         Passenger.App.History.HistoryTab history = window.LocalHistoryWindow.Shown!;
-        Ui.Landed(() => history.Rows.Any(r => r.Title == Named), "the replace's change set in Local History");
-        Assert.True(history.Rows.Count(r => r.Title == Named) == 1 && !history.Rows.Any(r => r.Title is "Modify Alpha.cs" or "Modify Gamma.cs"),
+        Ui.Landed(() => history.Rows.Any(r => r.Title.English == Named), "the replace's change set in Local History");
+        Assert.True(history.Rows.Count(r => r.Title.English == Named) == 1 && !history.Rows.Any(r => r.Title.English is "Modify Alpha.cs" or "Modify Gamma.cs"),
             $"Local History lists the replace's files as [{string.Join(", ", history.Rows.Select(r => r.Title))}], not one change set named for it");
 
         window.EditorArea.CodeEditor.Focus();
@@ -599,7 +601,7 @@ public sealed class FindInFilesTests : IDisposable
         FindInFilesPopup popup = window.ShowFindInFiles(replace: true)!;
         popup.Regex = true;
         Ui.Search(popup, "(a+)+b|count");
-        Assert.True(popup.Status == $"4 matches in 3 files: {Refusals.RegexStoppedIn("Runs.txt")}", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
+        Assert.True(popup.Status == $"4 matches in 3 files: {Refusals.RegexStoppedIn("Runs.txt").Shown}", $"The popup says '{popup.Status}' of a regex that never ends in Runs.txt");
         Assert.Contains(popup.Matches, m => m is { Name: "Runs.txt", Line: 0, Column: 0, Length: 2 });
 
         Task<Passenger.App.Mcp.FindInFilesResult> asking = new Passenger.App.Mcp.PassengerTools(window).FindInFiles("(a+)+b|count", regex: true);
@@ -610,7 +612,7 @@ public sealed class FindInFilesTests : IDisposable
         popup.Replacement = "x";
         popup.RequestReplace();
         Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, () => $"the replacement; the status says '{window.Status}'");
-        Assert.Equal($"Replaced 3 matches in 2 files; not replaced: Runs.txt ({Refusals.RegexStopped})", window.Status);
+        Assert.Equal($"Replaced 3 matches in 2 files; not replaced: Runs.txt ({Refusals.RegexStopped.Shown})", window.Status);
         Assert.True(File.ReadAllText(runs) == text, "Replace All replaced the match found in Runs.txt before its search stopped");
         Assert.Equal("class Alpha\n{\n    int x;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
         window.Close();
@@ -1040,6 +1042,61 @@ public sealed class FindInFilesTests : IDisposable
     private static string[] Found(FindInFilesPopup popup, string root) =>
         [.. popup.Matches.Select(m => Path.GetRelativePath(root, m.Path)).Distinct().Order(StringComparer.Ordinal)];
 
+    /// <summary>Replace in Files' keys with Find in Files open turn the popup open to it in place: the query, its options,
+    /// the scope, the mask and the matches stay as they were, searched no more, the replacement row coming under the
+    /// query, which keeps the keys; Find in Files' keys take the row away, and back again it holds the replacement typed,
+    /// which Replace All puts in place of the matches kept (#2417).</summary>
+    private void Find_and_replace_in_files_turn_the_open_popup_to_each_other_keeping_what_it_was_asked_and_found()
+    {
+        MainWindow window = Open();
+        Ui.Press(window, Ui.Shortcut(AppActions.FindInFiles));
+        FindInFilesPopup popup = Assert.IsType<FindInFilesPopup>(window.Popup);
+        popup.Words = true;
+        popup.ScopeKind = SearchScopeKind.Directory;
+        popup.Directory = PathNames.Canonical(folder);
+        popup.Recursive = false;
+        popup.FileMask = "*.cs";
+        Ui.Search(popup, "count");
+        FilesFound found = popup.Found;
+        Assert.Equal("3 matches in 2 files", popup.Status);
+        Assert.False(Shown(popup, "Replacement"), "Find in Files opened with a replacement row");
+
+        Ui.Press(window, Ui.Shortcut(AppActions.ReplaceInFiles));
+        Assert.Same(popup, window.Popup);
+        Asked(popup, found, replacing: true);
+        popup.Replacement = "total";
+
+        Ui.Press(window, Ui.Shortcut(AppActions.FindInFiles));
+        Assert.Same(popup, window.Popup);
+        Asked(popup, found, replacing: false);
+
+        Ui.Press(window, Ui.Shortcut(AppActions.ReplaceInFiles));
+        Asked(popup, found, replacing: true);
+        Assert.Equal("total", popup.Replacement);
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        popup.RequestReplace();
+        Ui.WaitFor(() => window.Status?.StartsWith("Replaced", StringComparison.Ordinal) == true, "the replacement of the matches kept");
+        Assert.Equal("Replaced 3 matches in 2 files", window.Status);
+        Assert.Equal("class Alpha\n{\n    int total;\n}\n", File.ReadAllText(Path.Combine(folder, "Alpha.cs")));
+        window.Close();
+
+        static void Asked(FindInFilesPopup popup, FilesFound found, bool replacing)
+        {
+            string mode = replacing ? "Replace in Files" : "Find in Files";
+            Assert.True(popup.Replacing == replacing && Shown(popup, "Replacement") == replacing,
+                $"{mode}'s keys left the open popup {(popup.Replacing ? "replacing" : "finding")}, its replacement row {(Shown(popup, "Replacement") ? "shown" : "hidden")}");
+            Assert.Contains(mode, popup.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text));
+            Assert.Equal(("count", true, SearchScopeKind.Directory, false, "*.cs"), (popup.Text, popup.Words, popup.ScopeKind, popup.Recursive, popup.FileMask));
+            Assert.True(ReferenceEquals(found, popup.Found), $"{mode}'s keys searched again, or let go of the matches found: the popup says '{popup.Status}'");
+            Assert.True(TopLevel.GetTopLevel(popup)?.FocusManager?.GetFocusedElement() is TextBox { Text: "count" } focused
+                && Avalonia.Automation.AutomationProperties.GetName(focused) == mode, $"{mode}'s keys left the query without the keys");
+        }
+    }
+
+    /// <summary>Whether the popup shows its box of this name.</summary>
+    private static bool Shown(FindInFilesPopup popup, string box) =>
+        popup.GetVisualDescendants().OfType<TextBox>().Any(b => Avalonia.Automation.AutomationProperties.GetName(b) == box && b.IsEffectivelyVisible);
+
     /// <summary>Find in Files closed with a match in its preview: the popup, its preview editor and the file it showed go,
     /// so each search made leaves nothing behind for the window's life.</summary>
     private void Find_in_files_closed_is_let_go_with_its_preview_and_the_file_it_showed()
@@ -1076,9 +1133,10 @@ public sealed class FindInFilesTests : IDisposable
 public sealed class FindInFilesBytesTests
 {
     /// <summary>Find in Files reads as text only the files whose bytes may hold a match: over 2,000 files of 4 KB with a match
-    /// in a few, each search allocates (on every thread, the least of three) under 4 KB for each file more than over 20,
-    /// where reading one as text costs ten times that. It finds the same matches in UTF-8, UTF-8 with a BOM, UTF-16 and
-    /// 8-bit files, ignoring case as its regex does (a Kelvin sign is a k), matching case, by whole words and by regex.</summary>
+    /// in a few, each search allocates (on every thread, the least of three) under 4 KB a file more than over 20, and beside
+    /// a 2 MB file under 1 MB more ignoring case than matching case, ASCII looked for in the bytes undecoded. It finds the
+    /// same matches in UTF-8, UTF-8 with a BOM, UTF-16 and 8-bit files, ignoring case as its regex does (a Kelvin sign is a
+    /// k), matching case, by whole words and by regex.</summary>
     [AvaloniaFact]
     public void A_search_over_two_thousand_files_reads_as_text_only_those_whose_bytes_may_match()
     {
@@ -1098,6 +1156,7 @@ public sealed class FindInFilesBytesTests
             Files(large, 2000);
             (long Bytes, string Found)[] few = Searches(small, queries);
             (long Bytes, string Found)[] many = Searches(large, queries);
+            int matchingCase = Array.FindIndex(queries, q => q.MatchCase);
             for (int i = 0; i < queries.Length; i++)
             {
                 string asked = $"{queries[i].Text}{(queries[i].MatchCase ? " matching case" : string.Empty)}{(queries[i].Words ? " as a word" : string.Empty)}{(queries[i].Regex ? " as a regex" : string.Empty)}";
@@ -1107,6 +1166,8 @@ public sealed class FindInFilesBytesTests
                     $"Find in Files for {asked} found [{few[i].Found}] over 20 files and [{many[i].Found}] over 2,000, not [{queries[i].Found}]");
                 Assert.True(each < 4096,
                     $"Find in Files for {asked} allocated {many[i].Bytes / 1024:N0} KB over 2,000 files, {few[i].Bytes / 1024:N0} KB over 20: {each:N0} bytes for each file more, as if every file were read as text");
+                Assert.True(many[i].Bytes - many[matchingCase].Bytes < 1024 * 1024,
+                    $"Find in Files for {asked} allocated {many[i].Bytes / 1024:N0} KB against {many[matchingCase].Bytes / 1024:N0} KB matching case, as if the 2 MB file's bytes were decoded to be looked at");
             }
         }
         finally
@@ -1126,6 +1187,7 @@ public sealed class FindInFilesBytesTests
             File.WriteAllBytes(Path.Combine(root, "Latin.cs"), System.Text.Encoding.Latin1.GetBytes("// déjà une needle\n"));
             File.WriteAllText(Path.Combine(root, "Kelvin.cs"), "// Kelvin's line\n");
             File.WriteAllBytes(Path.Combine(root, "Blob.bin"), [.. System.Text.Encoding.ASCII.GetBytes("needle kelvin"), 0, 1, 2]);
+            File.WriteAllText(Path.Combine(root, "src/Large.cs"), string.Concat(Enumerable.Repeat("    int field = 2 * 3; // a sum of the parts\n", 2 * 1024 * 1024 / 46)));
         }
     }
 

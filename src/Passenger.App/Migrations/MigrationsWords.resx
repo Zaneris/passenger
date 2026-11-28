@@ -1,0 +1,619 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Going" xml:space="preserve">
+    <value>{stage}…</value>
+    <comment>A stage of the Migrations window's work under way, as its progress says it ({stage}, the stage's words).</comment>
+  </data>
+  <data name="ListingStage" xml:space="preserve">
+    <value>Listing migrations</value>
+    <comment>The stage of listing a context's migrations.</comment>
+  </data>
+  <data name="AddingStage" xml:space="preserve">
+    <value>Adding migration {name}</value>
+    <comment>The stage of adding a migration of that name.</comment>
+  </data>
+  <data name="RemovingStage" xml:space="preserve">
+    <value>Removing the last migration</value>
+    <comment>The stage of removing a context's last migration.</comment>
+  </data>
+  <data name="UpdatingStage" xml:space="preserve">
+    <value>{target, select, latest {Updating the database to the latest migration} none {Updating the database to before the first migration} other {Updating the database to {migration}}}</value>
+    <comment>The stage of updating the database: to the latest migration, to before the first (none), or to the migration named.</comment>
+  </data>
+  <data name="ScriptingStage" xml:space="preserve">
+    <value>Scripting migrations</value>
+    <comment>The stage of writing a SQL script of migrations.</comment>
+  </data>
+  <data name="BundlingStage" xml:space="preserve">
+    <value>Bundling migrations</value>
+    <comment>The stage of bundling migrations into a program that applies them.</comment>
+  </data>
+  <data name="NoDbContext" xml:space="preserve">
+    <value>{project} has no DbContext</value>
+    <comment>A listing that found no EF Core context in the project.</comment>
+  </data>
+  <data name="NoMigrations" xml:space="preserve">
+    <value>{context} has no migrations</value>
+    <comment>A listing of a context with no migration.</comment>
+  </data>
+  <data name="MigrationsUnread" xml:space="preserve">
+    <value>{context}: {count, plural, one {# migration} other {# migrations}}; the database could not be read</value>
+    <comment>A listing of a context's migrations whose database could not be read, so which are applied is not known.</comment>
+  </data>
+  <data name="MigrationsApplied" xml:space="preserve">
+    <value>{context}: {count, plural, one {# migration} other {# migrations}}, all applied</value>
+    <comment>A listing of a context's migrations, every one applied to the database.</comment>
+  </data>
+  <data name="MigrationsPending" xml:space="preserve">
+    <value>{context}: {count, plural, one {# migration} other {# migrations}}, {pending, number} pending</value>
+    <comment>A listing of a context's migrations, and how many the database lacks.</comment>
+  </data>
+  <data name="Added" xml:space="preserve">
+    <value>Added migration {name} to {context}</value>
+    <comment>A migration added to a context.</comment>
+  </data>
+  <data name="AddedIn" xml:space="preserve">
+    <value>Added migration {name} to {context}, in {folder}</value>
+    <comment>A migration added to a context, and the project's folder its files are in.</comment>
+  </data>
+  <data name="RemoveCancelled" xml:space="preserve">
+    <value>Remove cancelled</value>
+    <comment>The person cancelled Remove Last Migration's question.</comment>
+  </data>
+  <data name="Removed" xml:space="preserve">
+    <value>Removed the last migration of {context}</value>
+    <comment>A context's last migration removed.</comment>
+  </data>
+  <data name="UpdateCancelled" xml:space="preserve">
+    <value>Update cancelled</value>
+    <comment>The person cancelled the question about rolling migrations back.</comment>
+  </data>
+  <data name="Updated" xml:space="preserve">
+    <value>{target, select, latest {Updated the database of {context} to the latest migration} none {Updated the database of {context} to before the first migration} other {Updated the database of {context} to {migration}}}</value>
+    <comment>The database updated: to the latest migration, to before the first (none), or to the migration named.</comment>
+  </data>
+  <data name="Scripted" xml:space="preserve">
+    <value>{idempotent, select, yes {Scripted the migrations of {context}, idempotent, into {file}} other {Scripted the migrations of {context} into {file}}}</value>
+    <comment>A SQL script of a context's migrations written into a file, idempotent (yes) or not.</comment>
+  </data>
+  <data name="Bundled" xml:space="preserve">
+    <value>Bundled the migrations of {context} into {file}</value>
+    <comment>A program applying a context's migrations made at that path.</comment>
+  </data>
+  <data name="ReadingContexts" xml:space="preserve">
+    <value>Reading the projects' contexts…</value>
+    <comment>The stage of reading which contexts the projects declare.</comment>
+  </data>
+  <data name="NoEfCoreIn" xml:space="preserve">
+    <value>{project} does not use EF Core: choose the startup project that runs the context</value>
+    <comment>The chosen startup project's restore names no EF Core.</comment>
+  </data>
+  <data name="FixFirst" xml:space="preserve">
+    <value>{gap}: {fix} first</value>
+    <comment>What keeps dotnet ef from working ({gap}), and its fix's title, to run first.</comment>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Stopped</value>
+    <comment>A command stopped before it was done.</comment>
+  </data>
+  <data name="NoEfTool" xml:space="preserve">
+    <value>dotnet ef is not installed here: {fix} first</value>
+    <comment>dotnet ef is not found for the startup project's folder, and the fix's title to run first.</comment>
+  </data>
+  <data name="FindingDatabase" xml:space="preserve">
+    <value>Finding {context}'s database…</value>
+    <comment>The stage of finding the database a context's migrations go to.</comment>
+  </data>
+  <data name="MigrationsUse" xml:space="preserve">
+    <value>{context}'s migrations use {connection}</value>
+    <comment>The connection a context's migrations go to, found.</comment>
+  </data>
+  <data name="BuildStartupFirst" xml:space="preserve">
+    <value>Build the startup project first: its restore says which EF Core it has</value>
+    <comment>A fix asked for before the startup project was ever restored.</comment>
+  </data>
+  <data name="FixCancelled" xml:space="preserve">
+    <value>Fix cancelled</value>
+    <comment>The person cancelled a fix's question.</comment>
+  </data>
+  <data name="FixDone" xml:space="preserve">
+    <value>{fix}: done</value>
+    <comment>A fix of what kept dotnet ef from working, done ({fix}, its title).</comment>
+  </data>
+  <data name="ToolEnded" xml:space="preserve">
+    <value>dotnet {verb} {noun} ended with {code}</value>
+    <comment>A dotnet tool command (dotnet tool install, update or restore) that failed saying nothing, and its exit code said.</comment>
+  </data>
+  <data name="ReadingVersions" xml:space="preserve">
+    <value>Reading which versions of {package} and EF Core fit…</value>
+    <comment>The stage of reading the package feeds for the versions of a provider and EF Core that fit together.</comment>
+  </data>
+  <data name="FeedsUnread" xml:space="preserve">
+    <value>The feeds could not say which versions fit: {problem}</value>
+    <comment>The package feeds did not answer which versions fit.</comment>
+  </data>
+  <data name="NoFittingVersion" xml:space="preserve">
+    <value>No version of {package} in the feeds supports EF Core {version}, and none of EF Core it supports is there</value>
+    <comment>No version of a provider package fits the EF Core version, nor any EF Core it supports.</comment>
+  </data>
+  <data name="PartlyAligned" xml:space="preserve">
+    <value>{failed}; {changed} changed already, which Undo takes back</value>
+    <comment>A move of packages that failed partway ({failed}, what failed), and the projects it had changed already.</comment>
+  </data>
+  <data name="FileThere" xml:space="preserve">
+    <value>{file} is already there</value>
+    <comment>A design-time factory's file, already in the project.</comment>
+  </data>
+  <data name="FactoryAdded" xml:space="preserve">
+    <value>Added {file}, which reads the connection string {connection}, as {told} names it, from the configuration</value>
+    <comment>A design-time factory added, reading the connection string the code names (told, where it is named).</comment>
+  </data>
+  <data name="FactoryAddedUnnamed" xml:space="preserve">
+    <value>Added {file}, which reads the connection string {connection}: nothing in {startup} names {context}'s connection, so give it in appsettings.json's ConnectionStrings or as ConnectionStrings__{connection}</value>
+    <comment>A design-time factory added, reading a connection string of the context's name, which nothing in the startup project names.</comment>
+  </data>
+  <data name="Building" xml:space="preserve">
+    <value>Building {project}…</value>
+    <comment>The stage of building the startup project before dotnet ef runs.</comment>
+  </data>
+  <data name="ReadingRun" xml:space="preserve">
+    <value>Reading how {configuration} runs…</value>
+    <comment>The stage of reading the run configuration that runs the startup project.</comment>
+  </data>
+  <data name="RunningEf" xml:space="preserve">
+    <value>{stage}: dotnet ef {verb}…</value>
+    <comment>The stage of running dotnet ef for a command ({stage}, the command's own stage; {verb}, dotnet ef's verbs).</comment>
+  </data>
+  <data name="FailedFix" xml:space="preserve">
+    <value>{failed} ({fix} in the Migrations window)</value>
+    <comment>A command that failed ({failed}, why) with the title of the fix the Migrations window offers.</comment>
+  </data>
+  <data name="Unnamed" xml:space="preserve">
+    <value>A migration needs a name</value>
+    <comment>Add Migration given no name.</comment>
+  </data>
+  <data name="NoClassName" xml:space="preserve">
+    <value>{name} is no C# name: a migration is a class of that name</value>
+    <comment>Add Migration given a name that is no C# class name.</comment>
+  </data>
+  <data name="NotEfCore" xml:space="preserve">
+    <value>{startup} does not use EF Core: choose the startup project that runs the context</value>
+    <comment>A gap: the startup project chosen has no EF Core, so it cannot run the context.</comment>
+  </data>
+  <data name="ChooseStartupFix" xml:space="preserve">
+    <value>Choose Startup Project</value>
+    <comment>A fix's button: opens the Migrations window's startup project chooser.</comment>
+  </data>
+  <data name="NoToolFor" xml:space="preserve">
+    <value>dotnet ef is not installed here, and {startup} has EF Core {runtime}</value>
+    <comment>A gap: no dotnet ef tool for the folder, and the EF Core version the startup project restored.</comment>
+  </data>
+  <data name="UpdateGlobalFix" xml:space="preserve">
+    <value>Update the Global {tool} to {runtime}</value>
+    <comment>A fix's button: moves the person's global tool ({tool}, its package id) to the project's EF Core version.</comment>
+  </data>
+  <data name="ToolUnmatched" xml:space="preserve">
+    <value>{place, select, local {The local {tool} {version}} other {The global {tool} {version}}} does not match {startup}'s EF Core {runtime}</value>
+    <comment>A gap: the dotnet ef tool found, local to the folder or the person's global one, is of another version than the startup project's EF Core.</comment>
+  </data>
+  <data name="LacksDesign" xml:space="preserve">
+    <value>{startup} lacks {package}, which dotnet ef loads from the startup project</value>
+    <comment>A gap: the startup project lacks EF Core's Design package ({package}, its id).</comment>
+  </data>
+  <data name="DesignFix" xml:space="preserve">
+    <value>Add {package} {runtime}</value>
+    <comment>A fix's button: adds the Design package at the project's EF Core version.</comment>
+  </data>
+  <data name="ProviderBehind" xml:space="preserve">
+    <value>{provider} {version} supports {range}; {startup} has EF Core {runtime}</value>
+    <comment>A gap: a database provider's package ({provider} {version}) supports other EF Core versions ({range}, as EF Core 9) than the startup project has.</comment>
+  </data>
+  <data name="AlignFix" xml:space="preserve">
+    <value>Bring {provider} and EF Core into Step</value>
+    <comment>A fix's button: moves the provider's package or EF Core's packages so they fit each other.</comment>
+  </data>
+  <data name="PinFix" xml:space="preserve">
+    <value>Pin the Local {tool} to {runtime}</value>
+    <comment>A fix's button: installs the folder's local dotnet ef tool ({tool}, its package id) at the project's EF Core version.</comment>
+  </data>
+  <data name="NoHostRegisters" xml:space="preserve">
+    <value>no host in {startup} registers it, and it has no parameterless constructor or design-time factory</value>
+    <comment>Why dotnet ef cannot make a context, said after "dotnet ef cannot make X:".</comment>
+  </data>
+  <data name="CannotMake" xml:space="preserve">
+    <value>dotnet ef cannot make {context}: {why}</value>
+    <comment>A gap: dotnet ef could not make the context, and why ({why}, these words or EF's own).</comment>
+  </data>
+  <data name="FactoryFix" xml:space="preserve">
+    <value>Add a Design-Time Factory for {context}</value>
+    <comment>A fix's button: adds an IDesignTimeDbContextFactory for the context, from a template.</comment>
+  </data>
+  <data name="SeveralContexts" xml:space="preserve">
+    <value>The project has several contexts: choose one</value>
+    <comment>A gap: dotnet ef found more than one DbContext and was told none.</comment>
+  </data>
+  <data name="ChooseContextFix" xml:space="preserve">
+    <value>Choose Context</value>
+    <comment>A fix's button: opens the Migrations window's context chooser.</comment>
+  </data>
+  <data name="NoContextFound" xml:space="preserve">
+    <value>dotnet ef finds no DbContext in the project or the startup project</value>
+    <comment>A gap: dotnet ef found no context.</comment>
+  </data>
+  <data name="NoIdempotentScript" xml:space="preserve">
+    <value>SQLite takes no idempotent script</value>
+    <comment>A gap: an idempotent script was asked of a SQLite database, which EF Core cannot write.</comment>
+  </data>
+  <data name="ScriptPlainFix" xml:space="preserve">
+    <value>Script Without Idempotence</value>
+    <comment>A fix's button and a question's answer: writes the script again without idempotence.</comment>
+  </data>
+  <data name="AppliedAlready" xml:space="preserve">
+    <value>{migration} is applied to the database: update the database to the migration before it first</value>
+    <comment>A gap: removing a migration the database has applied.</comment>
+  </data>
+  <data name="ToolsUnrestored" xml:space="preserve">
+    <value>The folder's local tools are not restored</value>
+    <comment>A gap: the folder's tool manifest names tools not yet restored.</comment>
+  </data>
+  <data name="RestoreToolsFix" xml:space="preserve">
+    <value>Restore Local Tools</value>
+    <comment>A fix's button: runs dotnet tool restore.</comment>
+  </data>
+  <data name="NoTool" xml:space="preserve">
+    <value>dotnet ef is not installed here</value>
+    <comment>A gap: no dotnet ef tool for the folder.</comment>
+  </data>
+  <data name="EfEnded" xml:space="preserve">
+    <value>dotnet ef ended with {exit}</value>
+    <comment>A command's failure where dotnet ef said nothing: how it ended ({exit}, as "exit code 1").</comment>
+  </data>
+  <data name="ToolOlder" xml:space="preserve">
+    <value>The {tool} {version} run is older than {startup}'s EF Core {runtime}</value>
+    <comment>A gap after a command: the dotnet ef tool that ran ({tool} {version}) is older than the project's EF Core.</comment>
+  </data>
+  <data name="SupportsFrom" xml:space="preserve">
+    <value>EF Core {version} and later</value>
+    <comment>The EF Core versions a provider's package supports: that version or any later.</comment>
+  </data>
+  <data name="SupportsOnly" xml:space="preserve">
+    <value>EF Core {version}</value>
+    <comment>The EF Core version (or major version, as 9) a provider's package supports.</comment>
+  </data>
+  <data name="SupportsRange" xml:space="preserve">
+    <value>EF Core {from} to {to}</value>
+    <comment>The EF Core versions a provider's package supports, from one version to another.</comment>
+  </data>
+  <data name="PackageMove" xml:space="preserve">
+    <value>{move, select, downgrade {Downgrade {id} to {version} in {project}} other {Update {id} to {version} in {project}}}</value>
+    <comment>An update of an EF Core package in a project, as one step of Undo: moving it to an older version (downgrade) or a newer one.</comment>
+  </data>
+  <data name="UpdateAnyway" xml:space="preserve">
+    <value>Update Anyway</value>
+    <comment>A question's answer: updates EF Core's packages and leaves the provider behind.</comment>
+  </data>
+  <data name="UpdateSet" xml:space="preserve">
+    <value>Update the Set to {version}</value>
+    <comment>A question's answer: moves EF Core's packages, and the provider with them, to that version.</comment>
+  </data>
+  <data name="UpdateTitle" xml:space="preserve">
+    <value>Update {id}</value>
+    <comment>The title of the question asked before an update of an EF Core package leaves a provider behind.</comment>
+  </data>
+  <data name="LeavesBehind" xml:space="preserve">
+    <value>{provider} {had} supports {range}; {id} {version} leaves it behind.</value>
+    <comment>The question's first sentence: the provider's version and the EF Core versions it supports ({range}), which the update asked ({id} {version}) leaves.</comment>
+  </data>
+  <data name="OfferUp" xml:space="preserve">
+    <value>{provider} {up} supports it: {together} moves EF Core's packages to {version} and {provider} to {up} together.</value>
+    <comment>The question's offer where a newer provider supports the EF Core asked; {together} is the answer's words (Update the Set to…).</comment>
+  </data>
+  <data name="OfferNone" xml:space="preserve">
+    <value>No version of {provider} in the feeds supports EF Core {version} yet.</value>
+    <comment>The question's second sentence where no version of the provider supports the EF Core asked.</comment>
+  </data>
+  <data name="OfferBack" xml:space="preserve">
+    <value>No version of {provider} in the feeds supports EF Core {version} yet; {back} moves EF Core's packages to {newest}, the newest it supports.</value>
+    <comment>The question's offer of EF Core's newest version the provider supports; {back} is the answer's words.</comment>
+  </data>
+  <data name="OfferBackWith" xml:space="preserve">
+    <value>No version of {provider} in the feeds supports EF Core {version} yet; {back} moves EF Core's packages to {newest}, the newest it supports, and {provider} to {fits}.</value>
+    <comment>The question's offer of EF Core's newest version a newer provider ({fits}) supports; {back} is the answer's words.</comment>
+  </data>
+  <data name="AnywayNote" xml:space="preserve">
+    <value>{anyway} moves EF Core's packages to {version} and leaves {provider} as it is.</value>
+    <comment>The question's last sentence: what the Update Anyway answer ({anyway}) does.</comment>
+  </data>
+  <data name="Sentences" xml:space="preserve">
+    <value>{first} {then}</value>
+    <comment>Two sentences said one after the other, the first ending in its own full stop.</comment>
+  </data>
+  <data name="MoveFailed" xml:space="preserve">
+    <value>{name} failed: the NuGet window's log says why</value>
+    <comment>An update of EF Core's packages ({name}, as Update X to Y in Z) failed.</comment>
+  </data>
+  <data name="MoveDone" xml:space="preserve">
+    <value>{name}: done</value>
+    <comment>An update of EF Core's packages ({name}) done.</comment>
+  </data>
+  <data name="MovedWith" xml:space="preserve">
+    <value>{name}: {packages} moved with it</value>
+    <comment>An update of EF Core's packages done, and the packages that moved with the one asked, each with its version.</comment>
+  </data>
+  <data name="Lacking" xml:space="preserve">
+    <value>{count, plural, one {{packages} has no {version} in the feeds, left as it was} other {{packages} have no {version} in the feeds, left as they were}}</value>
+    <comment>EF Core's packages the feeds have no such version of, left as they were ({count}, how many).</comment>
+  </data>
+  <data name="BehindUp" xml:space="preserve">
+    <value>{provider} {had} left behind, supporting {range}: {provider} {up} supports EF Core {version}</value>
+    <comment>An update that left a provider behind, and the provider's newer version that supports the EF Core it moved to.</comment>
+  </data>
+  <data name="BehindOlder" xml:space="preserve">
+    <value>{provider} {had} left behind, supporting {range}: none of its versions in the feeds supports EF Core {version} yet; it supports EF Core {core}</value>
+    <comment>An update that left a provider behind, none of whose versions supports the EF Core it moved to; the newest EF Core it does support.</comment>
+  </data>
+  <data name="BehindOlderOther" xml:space="preserve">
+    <value>{provider} {had} left behind, supporting {range}: none of its versions in the feeds supports EF Core {version} yet; {provider} {fits} supports EF Core {core}</value>
+    <comment>An update that left a provider behind, none of whose versions supports the EF Core it moved to; the provider's version that supports EF Core's newest it can.</comment>
+  </data>
+  <data name="BehindNone" xml:space="preserve">
+    <value>{provider} {had} left behind, supporting {range}: none of its versions in the feeds supports EF Core {version} yet</value>
+    <comment>An update that left a provider behind, none of whose versions supports the EF Core it moved to.</comment>
+  </data>
+  <data name="AlignUp" xml:space="preserve">
+    <value>Update {id} to {version}</value>
+    <comment>A provider's fix: its package moved to the version that supports the project's EF Core.</comment>
+  </data>
+  <data name="AlignCore" xml:space="preserve">
+    <value>Move EF Core to {version}</value>
+    <comment>A provider's fix: EF Core's packages moved to the newest version the provider supports.</comment>
+  </data>
+  <data name="RemoveQuestion" xml:space="preserve">
+    <value>Remove {name}? Its files are deleted and the model snapshot goes back to the migration before it.</value>
+    <comment>Remove Last Migration's question.</comment>
+  </data>
+  <data name="RemoveUnreadQuestion" xml:space="preserve">
+    <value>Remove {name}? Its files are deleted and the model snapshot goes back to the migration before it. The database could not be read, so whether it has the migration is not known.</value>
+    <comment>Remove Last Migration's question where the database could not be read.</comment>
+  </data>
+  <data name="Remove" xml:space="preserve">
+    <value>Remove</value>
+    <comment>Remove Last Migration's question's answer.</comment>
+  </data>
+  <data name="RollBackTitle" xml:space="preserve">
+    <value>{count, plural, one {Roll Back # Migration} other {Roll Back # Migrations}}</value>
+    <comment>The title of the question asked before an update rolls migrations back.</comment>
+  </data>
+  <data name="RollBackQuestion" xml:space="preserve">
+    <value>{target, select, none {Updating the database to before the first migration runs the Down method of {names} against it, which can lose the data they hold.} other {Updating the database to {migration} runs the Down method of {names} against it, which can lose the data they hold.}}</value>
+    <comment>The question asked before an update rolls migrations back ({names}, theirs): to before the first migration (none), or to the migration named.</comment>
+  </data>
+  <data name="RollBack" xml:space="preserve">
+    <value>Roll Back</value>
+    <comment>The rolling back question's answer.</comment>
+  </data>
+  <data name="GoOn" xml:space="preserve">
+    <value>Go On</value>
+    <comment>The answer to a gap's question that leaves the gap and goes on with the command.</comment>
+  </data>
+  <data name="Title" xml:space="preserve">
+    <value>Migrations</value>
+    <comment>The title of a question the Migrations window asks.</comment>
+  </data>
+  <data name="GapQuestion" xml:space="preserve">
+    <value>{reach, select, align {{gap}. Its fix reads the folder's package sources for the versions that fit, and downloads what the package cache lacks.} download {{gap}. Its fix downloads from the folder's package sources what the package cache lacks.} other {{gap}.}}</value>
+    <comment>A gap asked about before a command, and what its fix reaches beyond the folder: the package sources (align, download) or nothing.</comment>
+  </data>
+  <data name="RunConfigurationsNote" xml:space="preserve">
+    <value>the run configuration's</value>
+    <comment>Beside an environment's name in the chooser: the one the run configuration names.</comment>
+  </data>
+  <data name="PassengersOwnNote" xml:space="preserve">
+    <value>Passenger's own</value>
+    <comment>Beside an environment's name in the chooser: the one Passenger's own environment names.</comment>
+  </data>
+  <data name="DefaultNote" xml:space="preserve">
+    <value>the default</value>
+    <comment>Beside an environment's name in the chooser: ASP.NET Core's default, Development.</comment>
+  </data>
+  <data name="UsedBy" xml:space="preserve">
+    <value>used by {context}'s migrations</value>
+    <comment>Where the Database window found a connection: the context's migrations use it.</comment>
+  </data>
+  <data name="UsedThrough" xml:space="preserve">
+    <value>used by {context}'s migrations: {where}</value>
+    <comment>Where the Database window found a connection: the context's migrations use it, as a running compose project or AppHost gives it ({where}).</comment>
+  </data>
+  <data name="NoEnvironmentName" xml:space="preserve">
+    <value>"{name}" names no environment: an environment's name is letters and digits, with '.', '-' or '_' after the first</value>
+    <comment>A name typed for the environment dotnet ef runs in that is no environment's.</comment>
+  </data>
+  <data name="ProjectTip" xml:space="preserve">
+    <value>The project whose contexts and migrations are listed</value>
+    <comment>The project chooser's tip.</comment>
+  </data>
+  <data name="StartupTip" xml:space="preserve">
+    <value>The project dotnet ef starts to make the context, as its run does</value>
+    <comment>The startup project chooser's tip.</comment>
+  </data>
+  <data name="EnvironmentTip" xml:space="preserve">
+    <value>The environment dotnet ef runs the startup project in, whose appsettings.'{Environment}'.json its configuration reads: none chosen, the one its run configuration names. A name typed is taken too.</value>
+    <comment>The environment chooser's tip; {Environment}, quoted, stands as written, part of a file name.</comment>
+  </data>
+  <data name="ContextTip" xml:space="preserve">
+    <value>The context whose migrations are listed</value>
+    <comment>The context chooser's tip.</comment>
+  </data>
+  <data name="ProjectLabel" xml:space="preserve">
+    <value>Project</value>
+    <comment>The label before the project chooser.</comment>
+  </data>
+  <data name="StartupLabel" xml:space="preserve">
+    <value>Startup</value>
+    <comment>The label before the startup project chooser.</comment>
+  </data>
+  <data name="EnvironmentLabel" xml:space="preserve">
+    <value>Environment</value>
+    <comment>The label before the environment chooser.</comment>
+  </data>
+  <data name="ContextLabel" xml:space="preserve">
+    <value>Context</value>
+    <comment>The label before the context chooser.</comment>
+  </data>
+  <data name="CopyId" xml:space="preserve">
+    <value>Copy Id</value>
+    <comment>A migration row's menu item: copies its id.</comment>
+  </data>
+  <data name="Against" xml:space="preserve">
+    <value>Against {database}</value>
+    <comment>Where the last command reached the database, as a running compose project or AppHost gives it.</comment>
+  </data>
+  <data name="ModelChanged" xml:space="preserve">
+    <value>{context}'s model has changes no migration covers</value>
+    <comment>A gap: the context's model changed since its last migration.</comment>
+  </data>
+  <data name="RefreshToList" xml:space="preserve">
+    <value>Refresh to list the migrations, as dotnet ef reads them and the database has them</value>
+    <comment>The Migrations window before its first listing.</comment>
+  </data>
+  <data name="NoneYet" xml:space="preserve">
+    <value>{context} has no migrations: Add Migration… makes its first</value>
+    <comment>The Migrations window listing a context with no migration.</comment>
+  </data>
+  <data name="Applied" xml:space="preserve">
+    <value>Applied</value>
+    <comment>A migration the database has.</comment>
+  </data>
+  <data name="Pending" xml:space="preserve">
+    <value>Pending</value>
+    <comment>A migration the database lacks.</comment>
+  </data>
+  <data name="NotRead" xml:space="preserve">
+    <value>Not read</value>
+    <comment>A migration whose database could not be read.</comment>
+  </data>
+  <data name="NoFolder" xml:space="preserve">
+    <value>"{folder}" names no folder: {problem}</value>
+    <comment>A folder typed for a migration's files that is no path, and the system's words why.</comment>
+  </data>
+  <data name="OutsideProject" xml:space="preserve">
+    <value>{folder} is outside {project}: its migrations go in a folder of the project</value>
+    <comment>A folder typed for a migration's files outside its project.</comment>
+  </data>
+  <data name="AddTitle" xml:space="preserve">
+    <value>Add Migration to {context}</value>
+    <comment>Add Migration's question's title.</comment>
+  </data>
+  <data name="NamePlaceholder" xml:space="preserve">
+    <value>AddCustomerEmail</value>
+    <comment>An example of a migration's name, a C# class name, in the empty name field.</comment>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>Add</value>
+    <comment>Add Migration's question's button.</comment>
+  </data>
+  <data name="NameLabel" xml:space="preserve">
+    <value>Name</value>
+    <comment>The migration's name field.</comment>
+  </data>
+  <data name="NameNote" xml:space="preserve">
+    <value>A C# class's name, as the migration is one</value>
+    <comment>The note under the migration's name field.</comment>
+  </data>
+  <data name="FolderLabel" xml:space="preserve">
+    <value>Output folder</value>
+    <comment>The folder its files go in.</comment>
+  </data>
+  <data name="Into" xml:space="preserve">
+    <value>Into {folder}</value>
+    <comment>Where the migration's files go: the project's folder typed.</comment>
+  </data>
+  <data name="IntoLast" xml:space="preserve">
+    <value>Empty: beside its last migration, in {folder}</value>
+    <comment>Where the migration's files go with no folder typed: beside the context's last migration.</comment>
+  </data>
+  <data name="IntoDefault" xml:space="preserve">
+    <value>Empty: dotnet ef's default, {folder}</value>
+    <comment>Where the migration's files go with no folder typed and no migration before it.</comment>
+  </data>
+  <data name="ScriptTitle" xml:space="preserve">
+    <value>Script {context}'s Migrations</value>
+    <comment>Script Migrations' question's title.</comment>
+  </data>
+  <data name="EmptyDatabase" xml:space="preserve">
+    <value>The empty database</value>
+    <comment>The From list's first choice: the database with no migration applied.</comment>
+  </data>
+  <data name="LatestMigration" xml:space="preserve">
+    <value>The latest migration</value>
+    <comment>The To list's last choice.</comment>
+  </data>
+  <data name="IdempotentChoice" xml:space="preserve">
+    <value>Idempotent: each step checks the history table first</value>
+    <comment>Script Migrations' choice of an idempotent script.</comment>
+  </data>
+  <data name="FromLabel" xml:space="preserve">
+    <value>From</value>
+    <comment>The migration a script starts from.</comment>
+  </data>
+  <data name="ToLabel" xml:space="preserve">
+    <value>To</value>
+    <comment>The migration a script ends at.</comment>
+  </data>
+  <data name="Script" xml:space="preserve">
+    <value>Script</value>
+    <comment>Script Migrations' question's button.</comment>
+  </data>
+  <data name="NoMigrationChosen" xml:space="preserve">
+    <value>No migration is chosen in the Migrations window</value>
+    <comment>Why Update Database to Chosen Migration cannot run.</comment>
+  </data>
+  <data name="NothingToFix" xml:space="preserve">
+    <value>The Migrations window shows nothing to fix</value>
+    <comment>Why Fix What Migrations Lack cannot run.</comment>
+  </data>
+  <data name="DatabaseShown" xml:space="preserve">
+    <value>{context}'s migrations use {connection}, the Database window's connection {name}</value>
+    <comment>The context's database opened in the Database window: the connection its migrations use and the Database window's name for it.</comment>
+  </data>
+  <data name="ForModelChanges" xml:space="preserve">
+    <value>for {context}'s model changes</value>
+    <comment>Add Migration…'s detail beside it among a context's fixes.</comment>
+  </data>
+  <data name="AddTakesName" xml:space="preserve">
+    <value>Add Migration takes its name: {action} with the name as input</value>
+    <comment>An agent's Add Migration fix refused: it is to run the action ({action}, its id) with the name as input.</comment>
+  </data>
+  <data name="AddAsksName" xml:space="preserve">
+    <value>Add Migration: a name for {context}'s migration</value>
+    <comment>Add Migration's fix asking the person for the migration's name.</comment>
+  </data>
+  <data name="ScriptPlainTitle" xml:space="preserve">
+    <value>Script Migrations</value>
+    <comment>The title of the question asked when SQLite took no idempotent script.</comment>
+  </data>
+  <data name="ScriptPlainQuestion" xml:space="preserve">
+    <value>{gap}. Script them without idempotence?</value>
+    <comment>The question asked when SQLite took no idempotent script ({gap}, why).</comment>
+  </data>
+  <data name="EnvironmentsOffered" xml:space="preserve">
+    <value>Offered: {environments}; input one, or another name, to choose it</value>
+    <comment>An agent's answer listing the environments offered.</comment>
+  </data>
+  <data name="RunsIn" xml:space="preserve">
+    <value>dotnet ef runs {startup} in {environment}</value>
+    <comment>The environment chosen for dotnet ef's runs of the startup project.</comment>
+  </data>
+</root>

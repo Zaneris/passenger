@@ -23,7 +23,7 @@ public partial class MainWindow
     private void AddContextMenus()
     {
         Editors.ForEachEditor(editor => editor.ContextMenuRequested += (_, at) => ShowEditorMenu(editor, at));
-        actions!.Add(new IdeAction(A.ShowContextMenu, "Show Context Menu", "IDE", context => ShowFocusedContextMenu(context.Focused)));
+        actions!.Add(new IdeAction(A.ShowContextMenu, ActionTitles.ShowContextMenu, ActionGroups.Ide, context => ShowFocusedContextMenu(context.Focused)));
     }
 
     /// <summary>The editor's menu: context actions and the clipboard, Find Usages, Refactor, Go To, Generate and
@@ -45,10 +45,10 @@ public partial class MainWindow
         void Add(params MenuEntry[] entries) => items.AddRange(entries.Select(entry => FlyoutEntry(entry, context)));
         MenuEntry separator = new(null);
         Add(Item(A.QuickFix), separator, Item(E.Cut), Item(E.Copy), Item(E.Paste), separator,
-            Item(A.FindUsages),
+            Item(A.FindUsages), Item(A.FindClonesOfSelection),
             MainMenu.Of(actions!.All, MainMenu.Refactor),
             Sub("Go To", Item(A.GoToDeclaration), Item(A.DerivedSymbols), Item(A.GoToImplementation), Item(A.GoToTypeDeclaration), Item(A.BaseSymbols),
-                separator, Item(A.CallHierarchy), Item(A.TypeHierarchy)),
+                separator, Item(A.CallHierarchy), Item(A.TypeHierarchy), Item(A.ShowDependencyMap)),
             Item(A.Generate),
             Sub("Folding", Item(E.Unfold), Item(E.UnfoldAll), separator, Item(E.Fold), Item(E.FoldToDefinitions), Item(E.FoldAll), separator,
                 Item(E.UnfoldDocComments), Item(E.FoldDocComments), separator, Item(E.ToggleFold)),
@@ -73,13 +73,18 @@ public partial class MainWindow
         Add(separator);
         if (session.Debug.Session is { State: DebugState.Paused })
         {
-            Add(Item(A.RunToCursor), Item(A.SetNextStatement), Item(A.Evaluate), Item(A.AddToWatches), separator);
+            Add(Item(A.RunToCursor), Item(A.SetNextStatement), Item(A.Evaluate), Item(A.AddToWatches), Item(A.PinToLine), separator);
+        }
+        else if (session.Debug.Breakpoints.Pins.In(active.Path).Any(p => p.Line == editor.CaretPosition.Line))
+        {
+            // A pin is taken away from its line whether or not anything is debugged.
+            Add(Item(A.PinToLine), separator);
         }
         Add(Item(A.ToggleBreakpoint));
         Add(separator, Sub("Local History", Item(A.ShowLocalHistory), separator, Item(A.ShowProjectHistory), Item(A.RecentChanges), Item(A.PutLabel)));
         if (session.Vcs.Repository is not null)
         {
-            Add(Sub("Git", Item(A.Annotate), Item(A.ShowDiff), Item(A.CompareWithRevision), Item(A.CompareWithBranch), separator,
+            Add(Sub("Git", Item(A.Annotate), Item(A.ShowDiff), Item(A.CompareWithRevision), Item(A.CompareWithBranch), Item(A.GetFromBranch), separator,
                 Item(A.ShowHistory), Item(A.ShowHistoryForSelection), separator, Item(A.RollbackLines)));
         }
         ContextMenu menu = new() { ItemsSource = items, PlacementTarget = editor };

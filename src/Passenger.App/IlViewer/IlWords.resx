@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CompiledCode" xml:space="preserve">
+    <value>Compiled code</value>
+    <comment>The accessible name of the Compiled Code window's code.</comment>
+  </data>
+  <data name="Il" xml:space="preserve">
+    <value>IL</value>
+    <comment>The Compiled Code window's tab showing the method's IL.</comment>
+  </data>
+  <data name="LowLevelCSharp" xml:space="preserve">
+    <value>Low-Level C#</value>
+    <comment>The Compiled Code window's tab showing the code as low-level C#.</comment>
+  </data>
+  <data name="Refresh" xml:space="preserve">
+    <value>Refresh compiled code</value>
+    <comment>The Compiled Code window's button reading the build's output again.</comment>
+  </data>
+  <data name="NeedsBuild" xml:space="preserve">
+    <value>Build the project to see the compiled code for {file}.</value>
+    <comment>The window's words where the project has no build output yet.</comment>
+  </data>
+  <data name="NoPdb" xml:space="preserve">
+    <value>This build has no matching portable PDB. Build with portable or embedded debug information.</value>
+    <comment>The window's words where the build's PDB is missing or another kind.</comment>
+  </data>
+  <data name="Unread" xml:space="preserve">
+    <value>Could not read the compiled code. {why}</value>
+    <comment>A failed read; {why} is the reader's own words.</comment>
+  </data>
+  <data name="NoMethods" xml:space="preserve">
+    <value>No compiled methods map to {file} in this build.</value>
+    <comment>The window's words where no method of the build is written in the file.</comment>
+  </data>
+  <data name="Reading" xml:space="preserve">
+    <value>Reading compiled code…</value>
+    <comment>The window's words while it reads the build's output.</comment>
+  </data>
+  <data name="CouldNotOpen" xml:space="preserve">
+    <value>Could not open {name}. Try refreshing Compiled Code.</value>
+    <comment>A link to a symbol that no longer opens.</comment>
+  </data>
+  <data name="NotCSharp" xml:space="preserve">
+    <value>Open a C# file to see its compiled code.</value>
+    <comment>The window's words where the editor shows no C# file.</comment>
+  </data>
+  <data name="NoProject" xml:space="preserve">
+    <value>Open a C# file that belongs to a loaded project.</value>
+    <comment>The window's words where the C# file is in no loaded project.</comment>
+  </data>
+  <data name="NoOutputPath" xml:space="preserve">
+    <value>Waiting for the project to provide its build output path.</value>
+    <comment>The window's words while the project's evaluation is not in.</comment>
+  </data>
+  <data name="Stack" xml:space="preserve">
+    <value>Stack   pop {pop} · push {push}</value>
+    <comment>An opcode's tip: how many values it takes off the stack and puts on it.</comment>
+  </data>
+  <data name="Varies" xml:space="preserve">
+    <value>varies</value>
+    <comment>An opcode's stack count where it depends on the call.</comment>
+  </data>
+  <data name="Nop" xml:space="preserve">
+    <value>Performs no operation.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>Adds the top two stack values.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Sub" xml:space="preserve">
+    <value>Subtracts the top value from the value below it.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Mul" xml:space="preserve">
+    <value>Multiplies the top two stack values.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Div" xml:space="preserve">
+    <value>Divides the second stack value by the top value.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldfld" xml:space="preserve">
+    <value>Loads an instance field's value.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Stfld" xml:space="preserve">
+    <value>Stores a value in an instance field.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldsfld" xml:space="preserve">
+    <value>Loads a static field's value.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Stsfld" xml:space="preserve">
+    <value>Stores a value in a static field.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldstr" xml:space="preserve">
+    <value>Pushes a reference to the literal string.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldnull" xml:space="preserve">
+    <value>Pushes a null reference.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Newobj" xml:space="preserve">
+    <value>Creates an object by calling its constructor.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Dup" xml:space="preserve">
+    <value>Duplicates the value on top of the stack.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Pop" xml:space="preserve">
+    <value>Discards the value on top of the stack.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ret" xml:space="preserve">
+    <value>Returns to the caller, with the result for a non-void method.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldc" xml:space="preserve">
+    <value>Pushes a numeric constant onto the stack.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldarga" xml:space="preserve">
+    <value>Pushes the address of an argument.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldarg" xml:space="preserve">
+    <value>Pushes the value of an argument.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldloca" xml:space="preserve">
+    <value>Pushes the address of a local variable.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Ldloc" xml:space="preserve">
+    <value>Pushes the value of a local variable.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Stloc" xml:space="preserve">
+    <value>Stores the top stack value in a local variable.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Call" xml:space="preserve">
+    <value>Invokes the specified member.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Branch" xml:space="preserve">
+    <value>Transfers control to another IL offset.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="CondBranch" xml:space="preserve">
+    <value>Chooses a branch target based on the stack values.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Throw" xml:space="preserve">
+    <value>Raises an exception.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+  <data name="Meta" xml:space="preserve">
+    <value>Modifies how the next instruction is executed.</value>
+    <comment>An IL opcode's description in its tip, where the runtime's documentation gives none.</comment>
+  </data>
+</root>

@@ -17,9 +17,9 @@ public partial class MainWindow
             (AppActions.NewGitIgnore, RepositoryFile.GitIgnore), (AppActions.NewGitAttributes, RepositoryFile.GitAttributes)])
         {
             string name = RepositoryFiles.NameOf(file);
-            Row(id, $"New {name} File", row => IdeErrors.Observe(AddRepositoryFileAsync(id, NewGoesIn(row)!, file)),
+            Row(id, ActionTitles.NewRepositoryFile(name), row => IdeErrors.Observe(AddRepositoryFileAsync(id, NewGoesIn(row)!, file)),
                 row => NewGoesIn(row) is { } into ? ExplorerNode.KeptOut(into) : $"Nothing new goes in {row.Name}",
-                row => NewGoesIn(row) is { } into && File.Exists(Path.Combine(into, name)) ? $"Open {name}" : $"{name} File");
+                row => NewGoesIn(row) is { } into && File.Exists(Path.Combine(into, name)) ? ActionTitles.OpenRepositoryFile(name) : ActionTitles.RepositoryFileInMenu(name));
         }
     }
 
@@ -67,7 +67,7 @@ public partial class MainWindow
             }
             else
             {
-                unshared = IntoShared([PathNames.Canonical(path)], recording);
+                unshared = IntoShared([PathNames.Canonical(path)], recording) ?? KeepFolders([], [PathNames.Canonical(path)], [], recording);
             }
             said = !made ? $"{name} came in {shown} meanwhile: opened it" : unshared ?? $"New {name} in {shown}";
         }

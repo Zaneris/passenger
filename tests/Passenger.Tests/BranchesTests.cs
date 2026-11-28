@@ -10,6 +10,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
+using Passenger.Core;
 using Passenger.Vcs;
 
 namespace Passenger.Tests;
@@ -80,7 +81,8 @@ public sealed class BranchesTests : IDisposable
     /// <summary>The Branches panel beyond the gate's as one flow, each step the check one test made in an instance of
     /// its own: each side button greyed with why where the chosen row gives it nothing to act on, Show Diff with
     /// Working Tree listing its files and opening their diffs, an added row's diff showing the file beside the branch's
-    /// empty side, and the branch menu over 5,000 branches costing the window what 30 do.</summary>
+    /// empty side, the branch menu over 5,000 branches costing the window what 30 do, a checkout with uncommitted
+    /// changes asking what becomes of them, and the branch menu listing and searching the remotes' branches.</summary>
     [AvaloniaFact]
     public void A_branchs_diff_with_the_working_tree_opens_its_files_and_the_panel_says_what_it_cannot_do()
     {
@@ -88,7 +90,152 @@ public sealed class BranchesTests : IDisposable
         Flow.StepApart<BranchesTests>("show diff with working tree lists the files in the Git window and opens their diffs in a tab or a window", t => t.Show_diff_with_working_tree_lists_the_files_in_the_Git_window_and_opens_their_diffs_in_a_tab_or_a_window());
         Flow.StepApart<BranchesTests>("show diff on an added row of the working tree comparison shows the file beside the branchs empty side", t => t.Show_diff_on_an_added_row_of_the_working_tree_comparison_shows_the_file_beside_the_branchs_empty_side());
         Flow.StepApart<BranchesTests>("the branch menu over 5000 branches costs the window what 30 do and more branches searches them all", t => t.The_branch_menu_over_5000_branches_costs_the_window_what_30_do_and_more_branches_searches_them_all());
+        Flow.StepApart<BranchesTests>("get from a branch takes its version of a changed file one it lacks and one only it has each one undo and a closed files diff with it is edited in place", t => t.Get_from_a_branch_takes_its_version_of_a_changed_file_one_it_lacks_and_one_only_it_has_each_one_undo_and_a_closed_files_diff_with_it_is_edited_in_place());
+        Flow.StepApart<BranchesTests>("a checkout with uncommitted changes asks to bring stash or discard them saying where git cannot bring them and unstashes on return", t => t.A_checkout_with_uncommitted_changes_asks_to_bring_stash_or_discard_them_saying_where_git_cannot_bring_them_and_unstashes_on_return());
+        Flow.StepApart<BranchesTests>("the branch menu lists each remotes branches searches them with the locals and checks one out tracking it", t => t.The_branch_menu_lists_each_remotes_branches_searches_them_with_the_locals_and_checks_one_out_tracking_it());
     }
+
+    /// <summary>The toolbar's branch menu lists a local branch with what it tracks, and each remote's branches in a menu of its
+    /// own, one no local branch tracks among them; letters typed search the locals and the remotes' together, saying what
+    /// they found at the top, Backspace taking one back and Escape all of them before the menu closes; and a remote's branch
+    /// chosen from the search checks out as a new local branch tracking it.</summary>
+    private void The_branch_menu_lists_each_remotes_branches_searches_them_with_the_locals_and_checks_one_out_tracking_it()
+    {
+        Git("push", "-q", "origin", "team/login:refs/heads/review");
+        MainWindow window = Open();
+        ContextMenu menu = OpenBranchWidget(window);
+        string[] listed = Said(menu);
+        string[] branches = [.. listed.SkipWhile(i => i != "Local")];
+        Assert.True(branches.Length == 6 && branches[1] == "main [origin/main]" && branches[4..] is ["Remote", "origin"]
+            && branches[2..4].Order(StringComparer.Ordinal).SequenceEqual(["feature [origin/feature]", "team/login"]),
+            $"The branch menu lists [{string.Join(", ", listed)}]");
+
+        MenuItem origin = Reach(window, menu.Items.OfType<MenuItem>(), "origin");
+        Ui.Press(window, "Enter");
+        Assert.True(origin.IsSubMenuOpen, "Choosing origin in the branch menu opened no menu of its branches");
+        Assert.Equal(["feature", "main", "review"], origin.Items.OfType<MenuItem>().Select(MenuChoice.NameOf).Order(StringComparer.Ordinal));
+        Ui.Press(window, "Left");
+
+        window.KeyTextInput("rev");
+        Ui.Settle();
+        Assert.Equal(["“rev”: 1 match", "Remote", "origin/review"], Said(menu));
+        Ui.Press(window, "BACK");
+        Assert.True(Said(menu) is ["“re”: 3 matches", "Local", "feature [origin/feature]", "Remote", _, _] found && found[4..].Order(StringComparer.Ordinal).SequenceEqual(["origin/feature", "origin/review"]),
+            $"With re typed the branch menu lists [{string.Join(", ", Said(menu))}]");
+        Ui.Press(window, "ESCAPE");
+        Assert.True(menu.IsOpen && Said(menu).SequenceEqual(listed), $"Escape over a search left the menu {(menu.IsOpen ? "listing " + string.Join(", ", Said(menu)) : "closed")}");
+
+        window.KeyTextInput("rev");
+        Ui.Settle();
+        MenuItem review = Reach(window, menu.Items.OfType<MenuItem>(), "origin/review");
+        Ui.Press(window, "Enter");
+        Reach(window, review.Items.OfType<MenuItem>(), "Checkout");
+        Ui.Press(window, "Enter");
+        Ui.WaitFor(() => window.Vcs.Branch == "review", () => $"origin/review checked out as review: {window.Status}");
+        Assert.Equal("origin/review", Git("rev-parse", "--abbrev-ref", "review@{upstream}").Trim());
+        Assert.Equal("Checked out new branch review from origin/review", window.Status);
+        window.Close();
+
+        // Each item as the menu shows it: its name, and after it in brackets what a branch tracks.
+        static string[] Said(ContextMenu menu) => [.. menu.Items.OfType<MenuItem>().Select(i =>
+            $"{MenuChoice.NameOf(i)}{(Avalonia.Automation.AutomationProperties.GetHelpText(i) is { Length: > 0 } tracks ? $" [{tracks}]" : string.Empty)}")];
+    }
+
+    /// <summary>Checkout with changes not yet committed asks what becomes of them, their files listed: Bring takes them
+    /// along as git does; Stash puts them away, new files too, and checking that branch out again unstashes them, as
+    /// its box asked; where the branch checked out changes a file they change too, Bring is greyed saying why and Stash is
+    /// Enter's, and Discard… rolls them back once the person agrees; with Don't ask again ticked, the way chosen is
+    /// Settings' from then on and nothing is asked; and a checkout with no change asks nothing.</summary>
+    private void A_checkout_with_uncommitted_changes_asks_to_bring_stash_or_discard_them_saying_where_git_cannot_bring_them_and_unstashes_on_return()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        MainWindow window = Open(seen: true);
+        List<string> confirmed = [];
+        window.Confirm = (title, text, yes) =>
+        {
+            confirmed.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+        BranchesPanel panel = window.GitBranches;
+        ListBox rows = List(panel);
+        try
+        {
+            // Bring: Shop.cs's change goes along to feature, which leaves Shop.cs as main has it.
+            File.WriteAllText(shop, longer);
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 1, "Shop.cs changed, Git listing it");
+            ChoiceDialog question = Asked(window, panel, rows, "feature");
+            Assert.Equal([MainWindow.BringChanges, MainWindow.StashChanges, MainWindow.DiscardUncommitted, "Cancel"], Answers(question).Select(b => (string)b.Content!));
+            Assert.True(question.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Don't ask again").Bounds.Width > 0, "The question's Don't ask again has no room beside its answers");
+            Assert.True(Answers(question)[0] is { IsEnabled: true, IsDefault: true }, "Bring, which git can do here, is not Enter's");
+            Assert.Contains(question.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Your changes to Shop.cs are not committed. Bring them to feature, stash them, or discard them?");
+            Ui.ClickButton(question, MainWindow.BringChanges);
+            Ui.Landed(() => window.Vcs.Branch == "feature", "the checkout of feature, Shop.cs's change brought along");
+            Assert.Equal(longer, File.ReadAllText(shop));
+
+            // Stash, its box ticked: main checked out with Shop.cs as committed, and feature again brings the change back.
+            question = Asked(window, panel, rows, "main");
+            CheckBox back = question.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Unstash them as feature is checked out again");
+            Assert.True(back.IsChecked, "The box unstashing a stash on returning to feature was not ticked to begin with");
+            Ui.ClickButton(question, MainWindow.StashChanges);
+            Ui.Landed(() => window.Vcs.Branch == "main", "the checkout of main, Shop.cs's change stashed");
+            Assert.Equal(Shop, File.ReadAllText(shop));
+            Assert.Equal([$"On feature: {VcsController.StashedFor("main")}"], StashList());
+            Choose(panel, rows, "feature", "Checkout");
+            Ui.WaitFor(() => window.Vcs.Branch == "feature" && File.ReadAllText(shop) == longer, () => $"feature checked out again and its stashed change unstashed: {window.Status}");
+            Assert.Null(window.ChangesQuestion);
+            Assert.Empty(StashList());
+            Assert.Equal("Checked out feature, and the changes left on it were unstashed", window.Status);
+
+            // Feature.cs changed too, which main has none of: git cannot bring the changes, so Bring is greyed and Stash takes Enter.
+            File.WriteAllText(Path.Combine(folder, "Feature.cs"), "class Feature { int more; }\n");
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 2, "Feature.cs changed too, Git listing both");
+            question = Asked(window, panel, rows, "main");
+            Button bring = Answers(question)[0];
+            Assert.False(bring.IsEnabled, "Bring is offered where git would refuse to bring Feature.cs's change to main");
+            Assert.Equal("Git cannot bring them: main changes Feature.cs too, which checking it out would write over", ToolTip.GetTip(bring));
+            Assert.True(Answers(question)[1].IsDefault, "Stash is not Enter's where Bring cannot be had");
+            Ui.ClickButton(question, MainWindow.DiscardUncommitted);
+            Ui.WaitFor(() => window.Vcs.Branch == "main", () => $"main checked out once the changes were discarded: {window.Status}");
+            Assert.Equal(["Discard Changes: Discard the changes to these 2 files and check out main? This cannot be undone."], confirmed);
+            Assert.True(File.ReadAllText(shop) == Shop && !File.Exists(Path.Combine(folder, "Feature.cs")) && StashList().Length == 0,
+                "Discard… left a change, Feature.cs, or a stash behind");
+
+            // Don't ask again with Bring: kept in Settings, the next checkout with changes brings them, asking nothing.
+            File.WriteAllText(shop, longer);
+            Ui.WaitFor(() => window.Vcs.Changes.Count == 1, "Shop.cs changed again");
+            question = Asked(window, panel, rows, "team/login");
+            question.GetVisualDescendants().OfType<CheckBox>().Single(c => (string?)c.Content == "Don't ask again").IsChecked = true;
+            Ui.ClickButton(question, MainWindow.BringChanges);
+            Ui.Landed(() => window.Vcs.Branch == "team/login", "the checkout of team/login");
+            Assert.Equal(Passenger.App.Settings.CheckoutChanges.Bring, window.Settings.ChangesAtCheckout);
+            Choose(panel, rows, "main", "Checkout");
+            Ui.Landed(() => window.Vcs.Branch == "main", "main checked out, Shop.cs's change brought along without a question");
+            Assert.Null(window.ChangesQuestion);
+            Assert.Equal(longer, File.ReadAllText(shop));
+        }
+        finally
+        {
+            window.ApplySettings(window.Settings with { ChangesAtCheckout = Passenger.App.Settings.CheckoutChanges.Ask });
+            window.Close();
+        }
+
+        static ChoiceDialog Asked(MainWindow window, BranchesPanel panel, ListBox rows, string branch)
+        {
+            Assert.True(panel.Select(branch), $"The branches panel has no {branch}");
+            Ui.ChooseFromMenu(rows, "Checkout");
+            Ui.PumpUntil(() => window.ChangesQuestion is { IsVisible: true } || window.Vcs.Branch == branch,
+                $"the question of the uncommitted changes at {branch}'s checkout");
+            Assert.True(window.ChangesQuestion is not null, $"{branch} was checked out without a question of the uncommitted changes: {window.Status}");
+            return DialogButtonsTests.Check(window.ChangesQuestion!);
+        }
+
+        static Button[] Answers(ChoiceDialog question) =>
+            [.. question.GetVisualDescendants().OfType<Button>().Where(b => b is not Avalonia.Controls.Primitives.ToggleButton && b.Content is string && b.IsEffectivelyVisible)
+                .OrderBy(b => (string)b.Content! == "Cancel" ? 1 : 0).ThenBy(b => Array.IndexOf<string>([MainWindow.BringChanges, MainWindow.StashChanges, MainWindow.DiscardUncommitted], (string)b.Content!))];
+    }
+
+    private string[] StashList() => Git("stash", "list", "--format=%gs").Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
     private void The_panel_lists_head_local_branches_by_directory_the_remotes_branches_and_the_tags_in_riders_order()
     {
@@ -107,6 +254,7 @@ public sealed class BranchesTests : IDisposable
                 "    main [favourite]",
                 "    feature",
                 "Tags",
+                "Worktrees",
             ], Listed(panel));
 
         // The current branch's mark, HEAD's here, reads as a mark on the chosen row's ground, where a person looks for it.
@@ -121,7 +269,7 @@ public sealed class BranchesTests : IDisposable
             $"The current branch's mark ({head.ForegroundKey}, {mark:X8}) reads at {ThemeColours.Ratio(mark, chosen):0.00} to 1 on the chosen row's ground, under the 3 a mark needs: the checked-out branch is the one a person cannot find");
 
         panel.Toggle(panel.Rows.Single(r => r.Title == "Tags"));
-        Assert.Equal(["v1.0", "v2.0"], panel.Rows.SkipWhile(r => r.Title != "Tags").Skip(1).Select(r => r.Title));
+        Assert.Equal(["v1.0", "v2.0"], panel.Rows.SkipWhile(r => r.Title != "Tags").Skip(1).TakeWhile(r => r.Title != "Worktrees").Select(r => r.Title));
         Assert.True(panel.Select("feature"));
         panel.ToggleFavorite(panel.Selected!.Branch!);
         Assert.Equal(["main", "feature", "team", "login"], panel.Rows.SkipWhile(r => r.Title != "Local").Skip(1).TakeWhile(r => r.Title != "Remote").Select(r => r.Title));
@@ -264,6 +412,9 @@ public sealed class BranchesTests : IDisposable
         Assert.Equal(Git("rev-parse", "origin/feature").Trim(), Git("rev-parse", "feature").Trim());
 
         Choose(panel, rows, "hotfix", "Push…");
+        Ui.PumpUntil(() => window.PushWindow is { IsVisible: true }, "the Push dialog for hotfix to show");
+        Ui.ClickButton(window.PushWindow!, "Push");
+        Ui.Landed(() => window.Status == "Pushed hotfix to origin/hotfix, which it tracks from now on", "the push of hotfix");
         Assert.Equal(Git("rev-parse", "hotfix").Trim(), TestGit.Run(origin, "rev-parse", "hotfix").Trim());
         Assert.Equal("origin/hotfix", Git("rev-parse", "--abbrev-ref", "hotfix@{upstream}").Trim());
         window.Close();
@@ -278,8 +429,8 @@ public sealed class BranchesTests : IDisposable
         MainWindow window = Open();
         BranchesPanel panel = window.GitBranches;
         ListBox rows = List(panel);
-        string[] nothing = [$"New Branch…: {Refusals.NoRefChosen}", $"Update Selected: {Refusals.NoLocalBranchChosen}", $"Delete: {Refusals.NoRefChosen}",
-            $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen}", $"Navigate Log to Selected Branch Head: {Refusals.NoRefChosen}"];
+        string[] nothing = [$"New Branch…: {Refusals.NoRefChosen.Shown}", $"Update Selected: {Refusals.NoLocalBranchChosen.Shown}", $"Delete: {Refusals.NoRefChosen.Shown}",
+            $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen.Shown}", $"Navigate Log to Selected Branch Head: {Refusals.NoRefChosen.Shown}"];
         string[] all = ["New Branch…", "Update Selected", "Delete", "Mark/Unmark As Favorite", "Navigate Log to Selected Branch Head"];
         Assert.Null(panel.Selected);
         Assert.Equal(nothing, Tools(panel));
@@ -288,15 +439,15 @@ public sealed class BranchesTests : IDisposable
         foreach ((string key, string[] tools) in (ReadOnlySpan<(string, string[])>)[
             ("head", nothing),
             ("local", nothing),
-            ("refs/heads/main", [all[0], all[1], $"Delete: {Refusals.CheckedOut("main")}", all[3], all[4]]),
+            ("refs/heads/main", [all[0], all[1], $"Delete: {Refusals.CheckedOut("main").Shown}", all[3], all[4]]),
             ("local/team/", nothing),
-            ("refs/heads/team/login", [all[0], $"Update Selected: {Refusals.Untracked("team/login")}", all[2], all[3], all[4]]),
+            ("refs/heads/team/login", [all[0], $"Update Selected: {Refusals.Untracked("team/login").Shown}", all[2], all[3], all[4]]),
             ("refs/heads/feature", all),
             ("remote", nothing),
             ("remote/origin", nothing),
-            ("refs/remotes/origin/main", [all[0], $"Update Selected: {Refusals.FetchedNotUpdated("origin/main")}", all[2], all[3], all[4]]),
+            ("refs/remotes/origin/main", [all[0], $"Update Selected: {Refusals.FetchedNotUpdated("origin/main").Shown}", all[2], all[3], all[4]]),
             ("tags", nothing),
-            ("refs/tags/v1.0", [all[0], $"Update Selected: {Refusals.NoLocalBranchChosen}", all[2], $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen}", all[4]])])
+            ("refs/tags/v1.0", [all[0], $"Update Selected: {Refusals.NoLocalBranchChosen.Shown}", all[2], $"Mark/Unmark As Favorite: {Refusals.NoBranchChosen.Shown}", all[4]])])
         {
             BranchNode row = panel.Rows.Single(r => r.Key == key);
             Ui.Click(Ui.Row(rows, row));
@@ -313,7 +464,7 @@ public sealed class BranchesTests : IDisposable
             if (menu.FirstOrDefault(i => i.Header as string == "Update") is { } update)
             {
                 Assert.Equal(SideButton(panel, "Update Selected").IsEnabled, update.IsEnabled);
-                Assert.Equal(update.IsEnabled ? null : Refusals.Untracked(branch.Name), ToolTip.GetTip(update));
+                Assert.Equal(update.IsEnabled ? null : Refusals.Untracked(branch.Name).Shown, ToolTip.GetTip(update));
             }
             else
             {
@@ -558,8 +709,8 @@ public sealed class BranchesTests : IDisposable
         Assert.True(feature.IsSubMenuOpen, "Choosing feature in the branch menu opened no menu of feature's");
         Assert.Equal(
             [
-                "Checkout", "New Branch from 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
-                "Rebase 'main' onto 'feature'", "Merge 'feature' into 'main'", "Update", "Push…", "Rename…", "Delete",
+                "Checkout", "New Branch from 'feature'…", "New Tag at 'feature'…", "New Worktree from 'feature'…", "Checkout and Rebase onto 'main'", "Compare with 'main'", "Show Diff with Working Tree",
+                "Rebase 'main' onto 'feature'", "Merge 'feature' into 'main'", "Update", "Push…", "Push to…", "Rename…", "Delete",
             ], feature.Items.OfType<MenuItem>().Select(i => i.Header as string));
 
         Reach(window, feature.Items.OfType<MenuItem>(), "Merge 'feature' into 'main'");
@@ -603,7 +754,7 @@ public sealed class BranchesTests : IDisposable
             MenuItem[] branches = [.. items.SkipWhile(i => i.Header as string != "Local").Skip(1).SkipLast(1)];
             Assert.Equal(
                 ["main", "recent-12", "recent-11", "recent-10", "recent-09", "recent-08", "recent-07", "recent-06", "recent-05", "recent-04"],
-                branches.Select(i => i.Header as string));
+                branches.Select(MenuChoice.NameOf));
             Assert.True(branches[0].IsChecked, "main, the current branch, is not checked in the branch menu");
             Assert.Equal("More Branches…", items[^1].Header);
             MenuItem[] made = [.. branches.Where(b => b.Items.OfType<MenuItem>().Any())];
@@ -689,8 +840,8 @@ public sealed class BranchesTests : IDisposable
     /// <summary>The arrow keys taken down a menu to an item, as a person moves to it.</summary>
     private static MenuItem Reach(MainWindow window, IEnumerable<MenuItem> items, string header)
     {
-        MenuItem item = items.FirstOrDefault(i => i.Header as string == header)
-            ?? throw new InvalidOperationException($"The menu has no {header}: [{string.Join(", ", items.Select(i => i.Header))}]");
+        MenuItem item = items.FirstOrDefault(i => MenuChoice.NameOf(i) == header)
+            ?? throw new InvalidOperationException($"The menu has no {header}: [{string.Join(", ", items.Select(MenuChoice.NameOf))}]");
         for (int presses = 0; !item.IsSelected; presses++)
         {
             Assert.True(presses < 30, $"Down never reached {header} in the menu");
@@ -699,9 +850,22 @@ public sealed class BranchesTests : IDisposable
         return item;
     }
 
-    private MainWindow Open()
+    /// <summary>The window on the repository with the Git window's branches shown; <paramref name="seen"/>, one the person
+    /// sees, as only such a window asks them.</summary>
+    private MainWindow Open(bool seen = false)
     {
-        MainWindow window = Ui.OpenFolder(folder, width: 1300, height: 900);
+        MainWindow window;
+        if (seen)
+        {
+            window = new MainWindow { Width = 1300, Height = 900, Unseen = false };
+            window.Show();
+            window.OpenFolder(folder);
+            Ui.Settle();
+        }
+        else
+        {
+            window = Ui.OpenFolder(folder, width: 1300, height: 900);
+        }
         window.Perform(AppActions.ShowGit);
         Ui.Settle();
         Ui.Landed(() => window.GitBranches.Rows.Count > 0, "the branches panel");
@@ -709,6 +873,87 @@ public sealed class BranchesTests : IDisposable
     }
 
     /// <summary>Chooses a branch or tag in the panel and an item of its menu, as the person would.</summary>
+    /// <summary>Show Diff with Working Tree's Get from 'feature' takes feature's text of a file changed here, makes the file
+    /// only feature has and moves to the Trash the one feature lacks, each one command Undo takes back, the open files showing
+    /// it; and a diff of a file no editor has open, from that list, edits the file itself: its arrow takes feature's change
+    /// into it, saved as the diff closes. Get from Branch or Tag… is in the Git menu beside Compare with Branch or Tag….</summary>
+    private void Get_from_a_branch_takes_its_version_of_a_changed_file_one_it_lacks_and_one_only_it_has_each_one_undo_and_a_closed_files_diff_with_it_is_edited_in_place()
+    {
+        string trash = TestFolders.Create("branches-trash-");
+        string shop = Path.Combine(folder, "Shop.cs");
+        string added = Path.Combine(folder, "Added.cs");
+        string feature = Path.Combine(folder, "Feature.cs");
+        string longer = Shop.Replace("int count", "long count", StringComparison.Ordinal);
+        Trash.Folder = trash;
+        try
+        {
+            File.WriteAllText(shop, longer);
+            File.WriteAllText(added, "class Added { }\n");
+            MainWindow window = Open();
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            Assert.Equal("Get from Branch or Tag…", window.Actions[AppActions.GetFromBranch]?.Title.English);
+            BranchesPanel panel = window.GitBranches;
+            Choose(panel, List(panel), "feature", "Show Diff with Working Tree");
+            WorkingTreeDiffView changes = Assert.IsType<WorkingTreeDiffView>(window.GitWindow.Shown);
+            Ui.Landed(() => changes.Files.Count == 3, "feature's three files");
+
+            // The diff of Shop.cs, which no editor has open, edits the file: its arrow takes feature's int back.
+            Ui.Click(Ui.Row(changes.List, changes.Files.Single(f => f.Name == "Shop.cs")));
+            Ui.Press(window, "ENTER");
+            IDiffHost diff = OpenDiffs.Landed(window, "Shop.cs beside feature's");
+            DiffView view = OpenDiffs.ViewOf(diff);
+            Assert.True(view.IsEditable, "The diff of a file no editor has open showed it read-only");
+            view.Right.GoTo(new Passenger.Text.TextPosition(2, 4));
+            Ui.Await(view.RollBackAtCaretAsync(), "feature's change taken at the caret");
+            Assert.Equal(Shop, view.Right.Document.Snapshot.ToString());
+            diff.Close();
+            Ui.WaitFor(() => File.ReadAllText(shop) == Shop, "the diff's edit saved into Shop.cs as it closed");
+            Ui.Landed(() => window.EditorArea.Documents.All(d => d.Name != "Shop.cs"), "Shop.cs let go once its diff closed");
+            File.WriteAllText(shop, longer);
+            Ui.WaitFor(() => changes.Files.Count == 3, "the folder's watcher to hear Shop.cs changed again");
+
+            foreach ((string name, string said) in (ReadOnlySpan<(string, string)>)[
+                ("Shop.cs", "Shop.cs now has feature's version: Undo puts yours back"),
+                ("Feature.cs", "Feature.cs now has feature's version: Undo puts yours back"),
+                ("Added.cs", "Added.cs, which feature has not, went to the Trash: Undo puts yours back")])
+            {
+                Ui.Click(Ui.Row(changes.List, changes.Files.Single(f => f.Name == name)));
+                Ui.ChooseFromMenu(changes.List, "Get from 'feature'");
+                Ui.Landed(() => window.Status == said, $"{name} taken from feature, where the status bar says \"{window.Status}\"");
+            }
+            Assert.Equal(Shop, File.ReadAllText(shop));
+            Assert.Equal("class Feature { }\n", File.ReadAllText(feature));
+            Assert.False(File.Exists(added), "Get from 'feature' left Added.cs, which feature has not, in place");
+            Ui.WaitFor(() => changes.Files.Count == 0 && changes.Placeholder == "No differences", "the working tree now as feature has it");
+
+            // Undo where the window's commands are taken back: the Explorer's rows.
+            window.ShowToolWindow(ToolWindowIds.Explorer);
+            window.ExplorerView.Reveal(PathNames.Canonical(shop));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Path == PathNames.Canonical(shop)));
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => File.Exists(added), () => $"Undo to bring Added.cs back ({window.Status})");
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => !File.Exists(feature), () => $"Undo to take Feature.cs away again ({window.Status})");
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            Ui.WaitFor(() => File.ReadAllText(shop) == longer, () => $"Undo to put Shop.cs's long back ({window.Status})");
+
+            // A revision holding a symbolic link where the file is: its blob is the link's target, never the file's text.
+            string target = TestGit.Feed(folder, "Feature.cs", "hash-object", "-w", "--stdin").Trim();
+            string tree = TestGit.Feed(folder, $"120000 blob {target}\tShop.cs\n", "mktree").Trim();
+            Git("tag", "linked", TestGit.Run(folder, "commit-tree", tree, "-m", "Linked").Trim());
+            VcsOutcome linked = Ui.Await(window.GetFromAsync("linked", "linked", [(shop, shop, null)]), "Get from linked");
+            Assert.Equal((false, "Shop.cs is a symbolic link in linked: Get from Branch takes a text file's version alone"), (linked.Succeeded, linked.Message));
+            Assert.Equal(longer, File.ReadAllText(shop));
+            window.Close();
+        }
+        finally
+        {
+            Trash.Folder = null;
+            TestFolders.Delete(trash);
+        }
+    }
+
     private static void Choose(BranchesPanel panel, ListBox rows, string name, string item)
     {
         Assert.True(panel.Select(name), $"The branches panel has no {name}");

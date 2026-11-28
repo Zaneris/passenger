@@ -36,9 +36,6 @@ public sealed class Navigator
     /// <summary>The lines Recent Locations shows either side of a place.</summary>
     private const int LinesAround = 2;
 
-    private const string NoEditBefore = "No earlier edit location";
-    private const string NoEditAfter = "No later edit location";
-
     private readonly NavigatorParts parts;
     private OpenDocument? shownLast;
     private bool editNoted;
@@ -82,15 +79,24 @@ public sealed class Navigator
     /// <summary>The open folder's places: those left, those edited, and where Back and Forward are.</summary>
     private NavigationHistory Places => Session.Navigation;
 
-    /// <summary>Goes to a file and position (go to definition, a usage), remembering where it came from for Back.</summary>
-    public void NavigateTo(string path, TextPosition position)
+    /// <summary>Goes to a file and position (go to definition, a usage), remembering where it came from for Back; one
+    /// <paramref name="keepingView"/> leaves the view still where the position already stands in it
+    /// (<see cref="CodeEditor.GoToKeepingView"/>).</summary>
+    public void NavigateTo(string path, TextPosition position, bool keepingView = false)
     {
         HistoryPlace? from = Here();
         Show(path);
         // Opened files are known by their canonical path: the one given may run through a symlink.
         if (Editors.Active is { } active && active.Path == PathNames.Canonical(path))
         {
-            Editors.CodeEditor.GoTo(position);
+            if (keepingView)
+            {
+                Editors.CodeEditor.GoToKeepingView(position);
+            }
+            else
+            {
+                Editors.CodeEditor.GoTo(position);
+            }
             if (from is not null && Here() is { } to && (!to.SameTab(from) || to.Line != from.Line))
             {
                 Places.Left(from);
@@ -166,6 +172,9 @@ public sealed class Navigator
         }
     }
 
+    /// <summary>Why Back (a step of -1) or Forward (1) cannot go now: no place that way.</summary>
+    public Words? WhyNotStepHistory(int step) => Places.CanStep(step, Here(), Reachable) ? null : step < 0 ? Refusals.NoPlaceBefore : Refusals.NoPlaceAfter;
+
     /// <summary>Back or Forward to a diff's tab: shown again, or opened afresh where it has closed, its file's side's caret
     /// put back where it was.</summary>
     private void ShowDiff(Vcs.DiffContent diff, int offset)
@@ -186,7 +195,7 @@ public sealed class Navigator
     }
 
     /// <summary>Why Last Edit Location (a step of -1) or Next Edit Location (1) cannot go now: no edit that way.</summary>
-    public string? WhyNotStepEdits(int step) => Places.CanStepEdits(step) ? null : step < 0 ? NoEditBefore : NoEditAfter;
+    public Words? WhyNotStepEdits(int step) => Places.CanStepEdits(step) ? null : step < 0 ? Refusals.NoEditBefore : Refusals.NoEditAfter;
 
     /// <summary>An edit to the file shown keeps the caret's place once the edit has put it there. A reload from disk,
     /// or what a save does to the text, leaves the file saved and keeps none.</summary>
@@ -213,7 +222,7 @@ public sealed class Navigator
     {
         if (Places.StepEdits(step, Here(), Reachable) is not { } place)
         {
-            parts.Status.Text = step < 0 ? NoEditBefore : NoEditAfter;
+            parts.Status.Text = (step < 0 ? Refusals.NoEditBefore : Refusals.NoEditAfter).Shown;
             return;
         }
         GoToPlace(place);
@@ -326,12 +335,12 @@ public sealed class Navigator
     }
 
     /// <summary>Go to Symbol: the solution's types and members by name or CamelHumps, as the language server finds them.</summary>
-    public void ShowGoToSymbol() => ShowSymbols("Go to Symbol", "A type or member, by name or CamelHumps", SearchSymbols);
+    public void ShowGoToSymbol() => ShowSymbols(NavigationWords.GoToSymbol, NavigationWords.SymbolPlaceholder, SearchSymbols);
 
     /// <summary>Search Everywhere: types first, then files, then members.</summary>
-    public void ShowGoToEverything() => ShowSymbols("Go to Everything", "A type, member or file", SearchEverything);
+    public void ShowGoToEverything() => ShowSymbols(NavigationWords.GoToEverything, NavigationWords.EverythingPlaceholder, SearchEverything);
 
-    private void ShowSymbols(string title, string placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search)
+    private void ShowSymbols(Words title, Words placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search)
     {
         if (Session.Folder is null)
         {
@@ -358,14 +367,14 @@ public sealed class Navigator
     {
         if (Session.CSharp is not { Session: { } server } csharp)
         {
-            parts.Status.Text = Refusals.NoCSharp;
+            parts.Status.Text = Refusals.NoCSharp.Shown;
             return;
         }
         Lsp.LspLocation asked = new(uri, new Lsp.LspRange(at, at));
         Lsp.LspLocation place = (await csharp.Generated.CopiedAsync(await server.WrittenAsync([asked])))[0];
         if (Lsp.DocumentUris.GeneratedName(place.Uri) is { } name)
         {
-            parts.Status.Text = $"{name} could not be read from the C# language server";
+            parts.Status.Text = NavigationWords.NotReadFromServer(name).Shown;
             return;
         }
         string path = Lsp.DocumentUris.ToPath(place.Uri);
@@ -380,8 +389,9 @@ public sealed class Navigator
             return null;
         }
         Selection primary = Editors.CodeEditor.Selections.Primary;
-        string selected = primary.IsEmpty ? string.Empty : Editors.CodeEditor.Document.Snapshot.GetText(primary.Start, primary.Length);
-        return selected.Length is > 0 and < 80 && selected.All(c => char.IsLetterOrDigit(c) || c == '_') ? selected : null;
+        TextSnapshot text = Editors.CodeEditor.Document.Snapshot;
+        return primary.Length is > 0 and < 80 && Enumerable.Range(primary.Start, primary.Length).All(at => WordCharacters.IsWordAt(text, at))
+            ? text.GetText(primary.Start, primary.Length) : null;
     }
 
     private async Task<IReadOnlyList<SymbolRow>> SearchSymbols(string query, CancellationToken cancel)
@@ -393,7 +403,7 @@ public sealed class Navigator
         CSharpService? csharp = Session.CSharp;
         if (csharp?.Session is not { IsLoaded: true } server)
         {
-            throw new Lsp.LanguageServerFailed(csharp is null ? Refusals.NoCSharp : $"the C# language server is not ready: {csharp.State}");
+            throw new Lsp.LanguageServerFailed((csharp is null ? Refusals.NoCSharp : NavigationWords.ServerNotReady(csharp.State)).Shown);
         }
         IReadOnlyList<Lsp.SymbolInformation> found = await server.SymbolsAsync(query.Trim(), cancel);
         string? root = Session.Folder;
@@ -484,15 +494,15 @@ public sealed class Navigator
     {
         if (Editors.Active is not { } active || Session.OutlineOf(active) is null)
         {
-            parts.Status.Text = Editors.Active is { } file ? Refusals.NoOutline(file.Name) : Refusals.NoFile;
+            parts.Status.Text = (Editors.Active is { } file ? Refusals.NoOutline(file.Name) : Refusals.NoFile).Shown;
             return;
         }
         Outline<SymbolRow>? outline = null;
         int caretLine = Editors.CodeEditor.CaretPosition.Line;
-        SymbolPopup popup = new($"File Structure: {active.Name}", "Filter by name, CamelHumps too", async (query, cancel) =>
+        SymbolPopup popup = new(NavigationWords.FileStructure(active.Name), NavigationWords.OutlineFilter, async (query, cancel) =>
         {
             // Where the outline comes from now: a server started again while the popup is open has a new document.
-            FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name));
+            FileOutline source = Session.OutlineOf(active) ?? throw new Lsp.LanguageServerFailed(Refusals.NoOutline(active.Name).Shown);
             outline ??= await source.ReadAsync(active.Path, null, cancel);
             IReadOnlyList<SymbolRow> rows = outline.Rows;
             string filter = query.Trim();
@@ -518,14 +528,18 @@ public sealed class Navigator
         }
     }
 
-    /// <summary>An outline's rows whose names hold a query or match it by CamelHumps, each with the rows it is under, as File
-    /// Structure and the navigation bar's lists narrow as typed.</summary>
+    /// <summary>An outline's rows whose names hold a query or match it by CamelHumps, or whose kind its first word names
+    /// (<see cref="SymbolRow.KindNamed"/>: <c>ctor</c>, <c>prop</c>), alone or before a name (<c>prop Na</c>), each with the rows
+    /// it is under, as File Structure and the navigation bar's lists narrow as typed.</summary>
     internal static IReadOnlyList<SymbolRow> FilterOutline(IReadOnlyList<SymbolRow> outline, string query)
     {
         if (query.Length == 0)
         {
             return outline;
         }
+        int space = query.IndexOf(' ', StringComparison.Ordinal);
+        string kind = space < 0 ? query : query[..space];
+        string named = space < 0 ? string.Empty : query[(space + 1)..].Trim();
         List<SymbolRow> shown = [];
         List<SymbolRow> path = [];
         // How many of the containers, from the top, are shown already: a match shows all of them.
@@ -537,7 +551,7 @@ public sealed class Navigator
                 path.RemoveAt(path.Count - 1);
             }
             pathShown = Math.Min(pathShown, path.Count);
-            bool matches = row.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || FuzzyMatch.Score(query, row.Name) is not null;
+            bool matches = Names(row, query) || SymbolRow.KindNamed(row.Kind, kind) && (named.Length == 0 || Names(row, named));
             if (matches)
             {
                 // The containers of a match stay, so it reads in its place.
@@ -551,6 +565,8 @@ public sealed class Navigator
             }
         }
         return shown;
+
+        static bool Names(SymbolRow row, string typed) => row.Name.Contains(typed, StringComparison.OrdinalIgnoreCase) || FuzzyMatch.Score(typed, row.Name) is not null;
     }
 
     /// <summary>Go to Line:Column in the file shown.</summary>

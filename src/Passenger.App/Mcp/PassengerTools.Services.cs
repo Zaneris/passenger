@@ -55,8 +55,8 @@ public sealed partial class PassengerTools
         }
         if (!starts)
         {
-            return aspireRuns ? null : throw new InvalidOperationException(Builds.Containers is { } up
-                ? Builds.ServiceOf(up, resource).WhyNot ?? $"{up.Name} does not start {resource}" : NoRunHas(resource));
+            return aspireRuns ? null : throw new RefusedException(Builds.Containers is { } up
+                ? Builds.ServiceOf(up, resource).WhyNot ?? LaunchWords.DoesNotStart(up.Name, resource) : NoRunHas(resource));
         }
         if (named is not null && named.Kind != RunKind.Compose)
         {
@@ -118,14 +118,14 @@ public sealed partial class PassengerTools
     {
         if (await window.ServiceActionAsync(action, service) is { } refused)
         {
-            throw new InvalidOperationException(refused);
+            throw new RefusedException(refused);
         }
     }
 
     /// <summary>The configuration that runs a compose service started for it, that service alone with what it depends on, as
     /// the gutter's run icon starts one (<see cref="MainWindow.RunTarget"/>): run, debugged (the service alone) or profiled.
     /// Null once it is up, else why not; given up on by the agent before it is, it comes down as Stop takes it.</summary>
-    private Task<string?> StartComposeServiceAsync(ComposeTarget target, RunStart how, CancellationToken cancel)
+    private Task<Words?> StartComposeServiceAsync(ComposeTarget target, RunStart how, CancellationToken cancel)
     {
         if (how != RunStart.Run)
         {
@@ -156,7 +156,7 @@ public sealed partial class PassengerTools
         {
             if (target.Start is not null && await StartComposeServiceAsync(target, RunStart.Run, cancel) is { } refused)
             {
-                throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(refused.English, built.Ended));
             }
         }
         if (target.Start is null && target.Dotnet)
@@ -178,7 +178,7 @@ public sealed partial class PassengerTools
             using LaunchBuild built = new(Builds);
             if (await StartComposeServiceAsync(target, RunStart.Debug, cancel) is { } refused)
             {
-                throw new InvalidOperationException(WithBuildErrors(refused, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(refused.English, built.Ended));
             }
         }
         else

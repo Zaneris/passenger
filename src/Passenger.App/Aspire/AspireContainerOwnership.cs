@@ -29,7 +29,11 @@ internal sealed class AspireContainerOwnership
 
     /// <summary>The container runtimes DCP may run on (its <c>--container-runtime</c>'s values); neither its resources nor
     /// its containers' labels say which it chose.</summary>
-    public static readonly IReadOnlyList<string> Runtimes = ["docker", "podman"];
+    public static readonly IReadOnlyList<string> Runtimes = ["docker", "podman", Wslc];
+
+    /// <summary>WSL Containers' runtime, which DCP runs on only when told it (ASPIRE_CONTAINER_RUNTIME), never found on its
+    /// own: asked only of an AppHost told it, as asking starts its session.</summary>
+    public const string Wslc = ContainerEngine.Wslc;
 
     private const int MaximumRecords = 1024;
     private const long MaximumBytes = 1024 * 1024;
@@ -156,8 +160,7 @@ internal sealed class AspireContainerOwnership
         }
         if (identity is null)
         {
-            IdeErrors.Write("Aspire containers: ownership was not recorded because the engine identity could not be pinned");
-            return;
+            IdeErrors.Write("Aspire containers: the engine Passenger's docker reaches could not be pinned; the run's containers are looked for on the orchestrator's runtimes alone");
         }
         // What Passenger's docker lacks is looked for on the orchestrator's other runtimes; what none holds is said.
         observed.RemoveAll(item => elsewhere.Contains(item.Id));
@@ -232,24 +235,28 @@ internal sealed class AspireContainerOwnership
     }
 
     /// <summary>Where the containers asked for are: on Passenger's engine, else on the runtime the orchestrator was told, else
-    /// on the other it may have found; each with the session network it is on and the engine's identity, the runtime's
-    /// name for one not on Passenger's. Those no engine holds are away; not answered when Passenger's engine did not
-    /// answer, which says nothing of where they are: they are then taken as its, their network unknown, and nothing is
-    /// said of them. Off the UI thread.</summary>
+    /// on another it may have found; each with its session network and the engine's identity, the runtime's name for one
+    /// not on Passenger's. Those no engine holds are away; not answered where Passenger's engine did not answer (taken as
+    /// its, their network unknown, nothing said of them) or has no <paramref name="identity"/> (no docker: the runtimes
+    /// alone asked, what none holds not said). Off the UI thread.</summary>
     private static async Task<(List<(string Id, string? Network, ContainerEngine Engine, Identity Identity, string? Runtime)> Found, string[] Away, bool Answered)> PlaceAsync(
-        ContainerEngine engine, Identity identity, string[] asked, string? toldRuntime)
+        ContainerEngine engine, Identity? identity, string[] asked, string? toldRuntime)
     {
         List<(string, string?, ContainerEngine, Identity, string?)> found = [];
-        if (await ThereAsync(engine, asked, "as the AppHost made them") is not { } here)
+        List<string> away = [.. asked];
+        if (identity is not null)
         {
-            found.AddRange(asked.Select(id => (id, (string?)null, engine, identity, (string?)null)));
-            return (found, [], false);
+            if (await ThereAsync(engine, asked, "as the AppHost made them") is not { } here)
+            {
+                found.AddRange(asked.Select(id => (id, (string?)null, engine, identity, (string?)null)));
+                return (found, [], false);
+            }
+            foreach ((string id, string? network) in await SessionNetworksAsync(engine, here))
+            {
+                found.Add((id, network, engine, identity, null));
+            }
+            away.RemoveAll(id => here.Any(container => container.Id == id));
         }
-        foreach ((string id, string? network) in await SessionNetworksAsync(engine, here))
-        {
-            found.Add((id, network, engine, identity, null));
-        }
-        List<string> away = [.. asked.Where(id => !here.Any(container => container.Id == id))];
         foreach ((string runtime, ContainerEngine other) in away.Count == 0 ? [] : RuntimesBesides(engine, toldRuntime))
         {
             if (away.Count == 0)
@@ -267,17 +274,18 @@ internal sealed class AspireContainerOwnership
                 away.Remove(id);
             }
         }
-        return (found, [.. away], true);
+        return (found, identity is null ? [] : [.. away], identity is not null);
     }
 
     /// <summary>The engines of the runtimes an orchestrator may have chosen besides Passenger's engine, each with its name:
-    /// the one the AppHost was told first, then the other, each through its CLI on the PATH as the login shell has it, none
-    /// whose CLI is Passenger's engine's. Off the UI thread: finding a CLI may wait for the login shell.</summary>
+    /// the one the AppHost was told first, then the others it would find, each through its CLI on the PATH as the login
+    /// shell has it, none whose CLI is Passenger's engine's. Off the UI thread: finding a CLI may wait for the login shell.</summary>
     internal static IReadOnlyList<(string Runtime, ContainerEngine Engine)> RuntimesBesides(ContainerEngine engine, string? toldRuntime)
     {
         string? own = engine.Cli is { } cli ? Canonical(cli) : null;
         List<(string, ContainerEngine)> found = [];
-        foreach (string runtime in Runtimes.OrderBy(runtime => string.Equals(runtime, toldRuntime, StringComparison.OrdinalIgnoreCase) ? 0 : 1))
+        foreach (string runtime in Runtimes.Where(runtime => runtime != Wslc || Told(runtime))
+            .OrderBy(runtime => Told(runtime) ? 0 : 1))
         {
             if (RuntimeEngine(runtime) is { Cli: { } other } runs && !PathNames.Same(Canonical(other), own ?? string.Empty))
             {
@@ -285,6 +293,8 @@ internal sealed class AspireContainerOwnership
             }
         }
         return found;
+
+        bool Told(string runtime) => string.Equals(runtime, toldRuntime, StringComparison.OrdinalIgnoreCase);
 
         static string Canonical(string path)
         {
@@ -528,7 +538,7 @@ internal sealed class AspireContainerOwnership
             }
             if (removing.Count > 0)
             {
-                ChildResult result = await engine.RunAsync([.. identity.Arguments, "rm", "-f", .. removing.Select(entry => entry.Id)], ContainerEngine.AskLimit * 3, cancel)
+                ChildResult result = await engine.RunAsync([.. identity.Arguments, .. ContainerLabels.Removing(removing.Select(entry => entry.Id))], ContainerEngine.AskLimit * 3, cancel)
                     .ConfigureAwait(false);
                 if (!result.Succeeded)
                 {
@@ -570,13 +580,19 @@ internal sealed class AspireContainerOwnership
         && entry.Machine == ContainerLabels.MachineValue && entry.AppHost == appHost;
 
     /// <summary>What reaches the engine as its CLI last found it, pinned so a record is acted on only where it was made: the
-    /// CLI, and its context or endpoint (none for Podman's own command with no API socket, which reaches its own storage).</summary>
+    /// CLI, and its context or endpoint (none for Podman's own command with no API socket, which reaches its own storage, nor
+    /// for WSL Containers').</summary>
     private static async Task<Identity?> ReadIdentityAsync(ContainerEngine engine, bool again = true)
     {
         EngineState current = await engine.StateAsync(again: again).ConfigureAwait(false);
         if (current is not { Cli: { Length: > 0 } cli } || !Path.IsPathFullyQualified(cli) || current.Status is not (EngineStatus.Ready or EngineStatus.NoCompose))
         {
             return null;
+        }
+        if (current.IsWslc)
+        {
+            // Its CLI reaches the default session of the person running it, whatever the environment says.
+            return new(Hash($"{Path.GetFullPath(cli)}\n{Wslc}"), [], Path.GetFullPath(cli));
         }
         string? endpoint = current.Endpoint is { Length: > 0 } known ? known : null;
         if (endpoint is null && !current.PodmanCli)
@@ -652,7 +668,7 @@ internal sealed class AspireContainerOwnership
     private sealed record Made(string Id, ContainerEngine Engine, Identity Identity, string? Network);
 
     /// <summary>A recorded container: its id, name, resource and AppHost, the engine's fingerprint, the state, machine and
-    /// process it was made for, the runtime the orchestrator chose where it is not Passenger's engine (docker, podman), and
+    /// process it was made for, the runtime the orchestrator chose where it is not Passenger's engine (docker, podman, wslc), and
     /// the session network it was on, each of those two written only when it has one, so a record an earlier Passenger
     /// wrote is the same set member as it reads back.</summary>
     public sealed record Entry(string Id, string Name, string Uid, string AppHost, string Engine, string State, string Machine, string Owner,

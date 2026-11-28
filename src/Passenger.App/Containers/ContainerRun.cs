@@ -289,7 +289,7 @@ public static class ContainerPlans
         if (engineState.Amd64 is Amd64Runs.Emulated or Amd64Runs.Never
             && touched.Select(s => (Service: s, Is: BackingService.OfImage(model[s]?.Image)?.X64Only)).FirstOrDefault(s => s.Is is not null) is ({ } unrunnable, { } what))
         {
-            throw new LaunchException($"{configuration.Name} cannot run {unrunnable}: {Refusals.X64OnlyUnrunnable(what, engineState)}");
+            throw new LaunchException(LaunchWords.CannotRunService(configuration.Name, unrunnable, Refusals.X64OnlyUnrunnable(what, engineState)));
         }
         string? owner = OperatingSystem.IsLinux() ? DotnetProcesses.UserAndGroup : null;
         // As deployed, the image's own user could not read what is kept for the person alone (RunsAs).
@@ -1311,7 +1311,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
     /// is up (healthy where it has a check), else what went wrong. <paramref name="alongside"/> runs while it comes up (the
     /// debugger attaching to the services held at their start, which no wait would see healthy before it lets them go): its
     /// problem ends the command. Canceled, the command is ended.</summary>
-    public async Task<string?> UpAsync(CancellationToken cancel, Func<Task, CancellationToken, Task<string?>>? alongside = null)
+    public async Task<Words?> UpAsync(CancellationToken cancel, Func<Task, CancellationToken, Task<Words?>>? alongside = null)
     {
         Stamp();
         List<string> words = [.. Plan.Compose, "up", "--detach", "--wait"];
@@ -1360,7 +1360,7 @@ public sealed class ContainerRun(ContainerPlan plan, ContainerEngine engine, Con
             string last = up.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Where(l => !ContainerEngine.ProviderFailed(l)).ToArray()
                 is { Length: > 0 } lines
                 ? lines.LastOrDefault(l => l.Contains("rror", StringComparison.Ordinal)) ?? lines[^1] : ExitCodes.Said(up.ExitCode);
-            return $"{Plan.Name} did not come up: {ContainerSecrets.InSaid(last, Plan.Folder)}";
+            return LaunchWords.DidNotComeUp(Plan.Name, ContainerSecrets.InSaid(last, Plan.Folder));
         }
         if (Plan.Watched.Count > 0)
         {

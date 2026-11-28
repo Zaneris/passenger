@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.App.Telemetry;
 
 /// <summary>A run whose logs and traces a dashboard collects, every kind's alike (an AppHost's, a container run's, a project
@@ -25,7 +27,7 @@ public sealed record TelemetrySource(Uri Endpoint, string ApiKey)
             && resource[service.Length] == '-' && resource.AsSpan(service.Length + 1).SequenceEqual(named));
 
     /// <summary>Why a run's logs and traces cannot be read, every kind's in the same words: its dashboard is not up.</summary>
-    public static string NoDashboard(string run) => $"{run}'s dashboard is not up: it has no logs or traces to read";
+    public static Words NoDashboard(string run) => TelemetryWords.NoDashboard(Words.Verbatim(run));
 
     /// <summary>Whether a failure of a dashboard's read is the dashboard's to say (its answer, its connection, its time),
     /// never Passenger's own.</summary>
@@ -34,10 +36,10 @@ public sealed record TelemetrySource(Uri Endpoint, string ApiKey)
 
     /// <summary>What a dashboard's failed read says, in the same words wherever it is read: what failed, its key and any
     /// secret masked, one line of 512 characters at most.</summary>
-    public string Unread(Exception error)
+    public Words Unread(Exception error)
     {
         string reason = Containers.ContainerSecrets.InValue(error.Message.Replace(ApiKey, Containers.ContainerSecrets.Masked, StringComparison.Ordinal))
             .Replace('\r', ' ').Replace('\n', ' ').TrimEnd('.');
-        return $"The dashboard's logs and traces could not be read: {(reason.Length > 512 ? reason[..512] : reason)}";
+        return TelemetryWords.Unread(Words.Verbatim(reason.Length > 512 ? reason[..512] : reason));
     }
 }

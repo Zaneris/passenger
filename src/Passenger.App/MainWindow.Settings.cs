@@ -46,7 +46,7 @@ public partial class MainWindow
             }
         };
         // macOS has Settings in the application menu.
-        actions!.Add(new IdeAction(AppActions.ShowSettings, "Settings…", "IDE", _ => ShowSettings())
+        actions!.Add(new IdeAction(AppActions.ShowSettings, ActionTitles.ShowSettings, ActionGroups.Ide, _ => ShowSettings())
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("File", 3, 0)],
         });
@@ -112,7 +112,13 @@ public partial class MainWindow
     private AppSettings visualSettings = new();
 
     /// <summary>The editors take the theme's code size where the person set none.</summary>
-    private void OnThemeFonts(object? sender, EventArgs args) => Editors.ForEachEditor(editor => ApplyTo(editor, settingsStore.Effective));
+    private void OnThemeFonts(object? sender, EventArgs args)
+    {
+        foreach (Editors.EditorGroup group in Editors.Groups)
+        {
+            ApplyTo(group.Editor, settingsStore.Effective);
+        }
+    }
 
     /// <summary>The window's share of the look follows the settings shown: each editor's, the title bar's, the menu's, the
     /// terminal's.</summary>
@@ -135,6 +141,9 @@ public partial class MainWindow
             FollowTerminalLook(panel, next, visualSettings);
         }
         session.CSharp?.Hints = (next.ParameterHints, next.TypeHints);
+        signposts?.Follow(next);
+        session.Debug.ShowsElapsed = next.ShowElapsedAtStops;
+        session.Debug.GreysAhead = next.GreyCodeAhead;
         visualSettings = next;
     }
 
@@ -188,6 +197,7 @@ public partial class MainWindow
         chordWait.Interval = TimeSpan.FromSeconds(next.ChordWaitSeconds);
         Explorer.NestFiles = next.NestFiles;
         Explorer.OpensOnClick = next.OpenFilesWithSingleClick;
+        Explorer.OpensProjectFiles = next.OpenProjectFileOnDoubleClick;
         if (next.AlwaysSelectOpenedFile && !before.AlwaysSelectOpenedFile && Editors.Active?.Path is { } shown)
         {
             Explorer.Reveal(shown);
@@ -199,7 +209,9 @@ public partial class MainWindow
         assist.FormatOnType = next.FormatOnType;
         assist.XamlFormat = next.XamlFormat;
         assist.GDScriptFormat = (next.GDScriptFormat, next.GDScriptFormatOnSave);
+        assist.SqlKeywords = next.SqlKeywords;
         assist.ReformatsOnSave = next.ReformatOnSave;
+        assist.OptimizesImportsOnSave = next.OptimizeImportsOnSave;
         assist.CSharpFormatter = next.CSharpFormatter;
         if (terminal is { } panel)
         {
@@ -219,6 +231,12 @@ public partial class MainWindow
             session.Stylesheets.DownloadsChanged();
         }
         session.Web?.Checks.UseBuildKit(next.BuildKitChecks);
+        if (next.ContainerEngine != before.ContainerEngine)
+        {
+            // The engine's CLI chosen anew (SettingsStore's): what the window says of it is read again through it.
+            CheckEngineFor(session.Folder);
+            containersView?.EngineChosen();
+        }
         ListenForAgents(next.McpServer);
         FollowAgentFolders(before, next);
         WatchUpdates(next.CheckForUpdates);
@@ -229,7 +247,7 @@ public partial class MainWindow
     public SettingsDialog ShowSettings()
     {
         SettingsDialog dialog = new(settings, actions!, (from, to) => settingsStore.Apply(from, to), Mcp.AgentSetup.Here(Folder, settings.TerminalShell), settingsStore.BeginPreview(),
-            session.EditorConfigs, keepsWorkspace ? new TrustAnswers(Store().Trust.Value, ApplyTrust) : null);
+            session.EditorConfigs, keepsWorkspace ? new TrustAnswers(Store().Trust.Value, ApplyTrust) : null, Questions);
         IdeErrors.Observe(dialog.ShowDialog(this));
         return dialog;
     }
@@ -246,6 +264,7 @@ public partial class MainWindow
         editor.UsesVim = with.VimMode;
         editor.VimLeavesKeys = Declared.VimKeysToKeymap.Given(with);
         editor.ClosesTags = with.CloseTags;
+        editor.TabStepsOverClosers = with.TabStepsOverClosers;
         editor.WrapIndent = with.SoftWrapIndent;
         editor.ZoomsWithWheel = with.WheelZoom;
         editor.InvalidateVisual();

@@ -94,6 +94,19 @@ public abstract class XamlDialect
     /// <summary>The xmlns definitions its compiler adds to the project's own assembly, beyond those of its code.</summary>
     public virtual IReadOnlyList<XmlnsDefinition> ImpliedDefinitions(string assemblyName) => [];
 
+    /// <summary>The xmlns definitions its compiler reads off its framework's types though no attribute declares them (WinUI's
+    /// presentation namespace), given every type the project references.</summary>
+    public virtual IReadOnlyList<XmlnsDefinition> FrameworkDefinitions(IEnumerable<ClrType> types) => [];
+
+    /// <summary>The files of its framework whose resource keys an app reaches though none of its own files merges them in
+    /// (WinUI's <c>generic.xaml</c>, read through <see cref="ThemeFileKeys"/>), found from the assemblies the project
+    /// compiles against.</summary>
+    public virtual IEnumerable<string> ThemeFiles(IReadOnlyList<string> references) => [];
+
+    /// <summary>The directives of XAML's namespace its compiler takes beyond those every dialect has, each with what it is
+    /// for (WinUI's <c>x:Load</c>, <c>x:Phase</c>).</summary>
+    public virtual IReadOnlyList<(string Name, string About)> OwnDirectives => [];
+
     /// <summary>Whether a <c>&lt;Binding&gt;</c> element compiles as <c>{Binding}</c> does (Avalonia's).</summary>
     public virtual bool CompilesBindingElements => false;
 
@@ -131,6 +144,10 @@ public abstract class XamlDialect
     /// <summary>Whether an attribute's value names a file by its path in the project, which is checked to be there (an
     /// include's <c>Source</c>, an image's).</summary>
     public virtual bool NamesFile(XmlAttribute attribute) => true;
+
+    /// <summary>Whether a static resource may name a key of its framework's theme (WinUI's <c>BodyTextBlockStyle</c>), as
+    /// a dynamic one may in every dialect.</summary>
+    public virtual bool StaticThemeKeys => false;
 
     /// <summary>The property every element's resources are set through (<c>Resources</c>).</summary>
     public virtual string ResourcesProperty => "Resources";
@@ -188,7 +205,8 @@ public abstract class XamlDialect
     {
         foreach (ClrType at in types.SelfAndBases(type))
         {
-            if (at.Attribute("ContentProperty")?.StringArgument(0) is { Length: > 0 } name)
+            // WinUI's names it by its Name, WPF's and MAUI's first argument.
+            if (at.Attribute("ContentProperty") is { } content && (content.StringArgument(0) ?? content.Named.FirstOrDefault(n => n.Key == "Name").Value as string) is { Length: > 0 } name)
             {
                 return Property(types, type, name);
             }
@@ -219,9 +237,11 @@ public abstract class XamlDialect
     /// <summary>The suffix of the static field a framework registers a property by (<c>WidthProperty</c>).</summary>
     private const string RegisteredSuffix = "Property";
 
-    /// <summary>The name a static field registers a property by (<c>WidthProperty</c>'s Width); null for any other member.</summary>
-    protected static string? RegisteredName(ClrMember member) =>
-        member.Kind == MemberKind.Field && member.IsStatic && member.Name.Length > RegisteredSuffix.Length && member.Name.EndsWith(RegisteredSuffix, StringComparison.Ordinal)
+    /// <summary>The name a static field registers a property by (<c>WidthProperty</c>'s Width), or where
+    /// <paramref name="properties"/> a static property (WinUI's projection gives each as one); null for any other member.</summary>
+    protected static string? RegisteredName(ClrMember member, bool properties = false) =>
+        (member.Kind == MemberKind.Field || (properties && member.Kind == MemberKind.Property)) && member.IsStatic && member.Name.Length > RegisteredSuffix.Length
+        && member.Name.EndsWith(RegisteredSuffix, StringComparison.Ordinal)
             ? member.Name[..^RegisteredSuffix.Length]
             : null;
 
@@ -237,16 +257,17 @@ public abstract class XamlDialect
     }
 
     /// <summary>The properties a type's elements set where its framework registers them as WPF's and MAUI's do: a static field
-    /// <c>XxxProperty</c> its <paramref name="registers"/> takes, of <paramref name="kind"/>, read as its CLR wrapper's type
-    /// where it has one, and the plain CLR properties XAML can set, its bases' included.</summary>
-    protected IReadOnlyList<XamlProperty> ReadRegistered(TypeSystem types, ClrType type, XamlPropertyKind kind, Func<TypeRef, bool> registers)
+    /// <c>XxxProperty</c> its <paramref name="registers"/> takes (or a static property, where <paramref name="properties"/>),
+    /// of <paramref name="kind"/>, read as its CLR wrapper's type where it has one, and the plain CLR properties XAML can
+    /// set, its bases' included.</summary>
+    protected IReadOnlyList<XamlProperty> ReadRegistered(TypeSystem types, ClrType type, XamlPropertyKind kind, Func<TypeRef, bool> registers, bool properties = false)
     {
         Dictionary<string, XamlProperty> found = new(StringComparer.Ordinal);
         foreach (ClrType at in types.SelfAndBases(type))
         {
             foreach (ClrMember member in at.Members)
             {
-                if (RegisteredName(member) is { } name && registers(member.Type))
+                if (RegisteredName(member, properties) is { } name && registers(member.Type))
                 {
                     if (found.TryGetValue(name, out XamlProperty? wrapper))
                     {
@@ -301,13 +322,15 @@ public abstract class XamlDialect
     protected virtual bool SetAsMade(ClrType type, ClrMember property) => false;
 
     /// <summary>The attached properties a type declares as WPF's and MAUI's do: a static <c>SetXxx(element, value)</c>, with
-    /// its registered field where <paramref name="registers"/> takes one, else only where it takes an element first
-    /// (<paramref name="takesElement"/>); where <paramref name="gettersAlone"/>, also a <c>GetXxx(element)</c> with its field
-    /// and no setter, read-only, which a trigger names (<c>Validation.HasError</c>).</summary>
-    protected static IReadOnlyList<XamlProperty> ReadAttachedPairs(ClrType owner, Func<TypeRef, bool> registers, Func<TypeRef, bool> takesElement, bool gettersAlone)
+    /// its registered field (or static property, where <paramref name="properties"/>) where <paramref name="registers"/>
+    /// takes one, else only where it takes an element first (<paramref name="takesElement"/>); where
+    /// <paramref name="gettersAlone"/>, also a <c>GetXxx(element)</c> with its field and no setter, read-only, which a trigger
+    /// names (<c>Validation.HasError</c>).</summary>
+    protected static IReadOnlyList<XamlProperty> ReadAttachedPairs(ClrType owner, Func<TypeRef, bool> registers, Func<TypeRef, bool> takesElement, bool gettersAlone,
+        bool properties = false)
     {
         ClrMember? FieldOf(string name) =>
-            owner.Members.FirstOrDefault(m => m.Kind == MemberKind.Field && m.IsStatic && m.Name == name + RegisteredSuffix && registers(m.Type));
+            owner.Members.FirstOrDefault(m => RegisteredName(m, properties) == name && registers(m.Type));
         Dictionary<string, XamlProperty> found = new(StringComparer.Ordinal);
         foreach (ClrMember method in owner.Members)
         {

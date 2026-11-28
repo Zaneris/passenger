@@ -32,6 +32,9 @@ internal sealed class PopupPlacement
     /// <summary>The open modal's window's presses, heard while it is open.</summary>
     private IDisposable? presses;
 
+    /// <summary>Cancelled as the open modal closes, however it closes; null with none open.</summary>
+    private CancellationTokenSource? modalOpen;
+
     public PopupPlacement(AssistContext context, Canvas layer)
     {
         this.context = context;
@@ -49,6 +52,10 @@ internal sealed class PopupPlacement
     /// <summary>The list of choices or the rename box open, null with none.</summary>
     public Control? Modal => modal;
 
+    /// <summary>What a modal's own questions are asked while: until it closes, however it closes, whichever layer it is
+    /// moved to meanwhile (<see cref="Place(Control, Point, bool)"/>); cancelled already for one not open.</summary>
+    public CancellationToken WhileOpen(Control popup) => modal == popup && modalOpen is { } open ? open.Token : new CancellationToken(canceled: true);
+
     /// <summary>What the open list of choices (fixes, refactorings, definitions) offers, by its words; empty with none open.</summary>
     public IReadOnlyList<string> Offered => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Titles ?? [];
 
@@ -56,7 +63,7 @@ internal sealed class PopupPlacement
     public IReadOnlyList<string> OfferedDetails => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Details ?? [];
 
     /// <summary>What the open list of choices is titled ("Select expression to parenthesize"); null with none open.</summary>
-    public string? OfferedTitle => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Title;
+    public string? OfferedTitle => layer.Children.OfType<ChoicePopup>().LastOrDefault()?.Title.Shown;
 
     /// <summary>A card or list that stays on the layer, hidden until it is shown, and goes with it to another window's; a
     /// card the person moved into goes at Escape there (<paramref name="escaped"/>, as Escape in the editor takes it), and
@@ -140,18 +147,24 @@ internal sealed class PopupPlacement
 
     public void Place(Control popup, int offset, bool above) => Place(popup, Editor.PointOf(offset), above);
 
-    /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or when there is no
-    /// room below, kept inside the editor, below the bars over it (<see cref="HeldIn"/>). A card, a list of choices, Rename's
-    /// box or the colour picker (<see cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one that
-    /// fits neither under nor over its line goes where there is more room, lowered to it where it gives way in height
-    /// (<see cref="IGivesWayInHeight"/>), else moved in as far as it must to show whole, though it then hides some of the line.</summary>
+    /// <summary>Puts a popup under the line at <paramref name="at"/> (its top), or over it when asked or with no room below, inside the
+    /// editor, below the bars over it (<see cref="HeldIn"/>). A card, a list of choices, Rename's box or the colour picker (<see
+    /// cref="IHeldToEditor"/>) is held to the editor's width (<see cref="Widest"/>); one fitting neither under nor over its line goes where
+    /// there is more room, lowered to it where it gives way in height (<see cref="IGivesWayInHeight"/>), and where even lowered it cannot show
+    /// whole, over the tool windows around the editor (the window's <c>LineOverflow</c>); else moved in, hiding some of the line.</summary>
     public void Place(Control popup, Point at, bool above)
     {
-        if (cards.Contains(popup))
+        MainWindow? window = TopLevel.GetTopLevel(layer) as MainWindow;
+        if (cards.Contains(popup) || (window is not null && popup.Parent == window.LineOverflow))
         {
             OnLayer(popup);
         }
-        PlaceOn(popup, Editor, layer, at, above);
+        if (!PlaceOn(popup, Editor, layer, at, above) && popup is IGivesWayInHeight
+            && window?.LineOverflow is { } overflow && layer.TranslatePoint(default, overflow) is { } origin)
+        {
+            OnLayer(popup, overflow);
+            PlaceOn(popup, Editor, overflow, at, above, new Rect(origin.X, 0, layer.Bounds.Width, overflow.Bounds.Height));
+        }
     }
 
     /// <summary>Puts a card under a line of an editor no group shows, a diff's side, as at the active editor's
@@ -176,14 +189,16 @@ internal sealed class PopupPlacement
         }
     }
 
-    private void PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above)
+    /// <summary>Places a popup at a line on <paramref name="onto"/>, held to <paramref name="held"/> (the editor's rows by
+    /// default, <see cref="HeldIn"/>); whether it shows whole there, under or over the line.</summary>
+    private bool PlaceOn(Control popup, Passenger.Editor.CodeEditor editor, Canvas onto, Point at, bool above, Rect? held = null)
     {
         Heard(popup);
         at = editor.TranslatePoint(at, onto) ?? at;
-        (popup as IHeldToEditor)?.Within(Math.Max(0, onto.Bounds.Width - RightEdge));
+        Rect room = held ?? HeldIn(editor, onto);
+        (popup as IHeldToEditor)?.Within(Math.Max(0, room.Width - RightEdge));
         (popup as IGivesWayInHeight)?.WithinHeight(double.PositiveInfinity);
         Size size = Measured(popup);
-        Rect room = HeldIn(editor, onto);
         double lineHeight = editor.LineHeight;
         double below = at.Y + lineHeight + 2;
         double over = at.Y - size.Height - 2;
@@ -204,6 +219,7 @@ internal sealed class PopupPlacement
         Canvas.SetLeft(popup, x);
         Canvas.SetTop(popup, y);
         lines.AddOrUpdate(popup, new StrongBox<double>(at.Y));
+        return fitsOver || fitsUnder;
     }
 
     /// <summary>Where a popup placed at a line of an editor is held, in the coordinates of the layer it is placed on: across
@@ -328,7 +344,7 @@ internal sealed class PopupPlacement
         // Its choice is said as completion's is: by its title as it opens, and at once as the keys move it.
         if (popup.ChosenAt >= 0)
         {
-            Tell($"{popup.Title}, {ChoiceSaid(popup)}", Urgency.Polite, popup);
+            Tell($"{popup.Title.Shown}, {ChoiceSaid(popup)}", Urgency.Polite, popup);
         }
         popup.Moved += (_, _) =>
         {
@@ -370,6 +386,7 @@ internal sealed class PopupPlacement
     {
         CloseModal();
         modal = popup;
+        modalOpen = new CancellationTokenSource();
         dismissed = dismiss;
         layer.Children.Add(popup);
         presses = TopLevel.GetTopLevel(layer)?.AddDisposableHandler(InputElement.PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -431,7 +448,7 @@ internal sealed class PopupPlacement
         if (modal is not null)
         {
             bool keysElsewhere = KeysElsewhere(modal);
-            layer.Children.Remove(modal);
+            (modal.Parent as Panel)?.Children.Remove(modal);
             modal = null;
             if (!keysElsewhere)
             {
@@ -444,6 +461,9 @@ internal sealed class PopupPlacement
         Action? closed = modalClosed;
         modalClosed = null;
         closed?.Invoke();
+        CancellationTokenSource? asking = modalOpen;
+        modalOpen = null;
+        asking?.Cancel();
     }
 
     /// <summary>Whether an element of the modal's window other than the modal has the keys, which keep them as it closes;

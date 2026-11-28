@@ -285,10 +285,10 @@ public sealed partial class PassengerTools
         (FilesFound? every, string? why) = await window.FindEveryMatchAsync(query, chosen, cancel);
         (FilesFound searched, IReadOnlyList<string> unreached) = Reached(every ?? throw new InvalidOperationException(why), changes: true);
         IReadOnlyList<SearchMatch> found = searched.Matches;
-        string? outside = unreached.Count == 0 ? null : $"not replaced: {string.Join("; ", unreached.Select(p => Refusals.OutOfReach(p, Session.Folder, changes: true)))}";
+        string? outside = unreached.Count == 0 ? null : $"not replaced: {string.Join("; ", unreached.Select(p => Refusals.OutOfReach(p, Session.Folder, changes: true).English))}";
         if (found.Count == 0)
         {
-            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped}"
+            return searched.StoppedIn(Relative) is { } stopped ? $"Nothing was replaced: {stopped.English}"
                 : outside is not null ? $"Nothing was replaced: {outside}" : "Nothing matches, so nothing was replaced";
         }
         List<string> files = [.. searched.Replaceable.Select(m => m.Path).Distinct()];
@@ -450,7 +450,7 @@ public sealed partial class PassengerTools
     {
         if (Session.Folder is null)
         {
-            throw new InvalidOperationException(Refusals.NoFolder);
+            throw new RefusedException(Refusals.NoFolder);
         }
         SearchQuery query = new(text ?? string.Empty, matchCase, wholeWords, regex);
         if (query.IsEmpty)
@@ -559,7 +559,7 @@ public sealed partial class PassengerTools
         {
             (IReadOnlyList<string> files, string? more) = AgentAnswers.Listed(r.Files, MostRowFiles, "file", "local_history of a folder within names its own");
             return new(r.Set, r.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
-                r.Title, r.IsLabel, [.. files.Select(Relative)]) { More = more };
+                r.Title.English, r.IsLabel, [.. files.Select(Relative)]) { More = more };
         }
     });
 
@@ -610,7 +610,7 @@ public sealed partial class PassengerTools
     {
         if (Session.LocalHistory is not { } history || Session.Folder is not { } folder)
         {
-            throw new InvalidOperationException(Refusals.NoFolder);
+            throw new RefusedException(Refusals.NoFolder);
         }
         string full = path is null ? folder : Resolve(path);
         return PathNames.Within(full, folder) ? (history, full) : throw new ArgumentException($"{full} is not in the open folder, whose Local History this is");

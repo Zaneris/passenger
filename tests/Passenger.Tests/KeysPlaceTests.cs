@@ -37,16 +37,16 @@ public sealed class KeysPlaceTests : IDisposable
         {
             ExplorerNode was = window.ExplorerView.Selected!;
             Ui.Run(window, action);
-            Assert.True(window.IsPopupOpen, $"{window.Actions[action]!.Title} on the Explorer's row {was.Name} opened no popup");
+            Assert.True(window.IsPopupOpen, $"{window.Actions[action]!.Title.English} on the Explorer's row {was.Name} opened no popup");
             Ui.Press(window, "ESCAPE");
-            Assert.False(window.IsPopupOpen, $"Escape left {window.Actions[action]!.Title}'s popup open");
+            Assert.False(window.IsPopupOpen, $"Escape left {window.Actions[action]!.Title.English}'s popup open");
             Assert.True(RowHasKeys(window, was),
-                $"{window.Actions[action]!.Title} closed by Escape gave the keys to {Focused(window)}, not back to the Explorer's row {was.Name} that had them");
+                $"{window.Actions[action]!.Title.English} closed by Escape gave the keys to {Focused(window)}, not back to the Explorer's row {was.Name} that had them");
             Ui.Press(window, "DOWN");
             ExplorerNode next = window.ExplorerView.Selected!;
             Assert.True(next != was && RowHasKeys(window, next),
-                $"Down after {window.Actions[action]!.Title} closed did not choose the Explorer's next row: {next.Name} is chosen, {Focused(window)} has the keys");
-            Assert.True(window.EditorArea.Active!.Text.Snapshot.ToString() == text, $"Down after {window.Actions[action]!.Title} closed went into the editor and changed Alpha.txt");
+                $"Down after {window.Actions[action]!.Title.English} closed did not choose the Explorer's next row: {next.Name} is chosen, {Focused(window)} has the keys");
+            Assert.True(window.EditorArea.Active!.Text.Snapshot.ToString() == text, $"Down after {window.Actions[action]!.Title.English} closed went into the editor and changed Alpha.txt");
         }
         window.Close();
     }

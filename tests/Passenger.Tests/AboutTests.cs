@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
@@ -9,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.Core;
+using Passenger.Notices;
 
 namespace Passenger.Tests;
 
@@ -96,7 +96,7 @@ public sealed partial class AboutTests : IDisposable
         }
 
         SortedSet<string> carried = new(StringComparer.OrdinalIgnoreCase);
-        carried.UnionWith(AppPackages(Path.Combine(beside, "Passenger.deps.json")));
+        carried.UnionWith(CarriedPackages.In(Path.Combine(beside, "Passenger.deps.json")).Select(p => $"{p.Id}/{p.Version}"));
         foreach (string deps in Directory.EnumerateFiles(Path.Combine(beside, "debugger"), "*.deps.json")
             .Concat(Directory.EnumerateFiles(Path.Combine(beside, "roslyn"), "*.deps.json", SearchOption.AllDirectories)))
         {
@@ -153,48 +153,12 @@ public sealed partial class AboutTests : IDisposable
     private static Button Link(Window about, string words) =>
         about.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains(StyleClasses.Link) && (string?)b.Content == words);
 
-    /// <summary>The packages a .deps.json file names whose files are beside it, as Id/Version: those with none of their
-    /// files there (Visual Studio's left out of roslyn/) are not carried.</summary>
+    /// <summary>The packages a .deps.json file's program carries (<see cref="CarriedPackages"/>) whose files are beside it,
+    /// as Id/Version: those with none of their files there (Visual Studio's left out of roslyn/) are not carried.</summary>
     private static IEnumerable<string> Packages(string deps)
     {
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(deps));
-        JsonElement root = document.RootElement;
-        JsonElement target = root.GetProperty("targets").GetProperty(root.GetProperty("runtimeTarget").GetProperty("name").GetString()!);
         HashSet<string> beside = [.. Directory.EnumerateFiles(Path.GetDirectoryName(deps)!, "*", SearchOption.AllDirectories).Select(f => Path.GetFileName(f))];
-        return [.. root.GetProperty("libraries").EnumerateObject()
-            .Where(l => l.Value.GetProperty("type").GetString() == "package")
-            .Select(l => l.Name)
-            .Where(name =>
-            {
-                string[] files = [.. new[] { "runtime", "native", "runtimeTargets", "resources" }
-                    .Where(kind => target.TryGetProperty(name, out JsonElement entry) && entry.TryGetProperty(kind, out _))
-                    .SelectMany(kind => target.GetProperty(name).GetProperty(kind).EnumerateObject().Select(f => Path.GetFileName(f.Name)))];
-                return files.Length == 0 || files.Any(beside.Contains);
-            })];
-    }
-
-    /// <summary>The packages the app's own .deps.json carries: those its dependencies reach.</summary>
-    private static IEnumerable<string> AppPackages(string deps)
-    {
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(deps));
-        JsonElement root = document.RootElement;
-        JsonElement target = root.GetProperty("targets").GetProperty(root.GetProperty("runtimeTarget").GetProperty("name").GetString()!);
-        Dictionary<string, JsonElement> entries = target.EnumerateObject().ToDictionary(e => e.Name, e => e.Value, StringComparer.OrdinalIgnoreCase);
-        HashSet<string> reached = new(StringComparer.OrdinalIgnoreCase);
-        Stack<string> next = new([entries.Keys.Single(k => k.StartsWith("Passenger/", StringComparison.Ordinal))]);
-        while (next.TryPop(out string? entry))
-        {
-            // A dependency the app names but takes nothing of (its assets excluded) has no entry: the app carries none of it.
-            if (entries.TryGetValue(entry, out JsonElement found) && reached.Add(entry) && found.TryGetProperty("dependencies", out JsonElement dependencies))
-            {
-                foreach (JsonProperty dependency in dependencies.EnumerateObject())
-                {
-                    next.Push($"{dependency.Name}/{dependency.Value.GetString()}");
-                }
-            }
-        }
-        JsonElement libraries = root.GetProperty("libraries");
-        return [.. reached.Where(r => libraries.EnumerateObject().Any(l => string.Equals(l.Name, r, StringComparison.OrdinalIgnoreCase) && l.Value.GetProperty("type").GetString() == "package"))];
+        return [.. CarriedPackages.In(deps).Where(p => p.Files.Any(beside.Contains)).Select(p => $"{p.Id}/{p.Version}")];
     }
 
     /// <summary>The repository the tests were built from: the folder above them with Passenger.slnx.</summary>

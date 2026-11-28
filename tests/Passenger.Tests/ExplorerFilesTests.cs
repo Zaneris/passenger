@@ -50,6 +50,7 @@ public sealed class ExplorerFilesTests : IDisposable
     {
         Flow.StepApart<ExplorerFilesTests>("New class rename and delete change the disk the tabs and the explorer", t => t.New_class_rename_and_delete_change_the_disk_the_tabs_and_the_explorer());
         Flow.StepApart<ExplorerFilesTests>("New class in a project with its own RootNamespace begins its namespace with it", t => t.New_class_in_a_project_with_its_own_RootNamespace_begins_its_namespace_with_it());
+        Flow.StepApart<ExplorerFilesTests>("a folder made in a project keeps its item until it holds a file or goes each one command of Undo", t => t.A_folder_made_in_a_project_keeps_its_item_until_it_holds_a_file_or_goes_each_one_command_of_Undo());
         Flow.StepApart<ExplorerFilesTests>("a name with two dots in a row is made and renamed to and only a part climbing out is refused", t => t.A_name_with_two_dots_in_a_row_is_made_and_renamed_to_and_only_a_part_climbing_out_is_refused());
         Flow.StepApart<ExplorerFilesTests>("a file renamed in the explorer keeps its tab in both splits its undo its bookmark and its breakpoint", t => t.A_file_renamed_in_the_explorer_keeps_its_tab_in_both_splits_its_undo_its_bookmark_and_its_breakpoint());
         Flow.StepApart<ExplorerFilesTests>("Delete on files chosen together asks once and moves them all to the Trash and one chosen alone is asked of by name", t => t.Delete_on_files_chosen_together_asks_once_and_moves_them_all_to_the_Trash_and_one_chosen_alone_is_asked_of_by_name());
@@ -171,6 +172,79 @@ public sealed class ExplorerFilesTests : IDisposable
         Assert.True(written == "namespace Shop.Core.Models;\n\npublic class Order\n{\n}\n",
             $"New Class took a namespace other than the project's RootNamespace and the folder's:\n{written}");
         window.Close();
+    }
+
+    /// <summary>New Folder in a project keeps the folder in its project file by a Folder item, as Visual Studio does, and a
+    /// folder made inside it takes its place; a class made in it, or the folder deleted, takes the item out, a rename takes it
+    /// along, and each is one command Undo takes back whole, the folder made with it; a file another program writes into it
+    /// takes the item out too (#2297, #2388).</summary>
+    private void A_folder_made_in_a_project_keeps_its_item_until_it_holds_a_file_or_goes_each_one_command_of_Undo()
+    {
+        string project = Path.Combine(folder, "Shop.csproj");
+        string written = File.ReadAllText(project);
+        string root = PathNames.Canonical(folder);
+        string reports = Path.Combine(root, "Reports");
+        MainWindow window = Open();
+        List<string> asked = Answer(window);
+
+        Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Kind != NodeKind.File && r.Into is { } into && PathNames.Same(into, root)));
+        Assert.True(window.Perform(AppActions.NewFolder), $"New Folder did not run on the project's folder: {window.Status}");
+        NamePopup popup = Assert.IsType<NamePopup>(window.Popup);
+        window.KeyTextInput("Reports");
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => !window.IsPopupOpen, () => $"New Folder to make Reports: {popup.Problem}");
+        Assert.True(Directory.Exists(reports), $"New Folder made no Reports: {window.Status}");
+        Assert.True(Kept("Reports") == File.ReadAllText(project), $"New Folder in Shop did not keep Reports in Shop.csproj as Visual Studio does:\n{File.ReadAllText(project)}");
+
+        Assert.Null(Ui.Await(window.CreateFolderAsync(reports, "Monthly"), "New Folder Monthly"));
+        Assert.True(Kept("Reports\\Monthly") == File.ReadAllText(project), $"Monthly made in Reports was not kept in Reports' place:\n{File.ReadAllText(project)}");
+        Step(EditorActions.Undo, "Undone");
+        Assert.False(Directory.Exists(Path.Combine(reports, "Monthly")), $"Undo of New Folder left Monthly: {window.Status}");
+        Assert.Equal(Kept("Reports"), File.ReadAllText(project));
+        Step(EditorActions.Redo, "Redone");
+        Assert.True(Directory.Exists(Path.Combine(reports, "Monthly")) && Kept("Reports\\Monthly") == File.ReadAllText(project),
+            $"Redo of New Folder did not make Monthly again with its item: {window.Status}\n{File.ReadAllText(project)}");
+        Step(EditorActions.Undo, "Undone");
+
+        Assert.Null(window.CreateClass(reports, "Summary"));
+        Assert.True(written == File.ReadAllText(project), $"Reports, holding Summary.cs, kept its Folder item, which only an empty folder needs:\n{File.ReadAllText(project)}");
+        Step(EditorActions.Undo, "Undone");
+        Assert.False(File.Exists(Path.Combine(reports, "Summary.cs")), $"Undo of New Class left Summary.cs: {window.Status}");
+        Assert.Equal(Kept("Reports"), File.ReadAllText(project));
+
+        Assert.Null(Ui.Await(window.RenameAsync(reports, "Summaries"), "the rename"));
+        Assert.Equal(Kept("Summaries"), File.ReadAllText(project));
+        string summaries = Path.Combine(root, "Summaries");
+        Assert.True(Ui.Await(window.DeleteAsync(summaries), "the delete"), $"Summaries was not deleted: {window.Status}");
+        Assert.True(written == File.ReadAllText(project), $"Summaries deleted left its Folder item, naming a folder no longer there:\n{File.ReadAllText(project)}");
+        Step(EditorActions.Undo, "Undone");
+        Assert.True(Directory.Exists(summaries) && Kept("Summaries") == File.ReadAllText(project),
+            $"Undo of the delete did not bring Summaries back with its item: {window.Status}\n{File.ReadAllText(project)}");
+
+        string notes = TestFolders.Write(root, "Notes.txt", "notes\n");
+        Assert.Null(Ui.Await(Moved(window.PutAsync([notes], summaries, copy: false)), "the move"));
+        Assert.True(written == File.ReadAllText(project), $"Summaries, holding the Notes.txt moved into it, kept its Folder item:\n{File.ReadAllText(project)}");
+        Step(EditorActions.Undo, "Undone");
+        Assert.True(File.Exists(notes) && Kept("Summaries") == File.ReadAllText(project), $"Undo of the move did not put Notes.txt and Summaries' item back: {window.Status}");
+        Assert.Equal(["Undo", "Redo", "Undo", "Undo", "Delete", "Undo", "Undo"], asked);
+
+        // Another program's file in a kept folder, which the watcher hears, lets its item go too.
+        File.WriteAllText(Path.Combine(summaries, "draft.txt"), "draft\n");
+        Ui.WaitFor(() => written == File.ReadAllText(project), () => $"Summaries' item to go once another program wrote a file into it:\n{File.ReadAllText(project)}");
+        window.Close();
+
+        // The project's text keeping one folder, as Visual Studio writes it.
+        string Kept(string kept) => written.With($"  <ItemGroup>\n    <Folder Include=\"{kept}\\\" />\n  </ItemGroup>\n");
+
+        void Step(string action, string done)
+        {
+            window.ExplorerView.Reveal(root);
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Kind != NodeKind.File && r.Into is { } into && PathNames.Same(into, root)));
+            Ui.Run(window, action);
+            Ui.WaitFor(() => window.Status?.StartsWith(done, StringComparison.Ordinal) == true || window.Status?.StartsWith("Cannot", StringComparison.Ordinal) == true,
+                () => $"{action} to end: {window.Status}");
+        }
     }
 
     /// <summary>A project's folder deleted while its design-time build runs waits for the build to end; what is typed into
@@ -799,7 +873,7 @@ public sealed class ExplorerFilesTests : IDisposable
                 Ui.Run(window, action);
                 Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Kind != NodeKind.File && r.Into is { } into && PathNames.Same(into, root)));
                 Ui.Run(window, EditorActions.Paste);
-                string refusal = Refusals.ReplacesItsFolder(Path.GetFileName(held));
+                string refusal = Refusals.ReplacesItsFolder(Path.GetFileName(held)).Shown;
                 Ui.WaitFor(() => window.Status == refusal, () => $"{action} and Paste of {Path.GetRelativePath(root, held)} beside the folder holding it to be refused: '{window.Status}'");
             }
         }
@@ -827,7 +901,7 @@ public sealed class ExplorerFilesTests : IDisposable
         MainWindow window = Open();
 
         Assert.Null(window.CreateFile(models, "release..notes.txt", "notes\n"));
-        Assert.Null(window.CreateFolder(models, "v1..2"));
+        Assert.Null(Ui.Await(window.CreateFolderAsync(models, "v1..2"), "New Folder"));
         Assert.Null(Ui.Await(window.RenameAsync(Path.Combine(models, "release..notes.txt"), "notes..old.txt"), "the rename"));
         Assert.True(File.ReadAllText(Path.Combine(models, "notes..old.txt")) == "notes\n" && Directory.Exists(Path.Combine(models, "v1..2"))
             && !File.Exists(Path.Combine(models, "release..notes.txt")), $"Names with two dots in a row were not made or renamed to: Models holds [{string.Join(", ", Left(models))}]");
@@ -1210,7 +1284,7 @@ public sealed class ExplorerFilesTests : IDisposable
 
         Ui.ClickRow(window, project);
         AlsoChoose(window, notes);
-        string why = Refusals.RemovedAlone("Shop", "the solution");
+        string why = Refusals.RemovedAlone("Shop", "the solution").Shown;
         Ui.RightClick(Ui.Row(window.ExplorerView, notes));
         Assert.True(window.ExplorerView.SelectedNodes.Count == 2, "A right-click on a row chosen with another chose it alone, so its menu is not of both");
         ContextMenu menu = window.ExplorerView.OpenMenu ?? throw new Xunit.Sdk.XunitException("A right-click on Notes.txt opened no menu");
@@ -1245,7 +1319,7 @@ public sealed class ExplorerFilesTests : IDisposable
             Renamed(window, "Uno.txt");
             Ui.ChooseFromRowMenu(window, Row(window, "Uno.txt"), "Edit", "Delete…");
             Gone(window, "Uno.txt", "the delete from the row's menu");
-            Ui.ChooseFromRowMenu(window, Row(window, "Four.txt"), "Open In", FileManager.Name);
+            Ui.ChooseFromRowMenu(window, Row(window, "Four.txt"), "Open In", FileManager.Name.English);
             Assert.Equal([Row(window, "Four.txt").Path!], window.ShownInFileManager);
 
             Pick(window, Row(window, "Two.txt"));

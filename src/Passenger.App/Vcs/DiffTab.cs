@@ -35,10 +35,16 @@ public sealed class DiffTab : IDiffHost
     public DiffView? View => editors.ActiveGroup.Active == Document ? editors.ActiveGroup.Diff
         : editors.Groups.FirstOrDefault(g => g.Active == Document)?.Diff;
 
+    /// <summary>Where the next view's caret goes once its differences are found (<see cref="DiffView.ArriveAt"/>): the step
+    /// that brought the tab to its file from the Commit window's last or next one.</summary>
+    public int Arriving { get; set; }
+
     /// <summary>A view for a group that shows the tab.</summary>
     public DiffView Make()
     {
         DiffView view = Shown.Make();
+        view.ArriveAt = Arriving;
+        Arriving = 0;
         wire(view, this);
         view.Right.SelectionChanged += (_, _) => Caret = view.Right.Selections.Primary.Caret;
         view.Edited += (_, _) => Keep();

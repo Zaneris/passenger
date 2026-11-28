@@ -24,6 +24,7 @@ public sealed class DebugAdapter
 
     /// <summary>Whether the client said at initialize that it starts programs in its terminal.</summary>
     private bool runsInTerminal;
+    private bool memoryReferences;
 
     /// <summary>The client runs on another machine (this adapter inside a container): the processes it tells of are local
     /// to the adapter but not to the client, which must never take their ids for its own machine's.</summary>
@@ -139,16 +140,57 @@ public sealed class DebugAdapter
         connection.Handle<VariablesArguments, VariablesResponse>(DapCommands.Variables, async arguments =>
         {
             List<VariableInfo> variables = await Read(() => debugger.GetVariables(arguments.VariablesReference));
-            return new VariablesResponse([.. variables.Select(v => new DapVariable
-            {
-                Name = v.Name,
-                EvaluateName = v.EvaluateName,
-                Value = v.Value,
-                Type = v.Type,
-                PresentationHint = ToProtocol(v.PresentationHint),
-                VariablesReference = v.VariablesReference,
-            })]);
+            return new VariablesResponse([.. variables.Select(variable => ToProtocol(variable, memoryReferences))]);
         });
+        connection.Handle<ReadMemoryArguments, ReadMemoryResponse>(DapCommands.ReadMemory, ReadMemory);
+        connection.Handle<ResolveMemoryArguments, ResolveMemoryResponse>(DapCommands.ResolveMemory, async arguments =>
+        {
+            try
+            {
+                ulong address = await Read(() => debugger.ResolveMemoryAsync(arguments.Expression, arguments.FrameId));
+                return new ResolveMemoryResponse(MemoryAddresses.Show(address));
+            }
+            catch (InvalidOperationException refused)
+            {
+                throw new DapException(DapCommands.ResolveMemory, refused.Message);
+            }
+        });
+        // Mark Object: an object known again at every stop and named by its label.
+        connection.Handle<MarkObjectArguments, MarkObjectResponse>(DapCommands.MarkObject, async arguments =>
+        {
+            try
+            {
+                return new MarkObjectResponse(await Read(() => debugger.MarkObject(arguments.Expression, arguments.FrameId)));
+            }
+            catch (InvalidOperationException refused)
+            {
+                throw new DapException(DapCommands.MarkObject, refused.Message);
+            }
+        });
+        connection.Handle<UnmarkObjectArguments>(DapCommands.UnmarkObject, arguments => Locked(() => debugger.UnmarkObject(arguments.Label)));
+        // Step back debugging: the calls recorded from now on or no longer, the timeline kept, a moment as a past stop.
+        connection.Handle<RecordArguments>(DapCommands.Record, arguments => Locked(() => debugger.Record(arguments.On)));
+        connection.Handle<TimelineArguments, TimelineResponse>(DapCommands.Timeline, async arguments =>
+        {
+            RecordedTimeline timeline = await Read(() => debugger.Timeline(arguments.ThreadId));
+            return new TimelineResponse(timeline.Recording, [.. timeline.Moments.Select(m => new DapMoment(m.Index, m.Kind switch
+                {
+                    MomentKind.Call => DapMomentKinds.Call,
+                    MomentKind.Return => DapMomentKinds.Return,
+                    MomentKind.Thrown => DapMomentKinds.Thrown,
+                    MomentKind.Caught => DapMomentKinds.Caught,
+                    _ => DapMomentKinds.Passed,
+                },
+                m.ThreadId, m.At, ToProtocol(m.Place), m.Depth, m.Said))], timeline.Dropped, timeline.Recorded, timeline.Held.TotalMilliseconds, timeline.MostMoments, timeline.MostBytes);
+        });
+        connection.Handle<AheadArguments, AheadResponse>(DapCommands.Ahead, async arguments =>
+            await Read(() => debugger.Ahead(arguments.FrameId)) is { } read
+                ? new AheadResponse([.. read.WontRun.Select(s => new DapAheadSpan(s.Line, s.Column, s.EndLine, s.EndColumn))],
+                    [.. read.Values.Select(v => new DapAheadValue(v.Line, v.Name, v.Value))], read.UnsureFrom)
+                : new AheadResponse([], [], null));
+        connection.Handle<MomentArguments, SnapshotEvent>(DapCommands.Moment, async arguments =>
+            await Read(() => debugger.MomentAt(arguments.Index)) is { } moment ? ToProtocol(moment)
+                : throw new DapException(DapCommands.Moment, $"Moment {arguments.Index} is no longer kept: the recording let it go with the oldest"));
         connection.Handle<EvaluateArguments, EvaluateResponse>(DapCommands.Evaluate, async arguments =>
         {
             // A hover, or a value the client shows of itself, is an implicit evaluation.
@@ -158,10 +200,12 @@ public sealed class DebugAdapter
             {
                 Result = value.Value,
                 Type = value.Type,
+                MemoryReference = memoryReferences ? value.MemoryReference : null,
                 VariablesReference = value.VariablesReference,
                 PresentationHint = ToProtocol(value.PresentationHint),
                 PassedOver = value.PassedOver,
                 ImplicitOff = value.ImplicitOff,
+                Mark = value.Mark,
             };
         });
         // Set Next Statement: a target per line (or column), in the last stopped thread's method, its id the IL offset goto takes.
@@ -194,19 +238,19 @@ public sealed class DebugAdapter
             }
             return new SetExpressionResponse { Value = assigned.Value, Type = assigned.Type, VariablesReference = assigned.VariablesReference };
         });
-        connection.Handle<ThreadArguments, ContinueResponse>(DapCommands.Continue, async _ =>
+        connection.Handle<GoingArguments, ContinueResponse>(DapCommands.Continue, async arguments =>
         {
             await Leave(() =>
             {
-                debugger.Continue();
+                debugger.Continue(arguments.Force == true);
                 return Task.CompletedTask;
             });
             return new ContinueResponse(AllThreadsContinued: true);
         });
-        connection.Handle<ThreadArguments>(DapCommands.Next, arguments => Leave(() => debugger.Step(arguments.ThreadId, StepType.StepOver)));
+        connection.Handle<GoingArguments>(DapCommands.Next, arguments => Leave(() => debugger.Step(arguments.ThreadId, StepType.StepOver, arguments.Force == true)));
         connection.Handle<StepInArguments>(DapCommands.StepIn, arguments => Leave(() => arguments.TargetId is int target
             ? debugger.StepIntoTarget(arguments.ThreadId, target)
-            : debugger.Step(arguments.ThreadId, StepType.StepIn)));
+            : debugger.Step(arguments.ThreadId, StepType.StepIn, arguments.Force == true)));
         // Smart Step Into: the calls of the frame's statement, each placed where it is written.
         connection.Handle<StepInTargetsArguments, StepInTargetsResponse>(DapCommands.StepInTargets, async arguments =>
         {
@@ -296,6 +340,8 @@ public sealed class DebugAdapter
         };
         debugger.OnBreakpointChanged += breakpoint => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = ToProtocol(breakpoint, isEvent: true) });
         debugger.OnBreakpointMessage += (id, message) => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Changed, Breakpoint = new DapBreakpoint { Id = id, Verified = true, Message = message } });
+        debugger.OnBreakpointRemoved += id => connection.SendEvent(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Removed, Breakpoint = new DapBreakpoint { Id = id } });
+        debugger.OnSnapshot += snapshot => connection.SendEvent(DapEvents.Snapshot, ToProtocol(snapshot));
         // Told only when known: a process attached to on macOS or Linux tells its exit code to its parent alone.
         debugger.OnExited += exitCode =>
         {
@@ -307,8 +353,9 @@ public sealed class DebugAdapter
         debugger.OnTerminated += () => connection.SendEvent(DapEvents.Terminated, new TerminatedEvent(Failure: debugger.Failure));
         debugger.OnThreadStarted += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Started, threadId));
         debugger.OnThreadExited += threadId => connection.SendEvent(DapEvents.Thread, new ThreadEvent(EventReasons.Exited, threadId));
-        debugger.OnModuleLoaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.New, new DapModule(id, name, path)));
-        debugger.OnModuleUnloaded += (id, name, path) => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Removed, new DapModule(id, name, path)));
+        debugger.OnModuleLoaded += module => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.New, module));
+        debugger.OnModuleChanged += module => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Changed, module));
+        debugger.OnModuleUnloaded += module => connection.SendEvent(DapEvents.Module, new ModuleEvent(EventReasons.Removed, module));
         debugger.OnProcessStarted += (processId, name) => connection.SendEvent(DapEvents.Process, new ProcessEvent(name, processId, IsLocalProcess: !Remote, StartMethod: DapCommands.Launch));
         debugger.OnAttached += processId => connection.SendEvent(DapEvents.Process, new ProcessEvent($"process {processId}", processId, IsLocalProcess: !Remote, StartMethod: DapCommands.Attach));
         debugger.OnOutput += (output, isStdError) => connection.SendEvent(DapEvents.Output, new OutputEvent(output, isStdError ? DapOutputCategories.Stderr : DapOutputCategories.Stdout));
@@ -321,6 +368,7 @@ public sealed class DebugAdapter
         linesStartAt1 = arguments.LinesStartAt1 ?? true;
         columnsStartAt1 = arguments.ColumnsStartAt1 ?? true;
         runsInTerminal = arguments.SupportsRunInTerminalRequest ?? false;
+        memoryReferences = arguments.SupportsMemoryReferences == true;
         return Task.FromResult(new DapCapabilities
         {
             SupportsConfigurationDoneRequest = true,
@@ -331,6 +379,7 @@ public sealed class DebugAdapter
             SupportsEvaluateForHovers = true,
             SupportsStepBack = false,
             SupportsSetVariable = false,
+            SupportsReadMemoryRequest = true,
             SupportsSetExpression = true,
             SupportsRestartFrame = false,
             SupportsTerminateRequest = true,
@@ -340,6 +389,8 @@ public sealed class DebugAdapter
             SupportsStepInTargetsRequest = true,
             SupportsGotoTargetsRequest = true,
             SupportsDataBreakpoints = ManagedDebugger.DataBreakpointsUnavailable is null,
+            SupportsMarkObject = true,
+            SupportsForcedSteps = true,
             DataBreakpointsUnavailable = ManagedDebugger.DataBreakpointsUnavailable,
             ExceptionBreakpointFilters =
             [
@@ -458,14 +509,21 @@ public sealed class DebugAdapter
             b.Column is int column ? ColumnIn(column) : null,
             b.LogMessage,
             b.Suspend,
-            b.RunTo == true))];
+            b.RunTo == true,
+            b.Key,
+            b.WaitFor,
+            b.Temporary == true,
+            b.Snapshot == true,
+            b.Captures,
+            b.CaptureLimit))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetBreakpoints(path, requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => ToProtocol(b, isEvent: false))]);
     }
 
     private async Task<SetBreakpointsResponse> SetFunctionBreakpoints(SetFunctionBreakpointsArguments arguments)
     {
-        FunctionBreakpointRequest[] requests = [.. (arguments.Breakpoints ?? []).Select(b => new FunctionBreakpointRequest(b.Name, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))];
+        FunctionBreakpointRequest[] requests = [.. (arguments.Breakpoints ?? []).Select(b => new FunctionBreakpointRequest(b.Name, b.Condition, b.HitCondition, b.LogMessage, b.Suspend,
+            b.Key, b.WaitFor, b.Temporary == true, b.Snapshot == true, b.Captures, b.CaptureLimit))];
         List<BreakpointManager.BreakpointInfo> breakpoints = await Locked(() => debugger.SetFunctionBreakpoints(requests));
         return new SetBreakpointsResponse([.. breakpoints.Select(b => new DapBreakpoint { Id = b.Id, Verified = b.Verified, Message = b.Message, Reason = b.Refused ? BreakpointReasons.Failed : null })]);
     }
@@ -730,6 +788,51 @@ public sealed class DebugAdapter
         DecompiledSourceInfo = frame.DecompiledSourceInfo is { } decompiled
             ? new DapDecompiledSource(decompiled.TypeFullName, new DapAssembly(decompiled.Assembly.AssemblyPath, decompiled.Assembly.Mvid), decompiled.CallingUserCodeAssemblyPath)
             : null,
+    };
+
+    /// <summary>A snapshot's capture, or a recorded moment's, as the protocol carries it.</summary>
+    private SnapshotEvent ToProtocol(Snapshot snapshot) => new()
+    {
+        BreakpointId = snapshot.BreakpointId,
+        ThreadId = snapshot.ThreadId,
+        ThreadName = snapshot.ThreadName,
+        At = snapshot.At,
+        PausedMilliseconds = snapshot.Paused.TotalMilliseconds,
+        Frames = [.. snapshot.Frames.Select(f => new DapSnapshotFrame(ToProtocol(f.Frame), f.Locals))],
+        Values = snapshot.Values.ToDictionary(v => v.Key, v => (IReadOnlyList<DapVariable>)[.. v.Value.Select(value => ToProtocol(value, false))]),
+        Asked = [.. snapshot.Asked.Select(value => ToProtocol(value, false))],
+        Cut = snapshot.Cut,
+    };
+
+    private async Task<ReadMemoryResponse> ReadMemory(ReadMemoryArguments request)
+    {
+        if (!MemoryAddresses.TryParse(request.MemoryReference, out ulong start)
+            || !MemoryAddresses.TryOffset(start, request.Offset ?? 0, out ulong address))
+        {
+            throw new DapException(DapCommands.ReadMemory, "The memory address is outside the address space");
+        }
+        try
+        {
+            byte[] bytes = await Read(() => debugger.ReadMemory(address, request.Count));
+            int unread = request.Count - bytes.Length;
+            return new ReadMemoryResponse(MemoryAddresses.Show(address), bytes, unread == 0 ? null : unread, debugger.MemoryPointerSize, BitConverter.IsLittleEndian);
+        }
+        catch (InvalidOperationException refused)
+        {
+            throw new DapException(DapCommands.ReadMemory, refused.Message);
+        }
+    }
+
+    private static DapVariable ToProtocol(VariableInfo variable, bool memory) => new()
+    {
+        Name = variable.Name,
+        EvaluateName = variable.EvaluateName,
+        Value = variable.Value,
+        Type = variable.Type,
+        PresentationHint = ToProtocol(variable.PresentationHint),
+        VariablesReference = variable.VariablesReference,
+        MemoryReference = memory ? variable.MemoryReference : null,
+        Mark = variable.Mark,
     };
 
     private static DapPresentationHint? ToProtocol(VariablePresentationHint? hint)

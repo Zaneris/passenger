@@ -25,8 +25,12 @@ public sealed record WebBuild(string Sdk, string Intermediate, IReadOnlyDictiona
     public IReadOnlyList<(string Project, string? Framework)> Referenced { get; init; } = [];
 }
 
-/// <summary>Why a configuration cannot be launched, in words for the person.</summary>
-public class LaunchException(string message) : Exception(message);
+/// <summary>Why a configuration cannot be launched: in the person's language where the window says it (<see cref="Why"/>),
+/// its message in English, as an agent's answer and a log say it.</summary>
+public class LaunchException(Words why) : Exception(why.English)
+{
+    public Words Why { get; } = why;
+}
 
 /// <summary>What a run configuration launches, worked out once: the program (the project's apphost, its built assembly under
 /// the <c>dotnet</c> that builds it, or another program), its arguments, working folder and environment, and the build that
@@ -52,12 +56,12 @@ public sealed partial record LaunchPlan
     /// null for any other.</summary>
     public string? X86Dotnet { get; init; }
 
-    /// <summary>Why Passenger's debugger cannot debug its program: one known to run on Windows as a 32-bit x86 process, by
-    /// its build (<see cref="X86Dotnet"/>) or by its own native header (a test host's apphost a runner names), never a .NET
-    /// assembly's, whose machine is not its processor; null where it can, or where that is not known.</summary>
-    public string? WhyNotDebugged => OperatingSystem.IsWindows() && (X86Dotnet is not null
-        || (System.IO.Path.IsPathRooted(Program) && ProgramProcessors.Of(Program) is [System.Runtime.InteropServices.Architecture.X86]))
-        ? Refusals.X86Undebugged(ProgramName) : null;
+    /// <summary>Whether its program is known to run on Windows as a 32-bit x86 process, by its build
+    /// (<see cref="X86Dotnet"/>) or by its own native header (a test host's apphost a runner names), never a .NET
+    /// assembly's, whose machine is not its processor: the debugger follows it from its 32-bit host
+    /// (<see cref="Debugging.X86DebuggerSource"/>).</summary>
+    public bool RunsAsX86 => OperatingSystem.IsWindows() && (X86Dotnet is not null
+        || (System.IO.Path.IsPathRooted(Program) && ProgramProcessors.Of(Program) is [System.Runtime.InteropServices.Architecture.X86]));
 
     /// <summary>The program's arguments, the assembly first when it runs under <c>dotnet</c>.</summary>
     public IReadOnlyList<string> Arguments { get; init; } = [];
@@ -179,6 +183,10 @@ public sealed partial record LaunchPlan
     /// where it is (<see cref="Devices.MacCatalystApps"/>); null for any other plan.</summary>
     public Devices.MacCatalystLaunch? MacCatalyst { get; init; }
 
+    /// <summary>The packaged Windows app it runs, which its start registers from the build's layout and Windows starts
+    /// (<see cref="WindowsPackages"/>); null for any other plan.</summary>
+    public WindowsPackageLaunch? Package { get; init; }
+
     /// <summary>The folder of the Godot project whose game or editor the plan runs on Godot (<see cref="GodotLaunch"/>);
     /// null for any other plan.</summary>
     public string? Godot { get; init; }
@@ -248,18 +256,18 @@ public sealed partial record LaunchPlan
     /// that the working folder is gone ("Could not run Hello: its working folder ... does not exist"), unless what starts it
     /// builds it there (<see cref="WorksWhereBuilt"/>), or that its windows would reach the person's screen from a Passenger
     /// nobody sees (<see cref="UnseenApps.WhyNot"/>).</summary>
-    public string? WhyNot(string verb, bool built = true)
+    public Words? WhyNot(string verb, bool built = true)
     {
         if (built && (Built is { } file && !File.Exists(file) ? file : ByAppHost && !File.Exists(Program) ? Program : null) is { } missing)
         {
-            return $"Could not {verb} {ProgramName}: {System.IO.Path.GetFileName(missing)} has not been built";
+            return LaunchWords.NotBuilt(verb, ProgramName, System.IO.Path.GetFileName(missing));
         }
         if (X86Dotnet is { } x86 && Built is { } assembly && X86Programs.Lacking(x86, assembly, Environment) is { Count: > 0 } lacking)
         {
-            return $"Could not {verb} {ProgramName}: {Refusals.X86RuntimeMissing(x86, lacking)}";
+            return LaunchWords.CouldNot(verb, ProgramName, Refusals.X86RuntimeMissing(x86, lacking));
         }
         return !Directory.Exists(WorkingDirectory) && (built || !WorksWhereBuilt)
-            ? $"Could not {verb} {ProgramName}: its working folder {WorkingDirectory} does not exist"
+            ? LaunchWords.NoWorkingFolder(verb, ProgramName, WorkingDirectory)
             : UnseenApps.WhyNot(this, verb, watched: !built);
     }
 
@@ -293,7 +301,7 @@ public sealed partial record LaunchPlan
         bool headless = unseen ?? PassengerApp.ShowsNoWindow;
         if (configuration.Unsupported is { } why)
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: {why}");
+            throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, why));
         }
         if (configuration.IsContainer)
         {
@@ -335,7 +343,7 @@ public sealed partial record LaunchPlan
             };
         }
         ProjectModel project = projects.FirstOrDefault(p => PathNames.Same(p.Path, configuration.Project))
-            ?? throw new LaunchException($"{configuration.Name} cannot run: its project {System.IO.Path.GetFileName(configuration.Project)} is not loaded in the open folder");
+            ?? throw new LaunchException(LaunchWords.ProjectNotLoaded(configuration.Name, System.IO.Path.GetFileName(configuration.Project)));
         // The target chosen to run on decides the framework built: its platform's, unless the configuration names one of it.
         Devices.KeptTarget? device = Devices.DeviceTargets.PlatformsOf(project.TargetFrameworks).Count > 0 ? targets?.Invoke(project) : null;
         if (device is not null && Devices.DeviceTargets.FrameworkFor(project, device.Platform) is null)
@@ -352,7 +360,7 @@ public sealed partial record LaunchPlan
         }
         if (configuration.Program.Length == 0 && platform == Devices.TargetPlatform.MacCatalyst && !OperatingSystem.IsMacOS())
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: {Refusals.MacCatalystOnMacAlone}");
+            throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, Refusals.MacCatalystOnMacAlone));
         }
         // The project's own configuration, named for no platform, runs its platform's profile where the target is of that platform.
         if (platform is { } on && configuration is { LaunchProfile.Length: 0, Program.Length: 0 } && Devices.DeviceTargets.ProfileFor(LaunchProfile.Read(project), on) is { } tied)
@@ -362,7 +370,7 @@ public sealed partial record LaunchPlan
         // Before its build: the program would build here (EnableWindowsTargeting) and then fail to start for want of WindowsDesktop.
         if (configuration.Program.Length == 0 && project.RunsOnlyOnWindows(framework) is { } windows)
         {
-            throw new LaunchException($"{configuration.Name} cannot run here: {windows}");
+            throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, windows));
         }
         HashSet<string> names = new([CarriedProperties.TargetPath, MSBuildNames.ProjectDir, MSBuildNames.RunWorkingDirectory, MSBuildNames.RunArguments, .. AppHosts.Properties],
             StringComparer.OrdinalIgnoreCase);
@@ -403,13 +411,12 @@ public sealed partial record LaunchPlan
 
         string target = PathNames.Canonical(properties.GetValueOrDefault(CarriedProperties.TargetPath) is { Length: > 0 } path
             ? path
-            : throw new LaunchException($"MSBuild could not say what {project.Name} builds"));
+            : throw new LaunchException(LaunchWords.BuildsUnknown(project.Name)));
         if ((configuration.Program.Length == 0 || configuration.NamesGodot) && project.GodotFolder is { } game)
         {
             if (properties.GetValueOrDefault(MSBuildNames.Configuration) is { Length: > 0 } builtAs && !builtAs.Equals(GodotLaunch.RunsConfiguration, StringComparison.OrdinalIgnoreCase))
             {
-                throw new LaunchException($"{configuration.Name} cannot run: Godot loads a game's {GodotLaunch.RunsConfiguration} build alone, where the build configuration "
-                    + $"chosen builds {project.Name} as {builtAs} (as an export does): choose {GodotLaunch.RunsConfiguration} to run it");
+                throw new LaunchException(LaunchWords.GodotRunsOnly(configuration.Name, GodotLaunch.RunsConfiguration, project.Name, builtAs));
             }
             return await GodotLaunch.PlanAsync(configuration, project, game, target, framework, Expand, Passenger.App.Godot.GodotUserFolders.Into(Variables(), godotFolders), godot,
                 properties.GetValueOrDefault(MSBuildNames.GodotSdkVersion), headless, cancel, atHand,
@@ -443,7 +450,7 @@ public sealed partial record LaunchPlan
             if (assembly && (host is { X86: true } || X86Programs.Builds(properties)))
             {
                 // A 64-bit .NET loads no x86 assembly: Windows runs it on its x86 .NET, as its apphost or the x86 dotnet finds it.
-                x86 = OperatingSystem.IsWindows() ? X86Programs.Root(Variables()) : throw new LaunchException($"{configuration.Name} cannot run here: {Refusals.X86OnWindowsAlone}");
+                x86 = OperatingSystem.IsWindows() ? X86Programs.Root(Variables()) : throw new LaunchException(LaunchWords.CannotRunHere(configuration.Name, Refusals.X86OnWindowsAlone));
             }
             if (host is not null)
             {
@@ -507,6 +514,8 @@ public sealed partial record LaunchPlan
             Device = device is { Kind: not Devices.TargetKind.ThisMachine } && configuration.Program.Length == 0 ? new Devices.DeviceLaunch(device, framework ?? project.TargetFrameworks[0]) : null,
             MacCatalyst = platform == Devices.TargetPlatform.MacCatalyst && configuration.Program.Length == 0
                 ? new Devices.MacCatalystLaunch(framework ?? project.TargetFrameworks[0]) : null,
+            Package = configuration.RunsPackage(projects)
+                ? new WindowsPackageLaunch(WindowsPackageLayouts.RecipeOf(System.IO.Path.GetDirectoryName(target)!, System.IO.Path.GetFileNameWithoutExtension(target))) : null,
         };
         if (configuration.Program.Length > 0 || !project.IsFunctionsApp)
         {
@@ -550,13 +559,11 @@ public sealed partial record LaunchPlan
     }
 
     /// <summary>Why a container configuration has no plan of this machine's: Run, Debug and Profile bring its containers up.</summary>
-    public static string InContainers(string name) =>
-        $"{name} runs in containers, which Run, Debug and Profile bring up: it starts no program on this computer";
+    public static Words InContainers(string name) => LaunchWords.InContainers(name);
 
     /// <summary>Why a multi-project configuration has no one plan: Run and Debug start each of its projects, and Profile records
     /// one program, which a project's own configuration starts.</summary>
-    public static string SeveralProjects(string name) =>
-        $"{name} starts several projects, each as its own configuration starts it: Run and Debug start them together, and Profile records one program, which one of their configurations starts";
+    public static Words SeveralProjects(string name) => LaunchWords.SeveralProjects(name);
 
     /// <summary>The state folder a Passenger launched from this one is given: sandbox/ in this one's, so the two never share
     /// settings, recent solutions, a folder's editors and breakpoints, the log or agents' sockets, and the one debugged
@@ -644,10 +651,10 @@ public sealed partial record LaunchPlan
         }
         catch (ProjectHostFailed failed)
         {
-            throw new LaunchException($"MSBuild could not say what {project.Name} builds: {failed.Reason}");
+            throw new LaunchException(LaunchWords.BuildsUnknownBecause(project.Name, failed.Reason));
         }
         return answer.Problem is { } problem
-            ? throw new LaunchException($"MSBuild could not say what {project.Name} builds: {problem}")
+            ? throw new LaunchException(LaunchWords.BuildsUnknownBecause(project.Name, problem))
             : new Dictionary<string, string>(answer.Values, StringComparer.OrdinalIgnoreCase);
     }
 

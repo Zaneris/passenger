@@ -39,7 +39,7 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
         finally
         {
             // Its program spins a core for as long as it runs, which every class after this one would share.
-            await Docker.RunAsync("rm", "-f", container);
+            await Docker.RemoveAsync(container);
         }
     }
 
@@ -97,7 +97,7 @@ public sealed class McpContainerProfileTests(ContainerRunDebuggingTests.Tools to
         }
         finally
         {
-            await Docker.RunAsync("rm", "-f", container);
+            await Docker.RemoveAsync(container);
         }
     }
 

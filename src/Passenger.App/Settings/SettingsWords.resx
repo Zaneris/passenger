@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Language" xml:space="preserve">
+    <value>Language</value>
+    <comment>Settings › General: the label of the row choosing the language Passenger's words are in.</comment>
+  </data>
+  <data name="LanguageWords" xml:space="preserve">
+    <value>language languages translation translated locale localization localisation english system words menus</value>
+    <comment>Settings' search: the words that find the Language row, apart by spaces; add your language's own words for it.</comment>
+  </data>
+  <data name="LanguageNote" xml:space="preserve">
+    <value>The language of Passenger's words: menus, tool windows, dialogs, Settings and what the window says. System follows your system's preferred languages to the first Passenger has, else English. The languages besides English were translated by machine: CONTRIBUTING.md says how to make them better. Words already written in a console or a log keep the language they were written in.</value>
+    <comment>Settings › General: the note under the Language row.</comment>
+  </data>
+  <data name="LanguageSystem" xml:space="preserve">
+    <value>System ({language})</value>
+    <comment>Settings › General › Language: the choice that follows the system, naming the language it comes to in that language's own name.</comment>
+  </data>
+  <data name="LanguageEnglish" xml:space="preserve">
+    <value>English</value>
+    <comment>Settings › General › Language: the choice of English.</comment>
+  </data>
+  <data name="NoteThenOver" xml:space="preserve">
+    <value>{note} {over}</value>
+    <comment>Settings: a row's note followed by the sentence naming the .editorconfig keys that say over it.</comment>
+  </data>
+</root>

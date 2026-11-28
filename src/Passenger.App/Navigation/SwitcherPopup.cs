@@ -6,6 +6,7 @@ using Passenger.App.CSharp;
 using Passenger.App.Docking;
 using Passenger.App.Editors;
 using Passenger.App.Workspace;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.App.Navigation;
@@ -14,15 +15,14 @@ namespace Passenger.App.Navigation;
 /// tool window by its icon, its name and its keys.</summary>
 public sealed record SwitcherRow(string Name, string After, OpenDocument? Document, ToolWindow? Window)
 {
-    public Geometry? Icon => Document?.Icon;
+    /// <summary>The theme's key of its icon: its tab's, or its tool window's.</summary>
+    public string? IconKey => Document?.IconKey ?? Window?.Icon;
 
-    public string? IconTint => Document?.IconTint;
-
-    /// <summary>The theme's key of a tool window's icon.</summary>
-    public string? IconKey => Window?.Icon;
+    /// <summary>The theme's key of its icon's tint, its tab's.</summary>
+    public string? IconBrushKey => Document?.IconBrushKey;
 
     /// <summary>What a screen reader is told it is, after its name: a file's folder, or a tool window.</summary>
-    public string Said => Window is null ? After : "tool window";
+    public string Said => Window is null ? After : NavigationWords.ToolWindowSaid.Shown;
 }
 
 /// <summary>The Switcher's popup: the window's open tabs, the one used last first, then its tool windows, with one chosen.
@@ -39,11 +39,11 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
 
     /// <param name="chosen">The row chosen as it opens.</param>
     public SwitcherPopup(IReadOnlyList<SwitcherRow> rows, int chosen)
-        : base("Switcher", "A file's or tool window's name", PopupFrame.Medium)
+        : base(NavigationWords.Switcher, NavigationWords.SwitcherPlaceholder, PopupFrame.Medium)
     {
         all = rows;
         first = chosen;
-        AutomationProperties.SetName(this, Title);
+        ShownWords.Set(this, AutomationProperties.NameProperty, Title);
         QueryChanged();
         AttachedToVisualTree += (_, _) => Tell(Urgency.Polite);
     }
@@ -51,15 +51,14 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
     protected override void QueryChanged()
     {
         string typed = Query.Trim();
-        Show(typed.Length == 0 ? all : [.. all.Where(row => FuzzyMatch.Score(typed, row.Name) is not null)], "Nothing open has that name",
+        Show(typed.Length == 0 ? all : [.. all.Where(row => FuzzyMatch.Score(typed, row.Name) is not null)], NavigationWords.NothingOpenNamed,
             typed.Length == 0 ? first : 0);
     }
 
     protected override Control Row() => HiddenTabsPopup.TabRow<SwitcherRow>((row, icon, name, after) =>
     {
-        icon.Data = row.Icon;
         icon.DataKey = row.IconKey;
-        icon.ForegroundKey = row.IconTint;
+        icon.ForegroundKey = row.IconBrushKey;
         name.Text = row.Name;
         after.Text = row.After;
     });
@@ -110,7 +109,7 @@ public sealed class SwitcherPopup : SearchPopup<SwitcherRow>, IOwnKeys
             return;
         }
         string choice = PopupPlacement.Chosen(row.Name, row.Said, Chosen(), Rows.Count);
-        announcer.Tell(told ? choice : $"{Title}, {choice}", urgency, this);
+        announcer.Tell(told ? choice : $"{Title.Shown}, {choice}", urgency, this);
         told = true;
     }
 

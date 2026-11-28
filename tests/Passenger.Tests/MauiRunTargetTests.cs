@@ -49,7 +49,7 @@ public sealed class MauiRunTargetTests
             ProjectModel app = window.Session.Projects.Single();
 
             // With nothing chosen, Windows runs its own head here; elsewhere a target must be chosen.
-            (LaunchPlan? unchosen, string? refused) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
+            (LaunchPlan? unchosen, Words? refused) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
             if (OperatingSystem.IsWindows())
             {
                 Assert.True(unchosen is not null, $"MauiApp1 with no target chosen was refused on Windows: {refused}");
@@ -62,7 +62,7 @@ public sealed class MauiRunTargetTests
             {
                 if (unchosen is null)
                 {
-                    SkipWithoutWorkloads(window, refused);
+                    SkipWithoutWorkloads(window, refused?.English);
                 }
                 LaunchPlan mac = unchosen ?? throw new Xunit.Sdk.XunitException($"MauiApp1 with no target chosen was refused on a Mac: {refused}");
                 Assert.Null(mac.Device);
@@ -75,15 +75,15 @@ public sealed class MauiRunTargetTests
             else
             {
                 Assert.Null(unchosen);
-                Assert.Equal(Refusals.NoRunTarget("MauiApp1"), refused);
+                Assert.Equal(Refusals.NoRunTarget("MauiApp1").Shown, refused?.Shown);
             }
 
             window.ChooseRunTarget(app, new DeviceTarget(TargetPlatform.Android, "emulator-5554", "Pixel 9", TargetKind.Emulator, true) { Avd = "Pixel_9" });
             Ui.Settle();
-            (LaunchPlan? planned, string? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
+            (LaunchPlan? planned, Words? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
             if (planned is null)
             {
-                SkipWithoutWorkloads(window, unplanned);
+                SkipWithoutWorkloads(window, unplanned?.English);
             }
             LaunchPlan android = planned ?? throw new Xunit.Sdk.XunitException($"MauiApp1 has no plan for the Android emulator: {unplanned}");
             Assert.Equal("MauiApp1", android.Name);
@@ -128,10 +128,10 @@ public sealed class MauiRunTargetTests
             ProjectModel app = window.Session.Projects.Single();
             DeviceTarget desktop = DeviceTargets.Here(TargetPlatform.Desktop);
 
-            (LaunchPlan? unchosen, string? refused) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
+            (LaunchPlan? unchosen, Words? refused) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
             if (unchosen is null)
             {
-                SkipWithoutWorkloads(window, refused);
+                SkipWithoutWorkloads(window, refused?.English);
             }
             LaunchPlan here = unchosen ?? throw new Xunit.Sdk.XunitException($"MauiApp1 with no target chosen was refused, though its desktop head runs here: {refused}");
             Assert.Null(here.Device);
@@ -172,7 +172,7 @@ public sealed class MauiRunTargetTests
     /// <summary>The chosen configuration's plan, as Run and Debug work it out before their build.</summary>
     private static LaunchPlan Plan(MainWindow window)
     {
-        (LaunchPlan? plan, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
+        (LaunchPlan? plan, Words? problem) = Ui.Await(window.Builds.ResolvePlanAsync(window.Session.Configurations.Chosen!, null), "the app's plan", Slow);
         return plan ?? throw new Xunit.Sdk.XunitException($"MauiApp1 has no plan: {problem}");
     }
 

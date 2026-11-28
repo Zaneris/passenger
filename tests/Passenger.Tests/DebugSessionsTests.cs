@@ -211,7 +211,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.True(window.IsActive, "The stop the person's resume came to left the window behind the program they went to");
 
             Ui.Leave(window);
-            Assert.Null(window.Actions.RunForAgent(AppActions.Resume));
+            Assert.Null(window.Actions.RunForAgent(AppActions.Resume)?.English);
             Ui.WaitFor(() => first is { State: DebugState.Paused, Stops: 3 }, $"the agent's resume to stop at the breakpoint again (it is {first.State})");
             Assert.True(!window.IsActive && !window.AsksAttention,
                 $"The stop an agent's resume came to {(window.IsActive ? "brought the window forward" : "asked for the person")}, taking them from what they were in");
@@ -476,7 +476,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Equal(DebugState.Paused, first.State);
             Assert.True(DotnetProcesses.Runs(program), "Cancel ended First");
-            Assert.Equal(Refusals.CloseSolutionIsThePersons, window.Actions.RunForAgent(AppActions.CloseSolution));
+            Assert.Equal(Refusals.CloseSolutionIsThePersons.Shown, window.Actions.RunForAgent(AppActions.CloseSolution)?.English);
             Assert.Equal(PathNames.Canonical(pair.Folder), window.Folder);
             Assert.Empty(window.OwnedWindows.OfType<ChoiceDialog>());
 
@@ -635,7 +635,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
             // An attach to a process that is no more (the muxer's own answer, no SDK started) fails, ending the output it followed.
             using Process gone = ChildProcesses.Start(ChildProcesses.DotnetCommand(["--list-runtimes"]));
             gone.WaitForExit();
-            string? failed = Ui.Await(window.Debugger.AttachAsync(gone.Id, "Gone", place: Here(follow: true)), "the attach that cannot be done");
+            string? failed = Ui.Await(window.Debugger.AttachAsync(gone.Id, "Gone", place: Here(follow: true)), "the attach that cannot be done")?.English;
             Assert.NotNull(failed);
             int follower;
             lock (followers)
@@ -721,7 +721,7 @@ public sealed class DebugSessionsTests : IClassFixture<DebugSessionsTests.Pair>
         window.MouseMove(new Point(0, 0), Avalonia.Input.RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
         int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + letter;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card on {text}");
         return window.Assist.HoverText!;
     }

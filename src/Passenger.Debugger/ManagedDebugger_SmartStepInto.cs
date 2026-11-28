@@ -66,7 +66,7 @@ public partial class ManagedDebugger
         }
         int token = frame.Function.Token;
         (int ip, CorDebugMappingResult mapping) = frame.IP;
-        int? version = ModuleMetadataReader.VersionOf(frame);
+        int? version = module.MetadataReader.VersionOf(frame);
         IReadOnlyList<ModuleMetadataReader.Point> points = module.MetadataReader.VisibleSequencePoints(token, version);
         int at = -1;
         for (int i = 0; i < points.Count && points[i].Offset <= ip; i++)
@@ -84,7 +84,7 @@ public partial class ManagedDebugger
             last++;
         }
         int start = points[at].Offset;
-        int end = last + 1 < points.Count ? points[last + 1].Offset : frame.Function.ILCode.Size;
+        int end = last + 1 < points.Count ? points[last + 1].Offset : module.MetadataReader.MethodIL(token, version)?.Length ?? frame.Function.ILCode.Size;
         // A call before the stop has run already (the one a step out returned from, mid-statement): left out.
         List<ModuleMetadataReader.CallSite> calls = [.. module.MetadataReader.CallSites(token, start, end, version)
             .Where(call => call.Offset > ip || (call.Offset == ip && mapping.HasFlag(CorDebugMappingResult.MAPPING_EXACT)))];
@@ -555,7 +555,7 @@ public partial class ManagedDebugger
             return false;
         }
         int ip = caller.IP.pnOffset;
-        return module.MetadataReader.CallSites(caller.Function.Token, ip, callOffset + 1, ModuleMetadataReader.VersionOf(caller))
+        return module.MetadataReader.CallSites(caller.Function.Token, ip, callOffset + 1, module.MetadataReader.VersionOf(caller))
             .FirstOrDefault(call => call.Kind != ModuleMetadataReader.CallKind.Delegate) is { } first && first.Offset == callOffset;
     }
 

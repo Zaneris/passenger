@@ -71,7 +71,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Flow.StepApart("write to launch profile puts the changes into launchSettings json the rest as it was and Undo takes it back", () => new RunConfigurationsTests(folders), t => t.Write_to_launch_profile_puts_the_changes_into_launchSettings_json_the_rest_as_it_was_and_Undo_takes_it_back());
         Flow.StepApart("save as launch profile adds a configuration made here to launchSettings json which dotnet run runs and Undo takes it back", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_adds_a_configuration_made_here_to_launchSettings_json_which_dotnet_run_runs_and_Undo_takes_it_back());
         Flow.StepApart("save as launch profile in a project with no launchSettings json makes it as dotnet new does and Undo takes it away", () => new RunConfigurationsTests(folders), t => t.Save_as_launch_profile_in_a_project_with_no_launchSettings_json_makes_it_as_dotnet_new_does_and_Undo_takes_it_away());
-        Flow.StepApart("a file based programs run json changed on disk reaches its run configuration", () => new RunConfigurationsTests(folders), t => t.A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration());
+        Flow.StepApart("a file based programs run json changed on disk reaches its run configuration, made again without a launch file read on the windows thread", () => new RunConfigurationsTests(folders), t => t.A_file_based_programs_run_json_changed_on_disk_reaches_its_run_configuration());
         Flow.StepApart("reset to launch profile puts a changed configuration back as its profile makes it for good", () => new RunConfigurationsTests(folders), t => t.Reset_to_launch_profile_puts_a_changed_configuration_back_as_its_profile_makes_it_for_good());
         Flow.StepApart("an older runConfigurations json opens as it was and keeps the persons copies as they stand", () => new RunConfigurationsTests(folders), t => t.An_older_runConfigurations_json_opens_as_it_was_and_keeps_the_persons_copies_as_they_stand());
         Flow.StepApart("use external console chosen in the dialog runs the program in the terminal and is kept with the configuration", () => new RunConfigurationsTests(folders), t => t.Use_external_console_chosen_in_the_dialog_runs_the_program_in_the_terminal_and_is_kept_with_the_configuration());
@@ -85,7 +85,8 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     /// <summary>An AppHost's configuration first, a launch profile run in its working directory, an agent's logs kept,
     /// a launch profile made without the watcher, a terminal program generated to run there, a web page opened in the
     /// browser named, a plain project beside a Godot game, several projects' profile written as Visual Studio writes it,
-    /// and a library's profile starting a host, as one flow, each step the check one test made in an instance of its own.</summary>
+    /// a library's profile starting a host, and a name cut short shown whole in a tip, as one flow, each step the check one
+    /// test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void Run_configurations_are_chosen_and_run_as_their_projects_and_launch_profiles_make_them()
     {
@@ -97,7 +98,70 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         Flow.StepApart("a web apps page opens in the browser Settings names with its arguments and in its run configurations own over it", () => new RunConfigurationsTests(folders), t => t.A_web_apps_page_opens_in_the_browser_Settings_names_with_its_arguments_and_in_its_run_configurations_own_over_it());
         Flow.StepApart("a plain dotnet project naming its godot games folder runs as itself and its configurations are dotnet ones", () => new RunConfigurationsTests(folders), t => t.A_plain_dotnet_project_naming_its_godot_games_folder_runs_as_itself_and_its_configurations_are_dotnet_ones());
         Flow.StepApart("a launch profile of several projects is changed made and removed in the dialog and written as Visual Studio writes it", () => new RunConfigurationsTests(folders), t => t.A_launch_profile_of_several_projects_is_changed_made_and_removed_in_the_dialog_and_written_as_Visual_Studio_writes_it());
+        Flow.StepApart("a run given a command is kept whole in passenger runs json and goes back to slnLaunch once it holds projects alone", () => new RunConfigurationsTests(folders), t => t.A_run_given_a_command_is_kept_whole_in_passenger_runs_json_and_goes_back_to_slnLaunch_once_it_holds_projects_alone());
         Flow.StepApart("a librarys launch profile starting a host is a configuration that builds the library and runs the host", () => new RunConfigurationsTests(folders), t => t.A_librarys_launch_profile_starting_a_host_is_a_configuration_that_builds_the_library_and_runs_the_host());
+        Flow.StepApart("a run configurations name cut short shows whole in a tip in the toolbar and its chooser and a short one keeps the toolbars words", () => new RunConfigurationsTests(folders), t => t.A_run_configurations_name_cut_short_shows_whole_in_a_tip_in_the_toolbar_and_its_chooser_and_a_short_one_keeps_the_toolbars_words());
+    }
+
+    /// <summary>Two run configurations named alike past the toolbar's width are told apart by a tip: hovering the toolbar's
+    /// name, cut short, shows it whole above the toolbar's own words, and hovering either in the chooser shows it whole,
+    /// each wrapping inside the tip; one short enough to show whole keeps the toolbar's words alone.</summary>
+    private void A_run_configurations_name_cut_short_shows_whole_in_a_tip_in_the_toolbar_and_its_chooser_and_a_short_one_keeps_the_toolbars_words()
+    {
+        string prefix = new('W', 96);
+        string first = $"Hello: {prefix}.First";
+        string second = $"Hello: {prefix}.Second";
+        const string Short = "Hello: Short";
+        Write("Hello/Properties/launchSettings.json", $$"""
+            { "profiles": {
+                "{{prefix}}.First": { "commandName": "Project" },
+                "{{prefix}}.Second": { "commandName": "Project" },
+                "Short": { "commandName": "Project" }
+            } }
+            """);
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => Names(window).Contains(second), "the long launch profiles to become run configurations");
+            Button button = window.FindControl<Button>("RunConfigButton")!;
+            TextBlock label = window.FindControl<TextBlock>("RunConfigName")!;
+            foreach (string name in (string[])[first, second])
+            {
+                MenuItem item = Choice(name);
+                TextBlock row = item.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == name);
+                Assert.True(TrimmedTip.IsCutShort(row), $"The chooser shows {name} whole, so nothing here is cut short");
+                WholeIn(row, TrimmedTip.Parted(name));
+                Ui.Click(item);
+                Assert.True(TrimmedTip.IsCutShort(label), $"The toolbar shows {name} whole, so nothing here is cut short");
+                WholeIn(button, $"{TrimmedTip.Parted(name)}\n\nRun configuration");
+            }
+            Ui.Click(Choice(Short));
+            Assert.False(TrimmedTip.IsCutShort(label), "The toolbar cuts the short configuration's name short");
+            Ui.Hover(button);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(button), "the short configuration's toolbar tip");
+            Assert.Equal("Run configuration", Ui.TipWords(button).Text);
+
+            MenuItem Choice(string name)
+            {
+                Ui.Click(button);
+                ContextMenu menu = Assert.IsType<ContextMenu>(window.OpenContextMenu);
+                return menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, name));
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static void WholeIn(Control target, string words)
+        {
+            Ui.Hover(target);
+            Ui.WaitFor(() => ToolTip.GetIsOpen(target), () => $"the tip saying {words} whole");
+            TextBlock shown = Ui.TipWords(target);
+            Assert.Equal(words, shown.Text);
+            Assert.True(shown.TextLayout.TextLines.Count > 1 && !shown.TextLayout.TextLines.Any(line => line.HasCollapsed),
+                "The tip cuts the whole name short or leaves it on one line wider than the tip");
+        }
     }
 
     private void A_generated_Aspire_override_keeps_linked_AppHost_paths_relative_in_storage()
@@ -266,7 +330,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Assert.True(given.Contains("Hi [one|two three]", StringComparison.Ordinal), $"The arguments given for one run did not replace the profile's:\n{given}");
             // This project, with a Docker profile and no Dockerfile, cannot make a container, so Profile says so.
             Assert.True(window.SelectConfiguration("Hello: Docker"));
-            Assert.Equal("Hello: Docker cannot run: Hello has no Dockerfile", Ui.Await(window.ProfileAsync(), "the profiler's refusal"));
+            Assert.Equal("Hello: Docker cannot run: Hello has no Dockerfile", Ui.Await(window.ProfileAsync(), "the profiler's refusal")?.English);
             Assert.True(window.SelectConfiguration("Hello: Greet"));
 
             Assert.True(window.Perform(AppActions.EditConfigurations));
@@ -807,6 +871,13 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
         {
             Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hi",
                 "app.cs to be a program with its app.run.json profile's configuration", TimeSpan.FromMinutes(1));
+            // As a batch of evaluations makes the list again: from the launch files as kept, each looked at again apart.
+            int asked = FileLook.AskedOnThisThread;
+            window.Session.Configurations.ConfigureAsKept(window.Session.Projects);
+            Assert.True(FileLook.AskedOnThisThread == asked, $"Making the run configurations again asked the disk of {FileLook.AskedOnThisThread - asked} launch "
+                + "files on the window's thread: every batch of evaluations reads every project's launch settings there");
+            Ui.Settle();
+            Assert.True(window.Configurations is [{ Name: "app: Greet" }], $"The configurations made again from the launch files as kept are {string.Join(", ", window.Configurations.Select(c => c.Name))}");
             List<ExplorerNode> rows = [.. window.ExplorerView.Tree.Rows];
             Write("app.run.json", Greet("Hello"));
             Ui.WaitFor(() => window.Configurations is [{ Name: "app: Greet" } greet] && greet.Environment.GetValueOrDefault("GREETING") == "Hello",
@@ -1294,7 +1365,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Assert.Equal(["Hello"], Names(window));
             Type(dialog.NameBox, string.Empty);
             Ui.Click(dialog.OkButton);
-            Assert.Equal(Refusals.ConfigurationUnnamed, dialog.Problem);
+            Assert.Equal(Refusals.ConfigurationUnnamed.Shown, dialog.Problem);
             dialog.Close();
             Ui.Settle();
             Assert.Equal(["Hello"], Names(window));
@@ -1356,7 +1427,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Assert.Equal(["Hello", "Tool: quiet", "Both", "Old"], Names(window));
             RunConfigurationsDialog dialog = window.ShowRunConfigurations();
             Assert.True(dialog.Choose("Both"));
-            Assert.Equal("Multiple Projects", dialog.KindText.Text);
+            Assert.Equal(RunConfigurationsDialog.SeveralParts, dialog.KindText.Text);
             Assert.True(dialog.SharedBox.IsChecked == true && dialog.SharedBox.IsEffectivelyVisible, "A profile of the team's file is not shown as shared");
             Assert.Equal([("Hello", 0, 0), ("Tool", 1, 0)], dialog.StartsTable.Rows.Select(r => (Path.GetFileNameWithoutExtension(r.Project), r.Action.SelectedIndex, r.Profile.SelectedIndex)));
 
@@ -1364,7 +1435,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             dialog.StartsTable.Rows[1].Profile.SelectedIndex = 1;
             Type(dialog.NameBox, "Tool alone");
             Ui.Click(dialog.AddButton);
-            Ui.Click(Assert.IsType<ContextMenu>(dialog.AddMenu).Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Multiple Projects"));
+            Ui.Click(Assert.IsType<ContextMenu>(dialog.AddMenu).Items.OfType<MenuItem>().Single(i => (string?)i.Header == RunConfigurationsDialog.SeveralParts));
             Type(dialog.NameBox, "Mine");
             Assert.Equal([0, 0], dialog.StartsTable.Rows.Select(r => r.Profile.SelectedIndex));
             Assert.True(dialog.StartsTable.Rows.All(r => r.Action.SelectedIndex == (int)Passenger.Workspace.ProjectLaunchAction.None), "A new profile starts a project nobody chose");
@@ -1394,9 +1465,86 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
             Ui.Settle();
             Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
             Heard(window, shared, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
-            Assert.Equal(["Undo Change Launch Profiles? It changes Shop.slnLaunch, and deletes Shop.slnLaunch.user."], asked);
+            Assert.Equal(["Undo Change Runs of Several Parts? It changes Shop.slnLaunch, and deletes Shop.slnLaunch.user."], asked);
             Assert.True(File.ReadAllText(shared) == Launch && !File.Exists(own), "Undo did not put the launch profiles back as they were");
             Ui.WaitFor(() => Names(window).SequenceEqual(["Hello", "Tool: quiet", "Both", "Old"]), () => $"the configurations to follow the files taken back ({string.Join(", ", Names(window))})");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A solution's launch profile given a command in Edit Configurations, which Visual Studio's file cannot hold, is
+    /// written whole to the folder's passenger-runs.json, its projects with it, and taken out of the .slnLaunch; its command
+    /// taken out again, it goes back to the .slnLaunch as Visual Studio writes it, and the folder's file keeps none.</summary>
+    private void A_run_given_a_command_is_kept_whole_in_passenger_runs_json_and_goes_back_to_slnLaunch_once_it_holds_projects_alone()
+    {
+        Write("Tool/Tool.csproj", TestProjects.Console());
+        Write("Tool/Program.cs", "System.Console.WriteLine(\"tool\");\n");
+        Write("Shop.slnx", "<Solution>\n  <Project Path=\"Hello/Hello.csproj\" />\n  <Project Path=\"Tool/Tool.csproj\" />\n</Solution>\n");
+        const string Launch = "[\n  {\n    \"Name\": \"Both\",\n    \"Projects\": [\n      {\n        \"Path\": \"Hello\\\\Hello.csproj\",\n        \"Action\": \"Start\"\n      },\n"
+            + "      {\n        \"Path\": \"Tool\\\\Tool.csproj\",\n        \"Action\": \"StartWithoutDebugging\"\n      }\n    ]\n  }\n]";
+        Write("Shop.slnLaunch", Launch);
+        string launches = Path.Combine(folder, "Shop.slnLaunch");
+        string runs = Path.Combine(folder, Passenger.Workspace.RunsFile.FileName);
+        MainWindow window = Keeping();
+        try
+        {
+            Ui.WaitFor(() => Names(window).Contains("Both"), () => $"the solution's launch profile to be listed ({string.Join(", ", Names(window))})");
+            RunConfigurationsDialog dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Both"));
+            Ui.Click(dialog.AddPartButton);
+            MenuItem[] kinds = [.. Assert.IsType<ContextMenu>(dialog.PartMenu).Items.OfType<MenuItem>()];
+            Assert.True(kinds.Select(i => (string?)i.Header).SequenceEqual(["package.json Script", "Install a Package's Dependencies", "Command", "Compose Services"])
+                && kinds.Select(i => i.IsEnabled).SequenceEqual([false, false, true, false]),
+                $"Add Part does not offer each kind of part, greying those the folder has nothing for: {string.Join(", ", kinds.Select(i => $"{i.Header} {i.IsEnabled}"))}");
+            Ui.Click(kinds.Single(i => (string?)i.Header == "Command"));
+            RunPartsTable.Row command = dialog.StartsTable.Rows[2];
+            Assert.True(command.DetailsView?.IsEffectivelyVisible == true, "An added part's details are not shown, so its command has nowhere to be typed");
+            Type(command.Fields["Command"], "dotnet --version");
+            command.Ready.SelectedIndex = (int)Passenger.Workspace.ReadyWhen.Exited;
+            Ui.Settle();
+            Assert.True(dialog.Note.StartsWith($"Written to {Passenger.Workspace.RunsFile.FileName} at the folder's top once applied: Shop.slnLaunch holds .NET projects alone", StringComparison.Ordinal),
+                $"Edit Configurations does not say the run moves to the folder's file and why: {dialog.Note}");
+            Ui.Click(dialog.OkButton);
+            Ui.WaitFor(() => window.RunConfigurationsDialog is null, () => $"the dialog to close once the runs are written ({dialog.Problem})");
+            Assert.Equal("{\n  \"passengerRuns\": 1,\n  \"runs\": [\n    {\n      \"name\": \"Both\",\n      \"parts\": [\n        {\n          \"project\": \"Hello/Hello.csproj\"\n        },\n"
+                + "        {\n          \"project\": \"Tool/Tool.csproj\",\n          \"action\": \"startWithoutDebugging\"\n        },\n"
+                + "        {\n          \"command\": \"dotnet --version\",\n          \"readyWhen\": \"exited\"\n        }\n      ]\n    }\n  ]\n}\n", File.ReadAllText(runs));
+            Assert.False(File.ReadAllText(launches).Contains("Both", StringComparison.Ordinal), $"The run stayed in Shop.slnLaunch beside its whole in {Passenger.Workspace.RunsFile.FileName}");
+            Assert.True(window.Configurations.Count(c => c.Name == "Both") == 1 && window.Configurations.Single(c => c.Name == "Both").Starts.Count == 3,
+                $"The run is not listed once with its three parts: {string.Join(", ", Names(window))}");
+
+            dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Both"));
+            RunPartsTable.Row again = dialog.StartsTable.Rows.Single(r => r.Part.Kind == Passenger.Workspace.RunPartKind.Command);
+            again.Details.IsChecked = true;
+            Ui.Click(again.Remove!);
+            Ui.Click(dialog.OkButton);
+            Ui.WaitFor(() => window.RunConfigurationsDialog is null, () => $"the dialog to close once the runs are written ({dialog.Problem})");
+            Assert.Equal(Launch, File.ReadAllText(launches));
+            Assert.Equal("{\n  \"passengerRuns\": 1,\n  \"runs\": []\n}\n", File.ReadAllText(runs));
+
+            // Given a command again as the person's own, it leaves the .slnLaunch for their state; Undo puts it back there alone.
+            dialog = window.ShowRunConfigurations();
+            Assert.True(dialog.Choose("Both"));
+            Ui.Click(dialog.AddPartButton);
+            Ui.Click(Assert.IsType<ContextMenu>(dialog.PartMenu).Items.OfType<MenuItem>().Single(i => (string?)i.Header == "Command"));
+            Type(dialog.StartsTable.Rows[2].Fields["Command"], "dotnet --version");
+            dialog.SharedBox.IsChecked = false;
+            Ui.Settle();
+            Heard(window, launches, () => Ui.Click(dialog.OkButton));
+            Ui.WaitFor(() => window.RunConfigurationsDialog is null, () => $"the dialog to close once the runs are written ({dialog.Problem})");
+            Assert.True(window.Configurations.SingleOrDefault(c => c.Name == "Both") is { Shared: false, Starts.Count: 3 }, $"The run is not the person's own with its three parts: {string.Join(", ", Names(window))}");
+            window.Confirm = (_, _, _) => Task.FromResult(true);
+            window.ExplorerView.Reveal(Path.Combine(folder, "Hello", "Hello.csproj"));
+            Ui.Settle();
+            Ui.ClickRow(window, window.ExplorerView.Tree.Rows.First(r => r.Name.StartsWith("Hello", StringComparison.Ordinal)));
+            Heard(window, launches, () => Ui.Run(window, Passenger.Editor.EditorActions.Undo));
+            Assert.Equal(Launch, File.ReadAllText(launches));
+            Ui.WaitFor(() => window.Configurations.Count(c => c.Name == "Both") == 1 && window.Configurations.Single(c => c.Name == "Both").Starts.Count == 2,
+                () => $"Undo to leave the run in Shop.slnLaunch alone, not also as the person's own ({string.Join(", ", window.Configurations.Select(c => $"{c.Name} of {c.Starts.Count}"))})");
         }
         finally
         {
@@ -1428,7 +1576,7 @@ public sealed class RunConfigurationsTests : IClassFixture<RestoredFolders>, IDi
     {
         Ui.Click(dialog.AddButton);
         ContextMenu kinds = Assert.IsType<ContextMenu>(dialog.AddMenu);
-        Assert.Equal([".NET Project", "Multiple Projects", "Docker Compose", "Dockerfile", "SDK Container"], kinds.Items.OfType<MenuItem>().Select(i => (string?)i.Header));
+        Assert.Equal([".NET Project", RunConfigurationsDialog.SeveralParts, "Docker Compose", "Dockerfile", "SDK Container"], kinds.Items.OfType<MenuItem>().Select(i => (string?)i.Header));
         Ui.Click(kinds.Items.OfType<MenuItem>().First());
     }
 

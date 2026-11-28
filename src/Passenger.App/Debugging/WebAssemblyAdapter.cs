@@ -335,11 +335,12 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
     /// carries no condition: the proxy drops a breakpoint's condition as the page loads, so one is read here at each hit.</summary>
     private sealed record BreakpointByUrl(int LineNumber, string UrlRegex, int ColumnNumber);
 
-    /// <summary>Exceptions stop in the browser as a whole (every one, or every one left unhandled), never by type.</summary>
+    /// <summary>Exceptions stop in the browser as a whole (every one, or every one left unhandled), never by type: an option
+    /// for every type but some, as Any exception is, stops at those too.</summary>
     private async Task<SetExceptionBreakpointsResponse> SetExceptionsAsync(SetExceptionBreakpointsArguments arguments)
     {
         IReadOnlyList<DapExceptionOptions> options = arguments.ExceptionOptions ?? [];
-        static bool Typed(DapExceptionOptions option) => option.Path is { Count: > 1 };
+        static bool Typed(DapExceptionOptions option) => option.Path is { Count: > 1 } path && path[1].Negate != true;
         string state = options.Any(o => !Typed(o) && o.BreakMode == DapBreakModes.Always) ? "all"
             : options.Any(o => !Typed(o) && o.BreakMode != DapBreakModes.Never) ? "uncaught" : "none";
         if (browser is { } run)
@@ -588,6 +589,8 @@ public sealed class WebAssemblyAdapter : InProcessAdapter
             Reached = () => BreakpointHits.Reached(at.File, top.Line + 1),
             Say = Say,
             Told = told => Told(told, at.File, at.Bound ?? at.Request.Line),
+            Session = Hits,
+            Removed = Removed,
         }))
         {
             Stopped(StopReasons.Breakpoint, null, [at.Id]);

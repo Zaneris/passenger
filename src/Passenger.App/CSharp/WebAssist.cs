@@ -154,7 +154,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         {
             return null;
         }
-        ((string Path, TextPosition Position)? place, string said) = await JsonDeclarationAsync(lsp, document, offset);
+        ((string Path, TextPosition Position)? place, Words said) = await JsonDeclarationAsync(lsp, document, offset);
         return new Declared(place is { } found ? Declared.Served([found], ServerPlaces.Texts(context.Editors)) : [], said);
     }
 
@@ -273,7 +273,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
         }
         try
         {
-            ((string Path, TextPosition Position)? place, string said) = await JsonDeclarationAsync(lsp, document, offset);
+            ((string Path, TextPosition Position)? place, Words said) = await JsonDeclarationAsync(lsp, document, offset);
             if (context.Editors.Active != document || place is not { } found)
             {
                 context.Say(context.Editors.Active == document ? said : Refusals.NoDeclaration);
@@ -289,7 +289,7 @@ internal sealed partial class WebAssist(AssistContext context, PopupPlacement po
 
     /// <summary>Where Go to Declaration goes in JSON, whose server has none: a package.json dependency's installed package,
     /// a script's <c>npm run</c> to the script; else why not.</summary>
-    internal static async Task<((string Path, TextPosition Position)? Place, string Said)> JsonDeclarationAsync(LspDocument lsp, OpenDocument document, int offset)
+    internal static async Task<((string Path, TextPosition Position)? Place, Words Said)> JsonDeclarationAsync(LspDocument lsp, OpenDocument document, int offset)
     {
         TextSnapshot text = document.Text.Snapshot;
         IReadOnlyList<DocumentSymbol> outline = await lsp.OutlineAsync();

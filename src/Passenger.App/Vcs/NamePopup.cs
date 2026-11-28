@@ -11,7 +11,8 @@ namespace Passenger.App.Vcs;
 /// <summary>Asks for a name: Enter tries it, and when that fails the reason shows under the box and the name stays to
 /// correct; Escape gives up. With kinds to choose from (New Class/Interface), they are listed under the box, the first
 /// chosen, and Up and Down choose another while the name is typed. With an option (a file's Rename type), it is a check
-/// box under the box, clicked while the keys stay with the name.</summary>
+/// box under the box, clicked while the keys stay with the name. A name that takes a while to try (a program making it)
+/// says what is being done under the box meanwhile.</summary>
 public sealed class NamePopup : UserControl, IAnswers<bool>
 {
     private readonly TextBox name;
@@ -20,16 +21,19 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
     private readonly CheckBox? option;
     private readonly IReadOnlyList<string> kindNames;
     private readonly Func<string, Task<string?>> attempt;
+    private readonly Func<string, string>? working;
     private bool trying;
 
     /// <param name="attempt">Tries the name: null when it worked, else why not.</param>
     /// <param name="kinds">What can be made, each with its icon, the first chosen; none to ask for the name alone.</param>
     /// <param name="option">A check box's words and whether it starts checked; none for no option.</param>
     /// <param name="selected">How much of the initial name starts selected, from its start; all of it when null.</param>
+    /// <param name="working">What is being done with a name while it is tried, in words; none to say nothing.</param>
     public NamePopup(string title, string initial, Func<string, Task<string?>> attempt, IReadOnlyList<(string Name, Control Icon)>? kinds = null,
-        (string Text, bool On)? option = null, int? selected = null)
+        (string Text, bool On)? option = null, int? selected = null, Func<string, string>? working = null)
     {
         this.attempt = attempt;
+        this.working = working;
         Width = PopupFrame.Narrow;
         name = new TextBox { Text = initial };
         problem = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, IsVisible = false, TextWrapping = TextWrapping.Wrap };
@@ -90,7 +94,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
     }
 
     /// <summary>Why the last name tried did not work, or null.</summary>
-    public string? Problem => problem.IsVisible ? problem.Text : null;
+    public string? Problem => problem.IsVisible && !trying ? problem.Text : null;
 
     /// <summary>The kind chosen, or null when there are none to choose from.</summary>
     public string? Kind => kinds is { SelectedIndex: >= 0 and var at } ? kindNames[at] : null;
@@ -113,7 +117,13 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         string? failed;
         try
         {
-            failed = typed.Length == 0 ? "A name is needed" : await attempt(typed);
+            Task<string?> tried = typed.Length == 0 ? Task.FromResult<string?>("A name is needed") : attempt(typed);
+            if (!tried.IsCompleted && working is not null)
+            {
+                problem.Text = working(typed);
+                problem.IsVisible = true;
+            }
+            failed = await tried;
         }
         finally
         {
@@ -121,6 +131,7 @@ public sealed class NamePopup : UserControl, IAnswers<bool>
         }
         if (failed is null)
         {
+            problem.IsVisible = false;
             Done?.Invoke(this, true);
             return;
         }

@@ -20,12 +20,12 @@ public partial class MainWindow
 {
     private void AddNewProjectActions()
     {
-        actions!.Add(new IdeAction(AppActions.NewSolution, "New Solution…", "IDE", _ => ShowNewSolution())
+        actions!.Add(new IdeAction(AppActions.NewSolution, ActionTitles.NewSolution, ActionGroups.Ide, _ => ShowNewSolution())
         {
             WhyNot = _ => WithoutAnySdk(),
             Menus = [new MenuPlace("File", 0, -2)],
         });
-        actions.Add(new IdeAction(AppActions.NewProject, "New Project…", "IDE", _ => ShowNewProject(ChosenSolutionFolder()))
+        actions.Add(new IdeAction(AppActions.NewProject, ActionTitles.NewProject, ActionGroups.Ide, _ => ShowNewProject(ChosenSolutionFolder()))
         {
             WhyNot = _ => Solution is null ? Refusals.NoSolution : WithoutAnySdk(),
         });
@@ -113,7 +113,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            status.Text = Refusals.NoSolution;
+            status.Text = Refusals.NoSolution.Shown;
             return null;
         }
         ProjectTarget target = new(solution.Path, into, [.. solution.Projects.Select(p => Path.GetFileNameWithoutExtension(p.Path))],
@@ -293,7 +293,7 @@ public partial class MainWindow
                 IdeErrors.Observe(setUp);
                 return;
             }
-            opened.BuildSolution(made.Game ? built => opened.OfferGodotEditor(built.Message) : null);
+            opened.BuildSolution(made.Game ? built => opened.OfferGodotEditor(built.Message.Shown) : null);
         });
     }
 
@@ -315,7 +315,7 @@ public partial class MainWindow
         TaskCompletionSource<BuildOutcome> building = new(TaskCreationOptions.RunContinuationsAsynchronously);
         BuildSolution(ended => building.TrySetResult(ended));
         BuildOutcome built = await building.Task;
-        status.Say($"{said}; {built.Message}", problem is null ? null : ProblemSeverity.Warning, buildRun.Place(built));
+        status.Say($"{said}; {built.Message.Shown}", problem is null ? null : ProblemSeverity.Warning, buildRun.Place(built));
         return problem;
     }
 
@@ -323,7 +323,7 @@ public partial class MainWindow
     /// words making it so (<see cref="AppActions.GodotScriptEditor"/>).</summary>
     private void OfferGodotEditor(string? said)
     {
-        string title = actions?[AppActions.GodotScriptEditor]?.TitleWhere(actions.Context()) ?? AppActions.GodotScriptEditor;
+        string title = actions?[AppActions.GodotScriptEditor]?.TitleWhere(actions.Context()).Shown ?? AppActions.GodotScriptEditor;
         string does = title.TrimEnd('…');
         status.Say($"{(said is null ? string.Empty : $"{said}; ")}{title} opens its scripts here from Godot's editor", null,
             new StatusPlace(char.ToLowerInvariant(does[0]) + does[1..], () => Request(AppActions.GodotScriptEditor)));

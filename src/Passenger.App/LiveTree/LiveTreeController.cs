@@ -67,34 +67,34 @@ public sealed partial class LiveTreeController
     public LiveTreeController(LiveTreeParts parts)
     {
         this.parts = parts;
-        window = new ToolWindow(ToolWindowIds.LiveTree, "Live Visual Tree", IconKeys.LiveTree, Make, ToolAnchor.RightTop)
+        window = new ToolWindow(ToolWindowIds.LiveTree, ToolWindowTitles.LiveTree, IconKeys.LiveTree, Make, ToolAnchor.RightTop)
         {
             Serves = ToolWindowServes.InspectedApps,
             Action = AppActions.ShowLiveTree,
         };
         parts.Dock.Add(window);
         window.PropertyChanged += OnWindowChanged;
-        parts.Actions.Add(new IdeAction(AppActions.SelectElement, "Select Element", "Debug", context => IdeErrors.Observe(PickAsync(!picking)))
+        parts.Actions.Add(new IdeAction(AppActions.SelectElement, ActionTitles.SelectElement, ActionGroups.Debug, context => IdeErrors.Observe(PickAsync(!picking)))
         {
             WhyNot = _ => WhyNotAsk() ?? (app as Godot.GodotGame)?.EditorHolds,
         });
-        parts.Actions.Add(new IdeAction(AppActions.LiveTreeRefresh, "Refresh Live Visual Tree", "Debug", context => IdeErrors.Observe(RefreshAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.LiveTreeRefresh, ActionTitles.LiveTreeRefresh, ActionGroups.Debug, context => IdeErrors.Observe(RefreshAsync()))
         {
             WhyNot = _ => WhyNotAsk(),
         });
-        parts.Actions.Add(new IdeAction(AppActions.SelectIn3D, "Select Element Among 3D Nodes", "Debug", context => IdeErrors.Observe(PickInAsync(!pickIn3D)))
+        parts.Actions.Add(new IdeAction(AppActions.SelectIn3D, ActionTitles.SelectIn3D, ActionGroups.Debug, context => IdeErrors.Observe(PickInAsync(!pickIn3D)))
         {
             IsChecked = _ => pickIn3D,
             WhyNot = _ => app is Godot.GodotGame game ? game.EditorHolds : "Select Element picks among 3D nodes in a Godot game: Run or Debug one",
         });
-        parts.Actions.Add(new IdeAction(AppActions.PauseGameLoop, "Pause Game Loop", "Debug", context => IdeErrors.Observe(HoldLoopAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.PauseGameLoop, ActionTitles.PauseGameLoop, ActionGroups.Debug, context => IdeErrors.Observe(HoldLoopAsync()))
         {
-            TitleIn = _ => app is Godot.GodotGame { LoopHeld: true } ? "Resume Game Loop" : "Pause Game Loop",
+            TitleIn = _ => app is Godot.GodotGame { LoopHeld: true } ? ActionTitles.ResumeGameLoop : ActionTitles.PauseGameLoop,
             IsChecked = _ => app is Godot.GodotGame { LoopHeld: true },
             WhyNot = _ => WhyNotLoop(),
             Words = ["Suspend Game", "Resume Game"],
         });
-        parts.Actions.Add(new IdeAction(AppActions.NextFrame, "Next Frame", "Debug", context => IdeErrors.Observe(StepAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.NextFrame, ActionTitles.NextFrame, ActionGroups.Debug, context => IdeErrors.Observe(StepAsync()))
         {
             WhyNot = _ => WhyNotLoop() ?? (app is Godot.GodotGame { LoopHeld: false } game ? $"{game.Name}'s loop runs: Pause Game Loop holds it first" : null),
             Words = ["Step Frame"],
@@ -139,7 +139,7 @@ public sealed partial class LiveTreeController
         {
             if (parts.Actions.Run(AppActions.LiveTreeRefresh) is { } why)
             {
-                parts.Say(why);
+                parts.Say(why.Shown);
             }
         };
         made.GoToRequested += (_, place) => GoTo(place);
@@ -178,7 +178,7 @@ public sealed partial class LiveTreeController
         {
             if (parts.Actions.Run(action) is { } why)
             {
-                parts.Say(why);
+                parts.Say(why.Shown);
             }
         };
         made.SourceChosen += (_, at) =>
@@ -618,7 +618,7 @@ public sealed partial class LiveTreeController
                 ShowBanner(null);
                 ShowMonitors(null);
                 Picking(false);
-                ShowStatus($"{app.Name} has ended.", null);
+                ShowStatus($"{Ended()}.", null);
                 break;
             default:
                 ShowStatus(null, $"{app.Name} · {app.Framework}");
@@ -630,7 +630,7 @@ public sealed partial class LiveTreeController
     private string? NoneChosen => app is Godot.GodotGame ? "Choose a node in the tree." : null;
 
     /// <summary>What the window says while it follows nothing.</summary>
-    public const string NothingShown = "Debug an Avalonia or WPF app to see its windows and controls here, or run a Godot game to see its nodes.";
+    public const string NothingShown = "Debug an Avalonia, WPF or WinUI app to see its windows and controls here, or run a Godot game to see its nodes.";
 
     /// <summary>Whether the person asked for the game's monitors charted (<see cref="LiveTreeView.ChartsLink"/>).</summary>
     private bool charting;
@@ -956,6 +956,11 @@ public sealed partial class LiveTreeController
 
     private void OnDebugState()
     {
+        if (app is LiveApp { State: LiveAppState.Ended })
+        {
+            // Its session's end says the app has ended, where its inspector's connection closed while it ran.
+            ShowState();
+        }
         bool paused = Paused && app is { State: LiveAppState.Connected };
         ShowBanner(paused ? $"{app!.Name} is paused: its tree and values are as it last ran, and are asked again once it runs." : null);
         if (!paused && stale)
@@ -969,13 +974,17 @@ public sealed partial class LiveTreeController
         }
     }
 
+    /// <summary>What the window says of an app whose inspector has gone: that its connection closed while the session debugging
+    /// it runs on, else that the app has ended.</summary>
+    private string Ended() => (app is LiveApp && Debugged() is { State: not DebugState.Ended } ? Refusals.InspectorGone(app.Name) : $"{app!.Name} has ended").Shown;
+
     /// <summary>Why the window cannot ask the app now: nothing inspected, not up yet, refused, gone, or paused.</summary>
     private string? WhyNotAsk() => app switch
     {
-        null => "No Avalonia or WPF app is being debugged, nor a Godot game running",
+        null => "No Avalonia, WPF or WinUI app is being debugged, nor a Godot game running",
         { State: LiveAppState.Waiting } => $"{app.Name} has not shown its windows yet",
         { State: LiveAppState.Refused } => app.Problem,
-        { State: LiveAppState.Ended } => $"{app.Name} has ended",
+        { State: LiveAppState.Ended } => Ended(),
         _ when Paused => $"{app.Name} is paused",
         _ => null,
     };

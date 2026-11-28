@@ -16,6 +16,7 @@ public sealed class ToolTab
         Window = window;
         this.closed = closed;
         Document = OpenDocument.OfTool(this);
+        window.PropertyChanged += OnWindowChanged;
     }
 
     public ToolWindow Window { get; }
@@ -27,7 +28,20 @@ public sealed class ToolTab
     public Control Make() => new ToolTabView(Window);
 
     /// <summary>The tab closed: the window is no longer shown.</summary>
-    internal void LetGo() => closed(this);
+    internal void LetGo()
+    {
+        Window.PropertyChanged -= OnWindowChanged;
+        closed(this);
+    }
+
+    /// <summary>The window's title changed (a count with it), which its tab says.</summary>
+    private void OnWindowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ToolWindow.Title))
+        {
+            Document.TitleChanged();
+        }
+    }
 }
 
 /// <summary>A tool window's view in an editor group's place, on the window's own ground, which takes the keys as the

@@ -7,7 +7,7 @@ using Passenger.App.ToolWindows;
 
 namespace Passenger.App.Settings;
 
-/// <summary>The MCP Server page: Enable MCP Server, the folders agents join unasked (each Always for this folder the
+/// <summary>The Agents page: Enable MCP Server, the folders agents join unasked (each Always for this folder the
 /// window's question kept, each taken back by Remove), and how to set up each agent with this copy of Passenger, its
 /// own path in every command and configuration, each with a Copy button.</summary>
 public sealed partial class SettingsDialog
@@ -60,7 +60,7 @@ public sealed partial class SettingsDialog
                 RemoveAgentFolderButton,
             },
         };
-        Add(McpPage, "Folders agents join unasked", folders, $"{McpWords} always for this folder allowed trusted remove take back let in",
+        Add(AgentsPage, "Folders agents join unasked", folders, $"{McpWords} always for this folder allowed trusted remove take back let in",
             "Always for this folder, in the question a window asks an agent, puts its folder here: agents then join that folder's "
             + "window without the question. Remove takes it back once you choose OK or Apply, and an agent on its window is asked "
             + "again at its next call.");
@@ -81,7 +81,7 @@ public sealed partial class SettingsDialog
             },
         });
         const string SetupWords = $"{McpWords} setup set up install configure command config json toml claude code desktop codex opencode copy path";
-        options.Add(new Option(McpPage, "Set up an agent", heading, $"{McpPage} {SetupWords}"));
+        options.Add(new Option(AgentsPage, "Set up an agent", () => heading, $"{AgentsPage} {SetupWords}"));
         List<(string, string)> setups = [];
         void Setup(string title, string text, string note, string words)
         {
@@ -110,7 +110,7 @@ public sealed partial class SettingsDialog
             "opencode.jsonc codemode code mode execution timeout");
         AgentSetups = setups;
 
-        void AddBlock(Control row, string title, string words) => options.Add(new Option(McpPage, title, row, $"{McpPage} {title} {words}"));
+        void AddBlock(Control row, string title, string words) => options.Add(new Option(AgentsPage, title, () => row, $"{AgentsPage} {title} {words}"));
     }
 
     /// <summary>One agent's setup: its heading with Copy at the right, what to do with it, and the text to copy as code.</summary>

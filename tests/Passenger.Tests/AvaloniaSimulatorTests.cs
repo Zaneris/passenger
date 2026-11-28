@@ -94,7 +94,7 @@ public sealed class AvaloniaSimulatorTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.Shown);
         }
         string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
         if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))

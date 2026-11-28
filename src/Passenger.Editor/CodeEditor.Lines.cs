@@ -254,7 +254,8 @@ public sealed partial class CodeEditor
     private TextLine Format(string content, LineRun[] runs, TextRunProperties? only)
     {
         TextRunProperties plain = only ?? Run(TokenKind.Text);
-        ITextSource source = runs.Length == 0 ? new SingleRun(content, plain) : new ColouredRuns(content, runs, plain, Run);
+        controlMarks ??= RunWith(palette.Syntax(TokenKind.Comment));
+        ITextSource source = runs.Length == 0 ? new SingleRun(content, plain, controlMarks) : new ColouredRuns(content, runs, plain, Run, controlMarks);
         CharactersFormatted += content.Length;
         TextLine line = TextFormatter.Current.FormatLine(source, 0, double.PositiveInfinity, new LineProperties(plain, metrics.CharWidth * Indent.TabWidth))!;
         RunsFormatted += line.TextRuns.Count;
@@ -1338,10 +1339,37 @@ public sealed partial class CodeEditor
         }
     }
 
-    private sealed class SingleRun(string text, TextRunProperties props) : ITextSource
+    /// <summary>A line's text in one look, each control character its mark (<see cref="ControlRun"/>) in <paramref
+    /// name="marks"/>' look.</summary>
+    private sealed class SingleRun(string text, TextRunProperties props, TextRunProperties? marks = null) : ITextSource
     {
         public TextRun GetTextRun(int textSourceIndex) =>
-            textSourceIndex >= text.Length ? new TextEndOfParagraph() : new TextCharacters(text.AsMemory(textSourceIndex), props);
+            textSourceIndex >= text.Length ? new TextEndOfParagraph()
+            : (TextRun?)ControlRun.At(text, textSourceIndex, marks ?? props) ?? new TextCharacters(text.AsMemory(textSourceIndex, ControlRun.Before(text, textSourceIndex, text.Length) - textSourceIndex), props);
+    }
+
+    /// <summary>A control character drawn as its mark (<see cref="ControlCharacters"/>), as wide as the mark's columns: the
+    /// line's one character it stands for, where the formatter would break the line at it or draw a box.</summary>
+    private sealed class ControlRun(TextLine mark, TextRunProperties look) : DrawableTextRun
+    {
+        public override int Length => 1;
+
+        public override TextRunProperties Properties => look;
+
+        public override Size Size => new(mark.WidthIncludingTrailingWhitespace, mark.Height);
+
+        public override double Baseline => mark.Baseline;
+
+        public override void Draw(DrawingContext drawingContext, Point origin) => mark.Draw(drawingContext, origin);
+
+        /// <summary>The run of the control character at a place of a line's text, in a look; null where it is none.</summary>
+        public static ControlRun? At(string text, int at, TextRunProperties look) =>
+            ControlCharacters.MarkOf(text[at]) is { } shown
+                ? new ControlRun(TextFormatter.Current.FormatLine(new SingleRun(shown, look), 0, double.PositiveInfinity, new LineProperties(look, 0))!, look)
+                : null;
+
+        /// <summary>Where the text from a place up to <paramref name="end"/> meets its first control character, else that end.</summary>
+        public static int Before(string text, int at, int end) => ControlCharacters.FirstMarked(text.AsSpan(at, end - at)) is var found && found >= 0 ? at + found : end;
     }
 
     /// <summary>A line's text in its colours, each stretch of one look (neighbouring runs whose kinds are drawn alike, and
@@ -1349,7 +1377,8 @@ public sealed partial class CodeEditor
     /// the look after) where that draws a blank as plain text does, so a line is as few glyph runs as it has looks: what
     /// each frame records, shapes and draws again for every line on screen. The formatter asks for its runs in order, so
     /// the search for the run at a place goes on from the last one found rather than from the first.</summary>
-    private sealed class ColouredRuns(string text, LineRun[] runs, TextRunProperties plain, Func<TokenKind, TextRunProperties> colour) : ITextSource
+    private sealed class ColouredRuns(string text, LineRun[] runs, TextRunProperties plain, Func<TokenKind, TextRunProperties> colour, TextRunProperties marks)
+        : ITextSource
     {
         private int next;
         private int asked;
@@ -1359,6 +1388,10 @@ public sealed partial class CodeEditor
             if (textSourceIndex >= text.Length)
             {
                 return new TextEndOfParagraph();
+            }
+            if (ControlRun.At(text, textSourceIndex, marks) is { } control)
+            {
+                return control;
             }
             if (textSourceIndex < asked)
             {
@@ -1390,6 +1423,7 @@ public sealed partial class CodeEditor
                 end = stop;
             }
             next = i;
+            end = ControlRun.Before(text, textSourceIndex, end);
             return new TextCharacters(text.AsMemory(textSourceIndex, end - textSourceIndex), look);
         }
 

@@ -21,7 +21,22 @@ public sealed class HoverMarkdownTests
         (nameof(Fenced_code_comes_apart_from_the_prose_around_it_the_fences_left_out),
             Fenced_code_comes_apart_from_the_prose_around_it_the_fences_left_out),
         (nameof(A_comments_tags_written_escaped_read_as_tags_but_in_code_and_where_they_read_as_no_xml),
-            A_comments_tags_written_escaped_read_as_tags_but_in_code_and_where_they_read_as_no_xml));
+            A_comments_tags_written_escaped_read_as_tags_but_in_code_and_where_they_read_as_no_xml),
+        (nameof(A_link_to_a_symbol_names_its_key_and_words_and_reads_as_its_words), A_link_to_a_symbol_names_its_key_and_words_and_reads_as_its_words));
+
+    /// <summary>A C# card's link to a symbol its documentation names (#2415): what the server writes gives back the symbol's
+    /// key and words, however they are spelt, and an agent reads it as its words, a web link as written.</summary>
+    private void A_link_to_a_symbol_names_its_key_and_words_and_reads_as_its_words()
+    {
+        const string Key = "(M \"Op1\" (T \"IService\" (N \"Probe\" 0 (N \"\" 0 (U (S \"Probe\" 4) 3) 2) 1) 0 0 0 ) 0 0 (% 1 (# 0 (T \"Int32\") 0)) 0)#";
+        string link = Passenger.Roslyn.Extension.SymbolLinks.Of(Key, "Op1(int)");
+        Assert.Equal<(string, string)?>((Key, "Op1(int)"), Passenger.Roslyn.Extension.SymbolLinks.Read(link));
+        Assert.Null(Passenger.Roslyn.Extension.SymbolLinks.Read("https://example.test/#Op1"));
+        Assert.True(Uri.TryCreate(link, UriKind.Absolute, out Uri? address) && Passenger.Roslyn.Extension.SymbolLinks.Read(address.OriginalString) == (Key, "Op1(int)"),
+            $"A link to a symbol is no address the card can draw: {link}");
+        Assert.Equal("See Op1 or the [site](https://example.test).", HoverMarkdown.Text($"See [Op1]({link}) or the [site](https://example.test)."));
+        Assert.Equal("See Op1 or the site.", HoverMarkdown.Words($"See [Op1]({link}) or the [site](https://example.test)."));
+    }
 
     private void A_code_span_closes_only_at_as_many_backticks_and_an_unclosed_run_is_written_as_it_is()
     {

@@ -76,10 +76,14 @@ public sealed class DebugSession
     private string? dataSent;
     private readonly Dictionary<int, DataBreakpoint> dataById = [];
 
-    /// <summary>The function breakpoints (the property breakpoints' and XAML Binding Errors') as last sent, and the
-    /// breakpoint each is by the id the debugger gave it.</summary>
+    /// <summary>The function breakpoints (the property breakpoints', the method breakpoints' and XAML Binding Errors') as last
+    /// sent, and the breakpoint each is by the id the debugger gave it.</summary>
     private string functionsSent = string.Empty;
     private readonly Dictionary<int, PropertyBreakpoint> propertyById = [];
+
+    /// <summary>The ids of the function breakpoints that stand for breakpoints in WPF XAML, each kept in <see cref="byId"/>.</summary>
+    private readonly HashSet<int> xamlIds = [];
+    private readonly Dictionary<int, MethodBreakpoint> methodById = [];
     private int? bindingErrorsId;
 
     /// <summary>The function breakpoints' last request, until its answer (their new ids) has been read.</summary>
@@ -112,6 +116,14 @@ public sealed class DebugSession
 
     /// <summary>The stop last taken, shown again when the continue or step that left it is refused.</summary>
     private StoppedEvent? stoppedAt;
+
+    /// <summary>When the program was last set going (its start, a continue or step, or by itself), on the IDE's clock,
+    /// until the stop it comes to.</summary>
+    private long? setGoing;
+
+    /// <summary>How long the program ran to the stop paused at now, from what last set it going to the stop being heard, and
+    /// whether that was the session's start; null while it runs, and at a stop nothing set going before (Set Next Statement's).</summary>
+    public (TimeSpan Time, bool SinceStart)? Ran { get; private set; }
     private volatile bool killed;
 
     /// <summary>The adapter said the program ended: with its exit code, or (attached, where none can be known) without.</summary>
@@ -136,8 +148,9 @@ public sealed class DebugSession
     /// <summary>The debug adapter the app carries, beside it in debugger/, which the helper host runs.</summary>
     public static string AdapterPath => Path.Combine(AppContext.BaseDirectory, "debugger", "Passenger.DebugAdapter.dll");
 
-    /// <summary>How the adapter starts: beside the app, or where the program is (a container's, over docker exec).</summary>
-    private static ProcessStartInfo AdapterStart(AdapterPlace? place, bool elsewhere)
+    /// <summary>How the adapter starts: beside the app (in the debugger's 32-bit host for a 32-bit program, in
+    /// <paramref name="x86Host"/>), or where the program is (a container's, over docker exec).</summary>
+    private static ProcessStartInfo AdapterStart(AdapterPlace? place, bool elsewhere, string? x86Host)
     {
         ProcessStartInfo start;
         if (place is not null)
@@ -162,8 +175,8 @@ public sealed class DebugSession
             {
                 arguments.Add(AdapterFlags.Remote);
             }
-            // On the runtime Passenger runs on: the program it debugs may run on another, or carry its own.
-            start = ChildProcesses.HelperCommand(path, arguments);
+            // On Passenger's runtime or the x86 host's own: the program it debugs may run on another, or carry its own.
+            start = ChildProcesses.HelperCommand(path, arguments, host: x86Host);
         }
         start.RedirectStandardInput = true;
         start.RedirectStandardOutput = true;
@@ -218,8 +231,20 @@ public sealed class DebugSession
                 }
                 return;
             }
+            if (name == DapEvents.Snapshot)
+            {
+                // Its frames' sources named here, off the window's thread, as a stop's are.
+                if (body.ValueKind == JsonValueKind.Object && body.Deserialize<SnapshotEvent>(DapConnection.Options) is { } taken)
+                {
+                    SnapshotEvent named = taken with { Frames = [.. taken.Frames.Select(f => f with { Frame = Named(f.Frame) })] };
+                    UiThread.Post(() => TakeSnapshot(named));
+                }
+                return;
+            }
             JsonElementCopy copy = new(body);
-            UiThread.Post(() => OnEvent(name, copy));
+            // Heard here, ahead of whatever the window's thread is doing, so a stop's time is the program's.
+            long heard = Stopwatch.GetTimestamp();
+            UiThread.Post(() => OnEvent(name, copy, heard));
         };
         Quiet = quiet;
         if (!quiet)
@@ -235,6 +260,7 @@ public sealed class DebugSession
         breakpoints.ExceptionsChanged += OnExceptionsChanged;
         breakpoints.DataChanged += OnDataChanged;
         breakpoints.PropertiesChanged += OnFunctionsChanged;
+        breakpoints.MethodsChanged += OnFunctionsChanged;
         breakpoints.BindingErrorsChanged += OnFunctionsChanged;
     }
 
@@ -260,6 +286,9 @@ public sealed class DebugSession
     }
 
     public event EventHandler? StateChanged;
+
+    /// <summary>A snapshot point's capture, with the point it is of where the session still knows it.</summary>
+    public event Action<SnapshotEvent, CodeBreakpoint?>? SnapshotTaken;
 
     /// <summary>Each output event as it comes, on the connection's thread in order, beside the console it goes to: for what
     /// reads a program's words as it writes them (a test run's game).</summary>
@@ -318,6 +347,20 @@ public sealed class DebugSession
     /// <summary>The property breakpoint the program stopped at, while paused there.</summary>
     public PropertyBreakpoint? PropertyStop { get; private set; }
 
+    /// <summary>Whether the program reads its XAML as it runs (a WPF app's BAML, with Passenger's inspector in it): a
+    /// breakpoint in a .xaml file is then a function breakpoint on the inspector's call for each element made from XAML
+    /// (<see cref="Inspector.Wire.Loaded"/>), its condition the element's place, where no code of the app's stands; set as
+    /// the session starts, before any breakpoint is sent.</summary>
+    public bool XamlAtRunTime { get; set; }
+
+    /// <summary>The breakpoint in a WPF XAML file the program stopped at, as an element made from it joined its window.</summary>
+    public LineBreakpoint? XamlStop { get; private set; }
+
+    /// <summary>A .NET MAUI program's XAML as its build's generated code, read as the session starts, with each XAML file's
+    /// text as the editor has it: a breakpoint in a .xaml file binds in that code (<see cref="MauiXamlCode"/>) and a frame
+    /// in it is shown at the XAML; null for any other program. Set before any breakpoint is sent.</summary>
+    public (Task<MauiXamlCode> Code, Func<string, TextSnapshot?> Texts)? MauiXaml { get; set; }
+
     /// <summary>Why no step goes on from the stop, while paused at one its debugger only continues from (a Godot script
     /// error); null where steps go on.</summary>
     public string? NoSteps { get; private set; }
@@ -330,6 +373,57 @@ public sealed class DebugSession
 
     /// <summary>Whether the debugger can move where a paused thread goes on (Set Next Statement): Godot's GDScript one cannot.</summary>
     public bool MovesNextStatement { get; private set; }
+
+    /// <summary>Whether its adapter reads the bytes of its paused .NET program, wherever the program runs.</summary>
+    public bool ReadsMemory { get; private set; }
+
+    private readonly List<DapModule> modules = [];
+
+    /// <summary>The modules the program has loaded and not unloaded, in the order its debugger told of them, each path as
+    /// the IDE names it.</summary>
+    public IReadOnlyList<DapModule> Modules => modules;
+
+    /// <summary>A module loaded, unloaded, or had its symbols loaded.</summary>
+    public event EventHandler? ModulesChanged;
+
+    /// <summary>Why the session's debugger forces no step, where it cannot; null where it does (Force Step Into and Over,
+    /// Force Run to Cursor).</summary>
+    public string? ForcesWhyNot { get; private set; } = "The debugger has not started";
+
+    /// <summary>Why the session's debugger marks no object, where it cannot; null where it does (Mark Object).</summary>
+    public string? MarksWhyNot { get; private set; } = "The debugger has not started";
+
+    /// <summary>The objects marked, each by its label, in the order they were marked; gone with the session.</summary>
+    public IReadOnlyList<string> Marks => marks;
+
+    private readonly List<string> marks = [];
+
+    /// <summary>Marks the object an expression's value is in a frame, answering its label ($1); one the debugger refuses
+    /// throws its reason.</summary>
+    public async Task<string> MarkObjectAsync(string expression, int frameId)
+    {
+        string label = (await connection.RequestAsync<MarkObjectResponse>(DapCommands.MarkObject, new MarkObjectArguments(expression, frameId))).Label;
+        if (!marks.Contains(label))
+        {
+            marks.Add(label);
+        }
+        return label;
+    }
+
+    /// <summary>Lets a marked object go: its label names nothing from then on.</summary>
+    public async Task UnmarkObjectAsync(string label)
+    {
+        marks.Remove(label);
+        await connection.RequestAsync(DapCommands.UnmarkObject, new UnmarkObjectArguments(label));
+    }
+
+    /// <summary>Why the session's debugger tells of no modules, where it cannot; null where it does.</summary>
+    public string? ModulesUnlisted => Engine switch
+    {
+        DebugEngine.GDScript => "Godot's GDScript debugger loads scripts, not .NET modules: a C# game's own session lists its modules",
+        DebugEngine.WebAssembly => "The browser's .NET debugger tells of no modules",
+        _ => null,
+    };
 
     public int? ExitCode { get; private set; }
 
@@ -398,16 +492,16 @@ public sealed class DebugSession
     /// <summary>Where an adapter in a container keeps the engine's log while PASSENGER_ENGINE_LOG asks for one.</summary>
     public const string ContainerEngineLog = "/tmp/passenger-engine.log";
 
-    /// <summary>Starts the adapter and launches a plan's program under it (a .dll under dotnet, or an executable), with the
-    /// store's breakpoints. What the program writes, and the debugger's own words ("console"), go to
-    /// <paramref name="output"/> on the connection's thread, in order; with <paramref name="runInTerminal"/> it runs in the
+    /// <summary>Starts the adapter (a 32-bit program's in the 32-bit host in <paramref name="x86Host"/>) and launches a plan's
+    /// program under it, with the store's breakpoints. What the program writes, and the debugger's own words ("console"), go
+    /// to <paramref name="output"/> on the connection's thread, in order; with <paramref name="runInTerminal"/> it runs in the
     /// terminal it starts, its output there. <paramref name="starting"/> is handed the session as it begins, so Stop can end
     /// it while it starts; with <paramref name="elsewhere"/> the program is on another machine.</summary>
     public static Task<DebugSession> LaunchAsync(Run.LaunchPlan plan, BreakpointStore breakpoints, IReadOnlyList<string> own, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
         Func<RunInTerminalArguments, Task<Run.TerminalRun>>? runInTerminal = null, Func<string, int, string?, int?, int?>? columns = null, bool hotReload = false,
-        Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null)
+        Action<DebugSession>? starting = null, bool elsewhere = false, AdapterPlace? place = null, string? x86Host = null)
     {
-        return StartAsync(OwnAdapter(place, elsewhere), plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
+        return StartAsync(OwnAdapter(place, elsewhere, place is null && !elsewhere && plan.RunsAsX86, x86Host), plan.Built ?? plan.Program, DapCommands.Launch, new LaunchArguments
         {
             Program = place?.ToProgram(plan.Program) ?? plan.Program,
             Args = plan.Arguments,
@@ -424,15 +518,16 @@ public sealed class DebugSession
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere, place);
     }
 
-    /// <summary>Starts the adapter and attaches it to a running .NET process (one Attach to Process chose, or a test host
-    /// VSTest started), with the store's breakpoints; <paramref name="starting"/> is handed the session as it begins. With
-    /// <paramref name="hotReload"/> the program was started held for the debugger with DOTNET_MODIFIABLE_ASSEMBLIES=debug,
-    /// so its code may change as a launch's may; with <paramref name="elsewhere"/> it is not on this machine, and with
-    /// <paramref name="place"/> the adapter runs where it is (a container's, its process id that container's).</summary>
+    /// <summary>Starts the adapter (a 32-bit program's in the 32-bit host in <paramref name="x86Host"/>) and attaches it to a
+    /// running .NET process (one Attach to Process chose, or a test host VSTest started), with the store's breakpoints;
+    /// <paramref name="starting"/> is handed the session as it begins. With <paramref name="hotReload"/> it was started held
+    /// with DOTNET_MODIFIABLE_ASSEMBLIES=debug, so its code may change as a launch's may; with <paramref name="elsewhere"/> it
+    /// is not on this machine, and with <paramref name="place"/> the adapter runs where it is (a container's).</summary>
     public static Task<DebugSession> AttachAsync(int processId, BreakpointStore breakpoints, IReadOnlyList<string> own, BuiltLines lines, Action<string> log, Action<OutputEvent> output,
         Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool elsewhere = false, AdapterPlace? place = null,
-        bool quiet = false) =>
-        StartAsync(OwnAdapter(place, elsewhere), place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
+        bool quiet = false, string? x86Host = null) =>
+        StartAsync(OwnAdapter(place, elsewhere, place is null && !elsewhere && DotnetProcesses.Runs32Bit(processId), x86Host),
+            place is null ? $"process {processId}" : $"process {processId} in {place.Where}", DapCommands.Attach,
             new AttachArguments
             {
                 ProcessId = processId, JustMyCode = true, HotReload = hotReload ? true : null, Presentations = Godot.GodotValues.Presentations, Carried = Carried,
@@ -447,7 +542,7 @@ public sealed class DebugSession
     public static Task<DebugSession> AttachThroughRelayAsync(string program, Run.Devices.RelaySession relay, BreakpointStore breakpoints, IReadOnlyList<string> own,
         BuiltLines lines, Action<string> log,
         Action<OutputEvent> output, Func<string, int, string?, int?, int?>? columns = null, Action<DebugSession>? starting = null, bool hotReload = false, bool quiet = false) =>
-        StartAsync(OwnAdapter(null, elsewhere: true), program, DapCommands.Attach,
+        StartAsync(OwnAdapter(null, elsewhere: true, x86: false, x86Host: null), program, DapCommands.Attach,
             new AttachArguments
             {
                 Relay = relay.Address, RelayModules = relay.Modules, RelayToken = relay.Token, JustMyCode = true, HotReload = hotReload ? true : null,
@@ -481,9 +576,10 @@ public sealed class DebugSession
         }, breakpoints, lines, log, output, runInTerminal, columns, starting, elsewhere: false, place: null, engine: engine);
 
     /// <summary>Passenger's own adapter, started beside the app or where the program is (<see cref="AdapterStart"/>), forked
-    /// off the window's thread.</summary>
-    private static Func<Task<AdapterEnd>> OwnAdapter(AdapterPlace? place, bool elsewhere) =>
-        async () => new ProcessEnd(await ChildProcesses.StartAsync(AdapterStart(place, elsewhere)));
+    /// off the window's thread; for a 32-bit program (<paramref name="x86"/>) in the 32-bit host its caller had ready.</summary>
+    private static Func<Task<AdapterEnd>> OwnAdapter(AdapterPlace? place, bool elsewhere, bool x86, string? x86Host) =>
+        async () => new ProcessEnd(await ChildProcesses.StartAsync(AdapterStart(place, elsewhere,
+            x86 ? x86Host ?? throw new InvalidOperationException($"{X86DebuggerSource.Named} was not made ready for a 32-bit program") : null)));
 
     /// <summary>Opens the session: the adapter told what to start, the breakpoints sent (a quiet session's none, and no
     /// exception to stop at), then configurationDone, whose answer waits for the program's runtime however long it takes. A
@@ -520,11 +616,25 @@ public sealed class DebugSession
                 ColumnsStartAt1 = true,
                 PathFormat = "path",
                 SupportsVariableType = true,
+                SupportsMemoryReferences = engine == DebugEngine.Managed,
                 SupportsRunInTerminalRequest = runInTerminal is not null,
             });
             session.DataBreakpointsUnavailable = capabilities.SupportsDataBreakpoints == true ? null
                 : capabilities.DataBreakpointsUnavailable ?? "The debugger sets no data breakpoints";
             session.MovesNextStatement = capabilities.SupportsGotoTargetsRequest == true;
+            session.ReadsMemory = engine == DebugEngine.Managed && capabilities.SupportsReadMemoryRequest == true;
+            session.ForcesWhyNot = capabilities.SupportsForcedSteps == true ? null : engine switch
+            {
+                DebugEngine.GDScript => "Godot's GDScript debugger has no Just My Code to step past nor a way to pass breakpoints by",
+                DebugEngine.WebAssembly => "The browser's .NET debugger steps as it does and stops at each breakpoint",
+                _ => "The debugger forces no step",
+            };
+            session.MarksWhyNot = capabilities.SupportsMarkObject == true ? null : engine switch
+            {
+                DebugEngine.GDScript => "Godot's GDScript debugger marks no object",
+                DebugEngine.WebAssembly => "The browser's .NET debugger names an object for one stop alone, so none is marked",
+                _ => "The debugger marks no object",
+            };
             await session.connection.RequestAsync(request, arguments);
             await Task.WhenAny(session.initialized.Task, session.ending.Task).WaitAsync(TimeSpan.FromSeconds(30));
             session.GoingOn();
@@ -539,6 +649,7 @@ public sealed class DebugSession
             }
             // Never asked of an adapter already told to go: it would start the program as it went.
             session.GoingOn();
+            session.setGoing = Stopwatch.GetTimestamp();
             await session.connection.RequestAsync(DapCommands.ConfigurationDone, new DapEmpty());
             // A stop told before this answer stands, as one before a resume's does.
             if (session.State == DebugState.Starting)
@@ -570,9 +681,11 @@ public sealed class DebugSession
 
     public Task ContinueAsync() => Resume(DapCommands.Continue);
 
-    public Task StepOverAsync() => Resume(DapCommands.Next);
+    /// <summary>Step Over; forced, past every breakpoint in what it steps over (Force Step Over).</summary>
+    public Task StepOverAsync(bool force = false) => Resume(DapCommands.Next, thread => new GoingArguments(thread, force ? true : null));
 
-    public Task StepIntoAsync() => Resume(DapCommands.StepIn);
+    /// <summary>Step Into; forced, into code Just My Code passes by and past every breakpoint (Force Step Into).</summary>
+    public Task StepIntoAsync(bool force = false) => Resume(DapCommands.StepIn, thread => new StepInArguments(thread, Force: force ? true : null));
 
     /// <summary>Smart Step Into's step: straight into one of the calls <see cref="StepInTargetsAsync"/> gave.</summary>
     public Task StepIntoTargetAsync(int target) => Resume(DapCommands.StepIn, thread => new StepInArguments(thread, target));
@@ -585,17 +698,23 @@ public sealed class DebugSession
 
     public Task StepOutAsync() => Resume(DapCommands.StepOut);
 
+    /// <summary>Why Run to Cursor can't run to a file's line: one of XAML the program reads as it runs, whose breakpoints are
+    /// sent as the code that loads it; null where it can.</summary>
+    public Words? RunToWhyNot(string path) => (MauiXaml is not null || XamlAtRunTime) && IsRunTimeXaml(path) ? Refusals.NoRunToCursorInXaml : null;
+
     /// <summary>Runs on to a line: a breakpoint the user never sees, gone again at the next stop (the stop shown again when the
-    /// continue is refused among them, so no later run stops at a breakpoint no one set).</summary>
-    public Task RunToCursorAsync(string path, int line)
+    /// continue is refused among them, so no later run stops at a breakpoint no one set); forced, past every other breakpoint
+    /// on the way (Force Run to Cursor).</summary>
+    public Task RunToCursorAsync(string path, int line, bool force = false)
     {
         UiThread.Check();
         if (State != DebugState.Paused)
         {
             return Task.CompletedTask;
         }
-        runToCursor = (path, Asked(path, line, null));
-        return Resume(DapCommands.Continue, before: () => SendBreakpointsAsync(path));
+        // Its own breakpoint is Run to Cursor's as one held there is, which a forced run stops at alone.
+        runToCursor = (path, Asked(path, line, null) with { RunTo = true });
+        return Resume(DapCommands.Continue, thread => new GoingArguments(thread, force ? true : null), before: () => SendBreakpointsAsync(path));
     }
 
     /// <summary>Text for the program's standard input.</summary>
@@ -972,12 +1091,96 @@ public sealed class DebugSession
     /// stops would otherwise miss the open file. Named off the caller's thread: a stop asks the disk twice for each frame
     /// with a source, a hundred and more of them in an app's stack. A source a PDB names on a share or a device has no
     /// path, so neither this nor anything shown from the frame asks for it.</summary>
-    public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId) =>
-        [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(f =>
-            f.Source is not { Path: { } named } source ? f
-                : ToIde(named) is var path && !FoundPaths.Askable(path) ? f with { Source = source with { Path = null } }
-                : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
-                : f)];
+    public async Task<IReadOnlyList<DapStackFrame>> StackTraceAsync(int threadId)
+    {
+        List<DapStackFrame> frames = [.. (await connection.RequestAsync<StackTraceResponse>(DapCommands.StackTrace, new StackTraceArguments(threadId)).ConfigureAwait(false)).StackFrames.Select(Named)];
+        // A frame in the code MAUI's source generator wrote of a page is shown at the page's XAML.
+        if (MauiXaml is { } generated && (await generated.Code) is var code
+            && frames.Select((f, i) => (Frame: f, At: i)).Where(f => f.Frame.Source?.Path is { } document && code.OfDocument(document) is not null).ToList() is { Count: > 0 } placed)
+        {
+            // The editor's text and the built lines are the window's thread's.
+            await UiThread.InvokeAsync(() =>
+            {
+                Dictionary<string, TextSnapshot?> texts = new(PathNames.Comparer);
+                foreach ((DapStackFrame frame, int at) in placed)
+                {
+                    MauiXamlPage page = code.OfDocument(frame.Source!.Path!)!;
+                    if (!texts.TryGetValue(page.Xaml, out TextSnapshot? text))
+                    {
+                        texts[page.Xaml] = text = generated.Texts(page.Xaml);
+                    }
+                    if (page.Place(text, frame.Source.Path!, frame.Line, frame.Column, p => BuiltPlace(page.Xaml, p)) is { } place)
+                    {
+                        frames[at] = frame with { Source = new DapSource { Path = page.Xaml, Name = Path.GetFileName(page.Xaml) }, Line = place.Line + 1, Column = place.Column + 1 };
+                    }
+                }
+                return true;
+            });
+        }
+        // A stop at a breakpoint in WPF XAML is shown at its XAML, in place of the inspector's call it stopped in.
+        if (XamlStop is { } xaml && threadId == StoppedThread && frames is [var call, ..] && call.Name.Contains(XamlCall, StringComparison.Ordinal))
+        {
+            frames[0] = call with
+            {
+                Name = $"{Path.GetFileName(xaml.Path)} (XAML)",
+                Source = new DapSource { Path = xaml.Path, Name = Path.GetFileName(xaml.Path) },
+                Line = xaml.Line + 1,
+                Column = columns(xaml.Path, xaml.Line, xaml.Attribute, xaml.Column ?? xaml.AttributeColumn) ?? 1,
+                PresentationHint = null,
+            };
+        }
+        return frames;
+    }
+
+    /// <summary>How the debugger names the inspector's call a WPF XAML breakpoint stops in, as its frame's name holds it.</summary>
+    private static readonly string XamlCall = Inspector.Wire.Loaded[(Inspector.Wire.Loaded.LastIndexOf('.', Inspector.Wire.Loaded.LastIndexOf('.') - 1) + 1)..];
+
+    /// <summary>A frame with its source named as the IDE names its files (<see cref="StackTraceAsync"/>); asks the disk.</summary>
+    private DapStackFrame Named(DapStackFrame f) =>
+        f.Source is not { Path: { } named } source ? f
+            : ToIde(named) is var path && !FoundPaths.Askable(path) ? f with { Source = source with { Path = null } }
+            : Path.IsPathFullyQualified(path) && File.Exists(path) ? f with { Source = source with { Path = PathNames.Canonical(path) } }
+            : f;
+
+    /// <summary>Whether the program's calls are recorded (step back debugging): asked before the program starts, sent with
+    /// what changed, and at once while it runs or is paused.</summary>
+    public bool Records { get; private set; }
+
+    /// <summary>What the debugger was last told of recording, null before it is told.</summary>
+    private bool? recordsSent;
+
+    /// <summary>Records the program's calls from now on, or no longer; told at once once the program runs.</summary>
+    public Task RecordAsync(bool on)
+    {
+        UiThread.Check();
+        Records = on;
+        return State is DebugState.Running or DebugState.Paused && disconnected is null ? SendRecordAsync() : Task.CompletedTask;
+    }
+
+    private async Task SendRecordAsync()
+    {
+        bool on = Records;
+        if (recordsSent != on && (on || recordsSent is not null))
+        {
+            recordsSent = on;
+            await connection.RequestAsync(DapCommands.Record, new RecordArguments(on));
+        }
+    }
+
+    /// <summary>The recording's moments on a thread, oldest first, with what it keeps at most and let go.</summary>
+    public Task<TimelineResponse> TimelineAsync(int? threadId) =>
+        connection.RequestAsync<TimelineResponse>(DapCommands.Timeline, new TimelineArguments(threadId));
+
+    /// <summary>What a stopped frame's method will do from where it stands: the code it won't run and the values ahead.</summary>
+    public Task<AheadResponse> AheadAsync(int frameId) =>
+        connection.RequestAsync<AheadResponse>(DapCommands.Ahead, new AheadArguments(frameId));
+
+    /// <summary>A recorded moment as a past stop, its frames' sources named as a stop's are; one let go throws why.</summary>
+    public async Task<SnapshotEvent> MomentAsync(int index)
+    {
+        SnapshotEvent moment = await connection.RequestAsync<SnapshotEvent>(DapCommands.Moment, new MomentArguments(index)).ConfigureAwait(false);
+        return moment with { Frames = [.. moment.Frames.Select(f => f with { Frame = Named(f.Frame) })] };
+    }
 
     public async Task<IReadOnlyList<DapScope>> ScopesAsync(int frameId) =>
         (await connection.RequestAsync<ScopesResponse>(DapCommands.Scopes, new ScopesArguments(frameId))).Scopes;
@@ -992,6 +1195,12 @@ public sealed class DebugSession
     /// <summary>Assigns a value (a C# expression) to what an expression names, in a frame.</summary>
     public Task<SetExpressionResponse> SetExpressionAsync(string expression, string value, int frameId) =>
         connection.RequestAsync<SetExpressionResponse>(DapCommands.SetExpression, new SetExpressionArguments(expression, value, frameId));
+
+    internal Task<ReadMemoryResponse> ReadMemoryAsync(string address, int count) =>
+        connection.RequestAsync<ReadMemoryResponse>(DapCommands.ReadMemory, new ReadMemoryArguments(address, count));
+
+    internal Task<ResolveMemoryResponse> ResolveMemoryAsync(string expression, int frameId) =>
+        connection.RequestAsync<ResolveMemoryResponse>(DapCommands.ResolveMemory, new ResolveMemoryArguments(expression, frameId));
 
     /// <summary>Where the paused thread could go on from at a line of a file (from zero, the editor's), if the line is in its
     /// method.</summary>
@@ -1063,18 +1272,20 @@ public sealed class DebugSession
             return;
         }
         int stop = stops;
+        (TimeSpan, bool)? ran = Ran;
         AgentDrives = AgentsFlow;
         SetState(DebugState.Running);
         // Sent with the request, never awaited before it: the adapter takes the two in turn, ahead of the stop's reads.
         Task placed = before?.Invoke() ?? Task.CompletedTask;
         UnawaitedWork.Dismiss(placed);
+        setGoing = Stopwatch.GetTimestamp();
         try
         {
             await connection.RequestAsync(command, arguments?.Invoke(thread) ?? new ThreadArguments(thread));
         }
         catch (DapException) when (stops == stop && State == DebugState.Running && disconnected is null)
         {
-            TakeStop(at);
+            TakeStop(at, null, ran);
             throw;
         }
         await placed;
@@ -1085,6 +1296,22 @@ public sealed class DebugSession
     /// Cursor's line stops: its own breakpoint is sent there, or the one there held for it, its count going on.</summary>
     private async Task SendBreakpointsAsync(string path)
     {
+        if (MauiXaml is { } generated && IsRunTimeXaml(path))
+        {
+            await SendGeneratedAsync(path, await generated.Code, generated.Texts(path));
+            return;
+        }
+        if (XamlAtRunTime && IsRunTimeXaml(path))
+        {
+            // Its breakpoints are function breakpoints, sent with the others, where the program reads this XAML as it runs.
+            sent[path] = Signature(path);
+            await SendFunctionBreakpointsAsync();
+            if (breakpoints.Muted)
+            {
+                breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
+            }
+            return;
+        }
         // Muted, none is sent and each is as no debugger has said, though Run to Cursor's place still is.
         IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
         // A WebAssembly app's own code never runs where its development server is debugged: none of it is sent.
@@ -1136,14 +1363,96 @@ public sealed class DebugSession
             [.. built.Take(response.Breakpoints.Count), .. unbuilt]);
     }
 
-    /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>).</summary>
+    /// <summary>A .NET MAUI XAML file's breakpoints sent for the code MAUI's source generator wrote of it, at each place its
+    /// element or attribute binds to (the page's InitializeComponent, an update's patch, the XAML a #line maps code to), one
+    /// request a document, one the last sending had and this one has none of sent empty; one on a line written since the
+    /// code was made, where the code makes or sets nothing, or of a file of no code, said why. Answered on the XAML at its own
+    /// lines, bound where any of its places bound.</summary>
+    private async Task SendGeneratedAsync(string path, MauiXamlCode code, TextSnapshot? text)
+    {
+        IEnumerable<LineBreakpoint> sending = breakpoints.Muted ? [] : breakpoints.In(path).Where(b => b.Enabled);
+        (MauiXamlPage? page, string? why) = code.Of(path);
+        List<(LineBreakpoint Breakpoint, IReadOnlyList<(string Document, int Line)> At)> bound = [];
+        List<(LineBreakpoint Breakpoint, string Why)> unbound = [];
+        foreach (LineBreakpoint breakpoint in sending)
+        {
+            IReadOnlyList<(string Document, int Line)>? at = page is null || text is null ? []
+                : lines.IsBuilt(path, breakpoint.Line) ? page.Bind(text, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn, p => BuiltPlace(path, p))
+                : null;
+            if (at is null)
+            {
+                unbound.Add((breakpoint, NotBuilt));
+            }
+            else if (at.Count > 0)
+            {
+                bound.Add((breakpoint, at));
+            }
+            else
+            {
+                unbound.Add((breakpoint, why ?? $"Line {breakpoint.Line + 1} of {Path.GetFileName(path)} makes no element and sets no property"));
+            }
+        }
+        sent[path] = Signature(path);
+        foreach (int id in byId.Where(p => p.Value.Path == path).Select(p => p.Key).ToList())
+        {
+            byId.Remove(id);
+        }
+        HashSet<string> documents = [.. bound.SelectMany(b => b.At).Select(a => a.Document)];
+        IEnumerable<string> emptied = generatedSent.TryGetValue(path, out HashSet<string>? before) ? before.Except(documents, StringComparer.Ordinal) : [];
+        Dictionary<LineBreakpoint, DapBreakpoint> answered = [];
+        foreach (string document in documents.Concat(emptied).ToList())
+        {
+            List<(LineBreakpoint Breakpoint, int Line)> here = [.. bound.SelectMany(b => b.At.Where(a => a.Document == document).Select(a => (b.Breakpoint, a.Line)))];
+            SetBreakpointsResponse response = await connection.RequestAsync<SetBreakpointsResponse>(DapCommands.SetBreakpoints,
+                new SetBreakpointsArguments(new DapSource { Path = document, Name = Path.GetFileName(document) },
+                    [.. here.Select(b => Request(path, b.Breakpoint) with { Line = b.Line, Column = null })]));
+            for (int i = 0; i < Math.Min(here.Count, response.Breakpoints.Count); i++)
+            {
+                if (response.Breakpoints[i].Id is int id)
+                {
+                    byId[id] = here[i].Breakpoint;
+                }
+                // Of a breakpoint's places, one bound stands for it, else its first answer.
+                if (!answered.TryGetValue(here[i].Breakpoint, out DapBreakpoint? other) || !other.Verified && response.Breakpoints[i].Verified)
+                {
+                    answered[here[i].Breakpoint] = response.Breakpoints[i];
+                }
+            }
+        }
+        generatedSent[path] = documents;
+        if (breakpoints.Muted)
+        {
+            breakpoints.Report(this, path, [.. breakpoints.In(path).Select(_ => (BreakpointStatus.Unknown, (string?)null, (int?)null))], breakpoints.In(path));
+            return;
+        }
+        List<LineBreakpoint> answeredFor = [.. bound.Select(b => b.Breakpoint).Where(answered.ContainsKey)];
+        breakpoints.Report(this, path,
+            [.. answeredFor.Select(b => Status(path, answered[b])), .. unbound.Select(u => (BreakpointStatus.Invalid, (string?)u.Why, (int?)null))],
+            [.. answeredFor, .. unbound.Select(u => u.Breakpoint)]);
+    }
+
+    /// <summary>The documents each .NET MAUI XAML file's breakpoints were last sent for (<see cref="SendGeneratedAsync"/>).</summary>
+    private readonly Dictionary<string, HashSet<string>> generatedSent = new(StringComparer.Ordinal);
+
+    /// <summary>Where a place in a file as the editor has it (line and column from zero) was as the program's code was made of
+    /// the file, as its compiler counts them; null for one on a line written since.</summary>
+    private TextPosition? BuiltPlace(string path, TextPosition place) => lines.IsBuilt(path, place.Line) ? lines.ToBuilt(path, place.Line, place.Column) : null;
+
+    /// <summary>A breakpoint as the debugger is asked for it (<see cref="Asked"/>), with its key, the key of the one it waits
+    /// for, whether it is temporary, and what it captures as a snapshot point, which never stops.</summary>
     private DapSourceBreakpoint Request(string path, LineBreakpoint breakpoint) =>
         Asked(path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn) with
         {
             Condition = breakpoint.Condition,
             HitCondition = breakpoint.HitCondition,
             LogMessage = breakpoint.LogMessage,
-            Suspend = breakpoint.Suspend,
+            Suspend = breakpoint.Snapshot is null && breakpoint.Suspend,
+            Key = breakpoint.Key,
+            WaitFor = breakpoint.WaitsFor?.Key,
+            Temporary = breakpoint.Temporary ? true : null,
+            Snapshot = breakpoint.Snapshot is null ? null : true,
+            Captures = breakpoint.Snapshot?.Captures,
+            CaptureLimit = breakpoint.Snapshot?.Limit,
         };
 
     /// <summary>A line (from zero) of a file, or a lambda's or an attribute's column (from zero) on it, as the debugger is
@@ -1180,6 +1489,10 @@ public sealed class DebugSession
         {
             await SendDataBreakpointsAsync();
         }
+        if (Open() && Engine == DebugEngine.Managed)
+        {
+            await SendRecordAsync();
+        }
 
         bool Open() => disconnected is null && State != DebugState.Ended;
     }
@@ -1215,14 +1528,16 @@ public sealed class DebugSession
     /// <summary>What a file's breakpoints ask of the debugger, at their built lines, to tell a change worth sending.</summary>
     private string Signature(string path) => breakpoints.Muted ? "muted" :
         Signatures.Of([.. breakpoints.In(path).Where(b => b.Enabled).Select(b => Signatures.Of(
-            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend))]);
+            lines.IsBuilt(path, b.Line) ? $"{lines.ToBuilt(path, b.Line)}" : $"new {b.Line}", b.Attribute, b.Column ?? b.AttributeColumn, b.Condition, b.HitCondition, b.LogMessage, b.Suspend,
+            b.Key, b.WaitsFor?.Key, b.Temporary, b.Snapshot is null, b.Snapshot?.Captures, b.Snapshot?.Limit))]);
 
     /// <summary>The exception breakpoints that are on, as the protocol's exception options, but those whose scenarios never stop
     /// (<see cref="ExceptionBreakpoint.Inactive"/>), which no debugger is to stop at; none while muted, so no exception stops
-    /// the program, not even one left unhandled.</summary>
+    /// the program, not even one left unhandled. Any exception is every type but a test framework's outcome signals
+    /// (<see cref="Testing.TestOutcomeSignals"/>).</summary>
     private List<(ExceptionBreakpoint Breakpoint, DapExceptionOptions Option)> ExceptionOptions() => breakpoints.Muted ? [] :
         [.. breakpoints.Exceptions.Where(e => e.Enabled && e.Inactive is null).Select(e => (e, new DapExceptionOptions(
-            e.Type is { } type ? [new DapExceptionPathSegment(["CLR"]), new DapExceptionPathSegment([type])] : [new DapExceptionPathSegment(["CLR"])],
+            [new DapExceptionPathSegment(["CLR"]), e.Type is { } type ? new DapExceptionPathSegment([type]) : new DapExceptionPathSegment(Testing.TestOutcomeSignals.Exceptions, Negate: true)],
             e.Scenarios.HasFlag(ExceptionScenarios.HandledInUserCode) ? DapBreakModes.Always
                 : e.Scenarios.HasFlag(ExceptionScenarios.HandledInExternalCode) ? DapBreakModes.UserUnhandled : DapBreakModes.Unhandled)
         {
@@ -1331,11 +1646,14 @@ public sealed class DebugSession
     /// <summary>XAML Binding Errors when it is on; never while muted.</summary>
     private BindingErrorBreakpoint? BindingErrorsSending() => !breakpoints.Muted && breakpoints.BindingErrors.Enabled ? breakpoints.BindingErrors : null;
 
-    /// <summary>Sends the function breakpoints, which replace those sent before. A property breakpoint is one on the method
-    /// the inspector in the app calls at a watched property's change, its condition naming the breakpoint first; its hit count
-    /// is the inspector's, which counts only its own property's changes, and one the inspector cannot read is refused here, as
-    /// a line's is. XAML Binding Errors is one on the method each failed binding calls, its condition and log message
-    /// reading the failure as <c>$bindingError</c>, the method's parameter.</summary>
+    /// <summary>The method breakpoints that are on; none while muted.</summary>
+    private List<MethodBreakpoint> MethodsSending() => breakpoints.Muted ? [] : [.. breakpoints.Methods.Where(m => m.Enabled)];
+
+    /// <summary>Sends the function breakpoints, which replace those sent before: the property breakpoints, the method
+    /// breakpoints, then XAML Binding Errors. A property breakpoint is one on the method the inspector in the app calls at a
+    /// watched property's change, its condition naming the breakpoint first, its hit count the inspector's (one it cannot read
+    /// refused here, as a line's is). XAML Binding Errors is one on the method each failed binding calls, its condition and log
+    /// message reading the failure as <c>$bindingError</c>, the method's parameter.</summary>
     private async Task SendFunctionBreakpointsAsync()
     {
         List<(PropertyBreakpoint, BreakpointStatus, string?)> said = [];
@@ -1352,13 +1670,29 @@ public sealed class DebugSession
             }
         }
         BindingErrorBreakpoint? bindingErrors = BindingErrorsSending();
+        List<MethodBreakpoint> methods = MethodsSending();
+        List<LineBreakpoint> xaml = XamlSending();
         functionsSent = FunctionSignature();
-        List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend))];
+        if (XamlUnplaced is { } unplaced)
+        {
+            // None could stop: each says why, and none is sent.
+            foreach (IGrouping<string, LineBreakpoint> file in xaml.GroupBy(b => b.Path))
+            {
+                breakpoints.Report(this, file.Key, [.. file.Select(_ => (BreakpointStatus.Invalid, (string?)unplaced, (int?)null))], [.. file]);
+            }
+            xaml = [];
+        }
+        List<DapFunctionBreakpoint> requests = [.. sending.Select(p => new DapFunctionBreakpoint(Inspector.Wire.Changed, EngineCondition(p), null, p.LogMessage, p.Suspend)),
+            .. methods.Select(m => new DapFunctionBreakpoint(m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Snapshot is null && m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary ? true : null,
+                m.Snapshot is null ? null : true, m.Snapshot?.Captures, m.Snapshot?.Limit))];
         if (bindingErrors is not null)
         {
             requests.Add(new DapFunctionBreakpoint(Inspector.Wire.Failed, BindingErrorTerms(bindingErrors.Condition), bindingErrors.HitCondition,
                 BindingErrorTerms(bindingErrors.LogMessage) ?? (bindingErrors.Suspend ? null : BindingErrorLog), bindingErrors.Suspend));
         }
+        int xamlFrom = requests.Count;
+        requests.AddRange(xaml.Select(b => new DapFunctionBreakpoint(Inspector.Wire.Loaded, XamlCondition(b), b.HitCondition, b.LogMessage, b.Snapshot is null && b.Suspend, b.Key,
+            b.WaitsFor?.Key, b.Temporary ? true : null, b.Snapshot is null ? null : true, b.Snapshot?.Captures, b.Snapshot?.Limit)));
         SetBreakpointsResponse response;
         try
         {
@@ -1366,12 +1700,38 @@ public sealed class DebugSession
         }
         catch (DapException refused)
         {
+            foreach (IGrouping<string, LineBreakpoint> file in xaml.GroupBy(b => b.Path))
+            {
+                breakpoints.Report(this, file.Key, [.. file.Select(_ => (BreakpointStatus.Invalid, (string?)refused.Reason, (int?)null))], [.. file]);
+            }
             breakpoints.ReportProperties(this, [.. said, .. sending.Select(p => (p, BreakpointStatus.Invalid, (string?)refused.Reason))]);
+            breakpoints.ReportMethods(this, [.. methods.Select(_ => (BreakpointStatus.Invalid, (string?)refused.Reason))], methods);
             breakpoints.ReportBindingErrors(this, bindingErrors is null ? BreakpointStatus.Unknown : BreakpointStatus.Invalid, bindingErrors is null ? null : refused.Reason);
             return;
         }
         propertyById.Clear();
+        methodById.Clear();
         bindingErrorsId = null;
+        foreach (int gone in xamlIds)
+        {
+            byId.Remove(gone);
+        }
+        xamlIds.Clear();
+        List<(BreakpointStatus, string?, int?)> xamlSaid = [];
+        for (int i = 0; i < xaml.Count; i++)
+        {
+            DapBreakpoint? answer = xamlFrom + i < response.Breakpoints.Count ? response.Breakpoints[xamlFrom + i] : null;
+            if (answer?.Id is int id)
+            {
+                byId[id] = xaml[i];
+                xamlIds.Add(id);
+            }
+            xamlSaid.Add(answer is null ? (BreakpointStatus.Unknown, null, null) : Status(answer) with { Item3 = null });
+        }
+        foreach (IGrouping<string, (LineBreakpoint Breakpoint, (BreakpointStatus, string?, int?) Said)> file in xaml.Zip(xamlSaid).GroupBy(p => p.First.Path, p => (p.First, p.Second)))
+        {
+            breakpoints.Report(this, file.Key, [.. file.Select(p => p.Said)], [.. file.Select(p => p.Breakpoint)]);
+        }
         for (int i = 0; i < Math.Min(sending.Count, response.Breakpoints.Count); i++)
         {
             DapBreakpoint answer = response.Breakpoints[i];
@@ -1382,9 +1742,21 @@ public sealed class DebugSession
             said.Add((sending[i], answer.Verified ? BreakpointStatus.Bound : answer.Reason == BreakpointReasons.Failed ? BreakpointStatus.Invalid : BreakpointStatus.Unknown, answer.Message));
         }
         breakpoints.ReportProperties(this, said);
-        if (bindingErrors is not null && response.Breakpoints.Count > sending.Count)
+        List<(BreakpointStatus, string?)> methodsSaid = [];
+        for (int i = 0; i < methods.Count && sending.Count + i < response.Breakpoints.Count; i++)
         {
-            DapBreakpoint answer = response.Breakpoints[sending.Count];
+            DapBreakpoint answer = response.Breakpoints[sending.Count + i];
+            if (answer.Id is int id)
+            {
+                methodById[id] = methods[i];
+            }
+            (BreakpointStatus status, string? message, _) = Status(answer);
+            methodsSaid.Add((status, message));
+        }
+        breakpoints.ReportMethods(this, methodsSaid, methods);
+        if (bindingErrors is not null && response.Breakpoints.Count > sending.Count + methods.Count)
+        {
+            DapBreakpoint answer = response.Breakpoints[sending.Count + methods.Count];
             bindingErrorsId = answer.Id;
             ReportBindingErrors(answer);
         }
@@ -1427,17 +1799,21 @@ public sealed class DebugSession
     /// <summary>A stop at a breakpoint the debugger gave an id in an answer still on its way back (the answer is read off
     /// the thread pool, the event straight onto the UI thread, so the stop can come first), taken once that answer is:
     /// a property breakpoint's or XAML Binding Errors' stop is then known for one, and shown in the code that did it.</summary>
-    private async Task TakeStopAfter(Task answered, StoppedEvent stopped)
+    private async Task TakeStopAfter(Task answered, StoppedEvent stopped, long heard)
     {
         await Task.WhenAny(answered);
         if (disconnected is null && State == DebugState.Running)
         {
-            TakeStop(stopped);
+            TakeStop(stopped, heard);
         }
     }
 
-    private void TakeStop(StoppedEvent stopped)
+    /// <summary>Pauses at a stop, heard at <paramref name="heard"/> on the IDE's clock, or shown again (null) with the time
+    /// it was first shown with.</summary>
+    private void TakeStop(StoppedEvent stopped, long? heard, (TimeSpan, bool)? ranBefore = null)
     {
+        Ran = heard is long at && setGoing is long from ? (Stopwatch.GetElapsedTime(from, at), stops == 0) : ranBefore;
+        setGoing = null;
         stops++;
         stoppedAt = stopped;
         StoppedThread = stopped.ThreadId;
@@ -1448,6 +1824,7 @@ public sealed class DebugSession
             : null;
         PropertyStop = stopped.Reason == StopReasons.Breakpoint ? stopped.HitBreakpointIds?.Select(id => propertyById.GetValueOrDefault(id)).FirstOrDefault(p => p is not null) : null;
         BindingErrorStop = stopped.Reason == StopReasons.Breakpoint && bindingErrorsId is int failed && stopped.HitBreakpointIds?.Contains(failed) == true;
+        XamlStop = stopped.Reason == StopReasons.Breakpoint && stopped.HitBreakpointIds?.FirstOrDefault(xamlIds.Contains) is int xaml and > 0 ? byId.GetValueOrDefault(xaml) : null;
         if (runToCursor is { } target)
         {
             runToCursor = null;
@@ -1456,9 +1833,39 @@ public sealed class DebugSession
         SetState(DebugState.Paused);
     }
 
+    /// <summary>Whether a file is XAML a WPF app reads as it runs (its BAML), where no code of the app's stands.</summary>
+    private static bool IsRunTimeXaml(string path) => Path.GetExtension(path).Equals(".xaml", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The breakpoints in WPF XAML that are on, where the program reads its XAML as it runs; none otherwise or while muted.</summary>
+    private List<LineBreakpoint> XamlSending() => !XamlAtRunTime || breakpoints.Muted ? []
+        : [.. breakpoints.Files.Where(IsRunTimeXaml).SelectMany(breakpoints.In).Where(b => b.Enabled)];
+
+    /// <summary>A WPF XAML breakpoint's condition as the debugger is given it, on the inspector's call for every element made
+    /// from XAML: the element's start tag's file and line as WPF recorded them as the app was built (its built line), the
+    /// person's own condition after them.</summary>
+    private string XamlCondition(LineBreakpoint breakpoint)
+    {
+        (int line, int? column) = XamlElementPlace?.Invoke(breakpoint.Path, breakpoint.Line, breakpoint.Attribute, breakpoint.Column ?? breakpoint.AttributeColumn)
+            ?? (breakpoint.Line, null);
+        string file = breakpoint.Path.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+        return $"line == {lines.ToBuilt(breakpoint.Path, line) + 1}" + (column is int at ? $" && column == {at}" : string.Empty) + $" && file == \"{file}\""
+            + (breakpoint.Condition is { } condition ? $" && ({condition})" : string.Empty);
+    }
+
+    /// <summary>Where the element a breakpoint on a XAML line (or on an attribute there) stops as it is made starts
+    /// (<see cref="XamlBreakpoints.ElementPlace"/>): its line (from zero), and its name's column (from one) where another
+    /// element starts on that line; given as the session starts, from the file's text as the editor has it.</summary>
+    public Func<string, int, string?, int?, (int Line, int? Column)?>? XamlElementPlace { get; set; }
+
+    /// <summary>Why a WPF program's XAML breakpoints cannot stop, where its build records no element's place in its XAML
+    /// (XamlDebuggingInformation off, as in a Release build); null where they can. Set as the session starts.</summary>
+    public string? XamlUnplaced { get; set; }
+
     private string FunctionSignature()
     {
-        List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend))];
+        List<object?> sending = [.. PropertiesSending().Select(p => Signatures.Of(p.Id, p.Condition, p.HitCondition, p.LogMessage, p.Suspend)),
+            .. XamlSending().Select(b => Signatures.Of("xaml", XamlCondition(b), b.HitCondition, b.LogMessage, b.Suspend, b.Key, b.WaitsFor?.Key, b.Temporary, b.Snapshot is null)),
+            .. MethodsSending().Select(m => Signatures.Of("method", m.Name, m.Condition, m.HitCondition, m.LogMessage, m.Suspend, m.Key, m.WaitsFor?.Key, m.Temporary, m.Snapshot is null, m.Snapshot?.Captures, m.Snapshot?.Limit))];
         if (BindingErrorsSending() is { } b)
         {
             sending.Add(Signatures.Of("binding", b.Condition, b.HitCondition, b.LogMessage, b.Suspend));
@@ -1471,7 +1878,11 @@ public sealed class DebugSession
         : Signatures.Of([.. ExceptionOptions().Select(s => Signatures.Of(
             s.Breakpoint.Type, Signatures.Of([.. s.Option.Scenarios ?? []]), s.Option.Condition, s.Option.HitCondition, s.Option.LogMessage, s.Option.Suspend))]);
 
-    private void OnEvent(string name, JsonElementCopy body)
+    /// <summary>A snapshot point's capture, told with the point it is of where the session still knows it.</summary>
+    private void TakeSnapshot(SnapshotEvent taken) =>
+        SnapshotTaken?.Invoke(taken, byId.GetValueOrDefault(taken.BreakpointId) ?? (CodeBreakpoint?)methodById.GetValueOrDefault(taken.BreakpointId));
+
+    private void OnEvent(string name, JsonElementCopy body, long heard)
     {
         switch (name)
         {
@@ -1481,16 +1892,24 @@ public sealed class DebugSession
             case DapEvents.Stopped when disconnected is null:
                 StoppedEvent stopped = body.Read<StoppedEvent>();
                 if (stopped.Reason == StopReasons.Breakpoint && !functionsAnswered.IsCompleted
-                    && stopped.HitBreakpointIds?.Any(id => !byId.ContainsKey(id) && !propertyById.ContainsKey(id) && id != bindingErrorsId) == true)
+                    && stopped.HitBreakpointIds?.Any(id => !byId.ContainsKey(id) && !propertyById.ContainsKey(id) && !methodById.ContainsKey(id) && id != bindingErrorsId) == true)
                 {
-                    IdeErrors.Observe(TakeStopAfter(functionsAnswered, stopped));
+                    IdeErrors.Observe(TakeStopAfter(functionsAnswered, stopped, heard));
                     break;
                 }
-                TakeStop(stopped);
+                TakeStop(stopped, heard);
                 break;
             case DapEvents.Breakpoint:
                 BreakpointEvent changed = body.Read<BreakpointEvent>();
-                if (changed.Breakpoint.Id is int id && byId.TryGetValue(id, out LineBreakpoint? breakpoint))
+                if (changed.Reason == EventReasons.Removed)
+                {
+                    // A temporary breakpoint that took its hit goes, from every session.
+                    if (changed.Breakpoint.Id is int gone && (byId.GetValueOrDefault(gone) ?? (CodeBreakpoint?)methodById.GetValueOrDefault(gone)) is { } spent)
+                    {
+                        breakpoints.Remove(spent);
+                    }
+                }
+                else if (changed.Breakpoint.Id is int id && byId.TryGetValue(id, out LineBreakpoint? breakpoint))
                 {
                     breakpoints.Report(this, breakpoint.Path, [Status(breakpoint.Path, changed.Breakpoint)], [breakpoint]);
                 }
@@ -1498,6 +1917,11 @@ public sealed class DebugSession
                 {
                     (BreakpointStatus status, string? message, _) = Status(changed.Breakpoint);
                     breakpoints.ReportProperty(this, property, status, message);
+                }
+                else if (changed.Breakpoint.Id is int methodId && methodById.TryGetValue(methodId, out MethodBreakpoint? method))
+                {
+                    (BreakpointStatus status, string? message, _) = Status(changed.Breakpoint);
+                    breakpoints.ReportMethod(this, method, status, message);
                 }
                 else if (changed.Breakpoint.Id is int bound && bound == bindingErrorsId)
                 {
@@ -1527,8 +1951,34 @@ public sealed class DebugSession
                     processStarted.TrySetResult(processId);
                 }
                 break;
+            case DapEvents.Module:
+                ModuleEvent loaded = body.Read<ModuleEvent>();
+                DapModule module = loaded.Module with
+                {
+                    Path = loaded.Module.Path is { } path ? ToIde(path) : null,
+                    SymbolFilePath = loaded.Module.SymbolFilePath is { } symbols && Path.IsPathRooted(symbols) ? ToIde(symbols) : loaded.Module.SymbolFilePath,
+                };
+                int at = modules.FindIndex(m => m.Id == module.Id);
+                if (loaded.Reason == EventReasons.Removed)
+                {
+                    if (at >= 0)
+                    {
+                        modules.RemoveAt(at);
+                    }
+                }
+                else if (at >= 0)
+                {
+                    modules[at] = module;
+                }
+                else
+                {
+                    modules.Add(module);
+                }
+                ModulesChanged?.Invoke(this, EventArgs.Empty);
+                break;
             case DapEvents.Continued when State == DebugState.Paused:
                 // Gone on from its stop by itself (a Godot game's script, whose debugger did not let it go).
+                setGoing = heard;
                 SetState(DebugState.Running);
                 break;
             case DapEvents.Exited:
@@ -1551,6 +2001,8 @@ public sealed class DebugSession
     private (BreakpointStatus, string?, int?) Status(string path, DapBreakpoint breakpoint)
     {
         (BreakpointStatus status, string? message, int? line) = Status(breakpoint);
+        // A MAUI XAML breakpoint binds in generated code, whose lines are not the XAML's.
+        line = MauiXaml is not null && IsRunTimeXaml(path) ? null : line;
         // A Blazor Web App's client code stops only where its server runs it, which the debugger cannot tell from the browser's.
         if (status != BreakpointStatus.Invalid && Engine == DebugEngine.Managed && BrowserProjectOf(path) is { } client && InBrowser is { } inBrowser)
         {
@@ -1567,12 +2019,14 @@ public sealed class DebugSession
         }
         if (state != DebugState.Paused)
         {
+            Ran = null;
             StoppedThread = null;
             StopReason = null;
             NoSteps = null;
             DataStop = null;
             PropertyStop = null;
             BindingErrorStop = false;
+            XamlStop = null;
         }
         State = state;
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -1602,6 +2056,7 @@ public sealed class DebugSession
         breakpoints.ExceptionsChanged -= OnExceptionsChanged;
         breakpoints.DataChanged -= OnDataChanged;
         breakpoints.PropertiesChanged -= OnFunctionsChanged;
+        breakpoints.MethodsChanged -= OnFunctionsChanged;
         breakpoints.BindingErrorsChanged -= OnFunctionsChanged;
         // What its debugger said goes, and its data breakpoints, each on a member of one of its objects.
         if (!Quiet)

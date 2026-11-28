@@ -3,6 +3,7 @@ using Passenger.App.MSBuild;
 using Passenger.App.Web;
 using Passenger.App.Workspace;
 using Passenger.App.Xaml;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Languages.CSharp;
 using Passenger.Lsp;
@@ -114,8 +115,8 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <summary>An open file's server document as it is now, for what the person chose from an answer (a fix, a new
     /// name): the server that answered may have been started again while they chose.</summary>
     public LspDocument Now(OpenDocument document) => service()?.For(document)?.Lsp ?? WebOf(document)?.Lsp ?? throw new LanguageServerFailed(
-        WebOf(document) is not null ? "its language server is not running"
-        : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp);
+        (WebOf(document) is not null ? "its language server is not running"
+        : service() is { } csharp ? $"the C# language server is not ready: {csharp.State}" : Refusals.NoCSharp).Shown);
 
     /// <summary>Waits, for a change at an offset of a C# file, until the server holds in their projects the C# files come
     /// under the projects it reaches (<see cref="CSharpService.ReachedAsync"/>), for up to <see cref="Patience.Limit"/>, the
@@ -162,6 +163,38 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
         return itself.Count > 0 ? itself : await csharp.UntakenAsync(document, offset(), CancellationToken.None);
     }
 
+    /// <summary>How many times in a row <see cref="AnsweredAsync"/> asks again a server that could not answer.</summary>
+    private const int AskedAgain = 5;
+
+    /// <summary>The C# server's answer of an open file for a box, card or list a person waits on, given to <paramref name="answered"/>:
+    /// a question it could not answer (cancelled for a change it took in, refused, or gone with the server) asked again once a
+    /// server answers for the file, at once where the one asked still does, else once another has taken the file in, up to
+    /// <see cref="AskedAgain"/> times in a row while <paramref name="open"/> lets it, then its failure thrown; a file no C#
+    /// server reads asked once. Each question is held as background work with its answer.</summary>
+    public async Task AnsweredAsync<T>(OpenDocument document, LspDocument served, Func<LspDocument, CancellationToken, Task<T>> ask, Action<T> answered,
+        CancellationToken open)
+    {
+        for (int failed = 0; ; failed++)
+        {
+            CSharpService waiting;
+            LspDocument? gone;
+            using (BackgroundWork.Scope())
+            {
+                try
+                {
+                    answered(await ask(served, open));
+                    return;
+                }
+                catch (LanguageServerFailed refused) when (failed < AskedAgain && CSharp is { } csharp && csharp.For(document) is not null)
+                {
+                    (waiting, gone) = (csharp, refused.Ended ? served : null);
+                }
+            }
+            // Not held: a server's start or a project's load may take long, or not end while what waits is open.
+            served = await waiting.TakenInAsync(document, gone, open);
+        }
+    }
+
     private void SayWaiting(string? waiting) => Say(waiting is null ? string.Empty
         : global::Passenger.Workspace.WorkspaceModel.IsProjectFile(waiting) ? $"Waiting for the C# language server to load {Path.GetFileName(waiting)} again…"
         : $"Waiting for the C# language server to load {Path.GetFileName(waiting)} into its project…");
@@ -197,7 +230,7 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     /// <paramref name="refused"/> tells a refusal of.</summary>
     public Task<T> PatientlyAsync<T>(string action, Func<Patience, Task<T>> attempt, Func<T, bool> refused)
     {
-        Action<string?> waits = Work?.Waits(action, Say) ?? (stage =>
+        Action<string?> waits = Work?.Waits(action, said => Say(said)) ?? (stage =>
         {
             if (stage is not null)
             {
@@ -208,15 +241,15 @@ internal sealed class AssistContext(EditorArea editors, Func<CSharpService?> ser
     }
 
     private static string? NotTakenIn(IReadOnlyList<(string Path, string Project)> left) =>
-        left.Count == 0 ? null
+        (left.Count == 0 ? null
         : CSharpService.IsReload(left[0]) ? Refusals.NotLoadedAgain(Path.GetFileNameWithoutExtension(left[0].Project))
-        : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project));
+        : Refusals.NotTakenIn(Path.GetFileName(left[0].Path), Path.GetFileNameWithoutExtension(left[0].Project)))?.Shown;
 
     /// <summary>The folder the open file's places are named from: the C# server's, else the web servers'.</summary>
     public string? Root => service()?.Session?.Folder ?? Web?.Invoke()?.Folder;
 
-    /// <summary>Something to say in the status bar ("No usages found").</summary>
-    public void Say(string message) => Message?.Invoke(this, message);
+    /// <summary>Something to say in the status bar ("No usages found"), in the person's language.</summary>
+    public void Say(Words message) => Message?.Invoke(this, message.Shown);
 
     /// <summary>Says in the status bar why a command got nothing from the server.</summary>
     public void Failed(string what, LanguageServerFailed failed) => Say($"{what} failed: {failed.Reason}");

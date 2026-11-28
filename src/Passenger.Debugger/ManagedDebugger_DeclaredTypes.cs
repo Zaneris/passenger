@@ -14,7 +14,7 @@ public partial class ManagedDebugger
 {
     /// <summary>The types a frame's locals are declared as, by their slots, at the frame's version of its method.</summary>
     private ImmutableArray<DeclaredType?> DeclaredLocals(ModuleInfo module, ICorDebugILFrame frame) =>
-        Declared(() => module.MetadataReader.LocalTypes(frame.Function.Token, ModuleMetadataReader.VersionOf(frame))) is { IsDefault: false } types ? types : [];
+        Declared(() => module.MetadataReader.LocalTypes(frame.Function.Token, module.MetadataReader.VersionOf(frame))) is { IsDefault: false } types ? types : [];
 
     /// <summary>The types a method's parameters are declared as, this left out.</summary>
     private ImmutableArray<DeclaredType?> DeclaredParameters(ModuleInfo module, ICorDebugFunction function) =>

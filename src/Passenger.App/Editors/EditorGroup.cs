@@ -12,8 +12,10 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using Passenger.App.State;
 using Passenger.App.Tables;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -56,6 +58,20 @@ public sealed class EditorGroup : DockPanel
     private readonly List<EditorTab> shownOrder = [];
     private readonly Dictionary<OpenDocument, (SelectionSet Selections, Vector Scroll)> views = [];
     private readonly Border tabBar;
+
+    /// <summary>A Markdown file's layouts on the tab strip, shown while the group shows one.</summary>
+    private readonly StackPanel markdownModes;
+    private readonly ToggleButton markdownEditor;
+    private readonly ToggleButton markdownSplit;
+    private readonly ToggleButton markdownOnly;
+
+    /// <summary>Editor and Preview's mark, turned a quarter while the preview stands under the editor.</summary>
+    private readonly PathIcon splitMark = new();
+
+    private const string EditorOnly = "Editor Only";
+    private const string EditorAndPreview = "Editor and Preview";
+    private const string PreviewOnly = "Preview Only";
+
     private readonly ItemsControl strip;
     private readonly ScrollViewer stripView;
 
@@ -105,11 +121,20 @@ public sealed class EditorGroup : DockPanel
         PreviewToggle[DockProperty] = Dock.Right;
         PreviewToggle.Click += (_, _) =>
         {
-            area.PreviewToggled(this);
+            area.Ask(this, PreviewAction ?? AppActions.XamlPreview);
             // It says what is in force once its action ran, or was refused.
             FollowPreviewToggle();
         };
-        stripView = new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = strip };
+        splitMark.Bind(PathIcon.DataProperty, splitMark.GetResourceObservable(IconKeys.Diff));
+        markdownEditor = MarkdownButton(ToolButtons.Toggle(IconKeys.DocumentText, EditorOnly), PaneView.Editor);
+        markdownSplit = MarkdownButton(ToolButtons.Give(new ToggleButton(), splitMark, EditorAndPreview), PaneView.Split);
+        markdownOnly = MarkdownButton(ToolButtons.Toggle(IconKeys.Preview, PreviewOnly), PaneView.Preview);
+        markdownModes = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, IsVisible = false, [DockProperty] = Dock.Right,
+            Children = { markdownEditor, markdownSplit, markdownOnly },
+        };
+        stripView = TabStrips.ScrollingAcross(strip);
         // A narrower strip may leave the active tab out of sight.
         stripView.SizeChanged += (_, _) => RevealActive();
         hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tabs", () => area.HiddenTabsAsked(this));
@@ -127,7 +152,7 @@ public sealed class EditorGroup : DockPanel
             {
                 Children =
                 {
-                    new DockPanel { Children = { hiddenTabs, PreviewToggle, stripView } },
+                    new DockPanel { Children = { hiddenTabs, markdownModes, PreviewToggle, stripView } },
                     new ThemeBackdrop(BackgroundPlaces.Frame),
                 },
             },
@@ -152,6 +177,11 @@ public sealed class EditorGroup : DockPanel
         editorPlace = new Panel { Children = { Editor } };
         // The picture over the editor's place, whatever it holds, in a panel of their own; never over the pane beside it.
         body = new ToolWindows.PaneSplit(new Panel { Children = { editorPlace, new ThemeBackdrop(BackgroundPlaces.Editor) } }, null, "*,1,*");
+        body.DirectionChanged += (_, _) =>
+        {
+            splitMark.RenderTransform = body.IsStacked ? new RotateTransform(90) : null;
+            FollowSplitWords();
+        };
         Children.Add(body);
         // The group the person works in is the area's active one; while a table lies over the editor, the table takes its focus.
         Editor.GotFocus += (_, _) =>
@@ -170,6 +200,10 @@ public sealed class EditorGroup : DockPanel
         {
             tables?.Reveal(offset);
             godotPage?.Reveal();
+            if (previewAlone)
+            {
+                Markdown?.Reveal(offset);
+            }
         };
         Editor.SelectionChanged += (_, _) =>
         {
@@ -180,6 +214,57 @@ public sealed class EditorGroup : DockPanel
         };
         AddHandler(PointerPressedEvent, (_, _) => area.SetActiveGroup(this), RoutingStrategies.Tunnel, handledEventsToo: true);
     }
+
+    /// <summary>A layout's button on the tab strip of a file with a pane of its own (a Markdown file, a form's), asking for its
+    /// kind's action as its keys do, pressed while its layout is in force.</summary>
+    private ToggleButton MarkdownButton(ToggleButton button, PaneView view)
+    {
+        button.Classes.Add(StyleClasses.TabStripTool);
+        button.Click += (_, _) =>
+        {
+            area.Ask(this, PaneActions(view).Action);
+            FollowPreviewToggle();
+        };
+        return button;
+    }
+
+    /// <summary>Whether the file shown is a form's, whose layouts are its design's rather than a Markdown preview's.</summary>
+    private bool ShowsForm => active?.Document is { } shown && InEditor(shown) && area.Designs(shown);
+
+    /// <summary>A layout's action and title for the kind of file shown: a form's code and design, else a Markdown file's.</summary>
+    private (string Action, string Title) PaneActions(PaneView view) => (ShowsForm, view) switch
+    {
+        (true, PaneView.Editor) => (AppActions.FormCodeOnly, CodeOnly),
+        (true, PaneView.Split) => (AppActions.FormCodeAndDesign, CodeAndDesign),
+        (true, _) => (AppActions.FormDesignOnly, DesignOnly),
+        (false, PaneView.Editor) => (AppActions.MarkdownEditorOnly, EditorOnly),
+        (false, PaneView.Split) => (AppActions.MarkdownEditorAndPreview, EditorAndPreview),
+        _ => (AppActions.MarkdownPreviewOnly, PreviewOnly),
+    };
+
+    private const string CodeOnly = "Code Only";
+    private const string CodeAndDesign = "Code and Design";
+    private const string DesignOnly = "Design Only";
+
+    /// <summary>The layout buttons' words: what a press does, which for both shown is to turn them.</summary>
+    private void FollowSplitWords()
+    {
+        bool form = ShowsForm;
+        foreach ((ToggleButton button, PaneView view) in (ReadOnlySpan<(ToggleButton, PaneView)>)[(markdownEditor, PaneView.Editor), (markdownOnly, PaneView.Preview)])
+        {
+            (string action, string title) = PaneActions(view);
+            ActionTips.Set(button, action, title);
+        }
+        PaneView shown = form ? area.FormLayout.View : area.MarkdownLayout.View;
+        (string split, string both) = PaneActions(PaneView.Split);
+        ActionTips.Set(markdownSplit, split, shown != PaneView.Split ? both
+            : form ? SideUnder ? "Design Beside the Code" : "Design Under the Code"
+            : SideUnder ? "Preview Beside the Editor" : "Preview Under the Editor");
+    }
+
+    /// <summary>The way Editor and Preview pressed again stands the preview: under the editor (true) or beside it (false),
+    /// null as the group's shape stands it.</summary>
+    internal bool? TurnedSplit => body.Turned;
 
     /// <summary>Whether this is the group the person works in; the others mark their file quieter.</summary>
     public bool IsCurrent
@@ -219,15 +304,20 @@ public sealed class EditorGroup : DockPanel
 
     public FindBar Find { get; }
 
-    /// <summary>The tab strip's toggle of the preview beside the editor, shown while the group shows a Markdown file or a
-    /// XAML file the previewer draws.</summary>
+    /// <summary>The tab strip's preview toggle for SVG, HTML and XAML files.</summary>
     public ToggleButton PreviewToggle { get; }
 
     /// <summary>The group's own preview of its Markdown file, made as it first shows one.</summary>
     private MarkdownPreview? markdown;
 
+    /// <summary>Whether the Markdown file's preview stands alone in its editor's place.</summary>
+    private bool previewAlone;
+
     /// <summary>The group's own picture of its SVG file, made as it first shows one.</summary>
     private SvgPreview? svg;
+
+    /// <summary>The group's own results of a SQL console, made as it first shows one.</summary>
+    private Database.SqlConsoleView? consoleView;
 
     /// <summary>The group's own page of its HTML file, made as it first shows one.</summary>
     private HtmlPreview? html;
@@ -242,16 +332,29 @@ public sealed class EditorGroup : DockPanel
     public SvgPreview? Svg => Side as SvgPreview;
 
     /// <summary>A Markdown, SVG or HTML file shown in the editor has its preview beside it while the area shows that kind's
-    /// previews, and its toggle on the strip either way; any other file neither.</summary>
+    /// previews, and its toggle on the strip either way, a Windows Forms form's file its design as the form layout says, and a
+    /// SQL console its results under it; any other file none.</summary>
     internal void FollowSidePreview()
     {
         OpenDocument? document = active?.Document is { } shown && InEditor(shown) ? shown : null;
         FollowPreviewToggle();
-        if (document?.Language == Languages.Language.Markdown && area.ShowsMarkdownPreview)
+        bool isMarkdown = document?.Language == Languages.Language.Markdown;
+        bool isForm = document is not null && area.Designs(document);
+        PaneLayout layout = isForm ? area.FormLayout : area.MarkdownLayout;
+        bool previewOnly = (isMarkdown || isForm) && layout.View == PaneView.Preview;
+        bool moveKeys = previewOnly ? Editor.IsKeyboardFocusWithin
+            : (Markdown?.IsKeyboardFocusWithin == true || Side is WinForms.FormDesignPane { IsKeyboardFocusWithin: true }) && layout.View == PaneView.Editor;
+        Database.SqlConsole? console = document is not null && Database.SqlConsole.Speaks(document.Language) ? area.ConsoleOf?.Invoke(document) : null;
+        body.SetPresentation(isMarkdown || isForm ? layout.Stacked : console is not null ? true : null, previewOnly);
+        if (isMarkdown && layout.View != PaneView.Editor)
         {
             markdown ??= new MarkdownPreview(Editor, area);
             Side = markdown;
             markdown.Show(document);
+            if (previewAlone && !previewOnly)
+            {
+                markdown.EditorShown();
+            }
         }
         else
         {
@@ -260,10 +363,23 @@ public sealed class EditorGroup : DockPanel
                 Side = null;
             }
             markdown?.Show(null);
-            if (!area.ShowsMarkdownPreview)
+            if (area.MarkdownLayout.View == PaneView.Editor)
             {
                 markdown?.Forget();
             }
+        }
+        if (isForm && layout.View != PaneView.Editor && area.DesignOf?.Invoke(document!) is { } design)
+        {
+            Side = design;
+        }
+        else if (Side is WinForms.FormDesignPane)
+        {
+            Side = null;
+        }
+        previewAlone = previewOnly;
+        if (moveKeys)
+        {
+            FocusShown();
         }
         if (document is not null && EditorArea.IsSvg(document) && area.ShowsSvgPreview)
         {
@@ -293,18 +409,42 @@ public sealed class EditorGroup : DockPanel
             }
             html?.Show(null);
         }
+        if (console is not null && area.MakeConsoleView is { } make)
+        {
+            consoleView ??= make();
+            Side = consoleView;
+            consoleView.Show(console);
+        }
+        else
+        {
+            if (Side is Database.SqlConsoleView)
+            {
+                Side = null;
+            }
+            consoleView?.Show(null);
+        }
     }
+
+    /// <summary>The results of the console the group shows, under its SQL, while it shows one.</summary>
+    public Database.SqlConsoleView? Console => Side as Database.SqlConsoleView;
 
     /// <summary>The action the strip's preview toggle runs for the file shown, null while it shows none.</summary>
     public string? PreviewAction { get; private set; }
 
-    /// <summary>The strip's preview toggle shows for a Markdown file, an SVG, an HTML file or a XAML file the previewer
-    /// draws, pressed while that kind's preview is on, its tip naming the action it runs.</summary>
+    /// <summary>The strip's preview toggle shows for an SVG, an HTML file or a XAML file the previewer draws, pressed while
+    /// that kind's preview is on, its tip naming the action it runs; a Markdown file's layouts show for one, the layout in
+    /// force pressed.</summary>
     internal void FollowPreviewToggle()
     {
         OpenDocument? document = active is { } shown && InEditor(shown.Document) ? shown.Document : null;
+        bool form = document is not null && area.Designs(document);
+        PaneView view = form ? area.FormLayout.View : area.MarkdownLayout.View;
+        markdownModes.IsVisible = form || document?.Language == Languages.Language.Markdown;
+        markdownEditor.IsChecked = view == PaneView.Editor;
+        markdownSplit.IsChecked = view == PaneView.Split;
+        markdownOnly.IsChecked = view == PaneView.Preview;
+        FollowSplitWords();
         (string Action, string Title, bool On)? toggle = document is null ? null
-            : document.Language == Languages.Language.Markdown ? (AppActions.MarkdownPreview, "Markdown Preview", area.ShowsMarkdownPreview)
             : EditorArea.IsSvg(document) ? (AppActions.SvgPreview, "SVG Preview", area.ShowsSvgPreview)
             : document.Language == Languages.Language.Html ? (AppActions.HtmlPreview, "HTML Preview", area.ShowsHtmlPreview)
             : area.HasXamlPreview(document) ? (AppActions.XamlPreview, "XAML Preview", area.ShowsXamlPreview)
@@ -355,6 +495,7 @@ public sealed class EditorGroup : DockPanel
             stripView.VerticalScrollBarVisibility = down ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
             hiddenTabs[DockProperty] = down ? Dock.Bottom : Dock.Right;
             PreviewToggle[DockProperty] = down ? Dock.Top : Dock.Right;
+            markdownModes[DockProperty] = down ? Dock.Top : Dock.Right;
             tabBar.Styles.Clear();
             if (down)
             {
@@ -477,7 +618,7 @@ public sealed class EditorGroup : DockPanel
     /// <summary>What shows in the editor's place for a tab that is no text to edit: a diff, an asset's preview, or release
     /// notes rendered.</summary>
     private Control PreviewOf(OpenDocument document) =>
-        document.Tool is { } tool ? tool.Make() : document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
+        document.DatabaseTab is { } database ? database.Make() : document.Tool is { } tool ? tool.Make() : document.Diff is { } diff ? diff.Make() : document.Asset is { } asset ? new AssetPreviewControl(asset) : new ReleaseNotesView(document, area.Browse);
 
     /// <summary>The diff this group shows while it shows a diff's tab, else null.</summary>
     public Vcs.DiffView? Diff => preview as Vcs.DiffView;
@@ -498,20 +639,23 @@ public sealed class EditorGroup : DockPanel
     private void FollowReadOnly(OpenDocument document)
     {
         Editor.IsReadOnly = document.IsReadOnly;
-        Editor.ReadOnlyWhy = document.ReadOnlyWhy;
+        Editor.ReadOnlyWhy = document.ReadOnlyWhy?.Shown;
     }
 
     /// <summary>Whether the editor shows the file, rather than a view of its own in the editor's place.</summary>
-    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null;
+    private static bool InEditor(OpenDocument document) => document.Asset is null && !document.IsReleaseNotes && document.Diff is null && document.Tool is null && document.DatabaseTab is null;
 
     /// <summary>Gives the keys to what shows the file: a diff's side that takes them, its preview or rendered notes, which its keys
     /// move through, else the editor; given them as by Tab (<paramref name="method"/>), it draws the ring round it. False
     /// where it could not take them.</summary>
     public bool FocusShown(NavigationMethod method = NavigationMethod.Unspecified) => preview switch
     {
+        not null when active?.Document.DatabaseTable is not null && preview.GetVisualDescendants().OfType<CellGrid>().FirstOrDefault() is { } cells => cells.Focus(method),
         Vcs.DiffView diff => diff.Keyed.Focus(method),
         ToolTabView tool => tool.Window.TakeKeys(method),
         not null => preview.Focus(method),
+        _ when Markdown is { } page && area.MarkdownLayout.View == PaneView.Preview => page.Focus(method),
+        _ when Side is WinForms.FormDesignPane design && area.FormLayout.View == PaneView.Preview => design.Focus(method),
         _ => Editor.Focus(method),
     };
 
@@ -526,8 +670,10 @@ public sealed class EditorGroup : DockPanel
             return;
         }
         bool keys = preview?.IsKeyboardFocusWithin == true;
+        MarkdownPreview? page = Markdown is { IsKeyboardFocusWithin: true } held ? held : null;
         ShowIn(document);
-        if (keys)
+        // A Markdown preview that had the keys keeps them while it stays, showing the next file.
+        if (keys || page is { IsKeyboardFocusWithin: false })
         {
             FocusShown();
         }
@@ -594,7 +740,7 @@ public sealed class EditorGroup : DockPanel
     /// <summary>The find bar on the file shown: its text, or its table while one lies over it; a read-only file's replace row
     /// greyed, saying why.</summary>
     private void AttachFind() =>
-        Find.Attach(Editor, Table, Active?.ReadOnlyWhy);
+        Find.Attach(Editor, Table, (Active?.ReadOnlyWhy)?.Shown);
 
     /// <summary>The table of the file shown, while it is a CSV, a workbook or a resource, null otherwise.</summary>
     public CellGrid? Table => tables is { ShowsTable: true } ? tables.View : null;
@@ -673,7 +819,7 @@ public sealed class EditorGroup : DockPanel
     private void ShowBanner(OpenDocument document)
     {
         // A diff's own bar says what it is, and a tool window is no file.
-        bool file = document is { Diff: null, Tool: null };
+        bool file = document is { Diff: null, Tool: null, DatabaseTab: null };
         bool conflicted = file && document.InConflict;
         string[] said = [.. new[] { document.IsReadOnly && file ? document.Origin : null, conflicted ? Conflicted : null, document.Notice, document.EncodingWarning }.OfType<string>()];
         banner.Say(said.Length > 0 ? string.Join("  ·  ", said) : null);
@@ -714,7 +860,7 @@ public sealed class EditorGroup : DockPanel
         markdown?.Forget(document);
         if (tab == active)
         {
-            bool keys = preview?.IsKeyboardFocusWithin == true;
+            bool keys = preview?.IsKeyboardFocusWithin == true || Markdown?.IsKeyboardFocusWithin == true;
             ClearPreview();
             document.PropertyChanged -= OnDocumentChanged;
             active = null;
@@ -892,6 +1038,8 @@ public sealed class EditorGroup : DockPanel
         Button close = ToolButtons.Small(IconKeys.Close, "Close");
         close.Classes.Add(StyleClasses.TabClose);
         Button pin = ToolButtons.Small(IconKeys.Pin, "Unpin Tab");
+        Border production = Tags.Of("production", TokenKeys.Error);
+        Border readOnly = Tags.Of("read-only");
         Panel ends = new() { Width = 16, Height = 16, Children = { modified, close } };
         bool down = tabsPlace != EditorTabsPlace.Top;
         Border border = new() { Classes = { StyleClasses.Tab } };
@@ -902,7 +1050,8 @@ public sealed class EditorGroup : DockPanel
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
-                    Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(name, Dock.Left, 6),
+                    Docked(icon, Dock.Left, 0), Docked(ends, Dock.Right, 6), Docked(pin, Dock.Right, 6), Docked(production, Dock.Right, 6),
+                    Docked(readOnly, Dock.Right, 6), Docked(name, Dock.Left, 6),
                 },
             }
             : new StackPanel
@@ -910,7 +1059,7 @@ public sealed class EditorGroup : DockPanel
                 Orientation = Orientation.Horizontal,
                 Spacing = Gaps.Small,
                 VerticalAlignment = VerticalAlignment.Center,
-                Children = { icon, name, pin, ends },
+                Children = { icon, name, production, readOnly, pin, ends },
             });
         OpenDocument? Shown() => (border.DataContext as EditorTab)?.Document;
         close.Click += (_, e) =>
@@ -932,13 +1081,17 @@ public sealed class EditorGroup : DockPanel
         void Paint(EditorTab tab)
         {
             OpenDocument document = tab.Document;
-            name.Text = document.Title;
-            icon.Data = document.Icon;
-            icon.ForegroundKey = document.IconTint;
-            ToolTip.SetTip(border, document.Tool is not null ? document.Title
-                : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
+            // A tool window's tab says its window's words, again as the language changes.
+            ShownWords.Set(name, TextBlock.TextProperty, document.Tool?.Window.Title ?? Words.Verbatim(document.Title));
+            icon.DataKey = document.IconKey;
+            icon.ForegroundKey = document.IconBrushKey;
+            ShownWords.Set(border, ToolTip.TipProperty, document.Tool?.Window.Title ?? Words.Verbatim(document.DatabaseTab is not null ? document.Title
+                : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path));
             border.Classes.Set(StyleClasses.Follows, document.Follows);
-            border.Classes.Set(StyleClasses.Modified, document.IsModified);
+            border.Classes.Set(StyleClasses.Modified, document.IsModified || document.HasPending);
+            Database.DatabaseMark mark = area.MarkOf?.Invoke(document) ?? Database.DatabaseMark.None;
+            production.IsVisible = mark == Database.DatabaseMark.Production;
+            readOnly.IsVisible = mark == Database.DatabaseMark.ReadOnly;
             border.Classes.Set(StyleClasses.Active, tab.IsActive);
             border.Classes.Set(StyleClasses.Elsewhere, !IsCurrent);
             pin.IsVisible = tab.IsPinned;
@@ -950,11 +1103,11 @@ public sealed class EditorGroup : DockPanel
             {
                 return;
             }
-            if (e.PropertyName == nameof(OpenDocument.IsModified))
+            if (e.PropertyName is nameof(OpenDocument.IsModified) or nameof(OpenDocument.HasPending))
             {
-                border.Classes.Set(StyleClasses.Modified, tab.Document.IsModified);
+                border.Classes.Set(StyleClasses.Modified, tab.Document.IsModified || tab.Document.HasPending);
             }
-            else if (e.PropertyName is nameof(OpenDocument.Path) or nameof(OpenDocument.Diff) or nameof(OpenDocument.Follows))
+            else if (e.PropertyName is nameof(OpenDocument.Path) or nameof(OpenDocument.Diff) or nameof(OpenDocument.Follows) or nameof(OpenDocument.Title))
             {
                 Paint(tab);
             }

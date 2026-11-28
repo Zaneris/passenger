@@ -148,14 +148,14 @@ public sealed class GodotUnseenTests : McpRig
             try
             {
                 RunConfiguration generated = window.Configurations.Single(c => c.Generated && c.Name == Lonely);
-                (LaunchPlan? plan, string? problem) = Ui.Await(window.Builds.ResolvePlanAsync(generated, null), "the game's plan", TimeSpan.FromMinutes(1));
+                (LaunchPlan? plan, Words? problem) = Ui.Await(window.Builds.ResolvePlanAsync(generated, null), "the game's plan", TimeSpan.FromMinutes(1));
                 Assert.True(plan is not null, $"The game has no plan: {problem}");
                 Assert.True(plan.Environment.GetValueOrDefault(GodotExecutables.HidGamepads) == gamepads,
                     $"A window {(unseen ? "nobody sees" : "of a person's")} planned Godot with {string.Join(' ', plan.Arguments)} and the environment {string.Join(", ", plan.Environment)}");
                 Assert.True(!plan.Environment.Keys.Intersect(TelemetryOptOuts.All, StringComparer.OrdinalIgnoreCase).Any(),
                     $"The game, the person's own program, was planned with a telemetry switch the person's environment does not set: {string.Join(", ", plan.Environment)}");
                 RunConfiguration editor = window.Configurations.Single(c => c.Generated && c.GodotEditor);
-                (LaunchPlan? editing, string? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(editor, null), "the editor's plan", TimeSpan.FromMinutes(1));
+                (LaunchPlan? editing, Words? unplanned) = Ui.Await(window.Builds.ResolvePlanAsync(editor, null), "the editor's plan", TimeSpan.FromMinutes(1));
                 Assert.True(editing is not null, $"Godot's editor has no plan: {unplanned}");
                 foreach (string variable in TelemetryOptOuts.All)
                 {

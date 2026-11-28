@@ -105,7 +105,7 @@ public static class AgentAsks
         if (acting.Value is { } act)
         {
             Said(act);
-            throw new AgentRefusedException(Refusals.AsksThePerson);
+            throw new AgentRefusedException(Refusals.AsksThePerson.English);
         }
     }
 
@@ -127,7 +127,7 @@ public static class AgentAsks
     {
         if (act.Running)
         {
-            act.Refused = Refusals.AsksThePerson;
+            act.Refused = Refusals.AsksThePerson.Shown;
         }
         else
         {
@@ -141,7 +141,7 @@ public static class AgentAsks
     {
         if (acting.Value is { Running: true })
         {
-            throw new AgentRefusedException(Refusals.AsksThePerson);
+            throw new AgentRefusedException(Refusals.AsksThePerson.English);
         }
         return acting.Value is not null;
     }
@@ -173,7 +173,7 @@ public static class AgentAsks
         if (acting.Value is { } act && window.IsDialog)
         {
             Said(act);
-            throw new AgentRefusedException(Refusals.AsksThePerson);
+            throw new AgentRefusedException(Refusals.AsksThePerson.English);
         }
     }
 

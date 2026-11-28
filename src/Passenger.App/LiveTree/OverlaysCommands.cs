@@ -32,7 +32,7 @@ public sealed class OverlaysCommands
         for (int i = 0; i < OverlaysButton.All.Count; i++)
         {
             (string name, string title) = OverlaysButton.All[i];
-            parts.Actions.Add(new IdeAction(Ids[i], $"Avalonia Debug Overlay: {title}", "Run", context => IdeErrors.Observe(ToggleAsync(Front(), name)))
+            parts.Actions.Add(new IdeAction(Ids[i], ActionTitles.AvaloniaOverlay(title), ActionGroups.Run, context => IdeErrors.Observe(ToggleAsync(Front(), name)))
             {
                 TitleIn = _ => title,
                 WhyNot = _ => Front() is null ? NoApp : null,

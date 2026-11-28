@@ -11,11 +11,30 @@ public static class GitVariables
     /// <summary>The editor git opens for a commit's message; "true" keeps the message it has.</summary>
     public const string Editor = "GIT_EDITOR";
 
+    /// <summary>The editor git opens an interactive rebase's list of steps in, given the list's file.</summary>
+    public const string SequenceEditor = "GIT_SEQUENCE_EDITOR";
+
+    /// <summary>The name, email and time (seconds since 1970 and the zone, as git writes them raw) a commit git makes is
+    /// authored by, over the configuration's.</summary>
+    public const string AuthorName = "GIT_AUTHOR_NAME";
+
+    public const string AuthorEmail = "GIT_AUTHOR_EMAIL";
+
+    public const string AuthorDate = "GIT_AUTHOR_DATE";
+
+    /// <summary>The name and email a commit git makes is committed by, over the configuration's.</summary>
+    public const string CommitterName = "GIT_COMMITTER_NAME";
+
+    public const string CommitterEmail = "GIT_COMMITTER_EMAIL";
+
     /// <summary>"0" keeps git from asking for a login on a terminal.</summary>
     public const string TerminalPrompt = "GIT_TERMINAL_PROMPT";
 
     /// <summary>"0" keeps a git that only reads (a status, a diff) from taking the index's lock to refresh it.</summary>
     public const string OptionalLocks = "GIT_OPTIONAL_LOCKS";
+
+    /// <summary>The global config git reads and git config --global writes, in place of the person's own.</summary>
+    public const string ConfigGlobal = "GIT_CONFIG_GLOBAL";
 
     /// <summary>The program git asks for a login or a passphrase.</summary>
     public const string AskPass = "GIT_ASKPASS";

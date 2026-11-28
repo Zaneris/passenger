@@ -247,10 +247,21 @@ public sealed class ContainersView : DockPanel
     private readonly Dictionary<ContainerEngine, IDisposable> othersFollowed = [];
 
     /// <summary>The engine a row's commands go to: its containers' own where they are another's, else the window's.</summary>
-    private ContainerEngine EngineOf(ContainerRow? row) => row?.Containers.FirstOrDefault(container => container.Engine is not null)?.Engine ?? parts.Engine();
+    public ContainerEngine EngineOf(ContainerRow? row) => row?.Containers.FirstOrDefault(container => container.Engine is not null)?.Engine ?? parts.Engine();
 
     /// <summary><see cref="OtherEngines"/> changed: read again, followed from now, while the window shows.</summary>
     public void OtherEnginesChanged()
+    {
+        UiThread.Check();
+        if (shown)
+        {
+            refreshing.Restart();
+        }
+    }
+
+    /// <summary>The engine's CLI was chosen anew (its events start again through it by themselves): its state and what it
+    /// holds read again, while the window shows.</summary>
+    public void EngineChosen()
     {
         UiThread.Check();
         if (shown)
@@ -813,10 +824,10 @@ public sealed class ContainersView : DockPanel
 
     /// <summary>Runs an action's command on a row as the window's one action of that id under way, the status bar saying
     /// its stage and then what came of it; the lists read again after. Null once done, else why it failed or did not run.</summary>
-    public async Task<string?> ActAsync(string id, string action, ContainerRow row, IReadOnlyList<string>? given = null)
+    public async Task<Words?> ActAsync(string id, string action, ContainerRow row, IReadOnlyList<string>? given = null)
     {
         UiThread.Check();
-        (IReadOnlyList<string>? words, string? whyNot) = given is null ? ContainerCommands.For(action, row) : (given, null);
+        (IReadOnlyList<string>? words, string? whyNot) = given is null ? ContainerCommands.For(action, row, EngineOf(row).Known) : (given, null);
         if (words is null)
         {
             return whyNot ?? $"{row.Name} cannot {action}";

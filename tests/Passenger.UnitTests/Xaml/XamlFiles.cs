@@ -39,7 +39,7 @@ internal static class XamlFiles
     private static XamlProject Project(XamlDialect dialect, IReadOnlyDictionary<string, XamlFileSummary> files, params (string Name, string Text)[] sources)
     {
         List<SourceTypes> read = [.. sources.Select(s => SourceTypes.Read(PathOf(s.Name), s.Text, "App", CSharpParseOptions.Default))];
-        TypeSystem types = new([], read, "App");
+        TypeSystem types = new([], read, "App", implied: dialect.FrameworkDefinitions(read.SelectMany(s => s.Types)));
         ProjectInputs inputs = new(PathOf("App.csproj"), "App", "net10.0", [], [], [.. sources.Select(s => PathOf(s.Name))], [], null, []);
         return new XamlProject(inputs, types, dialect, files, [], new HashSet<string>(), []);
     }

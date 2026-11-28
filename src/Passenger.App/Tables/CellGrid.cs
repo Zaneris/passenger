@@ -18,9 +18,10 @@ namespace Passenger.App.Tables;
 /// A click chooses a cell, a drag or Shift a range, the header a column and the side a row; a header's edge is dragged to
 /// size its column, or double-clicked to fit it, and the arrow at a title's end (shown on the column sorted by, and on the
 /// title the pointer is over) sorts by its column, as the header's menu does. Copy writes the chosen cells as
-/// tab-separated lines, from the keys or the cells' menu, which a right-click opens on the cell under it (the chosen ones,
-/// when it falls among them). A table whose cells may be written (<see cref="Table.IsEditable"/>) is written in place: a
-/// cell opens for writing on Enter, F2, a double-click or a character typed, and Enter, Tab or a click away writes it.</summary>
+/// tab-separated lines, and Copy As as CSV, JSON or a database's SQL inserts, from the keys or the cells' menu, which a
+/// right-click opens on the cell under it (the chosen ones, when it falls among them). A table whose cells may be written
+/// (<see cref="Table.IsEditable"/>) is written in place: a cell opens for writing on Enter, F2, a double-click or a
+/// character typed, and Enter, Tab or a click away writes it.</summary>
 public sealed class CellGrid : Control, IOwnKeys
 {
     private const double RowHeight = ListRow.Height;
@@ -119,6 +120,9 @@ public sealed class CellGrid : Control, IOwnKeys
     /// <summary>Rows asked to be taken out of the file (the cells' menu), by their places in the file's order.</summary>
     public event EventHandler<CellWrite>? RowsDeleted;
 
+    /// <summary>A cell asked to be written (a key, a double-click) that the table does not let be, for its owner to say why.</summary>
+    public event EventHandler? WriteRefused;
+
     /// <summary>The box a cell is being written in, null while none is.</summary>
     public TextBox? Writing => box;
 
@@ -126,15 +130,20 @@ public sealed class CellGrid : Control, IOwnKeys
     /// false where the cell may not be written.</summary>
     public bool BeginWriting(string? typed = null)
     {
-        if (table is null || box is not null || table.RowCount == 0 || !table.IsEditable(caret.Row, caret.Column))
+        if (table is null || box is not null || table.RowCount == 0)
         {
+            return false;
+        }
+        if (!table.IsEditable(caret.Row, caret.Column))
+        {
+            WriteRefused?.Invoke(this, EventArgs.Empty);
             return false;
         }
         anchor = caret;
         Reveal(caret);
         written = caret;
         writtenIn = table;
-        string text = typed ?? table.Cell(caret.Row, caret.Column);
+        string text = typed ?? Shown(table, caret.Row, caret.Column);
         TextBox writing = new()
         {
             Classes = { StyleClasses.Cell, StyleClasses.Code },
@@ -187,7 +196,8 @@ public sealed class CellGrid : Control, IOwnKeys
 
     private void Move((int Row, int Column) to)
     {
-        caret = anchor = Clamp(to);
+        anchor = Clamp(to);
+        SetCaret(anchor);
         Reveal(caret);
         InvalidateVisual();
     }
@@ -210,11 +220,14 @@ public sealed class CellGrid : Control, IOwnKeys
         LogicalChildren.Remove(boxFrame!);
         boxFrame = null;
         InvalidateVisual();
-        if (keep && writtenIn is { } at && written.Row < at.RowCount && text != at.Cell(written.Row, written.Column))
+        if (keep && writtenIn is { } at && written.Row < at.RowCount && text != Shown(at, written.Row, written.Column))
         {
             CellWritten?.Invoke(this, new CellWrite(at, [at.FileRow(written.Row)], written.Column, text));
         }
     }
+
+    /// <summary>A cell's text as its box is given it: a field the row lacks as nothing at all.</summary>
+    private static string Shown(Table table, int row, int column) => table.IsAbsent(row, column) ? string.Empty : table.Cell(row, column);
 
     /// <summary>While a cell is written its box takes Enter, Tab and Escape; else Enter and F2 open a cell for writing.</summary>
     public bool TakesKey(KeyEventArgs e) => box is not null
@@ -237,6 +250,7 @@ public sealed class CellGrid : Control, IOwnKeys
             Items =
             {
                 ListMenus.Keyed("Copy", EditorActions.Copy, () => Execute(EditorActions.Copy), cells ? null : Refusals.NoCells),
+                ListMenus.Sub("Copy As", [.. CopyFormats.Select(f => ListMenus.Keyed(f.Title, f.Action, () => Execute(f.Action), WhyNotCopy(f.Action)))]),
                 ListMenus.Keyed("Select All", EditorActions.SelectAll, () => Execute(EditorActions.SelectAll), cells ? null : Refusals.NoCells),
             },
         };
@@ -284,7 +298,7 @@ public sealed class CellGrid : Control, IOwnKeys
             {
                 Fit();
             }
-            caret = Clamp(caret);
+            SetCaret(Clamp(caret));
             anchor = Clamp(anchor);
             scroll = ClampScroll(scroll);
             InvalidateArrange();
@@ -295,6 +309,19 @@ public sealed class CellGrid : Control, IOwnKeys
 
     /// <summary>Raised when the table shown is replaced (read again, another sheet, none).</summary>
     public event EventHandler? TableChanged;
+
+    /// <summary>Raised when the cell chosen moves to another, by the keys, a click or a choice made in code.</summary>
+    public event EventHandler? CaretMoved;
+
+    private void SetCaret((int Row, int Column) to)
+    {
+        if (caret == to)
+        {
+            return;
+        }
+        caret = to;
+        CaretMoved?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>The cells Find matched, the one at <paramref name="current"/> marked stronger.</summary>
     public void SetMatches(IReadOnlyList<(int Row, int Column)> matches, int current)
@@ -322,7 +349,7 @@ public sealed class CellGrid : Control, IOwnKeys
     public void Choose((int Row, int Column) from, (int Row, int Column) to)
     {
         anchor = Clamp(from);
-        caret = Clamp(to);
+        SetCaret(Clamp(to));
         Reveal(caret);
         InvalidateVisual();
     }
@@ -374,6 +401,42 @@ public sealed class CellGrid : Control, IOwnKeys
         return text.ToString();
     }
 
+    /// <summary>The formats Copy As writes the chosen cells in, each one of the window's actions, as its menu lists them.</summary>
+    public static readonly (string Action, string Title)[] CopyFormats =
+        [(AppActions.CopyAsCsv, "CSV"), (AppActions.CopyAsTsv, "Tab-Separated"), (AppActions.CopyAsJson, "JSON"), (AppActions.CopyAsInserts, "SQL Inserts")];
+
+    /// <summary>Why the chosen cells cannot be copied as <paramref name="action"/> asks: no cells, or inserts of a table that is
+    /// no database's; null where they can.</summary>
+    public Words? WhyNotCopy(string action) => table is not { RowCount: > 0, ColumnCount: > 0 } ? Refusals.NoCells
+        : action == AppActions.CopyAsInserts && table.Inserts(TextWriter.Null, Environment.NewLine) is null ? Refusals.NoInsertTable : null;
+
+    /// <summary>The chosen cells' rows (the one standing empty for a new row left out) as Copy As writes them: CSV with their
+    /// columns' names first, tab-separated as Copy writes them, JSON objects, or SQL inserts into the table they came from;
+    /// null where <see cref="WhyNotCopy"/> says why not.</summary>
+    public string? CopiedAs(string action)
+    {
+        if (WhyNotCopy(action) is not null || table is not { } shown)
+        {
+            return null;
+        }
+        if (action == AppActions.CopyAsTsv)
+        {
+            return ChosenText();
+        }
+        (int top, int left, int bottom, int right) = Chosen;
+        string line = Environment.NewLine;
+        RowColumn[] columns = [.. Enumerable.Range(left, right - left + 1).Select(c => new RowColumn(shown.Header(c), shown.TypeOf(c)))];
+        IEnumerable<IReadOnlyList<object?>> rows = Enumerable.Range(top, bottom - top + 1).Where(r => !shown.IsNewRow(r))
+            .Select(r => (IReadOnlyList<object?>)[.. Enumerable.Range(left, right - left + 1).Select(c => shown.ValueAt(r, c))]);
+        Func<TextWriter, RowWriter> made = action switch
+        {
+            AppActions.CopyAsCsv => into => new CsvRows(into, ',', header: true, line),
+            AppActions.CopyAsJson => into => new JsonRows(into, line),
+            _ => into => shown.Inserts(into, line)!,
+        };
+        return Containers.ContainerSecrets.InSaid(RowWriter.Written(made, columns, rows));
+    }
+
     /// <summary>An editing action sent to the focused table: true when it acts.</summary>
     public bool Execute(string action)
     {
@@ -381,6 +444,12 @@ public sealed class CellGrid : Control, IOwnKeys
         {
             case EditorActions.Copy:
                 IdeErrors.Observe(Copy());
+                return true;
+            case AppActions.CopyAsCsv or AppActions.CopyAsTsv or AppActions.CopyAsJson or AppActions.CopyAsInserts:
+                if (CopiedAs(action) is { } copied)
+                {
+                    IdeErrors.Observe(Copy(copied));
+                }
                 return true;
             case EditorActions.SelectAll when table is not null:
                 Choose((0, 0), (table.RowCount - 1, table.ColumnCount - 1));
@@ -396,11 +465,11 @@ public sealed class CellGrid : Control, IOwnKeys
         return false;
     }
 
-    private async Task Copy()
+    private async Task Copy(string? text = null)
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
-            await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, ChosenText());
+            await Avalonia.Input.Platform.ClipboardExtensions.SetTextAsync(clipboard, text ?? ChosenText());
         }
     }
 
@@ -565,12 +634,12 @@ public sealed class CellGrid : Control, IOwnKeys
         if (at.Y < RowHeight && at.X >= gutter)
         {
             anchor = extend ? (0, anchor.Column) : (0, column);
-            caret = (table.RowCount - 1, column);
+            SetCaret((table.RowCount - 1, column));
         }
         else if (at.X < gutter && at.Y >= RowHeight)
         {
             anchor = extend ? (anchor.Row, 0) : (row, 0);
-            caret = (row, table.ColumnCount - 1);
+            SetCaret((row, table.ColumnCount - 1));
         }
         else if (at.Y < RowHeight)
         {
@@ -579,7 +648,7 @@ public sealed class CellGrid : Control, IOwnKeys
         }
         else
         {
-            caret = (row, column);
+            SetCaret((row, column));
             if (!extend)
             {
                 anchor = caret;
@@ -617,7 +686,8 @@ public sealed class CellGrid : Control, IOwnKeys
         (int top, int left, int bottom, int right) = Chosen;
         if (row < top || row > bottom || column < left || column > right)
         {
-            caret = anchor = (row, column);
+            anchor = (row, column);
+            SetCaret(anchor);
             InvalidateVisual();
         }
     }
@@ -633,7 +703,7 @@ public sealed class CellGrid : Control, IOwnKeys
         }
         if (choosing)
         {
-            caret = CellAt(at);
+            SetCaret(CellAt(at));
             Reveal(caret);
             InvalidateVisual();
             return;
@@ -716,7 +786,7 @@ public sealed class CellGrid : Control, IOwnKeys
         {
             return;
         }
-        caret = Clamp(cell);
+        SetCaret(Clamp(cell));
         if (!extend || e.Key == Key.Tab)
         {
             anchor = caret;
@@ -869,6 +939,16 @@ public sealed class CellGrid : Control, IOwnKeys
 
         using (context.PushClip(body))
         {
+            for (int row = firstRow; row <= lastRow && hasCells; row++)
+            {
+                for (int column = firstColumn; column <= lastColumn; column++)
+                {
+                    if (colours.Pending(table.MarkOf(row, column)) is { } pending)
+                    {
+                        context.FillRectangle(pending, new Rect(X(column), Y(row), widths[column], RowHeight));
+                    }
+                }
+            }
             if (hasCells && bottom >= firstRow && top <= lastRow && right >= firstColumn && left <= lastColumn)
             {
                 double y0 = Math.Max(body.Y, Y(top));
@@ -940,6 +1020,10 @@ public sealed class CellGrid : Control, IOwnKeys
                     context.FillRectangle(colours.HeaderChosen, place);
                 }
                 DrawText(context, Text(row, Gutter, gutter, plain, colours.RowNumber)!, place, number: true);
+                if (colours.RowMarked(table.RowMark(row)) is { } marked)
+                {
+                    context.FillRectangle(marked, new Rect(0, place.Y, RowMarkWidth, RowHeight));
+                }
             }
         }
         context.FillRectangle(colours.Edge, new Rect(0, RowHeight - 1, bounds.Width, 1));
@@ -957,7 +1041,9 @@ public sealed class CellGrid : Control, IOwnKeys
             context.FillRectangle(Spot((row, column)) == currentMatch ? colours.SearchCurrent : colours.SearchMatch, place);
         }
         bool number = table!.IsNumber(row, column);
-        if (Text(row, column, place.Width, plain, number ? colours.Number : colours.Text) is { } text)
+        // A number on a change's ground stands as numbers do, in the text's colour, which every such ground is read with.
+        IBrush brush = table.IsAbsent(row, column) ? colours.Muted : number && table.MarkOf(row, column) == CellMark.None ? colours.Number : colours.Text;
+        if (Text(row, column, place.Width, plain, brush) is { } text)
         {
             DrawText(context, text, place, number);
         }
@@ -1007,6 +1093,10 @@ public sealed class CellGrid : Control, IOwnKeys
             return null;
         }
         FormattedText text = new(shown, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, TypeRamp.Code, brush);
+        if (row >= 0 && column != Gutter && table!.MarkOf(row, column) == CellMark.Deleted)
+        {
+            text.SetTextDecorations(TextDecorations.Strikethrough);
+        }
         text.MaxTextWidth = Math.Max(1, width - 2 * Pad);
         text.MaxLineCount = 1;
         text.Trimming = TextTrimming.CharacterEllipsis;
@@ -1014,11 +1104,32 @@ public sealed class CellGrid : Control, IOwnKeys
         return text;
     }
 
+    /// <summary>How wide a row's mark of its changes not yet written is, at its number's left edge.</summary>
+    private const double RowMarkWidth = 3;
+
     /// <summary>The theme's brushes the table draws with, read once per look.</summary>
     private sealed record Palette(IBrush Background, IBrush Text, IBrush Number, IBrush Header, IBrush HeaderText, IBrush HeaderChosen,
         IBrush RowNumber, IBrush Grid, IBrush Edge, IBrush Selection, IBrush SelectionInactive, IBrush SearchMatch, IBrush SearchCurrent, IPen CaretPen,
-        Geometry? Up, Geometry? Down)
+        Geometry? Up, Geometry? Down, IBrush Changed, IBrush Added, IBrush Deleted, IBrush ChangedMark, IBrush AddedMark, IBrush DeletedMark, IBrush Muted)
     {
+        /// <summary>A cell's ground for a change not yet written, as a diff's lines show theirs.</summary>
+        public IBrush? Pending(CellMark mark) => mark switch
+        {
+            CellMark.Changed => Changed,
+            CellMark.Added => Added,
+            CellMark.Deleted => Deleted,
+            _ => null,
+        };
+
+        /// <summary>A row's mark beside its number, as the editor's gutter marks a line changed.</summary>
+        public IBrush? RowMarked(CellMark mark) => mark switch
+        {
+            CellMark.Changed => ChangedMark,
+            CellMark.Added => AddedMark,
+            CellMark.Deleted => DeletedMark,
+            _ => null,
+        };
+
         public static Palette From(Control control)
         {
             IBrush Brush(string key) => Tokens.Brush(control, key);
@@ -1038,7 +1149,14 @@ public sealed class CellGrid : Control, IOwnKeys
                 Brush(TokenKeys.Editor_SearchCurrent),
                 new Pen(Brush(TokenKeys.Accent), 1),
                 control.TryFindResource(IconKeys.ArrowUp, out object? up) ? up as Geometry : null,
-                control.TryFindResource(IconKeys.ArrowDown, out object? down) ? down as Geometry : null);
+                control.TryFindResource(IconKeys.ArrowDown, out object? down) ? down as Geometry : null,
+                Brush(TokenKeys.Diff_Modified),
+                Brush(TokenKeys.Diff_Added),
+                Brush(TokenKeys.Diff_Deleted),
+                Brush(TokenKeys.Vcs_Modified),
+                Brush(TokenKeys.Vcs_Added),
+                Brush(TokenKeys.Vcs_Deleted),
+                Brush(TokenKeys.TextMuted));
         }
     }
 }

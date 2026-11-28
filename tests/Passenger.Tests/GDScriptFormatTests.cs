@@ -8,7 +8,7 @@ using Passenger.Text;
 namespace Passenger.Tests;
 
 /// <summary>Reformat Code on a GDScript wraps a line past the line length inside its brackets in the style guide's forms,
-/// as Settings › Code Style › GDScript and the folder's .editorconfig say, and a save reformats a changed script first once
+/// as Settings › Editor › Code Style › GDScript and the folder's .editorconfig say, and a save reformats a changed script first once
 /// Settings ask. No project.godot, so no Godot server starts.</summary>
 public sealed class GDScriptFormatTests
 {

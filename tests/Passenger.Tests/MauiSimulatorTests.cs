@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
 using Passenger.App.Debugging;
+using Passenger.App.LiveTree;
 using Passenger.App.Run.Devices;
 using Passenger.App.Testing;
 using Passenger.Core;
@@ -13,12 +14,13 @@ namespace Passenger.Tests;
 /// <summary>The app <c>dotnet new maui</c> makes, its iOS head debugged on an iOS simulator chosen beside its run
 /// configuration, as the iOS workload lists them, the iOS head's debug path (<see cref="AvaloniaSimulatorTests"/> holds its
 /// run path): Debug builds it for the simulator, boots one that is shut down with no window, installs and starts the app
-/// with Passenger's relay carried into its data container, stops in its main page, steps, shows, evaluates and takes a Hot
-/// Reload edit, whose update handler is called once the app goes on; Stop ends the app and takes out what was carried, and a
-/// simulator the window booted is shut down as it closes. First, the tests of the project <c>dotnet new iostest</c> makes
-/// run in its app on the simulator chosen beside its configuration, and one is debugged there. Skips, saying why, off a Mac, without MAUI's and iOS's
-/// workloads, Xcode or an iPhone simulator, or the simulator's relay. Debugged through the window, so alone; its waits end
-/// within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+/// with Passenger's relay carried into its data container, stops in its main page and at breakpoints in its XAML, steps,
+/// shows, evaluates and takes a Hot Reload edit, whose update handler is called once the app goes on, a tap then stopping and
+/// stepping in the edited handler at its edit's lines, then XAML edits stopping where each update's code makes what a
+/// breakpoint is on (<see cref="MauiApp.TakesXamlEdits"/>); Stop ends the app and takes out what was carried, and a simulator
+/// the window booted is shut down as it closes. First, the tests of the project <c>dotnet new iostest</c> makes run in its
+/// app on the simulator chosen beside its configuration, and one is debugged there. Skips, saying why, where it cannot run
+/// (off a Mac, without MAUI's and iOS's workloads, Xcode, an iPhone simulator or its relay). Debugged, so alone.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiSimulatorTests
@@ -46,7 +48,7 @@ public sealed class MauiSimulatorTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.Shown);
         }
         string folder = PathNames.Canonical(TestFolders.Create("ios-device-tests"));
         try
@@ -143,9 +145,14 @@ public sealed class MauiSimulatorTests
             string? started = SimulatorStart(window.BottomPanel.Debug.Console.Document.Snapshot, window);
             string carried = Carried(window);
 
-            Ui.Run(window, AppActions.StepOver);
+            // Breakpoints in the page's XAML, bound in the code MAUI's source generator wrote of it.
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            Ui.Run(window, AppActions.Resume);
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
+            Ui.Run(window, AppActions.StepOut);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "this") is { } shown && shown.Contains("ScrollView", StringComparison.Ordinal),
-                () => $"the step over InitializeComponent, the page's content shown made; this is {Shown(window, "this") ?? "not shown"}: {Ui.Said(window)}", Slow);
+                () => $"the step out of InitializeComponent, the page's content shown made; this is {Shown(window, "this") ?? "not shown"} at {MauiApp.Top(window)}: {Ui.Said(window)}", Slow);
+            window.OpenFile(page);
             Dap.EvaluateResponse count = Ui.Await(window.Debugger.Session!.EvaluateAsync("count + 41", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
                 "the page's count, evaluated where the app stopped", Slow);
             Assert.Equal("41", count.Result);
@@ -164,6 +171,9 @@ public sealed class MauiSimulatorTests
             Ui.Run(window, AppActions.Resume);
             Ui.WaitFor(() => Console(window).Contains(Handled, StringComparison.Ordinal),
                 () => $"the app's update handler to be called once the app went on: {Ui.Said(window)}\n{Console(window)}", TimeSpan.FromMinutes(1));
+            LiveApp app = window.LiveApp ?? throw new Xunit.Sdk.XunitException($"The debugged app has no inspector: {Ui.Said(window)}");
+            MauiApp.StopsInEditedHandler(window, app, project, Slow);
+            MauiApp.TakesXamlEdits(window, app, project, (xaml, hello, clickMe), Slow);
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
             Assert.True(started is not null, $"simctl did not say the app's process in the Debug console:\n{Console(window)}");
@@ -259,7 +269,7 @@ public sealed class MauiSimulatorTests
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip(Refusals.IosOnMacAlone);
+            Assert.Skip(Refusals.IosOnMacAlone.Shown);
         }
         string runtime = $"iossimulator-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
         if (!File.Exists(CarriedFiles.Relay(runtime, SimulatorApp.RelayFile)))

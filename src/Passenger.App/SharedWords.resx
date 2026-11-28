@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Ok" xml:space="preserve">
+    <value>OK</value>
+    <comment>A dialog's default button where its words say no more of what it does.</comment>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+    <comment>A dialog's or a popup's Cancel, which Escape clicks too.</comment>
+  </data>
+  <data name="DontAskAgain" xml:space="preserve">
+    <value>Don't ask again</value>
+    <comment>A question's check box beside its answers: ticked, the answer is kept in Settings and the question not asked again.</comment>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Close</value>
+    <comment>The tip of a tab's ×, which closes it.</comment>
+  </data>
+  <data name="GoToSource" xml:space="preserve">
+    <value>Go to Source</value>
+    <comment>A list's row menu item going to where the row's code is written, which F4 does.</comment>
+  </data>
+  <data name="WithKeys" xml:space="preserve">
+    <value>{name} ({keys})</value>
+    <comment>A tip naming what a button or tab does and, after it, the keys that do the same (Step Over (F10)).</comment>
+  </data>
+  <data name="Refused" xml:space="preserve">
+    <value>{name}: {why}</value>
+    <comment>A greyed button's tip: what it does, then why it cannot do it now (Delete: main is checked out).</comment>
+  </data>
+  <data name="KeysToFilter" xml:space="preserve">
+    <value>{keys} to filter</value>
+    <comment>A tool window's filter field while it is empty: the keys that take it there (⌘F to filter).</comment>
+  </data>
+  <data name="Finder" xml:space="preserve">
+    <value>Finder</value>
+    <comment>macOS's file manager, as the system names it in this language.</comment>
+  </data>
+  <data name="Explorer" xml:space="preserve">
+    <value>Explorer</value>
+    <comment>Windows' file manager (File Explorer), as the system names it in this language.</comment>
+  </data>
+  <data name="FileManager" xml:space="preserve">
+    <value>File Manager</value>
+    <comment>A Linux desktop's file manager, whichever it has.</comment>
+  </data>
+  <data name="ZoomIn" xml:space="preserve">
+    <value>Zoom In</value>
+    <comment>A zoomed picture's button (a diagram, an image, the dependency map).</comment>
+  </data>
+  <data name="ZoomOut" xml:space="preserve">
+    <value>Zoom Out</value>
+    <comment>A zoomed picture's button.</comment>
+  </data>
+  <data name="ActualSize" xml:space="preserve">
+    <value>Actual Size</value>
+    <comment>A zoomed picture's button showing it at its own size.</comment>
+  </data>
+  <data name="FitZoom" xml:space="preserve">
+    <value>Fit Zoom to Window</value>
+    <comment>A zoomed picture's button fitting it whole in its place.</comment>
+  </data>
+  <data name="CopyName" xml:space="preserve">
+    <value>Copy Name</value>
+    <comment>A list's row menu item copying the row's name.</comment>
+  </data>
+  <data name="CopyPath" xml:space="preserve">
+    <value>Copy Path</value>
+    <comment>A list's row menu item copying the row's path.</comment>
+  </data>
+  <data name="NothingMatches" xml:space="preserve">
+    <value>Nothing matches</value>
+    <comment>A list's words where its search keeps nothing.</comment>
+  </data>
+  <data name="UsageDeclaration" xml:space="preserve">
+    <value>Declaration</value>
+    <comment>What a usage does where it is: declares the symbol (Show Usages' rows, the Find window's groups).</comment>
+  </data>
+  <data name="UsageWrite" xml:space="preserve">
+    <value>Write</value>
+    <comment>What a usage does where it is: writes the symbol.</comment>
+  </data>
+  <data name="UsageRead" xml:space="preserve">
+    <value>Read</value>
+    <comment>What a usage does where it is: reads the symbol.</comment>
+  </data>
+  <data name="UsageInvocation" xml:space="preserve">
+    <value>Invocation</value>
+    <comment>What a usage does where it is: calls the symbol.</comment>
+  </data>
+  <data name="UsageImport" xml:space="preserve">
+    <value>Import</value>
+    <comment>What a usage does where it is: imports the symbol.</comment>
+  </data>
+  <data name="OpenWindow" xml:space="preserve">
+    <value>open the {window} window</value>
+    <comment>What a click on the status bar's words does, after "Click to": a tool window shown.</comment>
+  </data>
+  <data name="SeeInProblems" xml:space="preserve">
+    <value>see it in Problems, {tab}</value>
+    <comment>What a click on the status bar's words does, after "Click to": Problems shown on one of its tabs.</comment>
+  </data>
+  <data name="Failed" xml:space="preserve">
+    <value>{action} failed: {why}</value>
+    <comment>An action that failed, by its title, and why: as the C# language server's answer says it.</comment>
+  </data>
+</root>

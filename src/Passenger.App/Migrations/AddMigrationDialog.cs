@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Media;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
@@ -33,13 +34,13 @@ public sealed class AddMigrationDialog : IdeWindow
         this.project = project;
         this.last = last;
         this.pick = pick;
-        Title = $"Add Migration to {context}";
+        ShownWords.Set(this, TitleProperty, MigrationsWords.AddTitle(context));
         Width = DialogWidths.Form;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        NameBox = new TextBox { Name = "MigrationName", PlaceholderText = "AddCustomerEmail" };
+        NameBox = new TextBox { Name = "MigrationName", [ShownWords.PlaceholderTextProperty] = MigrationsWords.NamePlaceholder };
         BrowseRow folderRow = BrowseRow.Offering(holding, BrowseAsync);
         FolderBox = folderRow.Offered!;
         FolderBox.Name = "MigrationFolder";
@@ -52,15 +53,15 @@ public sealed class AddMigrationDialog : IdeWindow
                 ShowInto();
             }
         };
-        Button add = DialogFooter.Default("Add");
+        Button add = DialogFooter.Default(MigrationsWords.Add);
         add.Click += (_, _) => Add();
         StackPanel fields = new()
         {
             Spacing = FormRows.Between,
             Children =
             {
-                FormRows.Of("Name", NameBox, [FormRows.Note("A C# class's name, as the migration is one")]),
-                FormRows.Of("Output folder", folderRow, [into]),
+                FormRows.Of(MigrationsWords.NameLabel, NameBox, [FormRows.Note(MigrationsWords.NameNote)]),
+                FormRows.Of(MigrationsWords.FolderLabel, folderRow, [into]),
             },
         };
         Content = DialogFooter.Page(new StackPanel { [DialogFooter.InsetProperty] = true, Children = { fields } },
@@ -84,23 +85,23 @@ public sealed class AddMigrationDialog : IdeWindow
     public string? Add()
     {
         string name = NameBox.Text?.Trim() ?? string.Empty;
-        (string? folder, string? unfit) = EfOutputFolders.Read(FolderBox.Text, project);
-        string? why = MigrationsController.WhyNotNamed(name) ?? unfit;
-        problem.Text = why;
+        (string? folder, EfFolderUnfit? unfit) = EfOutputFolders.Read(FolderBox.Text, project);
+        Words? why = MigrationsController.WhyNotNamed(name) ?? (unfit is null ? null : MigrationsController.WhyNotInto(unfit, project));
+        ShownWords.Set(problem, TextBlock.TextProperty, why);
         if (why is null)
         {
             Close(new MigrationAdd(name, folder));
         }
-        return why;
+        return why?.Shown;
     }
 
     /// <summary>The note under the folder: where the migration's files go, the folder dotnet ef chooses where none is given.</summary>
     private void ShowInto()
     {
-        (string? folder, string? unfit) = EfOutputFolders.Read(FolderBox.Text, project);
-        into.Text = unfit ?? (folder is not null ? $"Into {Shown(folder)}"
-            : last is not null ? $"Empty: beside its last migration, in {Shown(last)}" : $"Empty: dotnet ef's default, {Shown(EfOutputFolders.Default)}");
-        problem.Text = string.Empty;
+        (string? folder, EfFolderUnfit? unfit) = EfOutputFolders.Read(FolderBox.Text, project);
+        ShownWords.Set(into, TextBlock.TextProperty, unfit is not null ? MigrationsController.WhyNotInto(unfit, project) : (folder is not null ? MigrationsWords.Into(Shown(folder))
+            : last is not null ? MigrationsWords.IntoLast(Shown(last)) : MigrationsWords.IntoDefault(Shown(EfOutputFolders.Default))));
+        ShownWords.Set(problem, TextBlock.TextProperty, null);
     }
 
     /// <summary>A folder of the project as the note says it, the project's own by its name.</summary>
@@ -112,10 +113,10 @@ public sealed class AddMigrationDialog : IdeWindow
         {
             return;
         }
-        (string? folder, string? unfit) = EfOutputFolders.Read(picked, project);
+        (string? folder, EfFolderUnfit? unfit) = EfOutputFolders.Read(picked, project);
         if (unfit is not null)
         {
-            problem.Text = unfit;
+            ShownWords.Set(problem, TextBlock.TextProperty, MigrationsController.WhyNotInto(unfit, project));
             return;
         }
         FolderBox.Text = folder;

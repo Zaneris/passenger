@@ -22,7 +22,7 @@ public sealed class RetainedRowsTests
 {
     /// <summary>The editor's retained rows show what rows drawn afresh show, scrolled by the wheel, where lines were
     /// deleted, put back, pasted and worked on, and typed into after scrolling away, and a key draws again only the
-    /// rows it changed and those the caret left or entered.</summary>
+    /// rows it changed and those the caret left or entered, never a row above a line it did not change.</summary>
     [AvaloniaFact]
     public void Retained_rows_show_what_rows_drawn_afresh_show_and_a_key_draws_again_only_what_it_changed()
     {
@@ -46,6 +46,7 @@ public sealed class RetainedRowsTests
         editor.SetHighlights([.. lines.Where(i => i % 3 == 2 && i % 10 != 9).Select(i => new TextRange(Find(i, "total"), Find(i, "total") + 5))], 1);
         editor.SetUsageHighlights([.. lines.Where(i => i % 11 == 4 && i % 10 != 9).Select(i => new UsageHighlight(new TextRange(Find(i, "total"), Find(i, "total") + 5), IsWrite: i % 2 == 0))]);
         editor.SetFoldRegions([new FoldRegion(text.GetLineStart(120) + text.GetLine(120).Length, text.GetLineStart(130), "{...}", Folded: true)]);
+        editor.SetRowsAbove([.. lines.Where(i => i % 6 == 3).Select(i => new RowAbove(Find(i, "int"), [new RowAboveWord($"{i} usages"), new RowAboveWord("Ada Lovelace")]))]);
         editor.ShowWhitespaces = true;
         Ui.Settle();
         Point over = editor.TranslatePoint(new Point(editor.Bounds.Width / 2, editor.Bounds.Height / 2), rig.Window)!.Value;
@@ -94,6 +95,7 @@ public sealed class RetainedRowsTests
         int Find(int line, string what) => text.GetLineStart(line) + text.GetLine(line).ToString().IndexOf(what, StringComparison.Ordinal);
         editor.SetMarkers([.. Enumerable.Range(0, 200).Where(i => i % 5 == 1).Select(i => new Marker(new TextRange(Find(i, "unused"), Find(i, " =")), MarkerKind.Warning, "never read"))]);
         editor.SetInlayHints([.. Enumerable.Range(0, 200).Where(i => i % 5 == 0).Select(i => new InlayHint(Find(i, "3,"), "width:", PadRight: true))]);
+        editor.SetRowsAbove([.. Enumerable.Range(0, 200).Where(i => i % 6 == 3).Select(i => new RowAbove(Find(i, "int"), [new RowAboveWord($"{i} usages")]))]);
         editor.Selections = SelectionSet.Single(text.GetLineStart(12) + 8);
         Ui.Settle();
         int rowsOnScreen = (int)(editor.Bounds.Height / editor.LineHeight);
@@ -112,12 +114,15 @@ public sealed class RetainedRowsTests
         Drawn("every row drawn again", () => editor.ShowWhitespaces = editor.ShowWhitespaces);
 
         long grounds = editor.GroundsDrawn;
+        long above = editor.RowsAboveDrawn;
         long typed = Drawn("a letter typed", () => rig.Window.KeyTextInput("x"));
         Assert.True(typed == 1, $"A letter typed in a line drew {typed} rows: rows it did not change were drawn again");
+        Assert.True(editor.RowsAboveDrawn == above, $"A letter typed in a line drew {editor.RowsAboveDrawn - above} rows above lines it did not change again");
         Assert.True(editor.GroundsDrawn == grounds,
             "A letter typed in a line drew the editor's ground again, which has the compositor draw every row on screen again, where one changed");
         long down = Drawn("Down", () => Ui.Press(rig.Window, "down"));
         Assert.True(down == 2, $"Down drew {down} rows, where only the line the caret left and the one it entered changed");
+        Assert.True(editor.RowsAboveDrawn == above, $"Down drew {editor.RowsAboveDrawn - above} rows above lines again, where none changed");
         long selected = Drawn("Shift+Down", () => Ui.Press(rig.Window, "shift down"));
         Assert.True(selected == 2, $"Shift+Down drew {selected} rows, where only the line it selected and the one the caret entered changed");
         long unselected = Drawn("Escape", () => Ui.Press(rig.Window, "escape"));

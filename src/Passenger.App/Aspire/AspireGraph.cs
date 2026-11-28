@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -42,6 +43,32 @@ public sealed class AspireGraph : Canvas
     /// <summary>Its nodes' buttons, by their resources' names.</summary>
     public IReadOnlyDictionary<string, Button> Nodes => nodes;
 
+    /// <summary>The resources it shows, by their names and the names they show, in the AppHost's order.</summary>
+    private IReadOnlyList<(string Name, string Shown)> drawn = [];
+
+    /// <summary>The graph as it is drawn, as a Mermaid flowchart to put in a document: each resource a node by the name it
+    /// shows, those it waits for or references to its left, a solid arrow for each wait and a dashed line for each
+    /// reference; none where it shows no resource.</summary>
+    public string? Mermaid()
+    {
+        if (drawn.Count == 0)
+        {
+            return null;
+        }
+        Dictionary<string, string> ids = new(StringComparer.Ordinal);
+        System.Text.StringBuilder flowchart = new("flowchart RL\n");
+        foreach ((string name, string shown) in drawn)
+        {
+            ids[name] = $"r{ids.Count}";
+            flowchart.Append(CultureInfo.InvariantCulture, $"    {ids[name]}[\"{shown.Replace("\"", "#quot;", StringComparison.Ordinal)}\"]\n");
+        }
+        foreach (AspireEdge edge in Edges)
+        {
+            flowchart.Append(CultureInfo.InvariantCulture, $"    {ids[edge.From]} {(edge.Type == "WaitFor" ? "-->" : "-.-")} {ids[edge.To]}\n");
+        }
+        return flowchart.ToString();
+    }
+
     /// <summary>Lays the resources out, unless their names and relationships are those shown already.</summary>
     public void Show(IReadOnlyList<AspireResource> resources)
     {
@@ -66,6 +93,7 @@ public sealed class AspireGraph : Canvas
         }
         shown = key;
         Edges = edges;
+        drawn = [.. listed.Select(r => (r.Name, r.DisplayName))];
         Lay(listed, edges);
     }
 

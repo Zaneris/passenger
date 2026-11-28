@@ -10,7 +10,7 @@ namespace Passenger.App;
 public sealed record NamedTheme(SourcedTheme? Theme);
 
 /// <summary>Puts a theme and a code colour scheme in force for the process, each named by its source and name: Passenger's
-/// own theme is Tokens.axaml (App.axaml's), under every other; another's tokens, made from its file as kept
+/// own theme is Tokens.axaml (App.axaml's), under every other; another's tokens and icons, made from its file as kept
 /// (<see cref="KeptThemes"/>, or the built-in source's), laid over it in the application's resources, then the scheme's over
 /// either, so the last laid wins. One named but not kept yet is fetched from its source, Passenger's own drawn meanwhile and
 /// said so (<see cref="Said"/>), and laid once kept; one that cannot be fetched is said, never dropped from the settings.
@@ -151,7 +151,7 @@ public static class Themes
     /// it names again.</summary>
     public static void Wear(Application app, ThemeFile? theme, ThemeFile? scheme)
     {
-        Lay(app, theme, scheme, _ => null);
+        Lay(app, theme, scheme, _ => null, _ => null);
         applied = false;
     }
 
@@ -180,6 +180,13 @@ public static class Themes
             unfetched[(code, theme)] = got.Refused ?? $"{file} holds {got.Read?.Name}, not {theme.Name}";
             return null;
         }
+        (ThemeFile? carried, string? uncarried) = BuiltInThemes.Under(whole, code);
+        if (carried is null)
+        {
+            unfetched[(code, theme)] = $"{theme.Name} is refused: {uncarried}";
+            return null;
+        }
+        whole = carried;
         if (whole.Base is { } wanted)
         {
             // A base not kept beside the theme is fetched in its place.
@@ -193,8 +200,31 @@ public static class Themes
             }
             whole = ThemeFiles.Over(code ? VsCodeColours.ToScheme(under) : VsCodeColours.ToTheme(under), whole);
         }
+        // An icon theme not kept beside the theme is fetched in its place, as a base is.
+        Func<string, byte[]?> beside = BesideOf(theme, whole);
+        foreach (VsCodeBase icons in whole.IconThemes)
+        {
+            if (VsCodeIconSets.Kept(icons, beside, out string? why) is null)
+            {
+                if (why is not null)
+                {
+                    unfetched[(code, theme)] = $"{theme.Name}'s file icon theme {icons.File ?? $"{icons.Theme} ({icons.Id})"} is refused: {why}";
+                }
+                return null;
+            }
+        }
         read[(code, theme)] = whole;
         return whole;
+    }
+
+    /// <summary>What reads a file kept beside a theme's, by its path there, or null for none: the theme's own, else the carried
+    /// theme's it is laid over, whose pictures and icons it takes.</summary>
+    private static Func<string, byte[]?> BesideOf(SourcedTheme? shown, ThemeFile? theme)
+    {
+        Func<string, byte[]?> own = theme is null || shown is not { From: { } from } named ? _ => null
+            : from == ThemeSource.BuiltIn ? file => BuiltInThemes.Beside(named.Name, file)
+            : file => KeptThemes.Beside(from, false, named.Name, file);
+        return theme?.BuiltInBase is { } under ? file => own(file) ?? BuiltInThemes.Beside(under, file) : own;
     }
 
     private static void LayWanted()
@@ -206,10 +236,12 @@ public static class Themes
         SourcedTheme? wanted = InHighContrast ? SourcedTheme.BuiltIn(ThemeSource.HighContrast) : Look;
         ThemeFile? theme = wanted is { } look ? Kept(false, look) ?? Fetched(false, look) : null;
         ThemeFile? scheme = !InHighContrast && Scheme is { } colours ? Kept(true, colours) ?? Fetched(true, colours) : null;
-        Func<string, byte[]?> images = theme is null || wanted is not { From: { } source } shown ? _ => null
+        Func<string, byte[]?> own = theme is null || wanted is not { From: { } source } shown ? _ => null
             : source == ThemeSource.BuiltIn ? image => BuiltInThemes.Image(false, shown.Name, image)
             : image => KeptThemes.Image(source, false, shown.Name, image);
-        Lay(app, theme, scheme, images);
+        // A picture or icon the theme takes from the carried theme it is laid over is the base's own.
+        Func<string, byte[]?> images = theme?.BuiltInBase is { } carried ? image => own(image) ?? BuiltInThemes.Image(false, carried, image) : own;
+        Lay(app, theme, scheme, images, BesideOf(wanted, theme));
         Say();
     }
 
@@ -238,8 +270,9 @@ public static class Themes
         {
             byte[]? kept = source == ThemeSource.BuiltIn ? BuiltInThemes.Bytes(code, theme.Name) : KeptThemes.Bytes(source, code, theme.Name);
             ThemeFile? file = kept is null ? null : (code ? ThemeFiles.ReadCodeColours(theme.Name, kept, kinds) : ThemeFiles.ReadTheme(theme.Name, kept, kinds)).Read;
-            why = file?.Base is { Id: not null }
-                ? await Passenger.Core.BackgroundWork.Run(() => VsCodeBases.KeepAsync(source, code, theme.Name, file, CancellationToken.None))
+            why = file?.Base is { Id: not null } || file?.IconThemes.Any(i => i.Id is not null) == true
+                ? await Passenger.Core.BackgroundWork.Run(async () => await VsCodeBases.KeepAsync(source, code, theme.Name, file, CancellationToken.None)
+                    ?? await VsCodeIconSets.KeepAsync(source, code, theme.Name, file, CancellationToken.None))
                 : source.Kind is ThemeSourceKind.BuiltIn or ThemeSourceKind.Added or ThemeSourceKind.OpenVsx
                 ? $"{theme.Name} is no longer kept: {(source.Kind == ThemeSourceKind.OpenVsx ? "choose it again from VS Code themes" : "add its file again")} in {Settings.SettingsDialog.PlaceOfPage(Settings.SettingsDialog.Appearance)}"
                 : await Passenger.Core.BackgroundWork.Run(() => FetchOnceAsync(source, code, theme.Name, kinds));
@@ -289,7 +322,8 @@ public static class Themes
             if (file.Read.Read is { } theme && theme.Name == name && file.Bytes is { } whole)
             {
                 (Dictionary<string, byte[]> images, string? unseen) = await ThemeSourceReads.ImagesAsync(file, reached, CancellationToken.None);
-                return unseen ?? await VsCodeBases.KeepAsync(source, code, name, theme, CancellationToken.None) ?? KeptThemes.Keep(source, code, name, whole, images);
+                return unseen ?? await VsCodeBases.KeepAsync(source, code, name, theme, CancellationToken.None) ?? await VsCodeIconSets.KeepAsync(source, code, name, theme, CancellationToken.None)
+                    ?? KeptThemes.Keep(source, code, name, whole, images);
             }
         }
         return $"{source.Shown} lists no {(code ? "code colour scheme" : "theme")} named {name} that reads whole";
@@ -325,10 +359,11 @@ public static class Themes
         SaidChanged?.Invoke(null, EventArgs.Empty);
     }
 
-    private static void Lay(Application app, ThemeFile? theme, ThemeFile? scheme, Func<string, byte[]?> images)
+    private static void Lay(Application app, ThemeFile? theme, ThemeFile? scheme, Func<string, byte[]?> images, Func<string, byte[]?> beside)
     {
-        // Made before those in force go; the scheme after the theme, so it wins.
-        ResourceDictionary[] next = [.. ((ThemeFile?[])[theme, scheme]).OfType<ThemeFile>().Select(ThemeResources.Dictionary)];
+        // Made before those in force go; the scheme after the theme, so it wins; the theme's icons with them.
+        ResourceDictionary[] next = [.. ((ThemeFile?[])[theme, scheme]).OfType<ThemeFile>().Select(ThemeResources.Dictionary),
+            .. ((ResourceDictionary?[])[theme is null ? null : ThemeIcons.Dictionary(theme, beside)]).OfType<ResourceDictionary>()];
         IList<IResourceProvider> merged = app.Resources.MergedDictionaries;
         foreach (IResourceProvider was in laid)
         {

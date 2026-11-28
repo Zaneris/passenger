@@ -49,7 +49,7 @@ public sealed record TableSearch(IReadOnlyList<(int Row, int Column)> Matches, b
         }
         catch (RegexMatchTimeoutException)
         {
-            return new TableSearch(matches, true, Refusals.RegexStopped);
+            return new TableSearch(matches, true, Refusals.RegexStopped.Shown);
         }
         return new TableSearch(matches, false, null);
     }

@@ -49,11 +49,26 @@ public static class TypingPauses
     /// <summary>Before the Structure window asks for the shown file's outline again.</summary>
     public static TimeSpan Structure => Of(TimeSpan.FromMilliseconds(600));
 
+    /// <summary>Before the Syntax Tree window reveals the syntax under the latest selection.</summary>
+    public static TimeSpan SyntaxTree => Of(TimeSpan.FromMilliseconds(80));
+
     /// <summary>Before what a Godot project reads against an open scene, resource or script is read again.</summary>
     public static TimeSpan GodotScenes => Of(TimeSpan.FromMilliseconds(600));
 
     /// <summary>Before a Markdown, HTML or SVG preview takes the text again.</summary>
     public static TimeSpan Previews => Of(TimeSpan.FromMilliseconds(300));
+
+    /// <summary>Before a name or a revision typed in a Git dialog (New Tag's) is looked up in the repository.</summary>
+    public static TimeSpan GitNames => Of(TimeSpan.FromMilliseconds(250));
+
+    /// <summary>Before the signposts of the declarations on screen are counted again, after typing or scrolling.</summary>
+    public static TimeSpan Signposts => Of(TimeSpan.FromMilliseconds(600));
+
+    /// <summary>Before the dependency map asks its open levels again after the code changed.</summary>
+    public static TimeSpan DependencyMap => Of(TimeSpan.FromMilliseconds(600));
+
+    /// <summary>Before a SQL console is checked against its connection's schema again.</summary>
+    public static TimeSpan SqlChecks => Of(TimeSpan.FromMilliseconds(400));
 
     /// <summary>Before a file's change bars are worked out again.</summary>
     public static TimeSpan ChangeBars => Of(TimeSpan.FromMilliseconds(120));

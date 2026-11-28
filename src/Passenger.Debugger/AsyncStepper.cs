@@ -214,13 +214,13 @@ internal sealed partial class AsyncStepper
             ICorDebugFunction function = frame.Function;
             CORDB_ADDRESS moduleAddress = function.Module.BaseAddress;
             mdMethodDef methodToken = function.Token;
-            ICorDebugCode ilCode = function.ILCode;
-            int methodVersion = ilCode.VersionNumber;
+            ICorDebugCode ilCode = frame is ICorDebugILFrame running ? _debugger.CodeOf(running) : function.ILCode;
 
             if (_debugger.FindModule(function.Module) is not { } moduleInfo || moduleInfo.MetadataReader.HasSymbols is false)
             {
                 return (false, null);
             }
+            int methodVersion = moduleInfo.MetadataReader.VersionOf(frame) ?? ilCode.VersionNumber;
 
             ModuleMetadataReader.AsyncMethodSteppingInfo? asyncInfo = moduleInfo.MetadataReader.GetAsyncMethodSteppingInfo(methodToken, methodVersion);
             if (asyncInfo is null)

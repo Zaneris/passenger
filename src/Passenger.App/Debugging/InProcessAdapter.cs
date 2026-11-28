@@ -110,12 +110,19 @@ public abstract class InProcessAdapter
         NoSteps = noSteps,
     });
 
-    /// <summary>A breakpoint refused as asked for, for a hit count the debugger cannot read or a log message it would misread;
-    /// null where it is taken.</summary>
+    /// <summary>A breakpoint refused as asked for, for a hit count the debugger cannot read or a log message it would misread,
+    /// or as a snapshot point, which only Passenger's .NET debugger takes; null where it is taken.</summary>
     protected static DapBreakpoint? Refused(DapSourceBreakpoint breakpoint) =>
-        (BreakpointHits.Unreadable(breakpoint.HitCondition) ?? DisplayFormat.Misread(breakpoint.LogMessage)) is { } problem
-        ? new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem, Line = breakpoint.Line }
+        (breakpoint.Snapshot == true ? Refusals.SnapshotsOfDotnet : BreakpointHits.Unreadable(breakpoint.HitCondition) ?? DisplayFormat.Misread(breakpoint.LogMessage)) is { } problem
+        ? new DapBreakpoint { Verified = false, Reason = BreakpointReasons.Failed, Message = problem.Shown, Line = breakpoint.Line }
         : null;
+
+    /// <summary>What the session's breakpoints have come to between them: those hit, those temporary gone.</summary>
+    protected SessionHits Hits { get; } = new();
+
+    /// <summary>The session told that a temporary breakpoint went at the hit it took.</summary>
+    protected void Removed(IHitBreakpoint breakpoint) =>
+        Tell(DapEvents.Breakpoint, new BreakpointEvent { Reason = EventReasons.Removed, Breakpoint = new DapBreakpoint { Id = breakpoint.Id } });
 
     /// <summary>The session told of a breakpoint's message, written at a hit, at its line of <paramref name="path"/>.</summary>
     protected void Told(IHitBreakpoint breakpoint, string path, int line) => Tell(DapEvents.Breakpoint, new BreakpointEvent
@@ -141,6 +148,12 @@ public abstract class InProcessAdapter
         public bool Suspend => Request.Suspend ?? Request.LogMessage is null;
 
         public bool RunTo => Request.RunTo == true;
+
+        public int? Key => Request.Key;
+
+        public int? WaitFor => Request.WaitFor;
+
+        public bool Temporary => Request.Temporary == true;
 
         public int HitCount { get; set; }
 

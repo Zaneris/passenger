@@ -6,7 +6,7 @@ namespace Passenger.App.History;
 /// <summary>A row of a Local History: a change set that touched what the history is of (a file or a folder), titled by
 /// its name or by what it did, the newest first. A file's row carries what the file held before the set, which its diff
 /// shows and Revert puts back.</summary>
-public sealed record HistoryRow(long Set, DateTimeOffset Time, string Title, string? Name, bool IsLabel, bool System)
+public sealed record HistoryRow(long Set, DateTimeOffset Time, Words Title, string? Name, bool IsLabel, bool System)
 {
     /// <summary>A file's content before the set, by hash: null when the file did not exist then.</summary>
     public string? Version { get; init; }
@@ -164,27 +164,27 @@ public static class HistoryRows
 
     /// <summary>A set's title: its own name (a label, External change, a revert, a Git checkout), else what it did, in a
     /// file's history briefly ("Change") and in a folder's by file ("Modify Shop.cs", "Change Shop.cs + 2 more").</summary>
-    private static string Title(HistoryEvent first, IReadOnlyList<HistoryEvent> all, bool single)
+    private static Words Title(HistoryEvent first, IReadOnlyList<HistoryEvent> all, bool single)
     {
         if (first.Name is { } name)
         {
-            return name;
+            return Words.Verbatim(name);
         }
         List<HistoryEvent> changes = [.. all.Where(e => e.Kind != HistoryKind.Seen)];
         if (changes.Count > 1)
         {
-            return $"Change {FileName(changes[^1])} + {Numbers.Said(changes.Count - 1)} more";
+            return HistoryWords.ChangedFiles(FileName(changes[^1]), changes.Count - 1);
         }
         return first.Kind switch
         {
-            HistoryKind.Created => $"Create {FileName(first)}",
-            HistoryKind.Deleted => $"Delete {FileName(first)}",
-            HistoryKind.Moved when Path.GetDirectoryName(first.Path) == Path.GetDirectoryName(first.To) => $"Rename {FileName(first)} to {Path.GetFileName(first.To)}",
-            HistoryKind.Moved => $"Move {FileName(first)} to {Path.GetFileName(Path.GetDirectoryName(first.To))}",
-            _ when single => "Change",
-            _ => $"Modify {FileName(first)}",
+            HistoryKind.Created => HistoryWords.Created(FileName(first)),
+            HistoryKind.Deleted => HistoryWords.Deleted(FileName(first)),
+            HistoryKind.Moved when Path.GetDirectoryName(first.Path) == Path.GetDirectoryName(first.To) => HistoryWords.Renamed(FileName(first), Words.Verbatim(Path.GetFileName(first.To ?? string.Empty))),
+            HistoryKind.Moved => HistoryWords.Moved(FileName(first), Words.Verbatim(Path.GetFileName(Path.GetDirectoryName(first.To)) ?? string.Empty)),
+            _ when single => HistoryWords.Changed,
+            _ => HistoryWords.Modified(FileName(first)),
         };
     }
 
-    private static string FileName(HistoryEvent kept) => Path.GetFileName(kept.Path ?? string.Empty);
+    private static Words FileName(HistoryEvent kept) => Words.Verbatim(Path.GetFileName(kept.Path ?? string.Empty));
 }

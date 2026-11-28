@@ -16,6 +16,9 @@ internal sealed class Inspector : Inspecting<MauiElement>
     private readonly Driver driver;
     private readonly Application app;
 
+    /// <summary>What MAUI's XAML Incremental Hot Reload did in the app, heard from the inspector's start.</summary>
+    public XamlUpdates Updates { get; } = new();
+
     public Inspector(Connection connection) : base(connection)
     {
         app = Application.Current ?? throw new InvalidOperationException("The app has no Application");
@@ -37,6 +40,7 @@ internal sealed class Inspector : Inspecting<MauiElement>
         app.DescendantAdded -= OnCame;
         app.DescendantRemoved -= OnCame;
         VisualDiagnostics.VisualTreeChanged -= OnTreeChanged;
+        Updates.Dispose();
         picker.Choose(false);
         picker.Outline(null);
         picker.Stop();
@@ -67,7 +71,45 @@ internal sealed class Inspector : Inspecting<MauiElement>
 
     protected override List<AppWindow> SetOverlays(Request request) => throw new Refusal("Renderer debug overlays are Avalonia's: a MAUI app has none");
 
-    protected override XamlReloaded Reload(XamlChange change) => throw new Refusal("XAML Hot Reload does not reach a MAUI app yet");
+    protected override XamlReloaded Reload(XamlChange change) => throw new Refusal("A MAUI app's XAML reaches it as code, through the debugger");
+
+    /// <summary>The open instances of a type, each as Passenger names an element (Type#Name), each made again from the XAML
+    /// of <paramref name="remade"/> where given, a page of a type derived from it too: the app, its windows and what each
+    /// window holds. Why one could not be made again stops the rest.</summary>
+    public (IReadOnlyList<string> Objects, string? Refused) Took(Type type, XamlChange? remade)
+    {
+        List<MauiElement> open = [];
+        if (app.GetType() == type)
+        {
+            open.Add(app);
+        }
+        List<MauiElement> pending = [.. TopLevels()];
+        while (pending.Count > 0)
+        {
+            MauiElement next = pending[0];
+            pending.RemoveAt(0);
+            // A page whose class derives from the XAML's is made by its initializer too.
+            if (next.GetType() == type || remade is not null && type.IsAssignableFrom(next.GetType()))
+            {
+                open.Add(next);
+            }
+            pending.AddRange(Children(next));
+        }
+        if (remade is not null && typeof(ResourceDictionary).IsAssignableFrom(type))
+        {
+            return ([], $"MAUI's patch passes over this change to {Path.GetFileName(remade.File)}, and a resource dictionary is not made again: restart the app to see it");
+        }
+        List<string> objects = [];
+        foreach (MauiElement made in open)
+        {
+            if (remade is not null && XamlRemakes.Remake(made, type, remade) is { } why)
+            {
+                return (objects, why);
+            }
+            objects.Add(remade is null ? Shown.Called(made) : $"{Shown.Called(made)} made again");
+        }
+        return (objects, null);
+    }
 
     protected override void Later(TimeSpan delay, Action action) => app.Dispatcher.DispatchDelayed(delay, action);
 

@@ -8,7 +8,7 @@ namespace Passenger.App.Containers;
 public sealed class FolderContainers(string? folder, ContainerEngine engine)
 {
     private readonly List<string> containers = [];
-    private readonly List<IReadOnlyList<string>> projects = [];
+    private readonly List<(IReadOnlyList<string> Compose, ContainerEngine Engine)> projects = [];
 
     /// <summary>The engine the folder's window uses.</summary>
     public ContainerEngine Engine { get; } = engine;
@@ -26,11 +26,12 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
         containers.Add(container);
     }
 
-    /// <summary>A Compose project brought up for the folder (its <c>compose -p NAME -f …</c> words), taken down with it.</summary>
-    public void StartedProject(IReadOnlyList<string> compose)
+    /// <summary>A Compose project brought up for the folder (its <c>compose -p NAME -f …</c> words), taken down with it
+    /// through the engine that brought it up, whichever the settings choose by then.</summary>
+    public void StartedProject(IReadOnlyList<string> compose, ContainerEngine engine)
     {
         UiThread.Check();
-        projects.Add(compose);
+        projects.Add((compose, engine));
     }
 
     /// <summary>A container or project ended by other means (its Stop), which the folder's end leaves alone.</summary>
@@ -40,11 +41,11 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
     public void EndedProject(IReadOnlyList<string> compose)
     {
         UiThread.Check();
-        projects.RemoveAll(p => p.SequenceEqual(compose));
+        projects.RemoveAll(p => p.Compose.SequenceEqual(compose));
     }
 
     /// <summary>Whether a Compose project (its words) is one the folder started and has yet to end.</summary>
-    public bool Holds(IReadOnlyList<string> compose) => projects.Any(p => p.SequenceEqual(compose));
+    public bool Holds(IReadOnlyList<string> compose) => projects.Any(p => p.Compose.SequenceEqual(compose));
 
     /// <summary>Ends what the folder started: its containers removed, and of its Compose projects the containers and
     /// networks this process's labels are on (what its own <c>up</c> made, never the person's own of the project, as
@@ -54,7 +55,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
     public Task EndAsync(Task? upEnded = null)
     {
         string[] removing = [.. containers];
-        IReadOnlyList<string>[] downing = [.. projects];
+        (IReadOnlyList<string> Compose, ContainerEngine Engine)[] downing = [.. projects];
         containers.Clear();
         projects.Clear();
         if (removing.Length == 0 && downing.Length == 0)
@@ -69,10 +70,10 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
             {
                 await Task.WhenAny(upEnded!, Task.Delay(TimeSpan.FromSeconds(10)));
             }
-            List<Task> ending = [.. downing.Select(project => TakeDownAsync(Engine, project, folder, "as the folder closed"))];
+            List<Task> ending = [.. downing.Select(project => TakeDownAsync(project.Engine, project.Compose, folder, "as the folder closed"))];
             if (removing.Length > 0)
             {
-                ending.Add(Quietly(Engine, ["rm", "-f", .. removing], "as the folder closed"));
+                ending.Add(Quietly(Engine, ContainerLabels.Removing(removing), "as the folder closed"));
             }
             await Task.WhenAll(ending);
         });
@@ -82,7 +83,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
             IdeErrors.Observe(ended.ContinueWith(async _ =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(2));
-                await Task.WhenAll(downing.Select(project => TakeDownAsync(Engine, project, folder, "as the folder closed")));
+                await Task.WhenAll(downing.Select(project => TakeDownAsync(project.Engine, project.Compose, folder, "as the folder closed")));
             }, TaskScheduler.Default).Unwrap());
         }
         return ended;
@@ -107,7 +108,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
             if (await IdsAsync(["ps", "-aq", .. each]) is { Length: > 0 } made)
             {
                 IdeLog.Write(IdeLog.Ide, $"Containers: {Numbers.Said(made.Length)} of {compose[named + 1]}'s containers removed {when}");
-                await Quietly(engine, ["rm", "-f", .. made], when);
+                await Quietly(engine, ContainerLabels.Removing(made), when);
             }
         }
         if (services is not { Count: > 0 } && await IdsAsync(["network", "ls", "-q", .. filters]) is { Length: > 0 } networks)
@@ -133,7 +134,7 @@ public sealed class FolderContainers(string? folder, ContainerEngine engine)
     /// <summary>Removes containers by id, as the folder's end removes its own: what fails is the IDE's error, said with
     /// <paramref name="when"/>. Whether the engine removed them. Any thread.</summary>
     public static Task<bool> RemoveAsync(ContainerEngine engine, IReadOnlyList<string> ids, string when) =>
-        ids.Count == 0 ? Task.FromResult(true) : Quietly(engine, ["rm", "-f", .. ids], when);
+        ids.Count == 0 ? Task.FromResult(true) : Quietly(engine, ContainerLabels.Removing(ids), when);
 
     private static async Task<bool> Quietly(ContainerEngine engine, IReadOnlyList<string> words, string when)
     {

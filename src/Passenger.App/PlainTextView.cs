@@ -28,7 +28,7 @@ public sealed class PlainTextView : UserControl
         {
             Document = new TextDocument(text),
             IsReadOnly = true,
-            ReadOnlyWhy = Refusals.OnlyToRead,
+            ReadOnlyWhy = Refusals.OnlyToRead.Shown,
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,

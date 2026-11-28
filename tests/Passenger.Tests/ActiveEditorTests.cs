@@ -26,7 +26,7 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
     /// <summary>Soft wrap: a Markdown file opens wrapped at the editor's width numbered by its first row, Down and Up
     /// go by rows and End and Home by IntelliJ's rules, a click on a wrapped row puts the caret on the character
     /// clicked, a narrower window wraps again keeping the line at the top, and folds and a breakpoint stay on their
-    /// lines among wrapped ones.</summary>
+    /// lines among wrapped ones; and the rows a host draws above lines, which every key, click and fold passes by.</summary>
     [AvaloniaFact]
     public void Soft_wrap_wraps_at_the_editors_width_and_moves_clicks_and_folds_by_rows()
     {
@@ -35,6 +35,8 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Flow.StepApart<ActiveEditorTests>("a click on a wrapped row puts the caret on the character clicked and one past a row's end at that end", t => t.A_click_on_a_wrapped_row_puts_the_caret_on_the_character_clicked_and_one_past_a_rows_end_at_that_end());
         Flow.StepApart<ActiveEditorTests>("a narrower window wraps the text again at its width and keeps the line at the top", t => t.A_narrower_window_wraps_the_text_again_at_its_width_and_keeps_the_line_at_the_top());
         Flow.StepApart<ActiveEditorTests>("folding and a breakpoint stay on their lines with wrapped lines above and among them", t => t.Folding_and_a_breakpoint_stay_on_their_lines_with_wrapped_lines_above_and_among_them());
+        Flow.StepApart<ActiveEditorTests>("a breakpoint preview follows the hovered line number and a click sets the breakpoint", t => t.A_breakpoint_preview_follows_the_hovered_line_number_and_a_click_sets_the_breakpoint());
+        Flow.StepApart<ActiveEditorTests>("rows above lines are passed by keys clicks column selections folds Vim and a screen reader and go with their lines", t => t.Rows_above_lines_are_passed_by_keys_clicks_column_selections_folds_Vim_and_a_screen_reader_and_go_with_their_lines());
     }
 
     private void A_Markdown_file_opens_wrapped_at_the_editors_width_each_row_from_a_word_and_its_number_by_its_first_row_only()
@@ -278,6 +280,162 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
         Assert.True(GutterBeside(window, editor, sum.Start).Contains(dot), "The breakpoint left its line's first row as the method unfolded.");
         window.Close();
     }
+
+    private void A_breakpoint_preview_follows_the_hovered_line_number_and_a_click_sets_the_breakpoint()
+    {
+        MainWindow window = Open("Counter.cs", "int count = 0;\ncount++;\nConsole.WriteLine(count);\n");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        MarkColumn marks = editor.Gutter!.Marks;
+        double inset = (MarkColumn.StripWidth / 2) + CharWidth(editor, 0);
+        Point first = editor.GutterColumnPoint(marks, 0) - new Point(inset, 0);
+        Point second = editor.GutterColumnPoint(marks, 1) - new Point(inset, 0);
+        Point firstOnWindow = editor.TranslatePoint(first, window)!.Value;
+        Point secondOnWindow = editor.TranslatePoint(second, window)!.Value;
+        Color firstBefore = Ui.Pixel(window, firstOnWindow);
+        Color secondBefore = Ui.Pixel(window, secondOnWindow);
+        Color dot = Token(window, TokenKeys.Editor_Breakpoint);
+        Color gutter = Token(window, TokenKeys.Editor_Gutter);
+
+        Ui.Hover(editor, first);
+        Color preview = Ui.Pixel(window, firstOnWindow);
+        Assert.InRange(Math.Abs(preview.R - ((dot.R + gutter.R) / 2)), 0, 2);
+        Assert.InRange(Math.Abs(preview.G - ((dot.G + gutter.G) / 2)), 0, 2);
+        Assert.InRange(Math.Abs(preview.B - ((dot.B + gutter.B) / 2)), 0, 2);
+
+        Ui.Hover(editor, second);
+        Assert.Equal(firstBefore, Ui.Pixel(window, firstOnWindow));
+        Assert.Equal(preview, Ui.Pixel(window, secondOnWindow));
+        Assert.Empty(editor.LineMarks);
+
+        Ui.Hover(editor, editor.GutterColumnPoint(marks, 1));
+        Assert.Equal(secondBefore, Ui.Pixel(window, secondOnWindow));
+        Ui.Hover(editor, second);
+        window.MouseMove(new Point(5, 5));
+        Ui.Settle();
+        Assert.Equal(secondBefore, Ui.Pixel(window, secondOnWindow));
+
+        Ui.Hover(editor, second);
+        Ui.Click(editor, second);
+        Assert.Equal(1, Assert.Single(editor.LineMarks).Line);
+        Assert.Equal(dot, Ui.Pixel(window, secondOnWindow));
+        window.Close();
+    }
+
+    private void Rows_above_lines_are_passed_by_keys_clicks_column_selections_folds_Vim_and_a_screen_reader_and_go_with_their_lines()
+    {
+        StringBuilder code = new("class Rows\n{\n");
+        for (int i = 0; i < 10; i++)
+        {
+            code.Append($"    int M{i}()\n    {{\n        return {i};\n    }}\n\n");
+        }
+        code.Append("}\n");
+        EditorRig rig = new(code.ToString());
+        CodeEditor editor = rig.Editor;
+        TextSnapshot text = rig.Document.Snapshot;
+        static int Declaration(int i) => 2 + (i * 5);
+        RowAbove Above(TextSnapshot of, int i) => new(of.GetLineStart(Declaration(i)) + 4, [new RowAboveWord($"{i} usages", i), new RowAboveWord("Ada Lovelace", -1 - i)]);
+        editor.SetRowsAbove([.. Enumerable.Range(0, 10).Select(i => Above(text, i))]);
+        Ui.Settle();
+        double h = editor.LineHeight;
+        Assert.True(editor.RowsShown == text.LineCount + 10, $"The text shows {editor.RowsShown} rows for its {text.LineCount} lines and 10 rows above them.");
+        Assert.True(Math.Abs(editor.PointOf(text.GetLineStart(2)).Y - (3 * h)) < 0.5, "M0's declaration is not a row lower for the row above it.");
+        Assert.True(Math.Abs(editor.PointOf(text.GetLineStart(7)).Y - (9 * h)) < 0.5, "M1's declaration is not two rows lower for the rows above it and M0.");
+        Point word = editor.RowAbovePoint(2, 0, 0) ?? throw new InvalidOperationException("M0's row above is not drawn.");
+        Assert.True(Math.Abs(word.Y - (2.5 * h)) < 0.5, $"M0's row above is drawn at {word.Y:F0}, not on the row between the brace and the declaration.");
+        Assert.True(word.X > editor.PointOf(text.GetLineStart(2) + 3).X && word.X < editor.PointOf(text.GetLineStart(2) + 12).X,
+            "M0's first word does not start where the declaration does.");
+
+        rig.PlaceCaret(text.GetLineStart(1));
+        rig.Press("DOWN");
+        Assert.True(editor.CaretPosition.Line == 2, $"Down from the brace went to line {editor.CaretPosition.Line + 1}, not the declaration below the row above it.");
+        rig.Press("UP");
+        Assert.True(editor.CaretPosition.Line == 1, $"Up from the declaration went to line {editor.CaretPosition.Line + 1}, not back past the row above it.");
+        rig.PlaceCaret(text.GetLineStart(7) + 4);
+        rig.Press("UP");
+        Assert.True(editor.CaretPosition == new TextPosition(6, 0), $"Up from M1's declaration went to {editor.CaretPosition}, not the empty line above its row above.");
+
+        RowAbovePress? pressed = null;
+        editor.RowAbovePressed += (_, e) => pressed = e;
+        HoverEventArgs? rested = null;
+        editor.Hovered += (_, e) => rested = e;
+        int caret = editor.Selections.Primary.Caret;
+        Point onWord = editor.TranslatePoint(editor.RowAbovePoint(7, 0, 1)!.Value, rig.Window)!.Value;
+        rig.Window.MouseMove(onWord);
+        Ui.WaitFor(() => rested is not null, "a rest over a word of M1's row above");
+        Assert.True(rested!.Above is { Data: -2 }, "A rest over M1's second word above it told no word, or another.");
+        Assert.True(editor.ShowsHand, "The pointer over a word above a line is no hand.");
+        rig.Window.MouseDown(onWord, MouseButton.Left);
+        rig.Window.MouseUp(onWord, MouseButton.Left);
+        Ui.Settle();
+        Assert.True(pressed is { Line: 7, Word.Data: -2 }, $"A press on M1's second word above it told {pressed?.Word.Data ?? "nothing"}.");
+        Assert.True(editor.Selections.Primary.Caret == caret, "A press on a word above a line moved the caret.");
+        pressed = null;
+        Point past = editor.TranslatePoint(new Point(editor.Bounds.Width - 40, editor.RowAbovePoint(7, 0, 0)!.Value.Y), rig.Window)!.Value;
+        rig.Window.MouseDown(past, MouseButton.Left);
+        rig.Window.MouseUp(past, MouseButton.Left);
+        Ui.Settle();
+        Assert.True(pressed is null && editor.Selections.Primary.Caret == caret, "A press on a row above a line, past its words, did something.");
+        Point beside = editor.TranslatePoint(new Point(4, editor.RowAbovePoint(7, 0, 0)!.Value.Y), rig.Window)!.Value;
+        rig.Window.MouseDown(beside, MouseButton.Left);
+        rig.Window.MouseUp(beside, MouseButton.Left);
+        Ui.Settle();
+        Assert.True(editor.Selections.Primary.IsEmpty && editor.Selections.Primary.Caret == caret, "A press on the gutter beside a row above a line selected a line.");
+
+        rig.PlaceCaret(text.GetLineStart(6));
+        rig.Press("control shift DOWN");
+        Assert.True(editor.Selections.Count == 2 && editor.Selections.Items[1].Caret == text.GetLineStart(7),
+            $"A caret cloned below the line above M1's row above went to {editor.Selections.Items[^1].Caret}, not to M1's declaration.");
+
+        TextRange declared = new(text.GetLineStart(7) + 4, 3);
+        Rect bounds = Assert.Single(editor.AccessibleText.BoundsOf(declared));
+        Assert.True(Math.Abs(bounds.Y - editor.PointOf(declared.Start).Y) < 0.5, $"A screen reader is told M1's declaration stands at {bounds.Y:F0}, not on its row of text.");
+
+        editor.UsesVim = true;
+        rig.PlaceCaret(text.GetLineStart(11));
+        rig.Press("ESCAPE");
+        Ui.Type(rig.Window, "G", "g");
+        Ui.Type(rig.Window, "K", "k");
+        Assert.True(editor.CaretPosition.Line == 10, $"Vim's gk from the empty line after M1 went to line {editor.CaretPosition.Line + 1}.");
+        rig.PlaceCaret(text.GetLineStart(11));
+        Ui.Type(rig.Window, "G", "g");
+        Ui.Type(rig.Window, "J", "j");
+        Assert.True(editor.CaretPosition.Line == 12, $"Vim's gj from the empty line before M2's row above went to line {editor.CaretPosition.Line + 1}, not M2's declaration.");
+        editor.UsesVim = false;
+
+        // Folding M1's class-like span hides the rows above the lines it hides, and keeps its own first line's.
+        editor.SetFoldRegions([new FoldRegion(text.GetLine(7).End, text.GetLineStart(17) + 4, "{...}", Folded: true)]);
+        Ui.Settle();
+        Assert.True(editor.RowsShown == text.LineCount - 10 + 8, $"With M2 and M3 folded under M1, the text shows {editor.RowsShown} rows, where their rows above are hidden.");
+        Assert.NotNull(editor.RowAbovePoint(7, 0, 0));
+        editor.SetFoldRegions([]);
+        Ui.Settle();
+
+        // A line broken at a declaration takes its row above down with it; a declaration's line deleted takes its row away.
+        rig.PlaceCaret(text.GetLineStart(12) + 4);
+        rig.Press("ENTER");
+        TextSnapshot broken = rig.Document.Snapshot;
+        Assert.True(broken.GetLineFromOffset(editor.RowsAbove[2].Offset) == 13, "A line broken before M2's declaration left its row above on the line above.");
+        Assert.True(Math.Abs(editor.PointOf(broken.GetLineStart(13)).Y - editor.PointOf(broken.GetLineStart(12)).Y - (2 * h)) < 0.5,
+            "M2's row above is not between the line the break left and M2's declaration.");
+        rig.Press("meta Z");
+        int rows = editor.RowsShown;
+        editor.Selections = SelectionSet.Single(new Selection(rig.Document.Snapshot.GetLineStart(17), rig.Document.Snapshot.GetLineStart(18)));
+        rig.Press("BACK_SPACE");
+        Assert.True(editor.RowsAbove.Count == 9 && editor.RowsShown == rows - 2, $"M3's declaration deleted left {editor.RowsAbove.Count} rows above and {editor.RowsShown} rows.");
+        rig.Press("meta Z");
+
+        // Rows set above the view's top leave the row at the top where it was.
+        TextSnapshot now = rig.Document.Snapshot;
+        editor.SetRowsAbove([.. Enumerable.Range(0, 10).Select(i => Above(now, i))]);
+        // M3's row above stands below the rows above M0, M1 and M2.
+        editor.ScrollTo(new Vector(0, 20 * h));
+        Ui.Settle();
+        Assert.True(editor.RowAbovePoint(17, 0, 0) is { } top && Math.Abs(top.Y - (h / 2)) < 0.5, "M3's row above is not at the view's top.");
+        editor.SetRowsAbove([.. Enumerable.Range(0, 10).Select(i => Above(now, i)), new RowAbove(now.GetLineStart(3) + 8, [new RowAboveWord("more")])]);
+        Ui.Settle();
+        Assert.True(editor.RowAbovePoint(17, 0, 0) is { } kept && Math.Abs(kept.Y - (h / 2)) < 0.5, "A row set above the view's top moved M3's row above, at the top, down.");
+        rig.Window.Close();
+    }
 }
 
 /// <summary>A key in a long soft-wrapped file costs the line it changed, never a wrap of the whole file, and about what it
@@ -286,14 +444,15 @@ public sealed class ActiveEditorTests : ActiveEditorFolders
 public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
 {
     /// <summary>A key in twenty thousand soft-wrapped lines wraps only the line it changed, a key in a screen of
-    /// coloured code makes again only the row it changed, and a frame of hinted lines allocates about what one of the
-    /// same lines without hints does.</summary>
+    /// coloured code makes again only the row it changed, a frame of hinted lines allocates about what one of the
+    /// same lines without hints does, and a key among rows above lines costs what it does among fewer.</summary>
     [AvaloniaFact]
     public void A_key_wraps_and_draws_again_only_what_it_changed()
     {
         Flow.StepApart<ActiveEditorResponsivenessTests>("a key in twenty thousand soft wrapped lines wraps only the line it changed", t => t.A_key_in_twenty_thousand_soft_wrapped_lines_wraps_only_the_line_it_changed());
         Flow.StepApart<ActiveEditorResponsivenessTests>("a key in a screen of coloured code makes again only the row it changed", t => t.A_key_in_a_screen_of_coloured_code_makes_again_only_the_row_it_changed());
         Flow.StepApart<ActiveEditorResponsivenessTests>("a frame of hinted lines allocates about what one of the same lines naming their arguments does", t => t.A_frame_of_hinted_lines_allocates_about_what_one_of_the_same_lines_naming_their_arguments_does());
+        Flow.StepApart<ActiveEditorResponsivenessTests>("a key among twenty thousand rows above lines costs what one among two thousand does", t => t.A_key_among_twenty_thousand_rows_above_lines_costs_what_one_among_two_thousand_does());
     }
 
     /// <summary>Twenty thousand lines of prose, each wrapping onto rows: a key costs the line it changed, never a wrap of the
@@ -337,6 +496,57 @@ public sealed class ActiveEditorResponsivenessTests : ActiveEditorFolders
 
     /// <summary>What a key may allocate on the UI thread soft-wrapped beyond what it does unwrapped: its line's rows.</summary>
     private const long SoftWrapSlack = 16 * 1024;
+
+    /// <summary>A row above every line of twenty thousand: what the rows above add to what the keys allocate on the UI thread
+    /// is what they add among two thousand, the rows carried through each edit as runs it moves only where it reaches, and
+    /// the keys draw again no row above a line they did not change.</summary>
+    private void A_key_among_twenty_thousand_rows_above_lines_costs_what_one_among_two_thousand_does()
+    {
+        // The least of three rounds of each, as what a collection's end counts that was never allocated only adds.
+        long[] least = [long.MaxValue, long.MaxValue, long.MaxValue, long.MaxValue];
+        long drawn = 0;
+        for (int round = 0; round < 3; round++)
+        {
+            least[0] = Math.Min(least[0], Measured(2_000, above: false).Bytes);
+            least[1] = Math.Min(least[1], Measured(2_000, above: true).Bytes);
+            least[2] = Math.Min(least[2], Measured(20_000, above: false).Bytes);
+            (long bytes, long redrawn) = Measured(20_000, above: true);
+            least[3] = Math.Min(least[3], bytes);
+            drawn = redrawn;
+        }
+        long few = least[1] - least[0];
+        long many = least[3] - least[2];
+        TestContext.Current.TestOutputHelper?.WriteLine($"Rows above lines added {few:N0} bytes on the UI thread to twelve keys among 2,000 lines, {many:N0} among 20,000");
+        Assert.True(many <= few + (512 * Timed.Length),
+            $"Rows above lines added {many:N0} bytes on the UI thread to twelve keys among 20,000 lines, against {few:N0} among 2,000: every row above was carried or made again");
+        Assert.True(drawn == 0, $"Twelve keys on a line with no row above drew {drawn} rows above other lines again");
+
+        // Twelve keys in the middle of a file of lines, each but that one with a row above or none: the bytes they
+        // allocated, and the rows above drawn.
+        static (long Bytes, long Drawn) Measured(int lines, bool above)
+        {
+            StringBuilder source = new();
+            for (int i = 0; i < lines; i++)
+            {
+                source.Append("    int value").Append(i).Append(" = ").Append(i).Append(";\n");
+            }
+            EditorRig rig = new(source.ToString());
+            TextSnapshot text = rig.Document.Snapshot;
+            if (above)
+            {
+                rig.Editor.SetRowsAbove([.. Enumerable.Range(0, lines).Where(i => i != lines / 2).Select(i => new RowAbove(text.GetLineStart(i) + 4, [new RowAboveWord($"{i} usages"), new RowAboveWord("Ada Lovelace")]))]);
+            }
+            rig.Editor.GoTo(new TextPosition(lines / 2, 8));
+            Ui.Settle();
+            // The lines, the empty one after the last line break, and a row above each line but one.
+            Assert.True(rig.Editor.RowsShown == lines + 1 + (above ? lines - 1 : 0), $"{lines:N0} lines show {rig.Editor.RowsShown:N0} rows.");
+            long before = rig.Editor.RowsAboveDrawn;
+            long bytes = Keys(rig, text.GetLineStart(lines / 2) + 8);
+            long drawn = rig.Editor.RowsAboveDrawn - before;
+            rig.Window.Close();
+            return (bytes, drawn);
+        }
+    }
 
     /// <summary>A frame of lines with hints, a parameter's name before each argument, allocates on the UI thread about
     /// what a frame of the same lines naming their arguments in their text does.</summary>

@@ -3,9 +3,11 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Passenger.App;
+using Passenger.App.DependencyMap;
 using Passenger.App.Run;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 using Passenger.Text;
 
 namespace Passenger.Tests;
@@ -47,12 +49,16 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Flow.StepApart("a pull held past the server's patience is noticed once the server leaves its check unanswered", () => new ProblemsTests(project), t => t.A_files_project_wide_pull_held_past_the_servers_patience_is_noticed_once_the_server_leaves_its_check_unanswered());
     }
 
-    /// <summary>The Problems window's list as a person reads it, and what a key costs it however many problems the
-    /// solution has.</summary>
+    /// <summary>The Problems window's list as a person reads it, a broken layer rule's warning among it, and what a key
+    /// costs it however many problems the solution has.</summary>
     [AvaloniaFact]
     public void The_Problems_list_filters_counts_and_goes_to_each_problem_and_a_key_lists_only_the_open_files_however_many_the_solution_has()
     {
         Flow.StepApart("warnings turned off and a filter's text leave only the matching errors, and the counts follow", () => new ProblemsTests(project), t => t.Warnings_turned_off_and_a_filters_text_leave_only_the_matching_errors_and_the_counts_follow());
+        Flow.StepApart("Next and Previous Error in Solution step through the Solution tab's errors from the caret, wrapping, and say why with the analysis off", () => new ProblemsTests(project), t => t.Next_and_previous_error_in_solution_step_through_the_solution_tabs_errors_from_the_caret_wrapping_and_say_why_with_the_analysis_off());
+        Flow.StepApart("Run Inspection by Name runs the rule chosen over the solution whatever its severity and lists its places in the Inspection tab", () => new ProblemsTests(project), t => t.Run_inspection_by_name_runs_the_rule_chosen_over_the_solution_whatever_its_severity_and_lists_its_places_in_the_inspection_tab());
+        Flow.StepApart("a use breaking the folder's layer rules is marked in the editor, Problems and the map, and its fix lets the layer use the other", () => new ProblemsTests(project), t => t.A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other());
+        Flow.StepApart("a local and a local function never used are faded beside their warnings' waves and listed as warnings", () => new ProblemsTests(project), t => t.A_local_and_a_local_function_never_used_are_faded_beside_their_warnings_waves_and_listed_as_warnings());
         Flow.StepApart("a problem below line breaks only Roslyn counts is listed and gone to at its own line", () => new ProblemsTests(project), t => t.A_problem_below_line_breaks_only_roslyn_counts_is_listed_and_gone_to_at_its_own_line());
         Flow.StepApart("a typing pause lists again only the open file's problems, however many the solution has", () => new ProblemsTests(project), t => t.A_typing_pause_lists_again_only_the_open_files_problems_however_many_the_solution_has());
         Flow.StepApart("a key in a large solution lists the open file's problems without waiting for the whole project's analysis", () => new ProblemsTests(project), t => t.A_key_in_a_large_solution_lists_the_open_files_problems_without_waiting_for_the_whole_projects_analysis());
@@ -74,8 +80,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         ProblemsModel problems = window.BottomPanel.Problems;
         Assert.Null(problems.SolutionProblems);
 
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Assert.True(window.Settings.SolutionWideAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Problem bad = problems.SolutionProblems!.First(p => p.Code == "CS0029");
         Assert.EndsWith("Bad.cs", bad.Path, StringComparison.Ordinal);
@@ -134,6 +139,14 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         window.Close();
     }
 
+    /// <summary>Solution-wide analysis turned on by the status bar's action, from off whatever the settings opened on.</summary>
+    internal static void AnalyseSolution(MainWindow window)
+    {
+        window.ApplySettings(window.Settings with { SolutionWideAnalysis = false });
+        window.Perform(AppActions.ToggleSolutionAnalysis);
+        Assert.True(window.Settings.SolutionWideAnalysis, "The status bar's action left solution-wide analysis off");
+    }
+
     /// <summary>The Solution tab's rows, as the pulls since it was shown left them, are those it lists afresh.</summary>
     private static void ListedAsAfresh(ProblemsModel problems, string when)
     {
@@ -161,7 +174,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         {
             Task holding = server.HoldNextAnswer(Passenger.Roslyn.Extension.ExtensionMethods.WorkspaceDiagnostic,
                 p => p is Passenger.Lsp.WorkspaceDiagnosticParams { Identifier: "WorkspaceDocumentsAndProject" }, answered.Task);
-            window.Perform(AppActions.ToggleSolutionAnalysis);
+            AnalyseSolution(window);
             // Pumped, not settled: a held answer is work in flight.
             bool Ended() => !service.IsAnalysing && problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true;
             Assert.True(Ui.Pumped(Ended, TimeSpan.FromSeconds(90)),
@@ -264,7 +277,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         {
             csharp = window.CSharpService!;
             Server = csharp.Session!.Server;
-            window.Perform(AppActions.ToggleSolutionAnalysis);
+            AnalyseSolution(window);
             Ui.WaitFor(() => Server.DiagnosticSources.Contains(Passenger.Lsp.LspDocument.ProjectWideSource),
                 "the server to give files a project-wide source of diagnostics, as it does analysing the whole solution");
             kept = (Server.SlowRequest, Server.ResponseLimit, Server.Patience);
@@ -357,7 +370,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         MainWindow window = project.Open(null, w =>
         {
             Ui.PumpUntil(() => w.CSharpService is { State: "Starting C#…" }, "the language server to start");
-            w.Perform(AppActions.ToggleSolutionAnalysis);
+            AnalyseSolution(w);
         });
         Assert.True(window.Settings.SolutionWideAnalysis);
         ProblemsModel problems = window.BottomPanel.Problems;
@@ -375,7 +388,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Passenger.Lsp.LanguageServer server = window.CSharpService!.Session!.Server;
         (string? source, Passenger.Lsp.WorkspaceDocumentDiagnosticReport analysed) = Reported(server, server.WorkspaceDiagnosticSources, [],
@@ -432,7 +445,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
 
         // The pulls held open answer the edit, and the next pull of every source is refused.
@@ -459,7 +472,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     {
         MainWindow window = project.Open("Helper.cs");
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Code == "CS0029") == true, "the closed file's error");
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + "Twice".Length);
@@ -539,6 +552,70 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         int at = text.IndexOf(from, StringComparison.Ordinal);
         window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(at, at + from.Length));
         window.KeyTextInput(to);
+    }
+
+    /// <summary>Next and Previous Error in Solution, from their keys, go to the solution's errors in the Solution tab's order from
+    /// the caret, from a file with none the first, each chosen in the tab and said with which of how many it is, wrapping at
+    /// either end; with solution-wide analysis off they say why.</summary>
+    private void Next_and_previous_error_in_solution_step_through_the_solution_tabs_errors_from_the_caret_wrapping_and_say_why_with_the_analysis_off()
+    {
+        Write("Caller.cs", "static class Caller\n{\n    public static int Four() => Helper.Thrice(2);\n}\n");
+        MainWindow window = project.Open("Helper.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.ApplySettings(window.Settings with { SolutionWideAnalysis = false });
+        Assert.Equal(Refusals.SolutionAnalysisOff.Shown, window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context())?.Shown);
+
+        AnalyseSolution(window);
+        Ui.WaitFor(() => problems.SolutionErrorsListed.Count == 2,
+            () => $"the errors of Bad.cs and Caller.cs; Problems lists [{string.Join("; ", problems.SolutionErrorsListed.Select(p => $"{p.Where} {p.Message}"))}]");
+        problems.Shown = ProblemsTab.Solution;
+        Problem bad = problems.SolutionErrorsListed[0];
+        Problem caller = problems.SolutionErrorsListed[1];
+        Assert.True(bad.Path!.EndsWith("Bad.cs", StringComparison.Ordinal) && caller.Path!.EndsWith("Caller.cs", StringComparison.Ordinal),
+            $"The Solution tab's errors are in {bad.Where} and {caller.Where}, not Bad.cs's then Caller.cs's");
+        window.EditorArea.CodeEditor.Focus();
+        foreach ((string action, Problem expected, int which) in new[]
+        {
+            (AppActions.NextErrorInSolution, bad, 1), (AppActions.NextErrorInSolution, caller, 2), (AppActions.NextErrorInSolution, bad, 1), (AppActions.PreviousErrorInSolution, caller, 2),
+        })
+        {
+            Ui.Press(window, Ui.Shortcut(action));
+            Ui.Settle();
+            Assert.True(window.EditorArea.Active?.Path == expected.Path && window.EditorArea.CodeEditor.CaretPosition == expected.Position && problems.Selected == expected
+                && window.Status == $"{expected.Message} ({which} of 2 errors in the solution)",
+                $"{Ui.Shortcut(action)} went to {window.EditorArea.Active?.Name} at {window.EditorArea.CodeEditor.CaretPosition}, the Solution tab choosing "
+                + $"{problems.Selected?.Where ?? "nothing"} and the status bar saying \"{window.Status}\", not {expected.Where}, the error {which} of 2");
+        }
+        window.Close();
+    }
+
+    /// <summary>Run Inspection by Name, from its keys, lists the analyzers' rules to find one by its id, runs it over the solution
+    /// whatever its severity (an unnecessary assignment, a suggestion the Solution tab would leave to the editor) and lists
+    /// where it reports in the Inspection tab, shown, under what it ran, the filter letting its severity through.</summary>
+    private void Run_inspection_by_name_runs_the_rule_chosen_over_the_solution_whatever_its_severity_and_lists_its_places_in_the_inspection_tab()
+    {
+        Write("Unread.cs", "static class Unread\n{\n    public static int Count()\n    {\n        int value = 1;\n        value = 2;\n        return value;\n    }\n}\n");
+        MainWindow window = project.Open("Unread.cs");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        window.EditorArea.CodeEditor.Focus();
+        Ui.Press(window, Ui.Shortcut(AppActions.RunInspectionByName));
+        Ui.WaitFor(() => window.Popup is Passenger.App.Vcs.ChoicePopup, () => $"the rules to choose from; the window says {window.Status}");
+        Passenger.App.Vcs.ChoicePopup rules = (Passenger.App.Vcs.ChoicePopup)window.Popup!;
+        rules.Query = "IDE0059";
+        Ui.Settle();
+        Assert.True(rules.Rows.FirstOrDefault()?.Detail.English.StartsWith("IDE0059 ", StringComparison.Ordinal) == true,
+            $"Searching the rules for IDE0059 found [{string.Join("; ", rules.Rows.Take(5).Select(r => $"{r.Label} {r.Detail}"))}]");
+        string title = rules.Rows[0].Label.English;
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => problems.InspectionProblems is not null, () => $"IDE0059's run over the solution; the window says {window.Status}", TimeSpan.FromMinutes(1));
+        Problem found = Assert.Single(problems.InspectionProblems!);
+        Assert.True(found.Code == "IDE0059" && found.Path!.EndsWith("Unread.cs", StringComparison.Ordinal) && found.Position == new TextPosition(4, 12),
+            $"IDE0059 was reported {found.Code} at {found.Where}, not at the value assigned to value first");
+        Assert.True(problems.Shown == ProblemsTab.Inspection && problems.Rows.Any(r => r.Problem == found) && window.DockHost.IsShown(ToolWindowIds.Problems),
+            $"The Inspection tab {(problems.Shown == ProblemsTab.Inspection ? "shows" : $"is not shown, {problems.Shown} is")}, its rows [{string.Join("; ", problems.Rows.Select(r => r.Label))}]");
+        Assert.True(problems.InspectionSaid == $"IDE0059 {title}: 1 place in 1 file" && window.Status == problems.InspectionSaid,
+            $"The Inspection tab says \"{problems.InspectionSaid}\" and the status bar \"{window.Status}\", not what IDE0059's run came to");
+        window.Close();
     }
 
     /// <summary>Problems filtered as a person does it: Warnings turned off leaves the file's errors, the counts on its tab and
@@ -689,8 +766,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         string typed = Passenger.Core.PathNames.Canonical(Path.Combine(project.Folder, "Typed.cs"));
         MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Assert.True(window.Settings.SolutionWideAnalysis);
+        AnalyseSolution(window);
         // Each file's warnings, Bad.cs's error and the open file's warning.
         int listed = (Files * warnings) + 2;
         Ui.WaitFor(() => problems.SolutionProblems?.Count == listed && problems.SolutionProblems.Any(p => p.Path == typed),
@@ -765,7 +841,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Assert.Equal(new TextPosition(3, 23), editor.CaretPosition);
 
         window.OpenFile("Program.cs");
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         Ui.WaitFor(() => problems.SolutionProblems?.Any(p => p.Path == separated) == true, "Separated.cs's error in the solution's problems");
         Assert.Equal(new TextPosition(3, 23), problems.SolutionProblems!.First(p => p.Path == separated).Position);
         problems.Shown = ProblemsTab.Solution;
@@ -789,7 +865,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         project.Write([.. Enumerable.Range(0, Files).Select(i => ($"Checked{i}.cs", Checked(i, "before")))]);
         MainWindow window = project.Open("Checked0.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         string open = window.EditorArea.Active!.Path;
         int Saying(string variable, bool closed = true) => problems.SolutionProblems?.Count(p => p.Path!.Contains("Checked", StringComparison.Ordinal)
             && (p.Path == open) != closed && p.Message.Contains($"'{variable}'", StringComparison.Ordinal)) ?? 0;
@@ -929,7 +1005,7 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         project.Write([("Typed.cs", Typed), .. Enumerable.Range(0, Files).Select(i => ($"Gone{i}.cs", Gone(i)))]);
         MainWindow window = project.Open("Typed.cs", w => w.Perform(AppActions.ShowProblems));
         ProblemsModel problems = window.BottomPanel.Problems;
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        AnalyseSolution(window);
         int Warned() => problems.SolutionProblems?.Count(p => Path.GetFileName(p.Path)!.StartsWith("Gone", StringComparison.Ordinal)) ?? 0;
         Ui.WaitFor(() => Warned() == Files, $"the {Files} files' warnings", TimeSpan.FromMinutes(3));
         Passenger.Lsp.WatchedFiles watched = window.CSharpService!.Session!.Server.WatchedFiles;
@@ -1036,6 +1112,98 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Problem[] errors = [.. problems.FileProblems.Where(p => p.Severity == ProblemSeverity.Error || p.Message.StartsWith("CS8652: ", StringComparison.Ordinal))];
         Assert.True(errors.Length == 0,
             $"Problems lists C# 15 that the .NET 11 SDK builds as an error: {string.Join("; ", errors.Select(p => p.Message))}");
+        window.Close();
+    }
+
+    /// <summary>A local never used (CS0168) and a local function never called (CS8321), which the compiler warns of with no
+    /// unnecessary tag, have their names faded under their warnings' waves, as code the server calls unnecessary is: a
+    /// name drawn at half its ink beside a local used, and Problems still lists both as warnings (#2398).</summary>
+    private void A_local_and_a_local_function_never_used_are_faded_beside_their_warnings_waves_and_listed_as_warnings()
+    {
+        Write("Unused.cs", "static class Unused\n{\n    static int Count()\n    {\n        int declared;\n        int counted = 1;\n"
+            + "        int Local() => 1;\n        return counted;\n    }\n}\n");
+        MainWindow window = project.Open("Unused.cs", w => w.Perform(AppActions.ShowProblems));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+        Marker? Of(string code) => window.EditorArea.Active!.Markers.FirstOrDefault(m => m.Code == code);
+        string Marked() => string.Join("; ", window.EditorArea.Active!.Markers.Select(m => $"{m.Kind}{(m.Faded ? " faded" : "")} {text[m.Range.Start..m.Range.End]}: {m.Message}"));
+        Ui.WaitFor(() => Of("CS0168") is not null && Of("CS8321") is not null, () => $"the warnings of the local and the local function never used; the file is marked [{Marked()}]");
+        foreach ((string code, string name) in (ReadOnlySpan<(string, string)>)[("CS0168", "declared"), ("CS8321", "Local")])
+        {
+            Marker marker = Of(code)!.Value;
+            Assert.True(marker is { Kind: MarkerKind.Warning, Faded: true } && text[marker.Range.Start..marker.Range.End] == name,
+                $"{code} marks \"{text[marker.Range.Start..marker.Range.End]}\" as {marker.Kind}{(marker.Faded ? ", faded" : ", unfaded")}, where {name} is faded under a warning's wave: [{Marked()}]");
+        }
+        Assert.DoesNotContain(window.EditorArea.Active!.Markers, m => m.Faded && text[m.Range.Start..m.Range.End] == "counted");
+        Ui.Settle();
+        double declared = Ink(text.IndexOf("declared", StringComparison.Ordinal), "declared".Length);
+        double counted = Ink(text.IndexOf("counted", StringComparison.Ordinal), "counted".Length);
+        Assert.True(declared < counted * 0.75,
+            $"The local never used is drawn at {declared:0} of ink against its ground, the local used at {counted:0}: its name is not faded as the window draws it");
+        ProblemsModel problems = window.BottomPanel.Problems;
+        Ui.WaitFor(() => problems.FileProblems.Count(p => p.Severity == ProblemSeverity.Warning && (p.Message.StartsWith("CS0168: ", StringComparison.Ordinal) || p.Message.StartsWith("CS8321: ", StringComparison.Ordinal))) == 2,
+            () => $"Problems listing both as warnings: [{string.Join("; ", problems.FileProblems.Select(p => $"{p.Severity} {p.Message}"))}]");
+        window.Close();
+
+        // How far the name's pixels stray from its line's ground at most, above the wave its warning draws under it.
+        double Ink(int offset, int length)
+        {
+            Point from = editor.TranslatePoint(editor.PointOf(offset), window)!.Value;
+            Point to = editor.TranslatePoint(editor.PointOf(offset + length), window)!.Value;
+            List<Point> points = [new Point(from.X + 0.5, from.Y + 0.5)];
+            for (double y = from.Y + 1; y < from.Y + (editor.LineHeight * 0.75); y += 0.5)
+            {
+                for (double x = from.X; x < to.X; x += 0.5)
+                {
+                    points.Add(new Point(x, y));
+                }
+            }
+            Avalonia.Media.Color[] seen = Ui.Pixels(window, points);
+            Avalonia.Media.Color ground = seen[0];
+            return seen.Skip(1).Max(c => Math.Abs(c.R - ground.R) + Math.Abs(c.G - ground.G) + Math.Abs(c.B - ground.B));
+        }
+    }
+
+    /// <summary>A folder's passenger-layers.json puts the Shop.Domain namespaces in one layer and Shop.Screens' in another
+    /// that may use it: a Domain type's call of a Screens type is a warning where the call names it, in the editor and in
+    /// Problems, saying which layers it breaks, and the map's edge between them is drawn as broken; its fix lets Domain use
+    /// Screens in the file, where its layer is written and its comment kept, after which the warning and the broken edge go.</summary>
+    private void A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other()
+    {
+        const string Layers = "{\n  // The screens show the domain's orders.\n  \"passengerLayers\": 1,\n  \"layers\": [\n    { \"name\": \"Domain\", \"namespaces\": [\"Shop.Domain.*\"] },\n"
+            + "    { \"name\": \"Screens\", \"namespaces\": [\"Shop.Screens.*\"], \"mayUse\": [\"Domain\"] }\n  ]\n}\n";
+        Write("passenger-layers.json", Layers);
+        Write("Screen.cs", "namespace Shop.Screens;\n\nstatic class Screen\n{\n    public static string Title() => \"Orders\";\n}\n");
+        Write("Order.cs", "using Shop.Screens;\n\nnamespace Shop.Domain;\n\nstatic class Order\n{\n    public static string Shown() => Screen.Title();\n}\n");
+        MainWindow window = project.Open("Order.cs", w => w.Perform(AppActions.ShowProblems));
+        ProblemsModel problems = window.BottomPanel.Problems;
+        const string Broken = "The Domain layer may not use the Screens layer, which Screen.Title() is in: passenger-layers.json lets it use no other layer";
+        Ui.WaitFor(() => problems.FileProblems.Any(p => p.Message == Broken),
+            () => $"the broken layer rule in Problems, which lists [{string.Join("; ", problems.FileProblems.Select(p => p.Message))}]");
+        int title = window.EditorArea.Active!.Text.Snapshot.ToString().IndexOf("Title()", StringComparison.Ordinal);
+        Assert.Contains(window.EditorArea.Active!.Markers, m => m.Message == Broken && m.Range.Start == title && m.Range.End == title + "Title".Length);
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "string Sho");
+        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap)?.Shown);
+        DependencyMapView map = window.DependencyMapWindow;
+        Ui.WaitFor(() => map.Chosen?.Name == "Shown()" && !map.IsReading, () => $"the map chosen at Order.Shown, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
+        Assert.Equal(["Uses Shop.Screens, breaking the layer rules: calls 1"], map.EdgeRows.Select(e => e.Words.English));
+        Assert.Single(map.Picture.Broken);
+        window.OpenFile(project.PathOf("Order.cs"));
+        Ui.Settle();
+
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "Screen.Ti");
+        Ui.Run(window, AppActions.QuickFix);
+        const string Fix = "Let Domain Use Screens in passenger-layers.json";
+        Ui.WaitFor(() => window.Assist.Offered.Contains(Fix), () => $"the layer rule's fix among [{string.Join(", ", window.Assist.Offered)}]");
+        for (int i = 0; i < window.Assist.Offered.ToList().IndexOf(Fix); i++)
+        {
+            Ui.Press(window, "DOWN");
+        }
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => problems.FileProblems.All(p => p.Message != Broken) && window.EditorArea.Active!.Markers.All(m => m.Message != Broken) && map.Picture.Broken.Count == 0,
+            () => $"the warning gone once Domain may use Screens, the file reading {File.ReadAllText(project.PathOf("passenger-layers.json"))}");
+        Assert.Equal(Layers.Replace("[\"Shop.Domain.*\"] }", "[\"Shop.Domain.*\"], \"mayUse\": [\"Screens\"] }", StringComparison.Ordinal),
+            File.ReadAllText(project.PathOf("passenger-layers.json")).ReplaceLineEndings("\n"));
         window.Close();
     }
 

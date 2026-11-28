@@ -194,7 +194,7 @@ public sealed class FindView : DockPanel
         tabBar = ToolBars.Top(new DockPanel
         {
             Margin = new Thickness(Gaps.Normal, 0),
-            Children = { sides, new ScrollViewer { HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = tabs } },
+            Children = { sides, TabStrips.ScrollingAcross(tabs) },
         });
         tabBar.IsVisible = false;
         Children.Add(tabBar);
@@ -220,7 +220,7 @@ public sealed class FindView : DockPanel
             ListMenus.Item("Copy Line", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
             ListMenus.Item("Copy Path", () => IdeErrors.Observe(ListMenus.CopyAsync(this, chosen.Path))),
         ]);
-        preview = new CodeEditor { FontSize = TypeRamp.Code, IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, LineCommentPrefix = null, Document = new TextDocument() };
+        preview = new CodeEditor { FontSize = TypeRamp.Code, IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly.Shown, ShowErrorStripe = false, LineCommentPrefix = null, Document = new TextDocument() };
         noneShown = new EmptyState { Text = "No usages in your code", IsVisible = false };
         PaneSplit body = new(new Panel { Children = { list, noneShown } }, preview, "*,1,*");
         placeholder = new EmptyState();
@@ -672,8 +672,8 @@ public sealed class FindView : DockPanel
             chevron.IsOpen = row.IsExpanded;
             FindRow? file = !usage && row.Children.FirstOrDefault()?.Usage is not null ? row.Children[0] : null;
             icon.IsVisible = file is not null;
-            icon.Data = file is { Usage: { } first } ? Explorer.FileIcons.ForFile(first.Path) : null;
-            icon.ForegroundKey = file is { Usage: { } at } ? Explorer.FileIcons.TintForFile(at.Path) : null;
+            icon.DataKey = file is { Usage: { } first } ? Explorer.FileIcons.FileKey(first.Path) : null;
+            icon.ForegroundKey = file is { Usage: { } at } ? Explorer.FileIcons.FileBrushKey(at.Path) : null;
             label.Text = row.Label;
             label.Classes.Set(StyleClasses.Strong, !usage && row.Depth == 0);
             label.Classes.Set(StyleClasses.Code, usage);

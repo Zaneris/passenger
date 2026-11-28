@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
+using Passenger.App.Settings;
 
 namespace Passenger.Tests;
 
@@ -55,6 +56,7 @@ public sealed class DockingTests
     {
         Flow.StepApart<DockingTests>("the persons window opens on the layout they left", t => t.The_persons_window_opens_on_the_layout_they_left());
         Flow.StepApart<DockingTests>("areas kept on a larger screen leave the editor its share of a smaller window and come back on a larger", t => t.Areas_kept_on_a_larger_screen_leave_the_editor_its_share_of_a_smaller_window_and_come_back_on_a_larger());
+        Flow.StepApart<DockingTests>("a wide window runs its sides the whole height by itself until it is narrow again each layout keeping its sizes through a restart", t => t.A_wide_window_runs_its_sides_the_whole_height_by_itself_until_it_is_narrow_again_each_layout_keeping_its_sizes_through_a_restart());
         Flow.StepApart<DockingTests>("a place with every window off the stripe is on its stripes checklist through a restart until Restore Default Layout", t => t.A_place_with_every_window_off_the_stripe_is_on_its_stripes_checklist_through_a_restart_until_Restore_Default_Layout());
         Flow.StepApart<DockingTests>("Restore Default Layout puts every tool window back where it first was docked at its first size", t => t.Restore_Default_Layout_puts_every_tool_window_back_where_it_first_was_docked_at_its_first_size());
         Flow.StepApart<DockingTests>("a hidden tool windows view is built only as it is first shown and a console shows what was written before", t => t.A_hidden_tool_windows_view_is_built_only_as_it_is_first_shown_and_a_console_shows_what_was_written_before());
@@ -362,7 +364,7 @@ public sealed class DockingTests
             Assert.Equal(1.25, window.Settings.DisplayScale);
             Press(AppActions.ResetZoom);
             Assert.Equal(1, window.Settings.DisplayScale);
-            Assert.Equal(Refusals.ZoomedAsFarAsItGoes(up: false), window.Actions.WhyNot(AppActions.ZoomOut, window.Actions.Context()));
+            Assert.Equal(Refusals.ZoomedAsFarAsItGoes(up: false).Shown, window.Actions.WhyNot(AppActions.ZoomOut, window.Actions.Context())?.Shown);
 
             Press(AppActions.FullScreen);
             Assert.Equal(WindowState.FullScreen, window.WindowState);
@@ -496,13 +498,107 @@ public sealed class DockingTests
         window.Close();
     }
 
+    /// <summary>A window more than 2.2 times as wide as it is high runs its side areas down the whole frame, the bottom
+    /// area between them, and goes back only under twice as wide, so a resize between leaves it as it stands; the windows
+    /// open stay open, each layout keeps the bottom area's height it was given, through a restart too, a drop low over a
+    /// side docks at that side, and the Settings row keeps either layout, shown before OK.</summary>
+    private void A_wide_window_runs_its_sides_the_whole_height_by_itself_until_it_is_narrow_again_each_layout_keeping_its_sizes_through_a_restart()
+    {
+        string settings = TestFolders.Create("settings-");
+        MainWindow window = Open(settings);
+        window.KeepLayout();
+        DockHost dock = window.DockHost;
+        string[] open = [ToolWindowIds.Explorer, ToolWindowIds.Hierarchy, ToolWindowIds.Build];
+        foreach (string id in open)
+        {
+            dock.Show(id);
+        }
+        Ui.Settle();
+        double across = dock.RowDefinitions[2].ActualHeight;
+        Shaped(window, wide: false, "1200 by 800");
+
+        Sized(window, 2560, 1080);
+        Shaped(window, wide: true, "2560 by 1080");
+        Point divider = Ui.Centre(Divider(dock, c => Grid.GetRow(c) == 1), window) + new Point(0, 3);
+        Ui.Drag(window, divider, divider - new Point(0, 120));
+        double wide = dock.RowDefinitions[2].ActualHeight;
+        Assert.True(wide > across + 100, $"The wide layout's bottom area dragged 120 px taller is {wide} tall, from {across}");
+
+        Sized(window, 2100, 1000);
+        Shaped(window, wide: true, "2100 by 1000, narrowed from wide");
+        Sized(window, 1900, 1000);
+        Shaped(window, wide: false, "1900 by 1000");
+        Assert.True(Math.Abs(dock.RowDefinitions[2].ActualHeight - across) < 1, $"Back from wide, the bottom area is {dock.RowDefinitions[2].ActualHeight} tall, not the {across} it had");
+        Assert.True(open.All(dock.IsShown), $"Back from wide, {string.Join(", ", open.Where(id => !dock.IsShown(id)))} no longer shows");
+        Sized(window, 2100, 1000);
+        Shaped(window, wide: false, "2100 by 1000, widened from 1900");
+
+        Sized(window, 2560, 1080);
+        Assert.True(Math.Abs(dock.RowDefinitions[2].ActualHeight - wide) < 1, $"Wide again, the bottom area is {dock.RowDefinitions[2].ActualHeight} tall, not the {wide} it was given wide");
+        // Low beside the editors, the left side, running the whole height, takes the drop, and between the sides the bottom.
+        Rect left = Placed(dock, dock[ToolWindowIds.Explorer].Content);
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Requests), window), new Point(left.Center.X, window.Bounds.Height - 60));
+        Assert.Equal(ToolAnchor.LeftBottom, dock[ToolWindowIds.Requests].Anchor);
+        Rect editors = Placed(window, window.EditorArea);
+        Ui.Drag(window, Ui.Centre(Button(window, ToolWindowIds.Structure), window), new Point(editors.Left + (editors.Width * 0.75), window.Bounds.Height - 60));
+        Assert.Equal(ToolAnchor.BottomRight, dock[ToolWindowIds.Structure].Anchor);
+        window.Close();
+
+        MainWindow next = Open(settings);
+        next.KeepLayout();
+        Ui.Settle();
+        Assert.True(Math.Abs(next.DockHost.RowDefinitions[2].ActualHeight - across) < 1, $"After a restart, the bottom area is {next.DockHost.RowDefinitions[2].ActualHeight} tall, not the {across} it had");
+        Sized(next, 2560, 1080);
+        Assert.True(Math.Abs(next.DockHost.RowDefinitions[2].ActualHeight - wide) < 1, $"After a restart, the wide layout's bottom area is {next.DockHost.RowDefinitions[2].ActualHeight} tall, not the {wide} it was given");
+
+        SettingsDialog dialog = next.ShowSettings();
+        dialog.Page = SettingsDialog.LayoutPage;
+        Ui.Settle();
+        SettingsTests.Editor<ComboBox>(dialog, "Wide layout").SelectedItem = "Never";
+        Ui.Settle();
+        Assert.False(next.DockHost.IsWide, "Wide layout set to Never in Settings did not show the other layout before OK");
+        dialog.Ok();
+        Sized(next, 1200, 800);
+        dialog = next.ShowSettings();
+        dialog.Page = SettingsDialog.LayoutPage;
+        Ui.Settle();
+        SettingsTests.Editor<ComboBox>(dialog, "Wide layout").SelectedItem = "Always";
+        dialog.Ok();
+        Ui.Settle();
+        Shaped(next, wide: true, "1200 by 800, Wide layout set to Always");
+        next.Close();
+    }
+
+    private static void Sized(MainWindow window, double width, double height)
+    {
+        (window.Width, window.Height) = (width, height);
+        Ui.Settle();
+    }
+
+    /// <summary>Checks the Explorer at the left, Hierarchy at the right and Build at the bottom stand as the layout lays
+    /// them: the sides down the whole frame with the bottom area between them where wide, else the bottom area under all.</summary>
+    private static void Shaped(MainWindow window, bool wide, string size)
+    {
+        DockHost dock = window.DockHost;
+        Rect left = Placed(dock, dock[ToolWindowIds.Explorer].Content);
+        Rect right = Placed(dock, dock[ToolWindowIds.Hierarchy].Content);
+        Rect bottom = Placed(dock, dock[ToolWindowIds.Build].Content);
+        bool sides = left.Bottom >= bottom.Bottom - 1 && right.Bottom >= bottom.Bottom - 1 && bottom.Left >= left.Right && bottom.Right <= right.Left;
+        bool under = left.Bottom <= bottom.Top && right.Bottom <= bottom.Top && bottom.Left < left.Right && bottom.Right > right.Left;
+        Assert.True(dock.IsWide == wide && (wide ? sides : under),
+            $"At {size} the frame stands {(dock.IsWide ? "wide" : "with the bottom area across")}, the left side at {left}, the right at {right} and the bottom at {bottom}, "
+            + $"where it is to {(wide ? "run the sides down the whole frame, the bottom area between them" : "run the bottom area under the sides")}");
+    }
+
+    private static Rect Placed(Visual within, Visual control) => new(control.TranslatePoint(default, within) ?? default, control.Bounds.Size);
+
     private void Restore_Default_Layout_puts_every_tool_window_back_where_it_first_was_docked_at_its_first_size()
     {
         string settings = TestFolders.Create("settings-");
         MainWindow window = Open(settings);
         window.KeepLayout();
         DockHost dock = window.DockHost;
-        Dictionary<string, (ToolAnchor Anchor, int Order)> first = dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order));
+        Dictionary<string, (ToolAnchor Anchor, int Order, ToolMode Mode)> first = dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order, w.Mode));
         dock.Show(ToolWindowIds.Build);
         Ui.Settle();
         double bottom = dock.RowDefinitions[2].ActualHeight;
@@ -526,8 +622,8 @@ public sealed class DockingTests
         NativeMenuItem restore = Ui.Submenu(Ui.Submenu(window.MenuBar, "Window"), "Layout Settings").Items.OfType<NativeMenuItem>().Single(i => i.Header == "Restore Default Layout");
         restore.Command!.Execute(null);
         Ui.Settle();
-        Assert.Equal(first, dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order)));
-        Assert.All(dock.Windows, w => Assert.Equal(ToolMode.Docked, w.Mode));
+        Assert.Equal(first, dock.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order, w.Mode)));
+        Assert.All(dock.Windows, w => Assert.Equal(w.InEditorAtFirst ? ToolMode.Editor : ToolMode.Docked, w.Mode));
         Assert.Empty(window.OwnedWindows);
         Assert.Equal([ToolWindowIds.Explorer], dock.Windows.Where(w => w.IsShown).Select(w => w.Id));
         Assert.Contains(Button(window, ToolWindowIds.Debug), Stripe(window, right: false));
@@ -535,7 +631,7 @@ public sealed class DockingTests
 
         MainWindow next = Open(settings);
         next.KeepLayout();
-        Assert.Equal(first, next.DockHost.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order)));
+        Assert.Equal(first, next.DockHost.Windows.ToDictionary(w => w.Id, w => (w.Anchor, w.Order, w.Mode)));
         Assert.Equal([ToolWindowIds.Explorer], next.DockHost.Windows.Where(w => w.IsShown).Select(w => w.Id));
         next.DockHost.Show(ToolWindowIds.Build);
         Ui.Settle();
@@ -628,7 +724,7 @@ public sealed class DockingTests
         dock.Show(ToolWindowIds.Migrations);
         Ui.Settle();
         Assert.Contains(window.MigrationsView, dock.GetVisualDescendants());
-        Assert.Contains(window.MigrationsView.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Refusals.NoEfCore);
+        Assert.Contains(window.MigrationsView.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Refusals.NoEfCore.Shown);
         dock.Hide(ToolWindowIds.Migrations);
         Ui.Settle();
 
@@ -765,24 +861,24 @@ public sealed class DockingTests
             Ui.Settle();
             ToolWindow structure = dock[ToolWindowIds.Structure];
             Ui.RightClick(Button(window, ToolWindowIds.Structure));
-            Assert.True(Checked(dock.StripeMenu, structure.Title), "Structure, on its stripe, is not checked on its place's checklist");
-            Ui.Choose(dock.StripeMenu, structure.Title);
+            Assert.True(Checked(dock.StripeMenu, structure.Title.English), "Structure, on its stripe, is not checked on its place's checklist");
+            Ui.Choose(dock.StripeMenu, structure.Title.English);
             Assert.True(!dock.IsShown(ToolWindowIds.Structure) && StripeButton(window, ToolWindowIds.Structure) is null,
                 "Structure, open and unchecked on its stripe's checklist, stayed open or kept its stripe icon");
             Assert.Equal(structure.Anchor, dock[ToolWindowIds.Structure].Anchor);
 
             ToolWindow neighbour = dock.Windows.First(w => w.Anchor == structure.Anchor && w != structure);
             Ui.RightClick(Button(window, neighbour.Id));
-            Assert.False(Checked(dock.StripeMenu, structure.Title), "Structure, off its stripe, is still checked on its place's checklist");
-            Ui.Choose(dock.StripeMenu, structure.Title);
+            Assert.False(Checked(dock.StripeMenu, structure.Title.English), "Structure, off its stripe, is still checked on its place's checklist");
+            Ui.Choose(dock.StripeMenu, structure.Title.English);
             Assert.True(StripeButton(window, ToolWindowIds.Structure) is not null && !dock.IsShown(ToolWindowIds.Structure),
                 "Structure, checked again, did not come back to its stripe hidden");
 
             Ui.RightClick(Button(window, ToolWindowIds.Structure));
-            Ui.Choose(dock.StripeMenu, structure.Title);
+            Ui.Choose(dock.StripeMenu, structure.Title.English);
             Assert.Null(StripeButton(window, ToolWindowIds.Structure));
             NativeMenu tools = Ui.Submenu(Ui.Submenu(window.MenuBar, "View"), MainMenu.ToolWindows);
-            tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == structure.Title).Command!.Execute(null);
+            tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == structure.Title.English).Command!.Execute(null);
             Ui.Settle();
             Assert.True(dock.IsShown(ToolWindowIds.Structure) && StripeButton(window, ToolWindowIds.Structure) is not null,
                 "View > Tool Windows > Structure did not open it on its stripe again");
@@ -805,7 +901,7 @@ public sealed class DockingTests
             foreach (ToolWindow each in dock.Windows.Where(w => w.Anchor == emptied).ToList())
             {
                 Ui.RightClick(Button(window, each.Id));
-                Ui.Choose(dock.StripeMenu, each.Title);
+                Ui.Choose(dock.StripeMenu, each.Title.English);
             }
             Assert.DoesNotContain(window.DockHost.GetVisualDescendants().OfType<ToggleButton>(), b => b.Tag is string id && dock[id].Anchor == emptied);
             window.Close();
@@ -819,11 +915,11 @@ public sealed class DockingTests
                 dock = next.DockHost;
                 Assert.DoesNotContain(dock.GetVisualDescendants().OfType<ToggleButton>(), b => b.Tag is string id && dock[id].Anchor == emptied);
                 Ui.RightClick(Button(next, ToolWindowIds.Explorer));
-                MenuItem place = dock.StripeMenu!.Items.OfType<MenuItem>().SingleOrDefault(i => Equals(i.Header, ToolWindow.Name(emptied)))
+                MenuItem place = dock.StripeMenu!.Items.OfType<MenuItem>().SingleOrDefault(i => Equals(i.Header, ToolWindow.Name(emptied).English))
                     ?? throw new Xunit.Sdk.XunitException($"The left stripe's checklist does not offer {ToolWindow.Name(emptied)}, whose windows are all off it: [{string.Join(", ", Listed(dock.StripeMenu))}]");
                 Assert.Equal(Titles(dock, emptied), place.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
                 Assert.All(place.Items.OfType<MenuItem>(), i => Assert.False(i.IsChecked));
-                Ui.Choose(dock.StripeMenu, ToolWindow.Name(emptied), "Structure");
+                Ui.Choose(dock.StripeMenu, ToolWindow.Name(emptied).English, "Structure");
                 Assert.NotNull(StripeButton(next, ToolWindowIds.Structure));
 
                 dock.RestoreDefault();
@@ -854,7 +950,7 @@ public sealed class DockingTests
             for (int taken = 0; taken < dock.Windows.Count && Icons(stripe).FirstOrDefault() is { } icon; taken++)
             {
                 Ui.RightClick(icon);
-                Ui.Choose(dock.StripeMenu, dock[(string)icon.Tag!].Title);
+                Ui.Choose(dock.StripeMenu, dock[(string)icon.Tag!].Title.English);
             }
             Assert.Empty(Icons(stripe));
             Assert.True(dock.ColumnDefinitions[6].ActualWidth == 40 && stripe.IsEffectivelyVisible,
@@ -864,7 +960,7 @@ public sealed class DockingTests
             string title = Listed(dock.StripeMenu).FirstOrDefault()
                 ?? throw new Xunit.Sdk.XunitException("A right click on the emptied stripe lists no window to put back");
             Ui.Choose(dock.StripeMenu, title);
-            ToolWindow back = dock.Windows.Single(w => w.Title == title);
+            ToolWindow back = dock.Windows.Single(w => w.Title.English == title);
             Assert.True(StripeButton(window, back.Id) is { IsEffectivelyVisible: true } && !back.IsClosed,
                 $"{title}, checked on the emptied stripe's checklist, has no icon on it");
         }
@@ -909,7 +1005,7 @@ public sealed class DockingTests
 
     /// <summary>The titles of a place's windows in their order, as its checklist lists them.</summary>
     private static IEnumerable<string> Titles(DockHost dock, ToolAnchor place) =>
-        dock.Windows.Where(w => w.Anchor == place).OrderBy(w => w.Order).Select(w => w.Title);
+        dock.Windows.Where(w => w.Anchor == place).OrderBy(w => w.Order).Select(w => w.Title.English);
 
     /// <summary>What a stripe's checklist lists, its windows' titles.</summary>
     private static List<string> Listed(ContextMenu? menu) =>

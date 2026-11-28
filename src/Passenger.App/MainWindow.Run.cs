@@ -65,8 +65,9 @@ public partial class MainWindow
     /// <summary>The program Run last started, when it runs in the terminal; null when the last ran in the Run window.</summary>
     public TerminalRun? RunInTerminal => session.InTerminal;
 
-    /// <summary>The copies of a Godot game Run runs, each in its tab of the Terminal window.</summary>
-    public IReadOnlyList<TerminalRun> RunCopies => buildRun.CopyRuns;
+    /// <summary>The parts of runs of several parts and the copies of a game in tabs of the Run window, in the order they
+    /// started.</summary>
+    public IReadOnlyList<PartRun> RunParts => buildRun.PartRuns;
 
     /// <summary>The end of the program Run last started, in the Run window or the terminal, with its exit code.</summary>
     public Task<int> RunEnd => buildRun.RunEnd;
@@ -91,12 +92,13 @@ public partial class MainWindow
     public RunConfigurationsDialog ShowRunConfigurations()
     {
         RunConfigurations configurations = session.Configurations;
-        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], configurations.Own, [.. session.RunProjects.Where(p => p.Exists && (p.GodotFolder is not null || LaunchProfile.Runs(p)))],
+        RunConfigurationsDialog dialog = new([.. configurations.All.Where(c => c.Generated)], [.. configurations.Own.Where(c => !c.IsMultiple)], [.. session.RunProjects.Where(p => p.Exists && (p.GodotFolder is not null || LaunchProfile.Runs(p)))],
             configurations.Chosen?.Name, (mine, generated, chosen) => configurations.Set(mine, generated, chosen, Projects), buildRun.IsRunningConfiguration,
-            configurations.Profiles, configurations.Solution, configurations.ProfileProblems, session.BuildChoices.Offered, session.BuildChoices.Chosen)
+            configurations.Several, configurations.Solution, configurations.ProfileProblems, session.BuildChoices.Offered, session.BuildChoices.Chosen)
         {
             Folder = Folder,
             WriteProfiles = WriteLaunchProfilesAsync,
+            Packages = configurations.Packages,
             GodotSetting = settings.GodotExecutable,
             BrowserSetting = settings.Browser,
             ReadServices = ReadServices(Projects, Engine),
@@ -157,47 +159,61 @@ public partial class MainWindow
         return (now, null);
     }
 
-    /// <summary>Edit Configurations' multi-project configurations as it leaves them written into the solution's launch profile
-    /// files (the team's <c>.slnLaunch</c> and the person's <c>.slnLaunch.user</c>, saved first if open, taken in after), in
-    /// Visual Studio's format: each profile unchanged kept as written, one changed written in its place, one removed taken out,
-    /// one new put last, what Passenger does not model kept; one command Undo takes back whole. The configurations as read
-    /// again once the files have landed, or why not.</summary>
+    /// <summary>Edit Configurations' runs of several parts as it leaves them, each where it is kept: one Visual Studio's format
+    /// holds (<see cref="RunConfiguration.FitsSolutionLaunch"/>) in the solution's <c>.slnLaunch</c> or <c>.slnLaunch.user</c>,
+    /// any other in the folder's <see cref="RunsFile"/> where shared, else with the person's own configurations; each file saved
+    /// first if open, written as text where each run stands, and taken in after, as one command Undo takes back whole. The
+    /// runs as read again once the files have landed, or why not.</summary>
     public async Task<(IReadOnlyList<RunConfiguration>? Profiles, string? Problem)> WriteLaunchProfilesAsync(IReadOnlyList<RunConfiguration> profiles)
     {
         RunConfigurations configurations = session.Configurations;
-        if (configurations.Solution is not { } solution)
+        if (Folder is not { } top)
         {
-            return (null, Refusals.NoSolutionForProfiles);
+            return (null, Refusals.NoFolder.Shown);
         }
-        IReadOnlyList<RunConfiguration> before = configurations.Profiles;
-        string folder = Path.GetDirectoryName(solution)!;
-        string[] files = [SolutionLaunch.SharedFile(solution), SolutionLaunch.UserFile(solution)];
-        // Each file's text as written now, or why it cannot be; null for one left as it is.
-        (string? Text, string? Problem) Written(string file, bool shared)
+        string? solution = configurations.Solution;
+        IReadOnlyList<RunConfiguration> before = configurations.Several;
+        List<RunConfiguration> launched = [.. profiles.Where(p => p.FitsSolutionLaunch(solution))];
+        List<RunConfiguration> filed = [.. profiles.Where(p => !p.FitsSolutionLaunch(solution) && p.Shared)];
+        List<RunConfiguration> own = [.. profiles.Where(p => !p.FitsSolutionLaunch(solution) && !p.Shared)];
+        // Each file with how its text is written now, or why it cannot be; null for one left as it is.
+        List<(string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds)> files = [];
+        if (solution is not null)
         {
-            List<SolutionLaunchProfile> kept = [.. profiles.Where(p => p.Shared == shared)
-                .Select(p => RunConfigurations.ToProfile(p, before.FirstOrDefault(b => b.Launch is not null && ReferenceEquals(b.Launch, p.Launch))?.Name))];
-            FileText? had = File.Exists(file) ? FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file") : null;
-            if (had is null && kept.Count == 0)
+            string folder = Path.GetDirectoryName(solution)!;
+            foreach ((string file, bool shared) in (ReadOnlySpan<(string, bool)>)[(SolutionLaunch.SharedFile(solution), true), (SolutionLaunch.UserFile(solution), false)])
+            {
+                List<SolutionLaunchProfile> kept = [.. launched.Where(p => p.Shared == shared)
+                    .Select(p => RunConfigurations.ToProfile(p, before.FirstOrDefault(b => b.Launch is not null && ReferenceEquals(b.Launch, p.Launch))?.Name))];
+                files.Add((file, had => SolutionLaunch.Written(had, kept, folder), kept.Count > 0));
+            }
+        }
+        List<RunsFileRun> runs = [.. filed.Select(r => RunConfigurations.ToRun(r, before.FirstOrDefault(b => b.RunRead is not null && ReferenceEquals(b.RunRead, r.RunRead))?.Name))];
+        files.Add((RunsFile.PathIn(top), had => RunsFile.Written(had, runs, top), runs.Count > 0));
+        (string? Text, string? Problem) Written((string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds) each)
+        {
+            FileText? had = File.Exists(each.File) ? FileText.Load(each.File) ?? throw new IOException($"{Path.GetFileName(each.File)} is not a text file") : null;
+            if (had is null && !each.Holds)
             {
                 return (null, null);
             }
-            (string? text, string? problem) = SolutionLaunch.Written(had?.Text, kept, folder);
-            return problem is not null ? (null, $"{Path.GetFileName(file)} {problem}") : (text == had?.Text ? null : text, null);
+            (string? text, string? problem) = each.Write(had?.Text);
+            return problem is not null ? (null, problem.StartsWith(RunsFile.FileName, StringComparison.Ordinal) ? problem : $"{Path.GetFileName(each.File)} {problem}")
+                : (text == had?.Text ? null : text, null);
         }
-        List<string> changing = [];
+        List<(string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds)> changing = [];
         try
         {
-            for (int i = 0; i < files.Length; i++)
+            foreach ((string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds) each in files)
             {
-                (string? text, string? problem) = Written(files[i], i == 0);
+                (string? text, string? problem) = Written(each);
                 if (problem is not null)
                 {
                     return (null, problem);
                 }
                 if (text is not null)
                 {
-                    changing.Add(files[i]);
+                    changing.Add(each);
                 }
             }
         }
@@ -205,42 +221,57 @@ public partial class MainWindow
         {
             return (null, unread.Message);
         }
-        if (changing.Count == 0)
+        IReadOnlyList<RunConfiguration> ownBefore = [.. configurations.Own.Where(c => c.IsMultiple)];
+        bool ownChanging = own.Count > 0 || ownBefore.Count > 0;
+        // The person's own runs change in the same command as the files, so Undo puts back a run that moved between them.
+        using CommandHistory.Recording? made = changing.Count > 0 || ownChanging ? Editors.Commands.Record("Change Runs of Several Parts") : null;
+        if (changing.Count > 0)
         {
-            return (configurations.Profiles, null);
-        }
-        using CommandHistory.Recording made = Editors.Commands.Record("Change Launch Profiles");
-        string? refused = await ChangeFileAsync(changing, () =>
-        {
-            // Read again as the change writes: what was open was saved first.
-            foreach (string file in changing)
+            string? refused = await ChangeFileAsync([.. changing.Select(c => c.File)], () =>
             {
-                (string? text, string? problem) = Written(file, file == files[0]);
-                if (problem is not null)
+                // Read again as the change writes: what was open was saved first.
+                foreach ((string File, Func<string?, (string? Text, string? Problem)> Write, bool Holds) each in changing)
                 {
-                    return problem;
+                    (string? text, string? problem) = Written(each);
+                    if (problem is not null)
+                    {
+                        return problem;
+                    }
+                    if (text is null)
+                    {
+                        continue;
+                    }
+                    if (File.Exists(each.File))
+                    {
+                        FileText.SaveOver(each.File, FileText.Load(each.File) ?? throw new IOException($"{Path.GetFileName(each.File)} is not a text file"), text);
+                    }
+                    else
+                    {
+                        FileText.SaveNew(each.File, text);
+                    }
                 }
-                if (text is null)
-                {
-                    continue;
-                }
-                if (File.Exists(file))
-                {
-                    FileText.SaveOver(file, FileText.Load(file) ?? throw new IOException($"{Path.GetFileName(file)} is not a text file"), text);
-                }
-                else
-                {
-                    FileText.SaveNew(file, text);
-                }
+                return null;
+            }, made);
+            if (refused is not null)
+            {
+                return (null, $"The runs could not be written: {await made!.TakenBackAsync(refused)}");
             }
-            return null;
-        }, made);
-        if (refused is not null)
+        }
+        if (ownChanging)
         {
-            return (null, $"The launch profiles could not be written: {await made.TakenBackAsync(refused)}");
+            configurations.SetOwnRuns(own);
+            IReadOnlyList<RunConfiguration> ownAfter = [.. configurations.Own.Where(c => c.IsMultiple)];
+            if (ownAfter.Count != ownBefore.Count || ownAfter.Zip(ownBefore).Any(p => !ConfigurationEdit.Same(p.First, p.Second)))
+            {
+                made!.Also(new CommandHistory.Part("your own runs of several parts", _ => null, redo =>
+                {
+                    configurations.SetOwnRuns(redo ? ownAfter : ownBefore);
+                    return Task.FromResult<string?>(null);
+                }));
+            }
         }
         configurations.Configure(Projects);
-        return (configurations.Profiles, null);
+        return (configurations.Several, null);
     }
 
     /// <summary>Why Save as Launch Profile cannot save the configuration it would (the one chosen in Edit Configurations
@@ -256,7 +287,7 @@ public partial class MainWindow
     {
         if (Folder is null)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         if (shared is null)
         {
@@ -287,7 +318,7 @@ public partial class MainWindow
         string profile = LaunchSettingsEdits.ProfileName(project, shared);
         if (profile.Length == 0)
         {
-            return Refusals.ConfigurationUnnamed;
+            return Refusals.ConfigurationUnnamed.Shown;
         }
         if (LaunchProfile.Read(project).FirstOrDefault(p => string.Equals(p.Name, profile, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {
@@ -430,10 +461,10 @@ public partial class MainWindow
 
     /// <summary>Runs the chosen configuration as Run does: null once it runs (<see cref="RunEnd"/> is its end), else why it
     /// could not, which the status bar says too.</summary>
-    public Task<string?> RunAsync(string? arguments = null) => buildRun.RunAsync(arguments);
+    public Task<Words?> RunAsync(string? arguments = null) => buildRun.RunAsync(arguments);
 
     /// <summary>Debugs the chosen configuration as Debug does: null once its session is open, else what stopped it.</summary>
-    public Task<string?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
+    public Task<Words?> DebugAsync(string? arguments = null) => buildRun.DebugAsync(arguments);
 
     /// <summary>What the command line's <c>--run</c> or <c>--debug</c> came to (<see cref="StartConfigurationAsync"/>) in
     /// the window that opened its folder: null once its action ran, or with neither given; else why not, which ends
@@ -485,7 +516,7 @@ public partial class MainWindow
         string? why;
         try
         {
-            why = actions!.Run(start.Debug ? AppActions.Debug : AppActions.RunProgram);
+            why = actions!.Run(start.Debug ? AppActions.Debug : AppActions.RunProgram)?.English;
         }
         finally
         {
@@ -498,7 +529,7 @@ public partial class MainWindow
         await heard.DoneAsync(CancellationToken.None);
         if (heard.Outcome is { Failed: true, Said: { } failed })
         {
-            NotStarted = start.Cannot(configurations.Chosen?.Name ?? shown, failed, reading.Problems.Find(p => p.Severity == ProblemSeverity.Error) is { } first ? $"{first.Where}: {first.Message}" : null);
+            NotStarted = start.Cannot(configurations.Chosen?.Name ?? shown, failed.English, reading.Problems.Find(p => p.Severity == ProblemSeverity.Error) is { } first ? $"{first.Where}: {first.Message}" : null);
             Program.SayNotStarted(NotStarted);
         }
         return null;
@@ -506,12 +537,12 @@ public partial class MainWindow
 
     /// <summary>Debug Another Copy (<see cref="BuildRunController.DebugAnotherCopyAsync"/>): what stopped it, if anything, goes to
     /// the status bar; null once the copy's session is open.</summary>
-    public async Task<string?> DebugAnotherCopyAsync()
+    public async Task<Words?> DebugAnotherCopyAsync()
     {
-        string? problem = await buildRun.DebugAnotherCopyAsync();
+        Words? problem = await buildRun.DebugAnotherCopyAsync();
         if (problem is not null)
         {
-            status.Text = problem;
+            status.Text = problem.Shown;
         }
         return problem;
     }
@@ -541,7 +572,11 @@ public partial class MainWindow
     }
 
     /// <summary>Run, from its key, the toolbar or the Run window: what stopped it, if anything, is in the status bar.</summary>
-    private void RunSelected() => IdeErrors.Observe(RunAsync());
+    private void RunSelected()
+    {
+        AskHotReload();
+        IdeErrors.Observe(RunAsync());
+    }
 
     /// <summary>A program run with the Run window's console, or a Debug tab's, said it needs a terminal: that console offers,
     /// over what it wrote, to start it again in one, as the Profiler window does over its run for a program Profile started.</summary>
@@ -580,7 +615,7 @@ public partial class MainWindow
         }
         if (actions!.Run(start, context) is { } why)
         {
-            status.Text = why;
+            status.Text = why.Shown;
         }
     }
 
@@ -591,13 +626,14 @@ public partial class MainWindow
     /// <summary>Debug, from its key or the toolbar: what stopped it, if anything, goes to the status bar.</summary>
     public void DebugSelected()
     {
+        AskHotReload();
         IdeErrors.Observe(Debug());
 
         async Task Debug()
         {
             if (await DebugAsync() is { } problem)
             {
-                status.Text = problem;
+                status.Text = problem.Shown;
             }
         }
     }
@@ -629,8 +665,10 @@ public partial class MainWindow
         string? why = chosen is null ? null : configurations.WhyNotHere(chosen);
         RunConfigName.Text = chosen is null ? "No configurations" : Shown(chosen);
         RunConfigName.Classes.Set(StyleClasses.Muted, why is not null);
-        ToolTip.SetTip(RunConfigButton, why is null ? "Run configuration" : $"{chosen!.Name} cannot run here: {why}");
+        ToolTip.SetTip(RunConfigButton, why is null ? "Run configuration" : RunConfigRefusal(chosen!.Name, why));
     }
+
+    private static string RunConfigRefusal(string name, string why) => $"{name} cannot run here: {why}";
 
     /// <summary>The run configurations to choose from, as a menu under the toolbar widget, and Edit Configurations
     /// below them: one that cannot launch here is listed greyed, with why beside it, and can still be chosen, so Run
@@ -677,7 +715,7 @@ public partial class MainWindow
             MenuItem item = MenuChoice.Of(why is null ? Shown(each) : Greyed(name, why), session.Configurations.Chosen?.Name == name, () => SelectConfiguration(name));
             if (why is not null)
             {
-                ToolTip.SetTip(item, $"{name} cannot run here: {why}");
+                ToolTip.SetTip(item, RunConfigRefusal(name, why));
             }
             return item;
         }

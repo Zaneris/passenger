@@ -61,6 +61,9 @@ public sealed record SessionSetup(
     /// <summary>Where the container tools come from that reach a program in a container: the window's.</summary>
     public required Func<Containers.ContainerToolsSource> ContainerTools { get; init; }
 
+    /// <summary>Where the debugger's 32-bit host comes from, for a program that runs as a 32-bit one: the window's.</summary>
+    public required Func<Debugging.X86DebuggerSource> X86Debugger { get; init; }
+
     /// <summary>The opening of a folder begun as the process started, which the session that opens that folder takes up:
     /// the first of a windowless Passenger's window.</summary>
     public HeadStart? HeadStart { get; init; }
@@ -144,6 +147,18 @@ public sealed class ProjectSession : IAsyncDisposable
                 }), (name, app) => UiThread.InvokeAsync<DeviceStart?>(() => IsEnded ? null : StartsOnDevice(name, app))),
         };
         Tests.Finder.StateFolder = setup.StateFolder;
+        Continuous = new ContinuousTests(Tests, () => Projects, () => Workspace, line => setup.Views.Build.Append($"{line}\n"))
+        {
+            Work = setup.Work,
+            Refused = () => Trusted ? null : Refusals.Untrusted,
+            // Its builds and runs' copies, a cache of the folder's in Passenger's state, never in the folder.
+            Root = folder is null ? null : Path.Combine(setup.StateFolder, "cache", "continuous", FileNames.Hash(folder, 12)),
+        };
+        ContinuousTests.PruneOnce(Path.Combine(setup.StateFolder, "cache", "continuous"));
+        // What earlier versions downloaded from their releases, once no Passenger of theirs runs.
+        Updates.ReleaseAssets.PruneOnce(setup.ContainerTools().Cache);
+        Updates.ReleaseAssets.PruneOnce(setup.X86Debugger().Cache);
+        Updates.ReleaseAssets.PruneOnce(Database.DuckDbNative.Current.Cache);
         Containers = new Containers.FolderContainers(folder, setup.Engine());
         Vcs.Work = setup.Work;
         Vcs.Watching = setup.Watching;
@@ -191,10 +206,14 @@ public sealed class ProjectSession : IAsyncDisposable
             Folder = folder,
             Own = () => folder is null ? Reached : [folder, .. Reached],
             Server = () => CSharp?.Session,
+            ServerOf = document => CSharp?.For(document)?.Lsp,
             Reads = () => Workspace,
             HotReloadOn = () => setup.Settings().HotReloadWhileDebugging,
+            X86Debugger = setup.X86Debugger,
             HotReloadOnSave = () => setup.Settings().HotReloadOnSave,
             XamlOnSave = () => setup.Settings().XamlHotReloadOnSave,
+            ShowsElapsed = setup.Settings().ShowElapsedAtStops,
+            GreysAhead = setup.Settings().GreyCodeAhead,
             // A game's own session, or the GDScript tab beside its C#'s.
             ReloadsScripts = scripts => games.Any(g => g.ReloadsScripts
                 && (g.Debugged == scripts || (g.Debugged is not null && Debug?.TabOf(scripts)?.Name == DebugController.ScriptsTab(g.Name)))),
@@ -217,6 +236,9 @@ public sealed class ProjectSession : IAsyncDisposable
         Debug.Breakpoints.Changed += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
         Debug.Breakpoints.ExceptionsChanged += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
         Debug.Breakpoints.BindingErrorsChanged += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
+        Debug.Breakpoints.MethodsChanged += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
+        Debug.Breakpoints.Pins.Changed += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
+        Debug.Breakpoints.Pins.Moved += (_, _) => State?.Breakpoints.Set(Debug.Breakpoints.Capture());
         Debug.TabsChanged += (_, _) => OnDebugTabsChanged();
         Bookmarks.Changed += (_, _) => State?.Bookmarks.Set(Bookmarks.Capture());
         // What a Git operation changes in the files is one change set of the folder's Local History, under its name.
@@ -240,6 +262,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 : Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<Passenger.Packages.TransitiveUse>>>(new Dictionary<string, IReadOnlyList<Passenger.Packages.TransitiveUse>>()),
             ReadDeprecations = Packages.DeprecationsReadAsync,
             Deprecated = Packages.DeprecationOf,
+            Layers = () => Layers,
         };
         DesignTimeBuilds = new ProjectBuilds(LoadOrderAsync, () => Workspace);
     }
@@ -317,6 +340,10 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder open, canonical; null for a window with none.</summary>
     public string? Folder { get; }
 
+    /// <summary>The folder's layer rules, as the window last read its passenger-layers.json (<see cref="DependencyMap.LayersFile"/>);
+    /// none while it has none, or the file cannot be read.</summary>
+    public Roslyn.Extension.LayerRules? Layers { get; set; }
+
     /// <summary>Whether the folder is trusted (<see cref="WorkspaceTrust"/>), as it was as it opened or once trusted since
     /// (<see cref="Trust"/>). Untrusted, the session runs none of its code: no evaluation or design-time build of its
     /// projects, no C# language server, no reading of its build configurations; its builds, runs, tests and previews are
@@ -382,12 +409,12 @@ public sealed class ProjectSession : IAsyncDisposable
         NamedServices[] hosts = Folder is { } open ? [.. OwnAppHosts(open)] : [];
         if (Folder is null || !hosts.Any(h => h.All.Contains(project, PathNames.Comparer)))
         {
-            return Refusals.NotReached(name);
+            return Refusals.NotReached(name).Shown;
         }
         string folder = Path.GetDirectoryName(project)!;
-        return WorkspaceTrust.WhyNotLent(folder, Folder) is { } unlent ? Refusals.NotLent(name, folder, unlent)
+        return (WorkspaceTrust.WhyNotLent(folder, Folder) is { } unlent ? Refusals.NotLent(name, folder, unlent)
             : hosts.Any(h => h.Persons.Contains(project, PathNames.Comparer)) ? Refusals.NotReached(name)
-            : Refusals.NamedByAgent(name);
+            : Refusals.NamedByAgent(name)).Shown;
     }
 
     /// <summary>A trusted folder's projects outside it (a solution's beside it) are trusted with it while it is open, so what
@@ -401,7 +428,7 @@ public sealed class ProjectSession : IAsyncDisposable
     }
 
     /// <summary>Why the folder has no C# language server: it is not trusted, or it has none.</summary>
-    public string WhyNoCSharp => Trusted ? Refusals.NoCSharp : Refusals.Untrusted;
+    public string WhyNoCSharp => (Trusted ? Refusals.NoCSharp : Refusals.Untrusted).Shown;
 
     /// <summary>The folder came to be trusted: what the session held back begins as an open begins it, Git's status read
     /// with the repository's configuration, the language server, the projects' evaluations (and so their design-time
@@ -526,9 +553,7 @@ public sealed class ProjectSession : IAsyncDisposable
             {
                 packageFolders |= PackageFolders.Learn(project);
                 string? framework = Frameworks.Of(project);
-                string? built = framework is null
-                    ? evaluated.Properties.GetValueOrDefault(Passenger.Host.CarriedProperties.TargetPath)?.Value
-                    : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
+                string? built = BuildOutputOf(project, framework);
                 Passenger.Host.FrameworkDependencies? chosen = framework is null ? evaluated.Dependencies.FirstOrDefault()
                     : evaluated.Dependencies.FirstOrDefault(d => string.Equals(d.Framework, framework, StringComparison.OrdinalIgnoreCase));
                 now[project.Path] = new ProjectEvaluation(
@@ -628,6 +653,11 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The loaded project a file or folder (a canonical path) belongs to, the nearest one holding it; null outside
     /// them all.</summary>
     public ProjectModel? ProjectOf(string path) => Workspace is null ? null : ProjectModel.Owning(Workspace.Projects, path, Unloaded);
+
+    /// <summary>The evaluated output assembly for the requested framework, or the outer evaluation's for a single target.</summary>
+    internal static string? BuildOutputOf(ProjectModel project, string? framework) => framework is null || project.TargetFrameworks.Count < 2
+        ? project.Property(Passenger.Host.CarriedProperties.TargetPath)
+        : project.Evaluated?.Dependencies.FirstOrDefault(each => string.Equals(each.Framework, framework, StringComparison.OrdinalIgnoreCase))?.TargetPath;
 
     /// <summary>The code of the project a file belongs to with the configurations of the programs that run it
     /// (<see cref="ConfiguredCode"/>); null outside them all, or where no program of the folder runs it.</summary>
@@ -754,21 +784,27 @@ public sealed class ProjectSession : IAsyncDisposable
         BuildChosen?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>The last read of what the folder offers to build as, which a run waits for (<see cref="WorkspaceOfAsync"/>).</summary>
+    private Task buildChoicesRead = Task.CompletedTask;
+
     /// <summary>What the folder offers to build as, read again: its solution's configurations, else its projects'.</summary>
     public void ReadBuildChoices()
     {
         if (!IsEnded && Trusted && Folder is { } folder && Workspace is { } now)
         {
-            IdeErrors.Observe(BuildChoices.ReadAsync(folder, now));
+            buildChoicesRead = BuildChoices.ReadAsync(folder, now);
+            IdeErrors.Observe(buildChoicesRead);
         }
     }
 
     /// <summary>The workspace a run of a configuration reads, the one answer for what every path of its run builds, evaluates
     /// and starts as: the folder's, with the build configuration the configuration names (<see cref="RunConfiguration.BuildConfiguration"/>)
-    /// in place of the folder's choice; why not where the one it names cannot be given.</summary>
-    public async Task<(WorkspaceModel? Workspace, string? Problem)> WorkspaceOfAsync(RunConfiguration configuration)
+    /// in place of the folder's choice; why not where the one it names cannot be given. A run begun as the folder's choices
+    /// are read builds as they come to, never as nothing chosen, which a WinUI app's solution of processors alone refuses.</summary>
+    public async Task<(WorkspaceModel? Workspace, Words? Problem)> WorkspaceOfAsync(RunConfiguration configuration)
     {
         UiThread.Check();
+        await buildChoicesRead.Ended();
         if (Workspace is not { } now || Folder is not { } folder || configuration.BuildConfiguration.Length == 0)
         {
             return (Workspace, null);
@@ -776,7 +812,7 @@ public sealed class ProjectSession : IAsyncDisposable
         (BuildChoice? choice, string? problem) = await BuildChoices.ForRunAsync(folder, now, configuration.BuildConfiguration);
         // Read again after the solution was asked: a reload meanwhile is what the run reads.
         return problem is null ? ((Workspace ?? now) with { Build = choice }, null)
-            : (null, $"{configuration.Name} cannot build as {configuration.BuildConfiguration}: {problem}");
+            : (null, LaunchWords.CannotBuildAs(configuration.Name, configuration.BuildConfiguration, problem));
     }
 
     /// <summary>A project's framework was chosen (by its path; null for every project's, as the folder's kept choices are
@@ -1042,6 +1078,9 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder's unit tests: those its test projects declare, their runs and their results.</summary>
     public TestController Tests { get; }
 
+    /// <summary>The folder's continuous testing, on while its repository's answer says so.</summary>
+    public ContinuousTests Continuous { get; }
+
     /// <summary>The folder's debugger, its breakpoints with it.</summary>
     public DebugController Debug { get; }
 
@@ -1163,7 +1202,7 @@ public sealed class ProjectSession : IAsyncDisposable
             app.Xaml = xaml;
             if (Index.Root is { } root)
             {
-                IdeErrors.Observe(xaml.KeepBuiltAsync([.. Index.Files.Where(Passenger.App.Xaml.XamlService.IsXaml).Select(f => Path.Combine(root, f))]));
+                IdeErrors.Observe(xaml.KeepBuiltAsync([.. Index.Files.Where(LiveTree.XamlHotReload.Reaches).Select(f => Path.Combine(root, f))]));
             }
         }
         return app;
@@ -1374,6 +1413,60 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>The folder's Git working tree, once its lookup (<see cref="Start"/>) has found one.</summary>
     public VcsController Vcs { get; } = new();
 
+    /// <summary>The other repositories the folder holds (<see cref="Passenger.Vcs.GitRepositories"/>), each with Git of its own, found once
+    /// the folder's own lookup has ended.</summary>
+    public IReadOnlyList<VcsController> Others => others;
+
+    private readonly List<VcsController> others = [];
+
+    /// <summary>Every repository of the folder with Git to show: its own, where it is in one, then the others.</summary>
+    public IReadOnlyList<VcsController> Repositories => [.. Vcs.Repository is null ? [] : new[] { Vcs }, .. others.Where(o => o.Repository is not null)];
+
+    /// <summary>The other repositories found, or the folder's own taken in or let go.</summary>
+    public event EventHandler? RepositoriesChanged;
+
+    /// <summary>The Git of the repository holding a path: the innermost of the others holding it, else the folder's own.</summary>
+    public VcsController VcsFor(string path) =>
+        others.Where(o => o.Repository is { } other && PathNames.Within(path, other.Root)).MaxBy(o => o.Repository!.Root.Length) ?? Vcs;
+
+    /// <summary>Which Git each open file follows, its change bars and blame, by the repository holding it.</summary>
+    private readonly Dictionary<OpenDocument, VcsController> following = [];
+
+    /// <summary>Finds the folder's other repositories once its own lookup has ended, each opened with Git of its own, and
+    /// moves the open files under one to it.</summary>
+    private async Task FindOthersAsync()
+    {
+        string? folder = Folder;
+        await Vcs.Opened;
+        if (folder is null || Folder != folder)
+        {
+            return;
+        }
+        IReadOnlyList<Passenger.Vcs.Git> found = await Passenger.Vcs.GitRepositories.UnderAsync(folder, Vcs.Repository?.Root);
+        if (found.Count == 0 || Folder != folder || IsEnded)
+        {
+            return;
+        }
+        foreach (Passenger.Vcs.Git tree in found)
+        {
+            VcsController other = new() { Work = setup.Work, Watching = setup.Watching };
+            other.Activity = name => LocalHistory?.During(name);
+            other.LookFirst = paths => LocalHistory?.LookBeforeAsync(paths) ?? Task.CompletedTask;
+            others.Add(other);
+            await other.OpenAsync(tree.Root);
+        }
+        foreach ((OpenDocument document, VcsController was) in following.ToList())
+        {
+            if (VcsFor(document.Path) is { } now && now != was)
+            {
+                was.Detach(document);
+                now.Attach(document);
+                following[document] = now;
+            }
+        }
+        RepositoriesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public BookmarkStore Bookmarks { get; } = new();
 
     /// <summary>What the folder had the container engine start, and the labels it goes on with: ended with the folder.</summary>
@@ -1399,6 +1492,9 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>The profile each project last published with, which Publish Again publishes it with.</summary>
     public PublishMemory Publishing { get; } = new();
+
+    /// <summary>The messages committed from the Commit window in each of the folder's repositories, which its message history offers.</summary>
+    public Passenger.App.Vcs.CommitMessages CommitMessages { get; } = new();
 
     /// <summary>The language server on the folder's projects, or null for a folder with none (or no folder).</summary>
     public CSharpService? CSharp { get; private set; }
@@ -1513,10 +1609,11 @@ public sealed class ProjectSession : IAsyncDisposable
     public Web.WebLanguages? Web { get; private set; }
 
     /// <summary>Where an open file's outline comes from, which File Structure, the Structure window and an agent's outline
-    /// read: a Markdown file's headings and a GDScript's members as Passenger reads them, else the C# server's document,
-    /// else its web language's, else a Godot project's scene as Passenger reads it; null while none has it.</summary>
+    /// read: a Markdown file's headings, a XAML file's elements and a GDScript's members as Passenger reads them, else the C#
+    /// server's document, else its web language's, else a Godot project's scene as Passenger reads it; null while none has it.</summary>
     public Passenger.App.Navigation.FileOutline? OutlineOf(OpenDocument document) =>
         document.Language == Languages.Language.Markdown ? new Editors.MarkdownOutline(document.Text)
+        : document.Language == Languages.Language.Xaml ? new Xaml.XamlOutline(document.Text)
         : document.Language == Languages.Language.Gherkin ? new Editors.FeatureOutline(document.Text, () => FeatureProjectFolder(document.Path))
         : Godot.GodotScriptTypes.IsScript(document.Path) ? new Godot.GDScriptOutline(document.Text)
         : (CSharp?.For(document)?.Lsp ?? Web?.For(document)?.Lsp) is { } lsp ? Passenger.App.Navigation.FileOutline.Served(lsp)
@@ -1539,7 +1636,7 @@ public sealed class ProjectSession : IAsyncDisposable
 
     /// <summary>Why there is no run configuration to run, debug or profile (the <paramref name="verb"/>): no SDK to
     /// load the projects with, or no executable project (<see cref="Refusals.NothingTo"/>).</summary>
-    public string NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder);
+    public Words NothingTo(string verb) => Refusals.NothingTo(verb, Models.MissingSdk, Folder);
 
     /// <summary>The folder's projects as the project host builds them at design time, which the language server loads.</summary>
     public ProjectBuilds DesignTimeBuilds { get; }
@@ -1606,6 +1703,9 @@ public sealed class ProjectSession : IAsyncDisposable
         }
     }
 
+    /// <summary>Files or folders were made, moved or deleted, by the IDE or another program (<see cref="CameOrWent"/>).</summary>
+    public event EventHandler<IReadOnlyCollection<string>>? FilesCameOrWent;
+
     /// <summary>Files or folders made, moved or deleted, by the IDE or another program, followed: what was kept of a project
     /// that could not be evaluated where one came is let go (<see cref="ProjectModels.Came"/>), the solution is read again
     /// given <paramref name="readAgain"/>, a project shown missing whose file stands there now is taken as it is, and each
@@ -1616,6 +1716,7 @@ public sealed class ProjectSession : IAsyncDisposable
         {
             return;
         }
+        FilesCameOrWent?.Invoke(this, paths);
         Models.Came(paths);
         if (readAgain)
         {
@@ -1685,7 +1786,7 @@ public sealed class ProjectSession : IAsyncDisposable
             return;
         }
         Workspace = Models.Apply(before);
-        Configurations.Configure(Projects);
+        Configurations.ConfigureAsKept(Projects);
         // A project evaluated again is loaded again by the language server too, which watches only some imports.
         CSharp?.Reload([.. before.Projects.Where(p => changed.Contains(p.Path) && !Unloaded.Contains(p.Path) && p.Evaluated is { Complete: true }).Select(p => p.Path).Distinct(StringComparer.Ordinal)]);
         bool tests = !before.Projects.Where(p => p.IsTestProject).Select(p => p.Path).SequenceEqual(Workspace.Projects.Where(p => p.IsTestProject).Select(p => p.Path))
@@ -1749,6 +1850,7 @@ public sealed class ProjectSession : IAsyncDisposable
         EndpointGrants.Keep(kept.Endpoints);
         OpenApiNames.Keep(kept.Endpoints);
         Publishing.Keep(kept.Publish);
+        CommitMessages.Keep(kept.Commit);
         FindScope = kept.Find.Value;
         WorkspaceState workspace = kept.Workspace.Value;
         foreach (string project in workspace.UnloadedProjects)
@@ -1795,7 +1897,9 @@ public sealed class ProjectSession : IAsyncDisposable
         FileChecks.Attach(document);
         Features.Attach(document);
         Debug.Attach(document);
-        Vcs.Attach(document);
+        VcsController vcs = VcsFor(document.Path);
+        vcs.Attach(document);
+        following[document] = vcs;
         Bookmarks.Attach(document.Path, document.Text);
         Navigation.Attach(document.Path, document.Text);
     }
@@ -1841,7 +1945,7 @@ public sealed class ProjectSession : IAsyncDisposable
         FileChecks.Detach(document);
         Features.Detach(document);
         Debug.Detach(document);
-        Vcs.Detach(document);
+        (following.Remove(document, out VcsController? followed) ? followed : Vcs).Detach(document);
         Bookmarks.Detach(document.Path);
         Navigation.Detach(document.Path);
     }
@@ -1942,6 +2046,7 @@ public sealed class ProjectSession : IAsyncDisposable
     public void Start()
     {
         IdeErrors.Observe(Vcs.OpenAsync(Folder!));
+        IdeErrors.Observe(FindOthersAsync());
         StartCSharp();
         // The walk begun ahead is the first, and what the session has not taken of the opening once it lands is ended.
         WalkForProjects(ahead?.Read);
@@ -2057,6 +2162,7 @@ public sealed class ProjectSession : IAsyncDisposable
                 Hints = (shown.ParameterHints, shown.TypeHints),
                 FirstProjects = ActiveProjectsAsync,
                 ProjectsNow = () => Projects,
+                LayersNow = () => Layers,
                 UnloadedNow = () => [.. Workspace?.Projects.Where(p => Unloaded.Contains(p.Path)) ?? []],
                 Frameworks = Frameworks,
                 Feed = DesignTimeBuilds.Feed,
@@ -2227,6 +2333,7 @@ public sealed class ProjectSession : IAsyncDisposable
         }
         Game?.Dispose();
         Tests.Stop();
+        Continuous.Dispose();
         parts.Add(("the test runner", Tests.DisposeAsync().AsTask()));
         parts.Add(("the language server", CSharp?.DisposeAsync().AsTask() ?? Task.CompletedTask));
         CSharp = null;
@@ -2258,6 +2365,10 @@ public sealed class ProjectSession : IAsyncDisposable
         Runner.Dispose();
         Debug.Dispose();
         Vcs.Dispose();
+        foreach (VcsController other in others)
+        {
+            other.Dispose();
+        }
     }
 
     /// <summary>Waits for what is ending, for at most the limit, naming in the log what had not ended by then.</summary>

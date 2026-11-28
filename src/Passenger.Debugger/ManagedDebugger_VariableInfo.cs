@@ -24,25 +24,40 @@ public partial class ManagedDebugger
         {
             // Captured variables are fields of the closure chain; the lambda's own locals are still read below.
             ICorDebugILFrame holding = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
-            IReadOnlySet<int>? inScope = module.MetadataReader.HoistedSlotsInScope(corDebugFunction.Token, holding.IP.pnOffset, ModuleMetadataReader.VersionOf(holding));
+            IReadOnlySet<int>? inScope = module.MetadataReader.HoistedSlotsInScope(corDebugFunction.Token, holding.IP.pnOffset, module.MetadataReader.VersionOf(holding));
             await AddClosureChainMembers(classContainingHoistedLocalsValue, threadId, stackDepth, result, inScope);
         }
         ICorDebugILFrame corDebugIlFrame = GetIlFrameForThreadIdAndStackDepth(threadId, stackDepth);
-        if (corDebugIlFrame.LocalVariables.Length is 0)
+        (ICorDebugValue?[]? locals, string? unread) = LocalsOf(corDebugIlFrame);
+        int currentIlOffset = corDebugIlFrame.IP.pnOffset;
+        int? version = module.MetadataReader.VersionOf(corDebugIlFrame);
+        if (locals is null)
+        {
+            // Each local the frame's code has in scope, named, saying why its value is not read.
+            result.AddRange(Enumerable.Range(0, LocalCountOf(corDebugIlFrame))
+                .Select(index => module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, version))
+                .OfType<string>().Select(name => FailedRow(name, unread!)));
+            return;
+        }
+        if (locals.Length is 0)
         {
             return;
         }
 
-        int currentIlOffset = corDebugIlFrame.IP.pnOffset;
         ImmutableArray<DeclaredType?> declared = DeclaredLocals(module, corDebugIlFrame);
-        foreach ((int index, ICorDebugValue? localVariableCorDebugValue) in corDebugIlFrame.LocalVariables.Index())
+        foreach ((int index, ICorDebugValue? localVariableCorDebugValue) in locals.Index())
         {
-            string? localVariableName = module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, ModuleMetadataReader.VersionOf(corDebugIlFrame));
+            string? localVariableName = module.MetadataReader.GetLocalVariableName(corDebugFunction.Token, index, currentIlOffset, version);
             if (localVariableName is null)
             {
                 continue; // Compiler generated locals will not be found. E.g. DefaultInterpolatedStringHandler
             }
 
+            if (localVariableCorDebugValue is null)
+            {
+                result.Add(FailedRow(localVariableName, unread!));
+                continue;
+            }
             if (IsLambdaDisplayClass(localVariableCorDebugValue))
             {
                 await AddClosureChainMembers(localVariableCorDebugValue, threadId, stackDepth, result);
@@ -708,6 +723,25 @@ public partial class ManagedDebugger
                     return;
                 }
 
+                if (EvalStatus.ImplicitOff is { } off && !EvalStatus.Explicit)
+                {
+                    // An auto-property's value is its field's, read there while its getter may not run; another's says why it is not read.
+                    if (IsCompilerGenerated(metadataImport, getMethodDef)
+                        && metadataImport.EnumFieldsWithName(corDebugClass.Token, $"<{propertyName}>k__BackingField").FirstOrDefault() is { IsNil: false } backing)
+                    {
+                        ICorDebugValue stored = isStatic ? await GetStaticFieldValueAsync(declaringType, backing, threadId, stackDepth)
+                            : corDebugValue.UnwrapDebugValueToObject().GetFieldValue(corDebugClass, backing);
+                        VariableInfo kept = await ValueRow(propertyName, null, stored, threadId, stackDepth, DeclaredProperty(corDebugClass, mdProperty), displayed: true, namesPointee: false);
+                        kept.Member = propertyName;
+                        result.Add(kept);
+                    }
+                    else
+                    {
+                        result.Add(FailedRow(propertyName, off));
+                    }
+                    return;
+                }
+
                 ICorDebugFunction getMethod = corDebugClass.Module.GetFunctionFromToken(getMethodDef);
                 ICorDebugEval eval = variablesReferenceIlFrame.Chain.Thread.CreateEval();
 
@@ -802,13 +836,13 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>An array's rows under <paramref name="indexPrefix"/>, its outer dimensions' indices opened so far: a dimension
-    /// over 100 long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one opened), an outer
-    /// dimension's indices each opening to the next, the last's elements, declared as <paramref name="declared"/>'s element
-    /// type (else the array's own), reached by their whole index from <paramref name="expression"/>. A range and an outer
-    /// index are virtual rows, which none reaches. True when the rows open through the array, which is then kept.</summary>
+    /// <summary>An array's rows under <paramref name="indexPrefix"/>, its outer dimensions' indices so far: a dimension over 100
+    /// long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one opened), an outer dimension's
+    /// indices each opening to the next, the last's elements, declared as <paramref name="declared"/>'s element type (else the
+    /// array's), reached by their index from <paramref name="expression"/>, at most <paramref name="most"/> rows in all. A range
+    /// and an outer index are virtual rows. True when the rows open through the array, which is then kept.</summary>
     private async Task<bool> AddArrayElements(ICorDebugArrayValue arrayValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, uint[]? indexPrefix = null, uint? startOffset = null, uint? count = null, ICorDebugValue? referenceValue = null,
-        DeclaredType? declared = null, string? expression = null)
+        DeclaredType? declared = null, string? expression = null, int most = int.MaxValue)
     {
         int rank = arrayValue.Rank;
         indexPrefix ??= [];
@@ -821,7 +855,7 @@ public partial class ManagedDebugger
 
         if (count is null && currentDimensionLength > 100)
         {
-            for (uint rangeStart = 0u; rangeStart < currentDimensionLength; rangeStart += 100)
+            for (uint rangeStart = 0u; rangeStart < currentDimensionLength && result.Count < most; rangeStart += 100)
             {
                 uint rangeCount = Math.Min(100u, currentDimensionLength - rangeStart);
                 uint firstIndex = currentDimensionStart + rangeStart;
@@ -835,7 +869,7 @@ public partial class ManagedDebugger
         if (outer)
         {
             uint first = startOffset ?? 0;
-            for (uint offset = first; offset < first + (count ?? currentDimensionLength); offset++)
+            for (uint offset = first; offset < first + (count ?? currentDimensionLength) && result.Count < most; offset++)
             {
                 uint[] indices = [.. indexPrefix, currentDimensionStart + offset];
                 string name = $"[{string.Join(", ", indices)}, ...]";
@@ -847,7 +881,7 @@ public partial class ManagedDebugger
 
         // The elements first: an evaluation below may neuter the array value.
         DeclaredType? elementDeclared = declared?.Element ?? DeclaredAs(arrayValue.ExactType.FirstTypeParameter);
-        uint elementCount = count ?? currentDimensionLength;
+        uint elementCount = Math.Min(count ?? currentDimensionLength, (uint)Math.Max(0, most - result.Count));
         (uint[] Indices, ICorDebugValue Element)[] elements = ValueEnumerable.Range(0, checked((int)elementCount))
             .Select(offset =>
             {
@@ -904,6 +938,8 @@ public partial class ManagedDebugger
             Type = type,
             PresentationHint = failed ? FailedHint(shown) : null,
             VariablesReference = GetVariablesReference(opens?.Invoke() ?? value, threadId, stackDepth, proxy, namesPointee ? name : null, declared, expression),
+            MemoryReference = !failed && ReferencedMemoryAddress(value) is ulong address && address != 0 ? Address(address) : null,
+            Mark = MarkOf(value),
         };
     }
 

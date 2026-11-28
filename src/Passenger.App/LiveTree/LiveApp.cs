@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using Passenger.App.Run;
@@ -37,12 +38,14 @@ public enum LiveAppKind
     Avalonia,
     Wpf,
     Maui,
+    WinUI,
+    WinForms,
 }
 
 /// <summary>Passenger's end of its inspector inside an Avalonia app it runs or debugs (src/Passenger.Inspector), a WPF app
-/// (src/Passenger.Inspector.Wpf, also given ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO) or a .NET MAUI app on a device or a
-/// simulator (src/Passenger.Inspector.Maui), one protocol for all: a startup hook and a
-/// socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
+/// (src/Passenger.Inspector.Wpf, also given ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO), a Windows Forms app
+/// (src/Passenger.Inspector.WinForms) or a .NET MAUI app on a device or a simulator (src/Passenger.Inspector.Maui), one
+/// protocol for all: a startup hook and a socket of the launch's own; from before Main it tells of failed bindings, and once the UI is up says hello and answers on
 /// the UI thread (paused under the debugger, once it runs again). One launch's alone, never in the app as built. A UI-thread
 /// object: its events come on the UI thread.</summary>
 public sealed class LiveApp : ILiveTreeSource, IDisposable
@@ -59,6 +62,9 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>What the app told unasked and the UI thread has yet to hear, which it hears all at once: an app saying
     /// thousands of things at once (its bindings failing as it opens) is one crossing, not one each.</summary>
     private readonly List<Reply> heard = [];
+
+    /// <summary>The designer code's files found of the app's classes, by each class's full name.</summary>
+    private readonly Dictionary<string, string> designerFiles = new(StringComparer.Ordinal);
     private NetworkStream? stream;
 
     private LiveApp(string name, string socket, Socket? listener, LaunchPlan? plan, IReadOnlyList<string> overlays, LiveAppKind kind = LiveAppKind.Avalonia,
@@ -77,7 +83,13 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         }
         else if (plan is not null)
         {
-            string inspector = kind == LiveAppKind.Wpf ? WpfInspectorPath : InspectorPath;
+            string inspector = kind switch
+            {
+                LiveAppKind.Wpf => WpfInspectorPath,
+                LiveAppKind.WinUI => WinUIInspectorPath(plan.Program) ?? InspectorPath,
+                LiveAppKind.WinForms => WinFormsInspectorPath,
+                _ => InspectorPath,
+            };
             // An Avalonia app nobody is to see may be started by its inspector, after every other hook, in place of its Main.
             bool unseen = plan.Unseen && kind == LiveAppKind.Avalonia;
             Dictionary<string, string> environment = new(plan.Environment)
@@ -89,7 +101,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 environment[Wire.UnseenVariable] = plan.OnOwnDesktop ? Wire.UnseenRuns : Wire.UnseenEnds;
             }
-            if (kind == LiveAppKind.Wpf)
+            if (kind is LiveAppKind.Wpf or LiveAppKind.WinUI)
             {
                 environment[RuntimeVariables.XamlDiagnosticsSourceInfo] = "1";
                 if (plan.Project is { } project)
@@ -128,6 +140,21 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The WPF app's inspector, which only a Windows build carries.</summary>
     public static string WpfInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "wpf", "Passenger.Inspector.Wpf.dll");
 
+    /// <summary>A Windows Forms app's inspector, which only a Windows build carries.</summary>
+    public static string WinFormsInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "winforms", "Passenger.Inspector.WinForms.dll");
+
+    /// <summary>A WinUI app's inspector, for the processor the program a start runs runs on (its apphost, or the dotnet that
+    /// runs its assembly; inspector/winui/x64/, arm64/, x86/, each with the COM host WinUI's diagnostics load it through), which
+    /// only a Windows build carries; null for a program of another processor.</summary>
+    public static string? WinUIInspectorPath(string? program) =>
+        program is null ? null : (ProgramProcessors.Of(program) is [var processor, ..] ? processor : RuntimeInformation.OSArchitecture) switch
+        {
+            Architecture.X64 => Path.Combine(AppContext.BaseDirectory, "inspector", "winui", "x64", "Passenger.Inspector.WinUI.dll"),
+            Architecture.Arm64 => Path.Combine(AppContext.BaseDirectory, "inspector", "winui", "arm64", "Passenger.Inspector.WinUI.dll"),
+            Architecture.X86 => Path.Combine(AppContext.BaseDirectory, "inspector", "winui", "x86", "Passenger.Inspector.WinUI.dll"),
+            _ => null,
+        };
+
     /// <summary>A .NET MAUI app's inspector.</summary>
     public static string MauiInspectorPath => Path.Combine(AppContext.BaseDirectory, "inspector", "maui", "Passenger.Inspector.Maui.dll");
 
@@ -144,10 +171,12 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The framework and its version as the window says it, once the app has said hello: "Avalonia 12.2.0",
     /// "WPF 10.0.1"; the framework alone before.</summary>
     public string Framework => Kind == LiveAppKind.Wpf ? FrameworkSaid ?? "WPF"
+        : Kind == LiveAppKind.WinUI ? FrameworkSaid ?? "WinUI"
+        : Kind == LiveAppKind.WinForms ? FrameworkSaid ?? "Windows Forms"
         : Kind == LiveAppKind.Maui ? FrameworkSaid ?? "MAUI"
         : Avalonia is { } version ? $"Avalonia {(System.Version.TryParse(version, out Version? read) ? read.ToString(3) : version)}" : "Avalonia";
 
-    /// <summary>What a WPF or MAUI app's inspector said it runs, from its hello.</summary>
+    /// <summary>What a WPF, WinUI, Windows Forms or MAUI app's inspector said it runs, from its hello.</summary>
     private string? FrameworkSaid { get; set; }
 
     /// <summary>The plan as it is launched: the inspector among its startup hooks, and the socket to connect to; none for
@@ -275,11 +304,14 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The program a plan's start hands a startup hook to, as it runs (<see cref="LaunchPlan.DesktopApp"/>), where it is
     /// one this build of Passenger carries an inspector for: an Avalonia app (<see cref="DesktopPrograms.AvaloniaAssembly"/>
     /// beside it), or, with <paramref name="wpf"/>, on Windows a WPF app (a WindowsDesktop app's assembly that references
-    /// WPF's); null for any other program, one taking Avalonia.Base alone too, or one its start goes past hooks for.</summary>
+    /// WPF's), else on Windows a WinUI or Windows Forms app; null for any other program, one taking Avalonia.Base alone too,
+    /// or one its start goes past hooks for.</summary>
     public static (string File, LiveAppKind Kind)? Inspected(LaunchPlan plan, bool wpf = true) =>
         plan.DesktopApp() is not { PastHooks: null, File: var started } ? null
         : DesktopPrograms.BesideAvalonia(started) && File.Exists(InspectorPath) ? (started, LiveAppKind.Avalonia)
         : wpf && OperatingSystem.IsWindows() && File.Exists(WpfInspectorPath) && IsWpf(started) ? (started, LiveAppKind.Wpf)
+        : OperatingSystem.IsWindows() && DesktopPrograms.BesideWinUI(started) && WinUIInspectorPath(plan.Program) is { } winui && File.Exists(winui) ? (started, LiveAppKind.WinUI)
+        : OperatingSystem.IsWindows() && File.Exists(WinFormsInspectorPath) && IsWinForms(started) ? (started, LiveAppKind.WinForms)
         : null;
 
     /// <summary>The live app for a plan that runs an app on a device whose build deployed Avalonia or .NET MAUI (its controls'
@@ -409,7 +441,15 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     /// <summary>Whether an assembly is a WPF app's: it runs on the WindowsDesktop framework (its runtimeconfig.json names it)
     /// and references WPF's assemblies, as a Windows Forms app does not.</summary>
-    private static bool IsWpf(string built)
+    private static bool IsWpf(string built) => OnWindowsDesktopReferencing(built, "PresentationFramework", "PresentationCore");
+
+    /// <summary>Whether an assembly is a Windows Forms app's: on the WindowsDesktop framework, referencing Windows Forms (an app
+    /// of WPF too takes WPF's inspector, asked first).</summary>
+    private static bool IsWinForms(string built) => OnWindowsDesktopReferencing(built, "System.Windows.Forms");
+
+    /// <summary>Whether an assembly runs on the WindowsDesktop framework (its runtimeconfig.json names it) and references one of
+    /// the assemblies named.</summary>
+    private static bool OnWindowsDesktopReferencing(string built, params string[] names)
     {
         try
         {
@@ -417,7 +457,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 return false;
             }
-            return AssemblyFacts.Read(built)?.References.Any(r => r.Name is "PresentationFramework" or "PresentationCore") == true;
+            return AssemblyFacts.Read(built)?.References.Any(r => names.Contains(r.Name, StringComparer.Ordinal)) == true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -469,9 +509,26 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     /// <summary>The app's windows and their visual trees.</summary>
     public async Task<AppTree> TreeAsync() => (await AskAsync(new Request(0, Wire.Tree))).Tree ?? new AppTree([]);
 
-    /// <summary>An element looked at closely: its properties and their sources, its layout, its styles.</summary>
-    public async Task<ElementDetails> DetailsAsync(long element) =>
-        (await AskAsync(new Request(0, Wire.Details, element))).Details ?? throw new LiveAppException("The app said nothing of that element");
+    /// <summary>An element looked at closely: its properties and their sources, its layout, its styles; a Windows Forms one's
+    /// with the file of the designer code that makes it, found under its project's folder.</summary>
+    public async Task<ElementDetails> DetailsAsync(long element)
+    {
+        ElementDetails details = (await AskAsync(new Request(0, Wire.Details, element))).Details ?? throw new LiveAppException("The app said nothing of that element");
+        if (details.Designed is not { File: null } designed || Plan?.Project is not { } project)
+        {
+            return details;
+        }
+        if (!designerFiles.TryGetValue(designed.Class, out string? file))
+        {
+            string folder = Path.GetDirectoryName(project)!;
+            file = await BackgroundWork.Run(() => DesignerPlaces.FileOf(folder, designed.Class));
+            if (file is not null)
+            {
+                designerFiles[designed.Class] = file;
+            }
+        }
+        return details with { Designed = designed with { File = file } };
+    }
 
     /// <summary>Select Element on (the next click in the app chooses what it is on) or off.</summary>
     public Task PickAsync(bool on) => AskAsync(new Request(0, Wire.Pick, On: on));
@@ -518,11 +575,56 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     /// <summary>A XAML file's text applied to what the app made from it (XAML Hot Reload), answered with what it came to.</summary>
     public async Task<XamlReloaded> ReloadAsync(XamlChange change) =>
-        (await AskAsync(new Request(0, Wire.Reload) { Change = change }, limit: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
+        (await AskAsync(new Request(0, Wire.Reload) { Change = change }, running: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the XAML came to");
 
-    /// <summary>How long the app may take to apply a XAML file: its first compiles Avalonia's XAML compiler itself, slower
-    /// again under the debugger.</summary>
+    /// <summary>How many updates a .NET MAUI app's XAML Incremental Hot Reload has heard: asked before an update its XAML's
+    /// code goes in, whose next one the reload of the XAML answers of.</summary>
+    public async Task<int> UpdatesHeardAsync() =>
+        (await AskAsync(new Request(0, Wire.Updates))).Updates ?? throw new LiveAppException($"{Name} did not say how many XAML updates it has heard");
+
+    /// <summary>A Windows Forms form's designer code run in the forms of its class the app has open (its Hot Reload).</summary>
+    public async Task<XamlReloaded> DesignedAsync(DesignedChange change) =>
+        (await AskAsync(new Request(0, Wire.Designed) { Designed = change }, running: ReloadLimit)).Reloaded ?? throw new LiveAppException($"{Name} did not say what the designer code came to");
+
+    /// <summary>How long the app may run before it says what a XAML file came to: its first compiles Avalonia's XAML compiler
+    /// itself, slower again under the debugger, whose stops (<see cref="Held"/>) are left out, as one in the code that
+    /// applies the change holds its answer for as long as the person looks.</summary>
     public static TimeSpan ReloadLimit => Waits.Of(TimeSpan.FromSeconds(30));
+
+    /// <summary>Whether the debugger holds the program at a stop, as the session debugging it says: the app answers nothing
+    /// meanwhile, so a wait limited to its running time (<see cref="ReloadLimit"/>) waits on.</summary>
+    public bool Held
+    {
+        get => held;
+        set
+        {
+            UiThread.Check();
+            if (held != value)
+            {
+                held = value;
+                CancellationTokenSource told = heldChanged;
+                heldChanged = new();
+                told.Cancel();
+                told.Dispose();
+            }
+        }
+    }
+
+    private bool held;
+
+    /// <summary>Cancelled as <see cref="Held"/> changes, which a wait on the program's running time takes up again.</summary>
+    private CancellationTokenSource heldChanged = new();
+
+    /// <summary>How many requests wait on the app's answer within its running time.</summary>
+    private int awaitingRunning;
+
+    /// <summary>Whether a request waits on the app's answer within its running time (<see cref="ReloadLimit"/>): a change the
+    /// app takes, through only once a program the debugger holds goes on.</summary>
+    public bool AwaitsRunning => awaitingRunning > 0;
+
+    /// <summary>A request waiting on the app's answer within its running time found the debugger holding the program: told
+    /// once a request, the answer to come only once it goes on.</summary>
+    public event EventHandler? AnswerHeld;
 
     /// <summary>Its XAML Hot Reload, given by the session that launched it; null for Passenger's own windows.</summary>
     public XamlHotReload? Xaml { get; set; }
@@ -531,9 +633,10 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
     public async Task<InputDone> InputAsync(InputAction input, CancellationToken giveUp = default) =>
         (await AskAsync(new Request(0, Wire.Input) { Input = input }, giveUp)).Done ?? throw new LiveAppException($"{Name} did not say what the input did");
 
-    /// <summary>A request's answer within <see cref="AnswerLimit"/> or <paramref name="limit"/>; <paramref name="giveUp"/> stops
-    /// the wait for it (the app paused under the debugger before it could answer), its answer then forgotten.</summary>
-    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default, TimeSpan? limit = null)
+    /// <summary>A request's answer within <see cref="AnswerLimit"/>, or within <paramref name="running"/> of the time the program
+    /// runs (<see cref="Held"/>); <paramref name="giveUp"/> stops the wait for it (the app paused under the debugger before
+    /// it could answer), its answer then forgotten.</summary>
+    private async Task<Reply> AskAsync(Request request, CancellationToken giveUp = default, TimeSpan? running = null)
     {
         if (State != LiveAppState.Connected || stream is not { } open)
         {
@@ -563,7 +666,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         Reply reply;
         try
         {
-            reply = await answer.WaitAsync(limit ?? AnswerLimit, giveUp);
+            reply = running is { } limit ? await WhileRunningAsync(answer, limit, giveUp) : await answer.WaitAsync(AnswerLimit, giveUp);
         }
         catch (OperationCanceledException) when (giveUp.IsCancellationRequested)
         {
@@ -574,9 +677,50 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
         {
             // Forgotten, so its answer, if it ever comes, finds no one waiting.
             asked.Forget(id, answer);
-            throw new LiveAppException(limit is { } longer ? $"{Name} did not answer within {Durations.Said(longer)}" : NotAnswered(Name));
+            throw new LiveAppException(running is { } longer ? $"{Name} did not answer within {Durations.Said(longer)} of running" : NotAnswered(Name));
         }
         return reply.Error is { } why ? throw new LiveAppException(why) : reply;
+    }
+
+    /// <summary>An answer within <paramref name="limit"/> of the time the program runs: the clock stands while the debugger
+    /// holds it (<see cref="Held"/>), and goes on as it runs again.</summary>
+    private async Task<Reply> WhileRunningAsync(Task<Reply> answer, TimeSpan limit, CancellationToken giveUp)
+    {
+        UiThread.Check();
+        awaitingRunning++;
+        try
+        {
+            TimeSpan left = limit;
+            bool told = false;
+            while (true)
+            {
+                bool stood = held;
+                if (stood && !told)
+                {
+                    told = true;
+                    AnswerHeld?.Invoke(this, EventArgs.Empty);
+                }
+                long from = System.Diagnostics.Stopwatch.GetTimestamp();
+                using CancellationTokenSource woken = CancellationTokenSource.CreateLinkedTokenSource(giveUp, heldChanged.Token);
+                try
+                {
+                    return stood ? await answer.WaitAsync(woken.Token) : await answer.WaitAsync(left, woken.Token);
+                }
+                catch (OperationCanceledException) when (!giveUp.IsCancellationRequested && !answer.IsCanceled)
+                {
+                    if (answer.IsCompleted)
+                    {
+                        return await answer;
+                    }
+                    TimeSpan ran = stood ? TimeSpan.Zero : System.Diagnostics.Stopwatch.GetElapsedTime(from);
+                    left = ran < left ? left - ran : TimeSpan.Zero;
+                }
+            }
+        }
+        finally
+        {
+            awaitingRunning--;
+        }
     }
 
     /// <summary>How long the app may take to answer: its UI thread busy, or the app paused under the debugger.</summary>
@@ -651,14 +795,15 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
 
     private void FailAll() => asked.End(_ => new LiveAppException($"{Name} has ended"));
 
-    /// <summary>How long a connection through adb's forward is watched for adb's end of it, which comes at once where the app's
-    /// socket is not listening yet.</summary>
-    private static readonly TimeSpan Unanswered = TimeSpan.FromMilliseconds(500);
+    /// <summary>Where Passenger reaches an app's inspector on a device in place of where its start says: a test's stand-in put
+    /// between them (an adb as late as a loaded machine's). Null reaches it where the start says.</summary>
+    public static Func<EndPoint, EndPoint>? ReachedThrough { get; set; }
 
     /// <summary>The inspector in an app on a device reached where the start says once it has put it in (adb's forward, a
     /// simulator's port, a socket in a Mac Catalyst app's container): connected and given the token, again and again until
-    /// the app's socket takes it, as adb takes each connection here and ends it at once while the app's inspector is not
-    /// listening yet. Null where the session ended first, or it could not be reached, which the app is refused for.</summary>
+    /// the inspector writes the token back, its word that it took the connection, as adb takes each connection here and
+    /// ends it, however late, while the app's socket is not listening yet. Null where the session ended first, or it could
+    /// not be reached, which the app is refused for.</summary>
     private async Task<Socket?> ReachAsync(Run.Devices.DeviceInspector device, CancellationToken stop)
     {
         EndPoint at;
@@ -679,6 +824,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             });
             return null;
         }
+        at = ReachedThrough?.Invoke(at) ?? at;
         byte[] token = System.Text.Encoding.UTF8.GetBytes(device.Token + "\n");
         while (!stop.IsCancellationRequested)
         {
@@ -688,7 +834,7 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             {
                 await socket.ConnectAsync(at, stop);
                 await socket.SendAsync(token, SocketFlags.None, stop);
-                if (!socket.Poll(Unanswered, SelectMode.SelectRead) || socket.Available > 0)
+                if (await SaidBackAsync(socket, token, stop))
                 {
                     return socket;
                 }
@@ -713,6 +859,23 @@ public sealed class LiveApp : ILiveTreeSource, IDisposable
             }
         }
         return null;
+    }
+
+    /// <summary>Whether the token came back whole before the connection ended, read to its last byte and no further, so what
+    /// the inspector says next is the stream's.</summary>
+    private static async Task<bool> SaidBackAsync(Socket socket, byte[] token, CancellationToken stop)
+    {
+        byte[] back = new byte[token.Length];
+        for (int read = 0; read < back.Length;)
+        {
+            int more = await socket.ReceiveAsync(back.AsMemory(read), SocketFlags.None, stop);
+            if (more == 0)
+            {
+                return false;
+            }
+            read += more;
+        }
+        return back.AsSpan().SequenceEqual(token);
     }
 
     /// <summary>Everything the app has told unasked since the UI thread last heard it, in the order told.</summary>

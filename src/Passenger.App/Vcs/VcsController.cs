@@ -19,7 +19,7 @@ public sealed class VcsController : IDisposable
     /// <summary>How long typing pauses before an annotated file is blamed again: a git each time, so longer.</summary>
     private static readonly TimeSpan BlameDelay = TimeSpan.FromMilliseconds(500);
 
-    private const string Busy = "Git is still busy with the last change";
+    public const string Busy = "Git is still busy with the last change";
 
 
     /// <summary>What a commit's work is held under, which the Commit window's button starts and no action names.</summary>
@@ -61,6 +61,13 @@ public sealed class VcsController : IDisposable
     /// <summary>The working tree the open folder is in, or null when it is in none.</summary>
     public Git? Repository => git;
 
+    /// <summary>The tops of other repositories under this one's, whose files its status leaves to them: a repository the
+    /// open folder holds beside its own.</summary>
+    public IReadOnlyList<string> LeftOut { get; set; } = [];
+
+    /// <summary>A repository as the window names it: its top folder's name.</summary>
+    public static string NameOf(Git repository) => Path.GetFileName(Path.TrimEndingDirectorySeparator(repository.Root));
+
     /// <summary>The signatures of the commits the window shows, read as they are shown.</summary>
     public CommitSignatures Signatures { get; } = new();
 
@@ -98,7 +105,8 @@ public sealed class VcsController : IDisposable
 
     private bool groupsByDirectory;
 
-    /// <summary>Raised when <see cref="SignOff"/> or <see cref="GroupsByDirectory"/> changes, for the folder to keep them.</summary>
+    /// <summary>Raised when <see cref="SignOff"/>, <see cref="GroupsByDirectory"/> or <see cref="Returning"/> changes, for the
+    /// folder to keep them.</summary>
     public event EventHandler? KeptChanged;
 
     /// <summary>Why git cannot read the folder's repository: it refused the one the folder is in (one another user owns,
@@ -110,12 +118,12 @@ public sealed class VcsController : IDisposable
     public bool GitMissing { get; private set; }
 
     /// <summary>What is said where Git is asked for and the window has none: why git cannot read one, where it cannot.</summary>
-    public string NoRepository => Refused ?? Refusals.NoRepository;
+    public string NoRepository => (Refused ?? Refusals.NoRepository).Shown;
 
     /// <summary>Why nothing goes to a remote or comes from one (Push, Fetch, Update Project, a branch's Update and Push…, a
     /// remote's branch deleted): the repository is in a folder not trusted, where git reaches no remote, as it could not
     /// be kept from running what the repository's settings for one name (<see cref="UntrustedGit"/>); null otherwise.</summary>
-    public string? WhyNotRemote => git is { } repository && !WorkspaceTrust.Trusts(repository.Root) ? Refusals.Untrusted : null;
+    public Words? WhyNotRemote => git is { } repository && !WorkspaceTrust.Trusts(repository.Root) ? Refusals.Untrusted : null;
 
     /// <summary>Why Rollback cannot put <paramref name="changes"/> back: in a folder not trusted, git would write out one it
     /// stores through a filter, which runs only once the folder is trusted (<see cref="FileChange.Unfiltered"/>), as the last
@@ -138,9 +146,11 @@ public sealed class VcsController : IDisposable
         {
             return null;
         }
-        string? local = branch.Kind == RefKind.Local ? branch.Name
-            : branch.Kind == RefKind.Remote && all.Any(b => b.Kind == RefKind.Local && b.Name == LocalNameOf(branch)) ? LocalNameOf(branch)
-            : null;
+        if (branch.CheckedOutElsewhere is { } worktree)
+        {
+            return Refusals.InWorktree(branch.Name, worktree).Shown;
+        }
+        string? local = branch.Kind == RefKind.Local ? branch.Name : branch.Kind == RefKind.Remote ? LocalOf(branch, all) : null;
         return local is not null ? await repository.WhyNotCheckedOutAsync(local) : await repository.WhyNotSwitchedAsync(branch.Ref.FullName);
     }
 
@@ -422,12 +432,9 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>Create Git Repository's title, its action's and the empty states' that offer it where the folder is in none.</summary>
-    public const string CreateRepository = "Create Git Repository";
-
     /// <summary>Why Create Git Repository cannot run, or null where it can: no folder is open, the folder is in a working
     /// tree already, or git refuses the one it is in or is not installed.</summary>
-    public string? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;
+    public Words? WhyNotCreate => lookIn is null ? Refusals.NoFolder : git is not null ? Refusals.InRepository : Refused;
 
     /// <summary>Create Git Repository: the open folder made a working tree and read as it is when a folder opens, given
     /// first the .gitignore every repository Passenger makes is given where it has none (<see cref="RepositoryFiles.GitIgnoreAsync"/>),
@@ -438,7 +445,7 @@ public sealed class VcsController : IDisposable
         UiThread.Check();
         if (WhyNotCreate is { } why)
         {
-            return Report(false, why);
+            return Report(false, why.Shown);
         }
         string folder = lookIn!;
         string ignore = Path.Join(folder, ".gitignore");
@@ -633,8 +640,12 @@ public sealed class VcsController : IDisposable
             Branch = status.Branch;
             Upstream = status.Upstream;
             Divergence = divergence;
-            Changes = status.Changes.Any(c => c.Kind is ChangeKind.Unversioned && IgnoredFolders.InToolOutput(c.Path))
-                ? [.. status.Changes.Where(c => c.Kind is not ChangeKind.Unversioned || !IgnoredFolders.InToolOutput(c.Path))] : status.Changes;
+            IReadOnlyList<string> leftOut = LeftOut;
+            // Another repository's top is listed as a folder git does not track, its name ending in a separator.
+            bool Others(FileChange c) => leftOut.Count > 0 && leftOut.Any(o => PathNames.Within(Path.TrimEndingDirectorySeparator(c.Path), o));
+            Changes = status.Changes.Any(c => c.Kind is ChangeKind.Unversioned && IgnoredFolders.InToolOutput(c.Path) || Others(c))
+                ? [.. status.Changes.Where(c => (c.Kind is not ChangeKind.Unversioned || !IgnoredFolders.InToolOutput(c.Path)) && !Others(c))]
+                : status.Changes;
             Conflicts = status.Conflicts;
             Merge = merge ?? MergeState.Idle;
             if (Conflicts.Count == 0 && begun > readsBeforeUnstash)
@@ -752,9 +763,14 @@ public sealed class VcsController : IDisposable
                 }
             }
         }
-        foreach (OpenDocument document in documents.Keys)
+        foreach ((OpenDocument document, Tracked tracked) in documents)
         {
             IdeErrors.Observe(MarkAsync(document));
+            // Its lines' commits moved with HEAD.
+            if (tracked.Annotated || tracked.Wanted)
+            {
+                IdeErrors.Observe(BlameAsync(document));
+            }
         }
 
         static async Task<StoredBytes?> BytesOfAsync(Task<IReadOnlyDictionary<string, byte[]?>> bytes, string path, string origin)
@@ -772,20 +788,33 @@ public sealed class VcsController : IDisposable
         {
             return;
         }
-        Tracked tracked = new(new Debounce(Editors.TypingPauses.ChangeBars, () => MarkAsync(document)), new Debounce(BlameDelay, () => BlameAsync(document)));
-        tracked.OnChanged = (_, _) =>
+        Tracked tracked = new(new Debounce(Editors.TypingPauses.ChangeBars, () => MarkAsync(document)), new Debounce(BlameDelay, () =>
+        {
+            Relabel(document);
+            return Task.CompletedTask;
+        }));
+        tracked.OnChanged = (_, change) =>
         {
             // Outside a working tree a file has no bars to move; once one is found, every open file's are worked out.
             if (git is not null)
             {
                 tracked.Marks.Restart();
             }
+            tracked.Blame?.Follow(change);
+            tracked.Collecting?.Add(change);
             if (tracked.Annotated)
             {
                 tracked.Reblame.Restart();
             }
         };
-        tracked.OnSaved = (_, _) => IdeErrors.Observe(ReadAsync());
+        tracked.OnSaved = (_, _) =>
+        {
+            IdeErrors.Observe(ReadAsync());
+            if (tracked.Annotated || tracked.Wanted)
+            {
+                IdeErrors.Observe(BlameAsync(document));
+            }
+        };
         document.Text.Changed += tracked.OnChanged;
         document.Saved += tracked.OnSaved;
         documents[document] = tracked;
@@ -806,8 +835,33 @@ public sealed class VcsController : IDisposable
         }
     }
 
-    /// <summary>The blame an annotated file shows, line by line, or null when it shows none.</summary>
-    public IReadOnlyList<BlameLine>? BlameOf(OpenDocument document) => documents.GetValueOrDefault(document)?.Blame;
+    /// <summary>A file's one blame, which its annotations and its signposts' authors read, line by line as its text stands
+    /// (<see cref="CarriedBlame"/>), or null while it has none: blamed while annotated or wanted, again as it is saved or
+    /// HEAD moves.</summary>
+    public IReadOnlyList<BlameLine>? BlameOf(OpenDocument document) => documents.GetValueOrDefault(document)?.Blame?.Now(document.Text.Snapshot);
+
+    /// <summary>Raised on the window's thread as a file's blame lands.</summary>
+    public event EventHandler<OpenDocument>? Blamed;
+
+    /// <summary>Has a file blamed and kept so while its signposts want its authors, or lets go of that.</summary>
+    public void WantBlame(OpenDocument document, bool wanted)
+    {
+        UiThread.Check();
+        if (!documents.TryGetValue(document, out Tracked? tracked) || tracked.Wanted == wanted)
+        {
+            return;
+        }
+        tracked.Wanted = wanted;
+        if (wanted && tracked.Blame is null)
+        {
+            IdeErrors.Observe(BlameAsync(document));
+        }
+        else if (!wanted && !tracked.Annotated)
+        {
+            tracked.Blame = null;
+            tracked.Blaming++;
+        }
+    }
 
     /// <summary>Whether a file's annotations are open, its blame shown or on its way.</summary>
     public bool IsAnnotated(OpenDocument document) => documents.GetValueOrDefault(document)?.Annotated == true;
@@ -839,40 +893,62 @@ public sealed class VcsController : IDisposable
     private static void Unannotate(OpenDocument document, Tracked tracked)
     {
         tracked.Annotated = false;
-        tracked.Blame = null;
-        tracked.Blaming++;
         tracked.Reblame.Stop();
         document.GutterAnnotations = [];
+        if (!tracked.Wanted)
+        {
+            tracked.Blame = null;
+            tracked.Blaming++;
+        }
     }
 
-    /// <summary>Blames the file's text as it is now and shows it, unless annotations closed, another blame began or the
-    /// text changed meanwhile (the pause after that edit blames it again). False only when git said it does not track
-    /// the file, which closes them.</summary>
+    /// <summary>Blames the file's text as it is now, kept and carried through its edits from then on (annotations shown from
+    /// it), unless neither its annotations nor its signposts want it any more or another blame began. False only when git
+    /// said it does not track the file, which closes its annotations.</summary>
     private async Task<bool> BlameAsync(OpenDocument document)
     {
-        if (!documents.TryGetValue(document, out Tracked? tracked) || !tracked.Annotated)
+        if (!documents.TryGetValue(document, out Tracked? tracked) || !(tracked.Annotated || tracked.Wanted))
         {
             return true;
         }
         int blaming = ++tracked.Blaming;
         TextSnapshot text = document.Text.Snapshot;
+        List<DocumentChangedEventArgs> collecting = tracked.Collecting = [];
         IReadOnlyList<BlameLine>? lines = git is { } repository ? await repository.BlameAsync(document.Path, await StoredAsync(document, text)) : null;
         if (blaming != tracked.Blaming)
         {
             return true;
         }
+        tracked.Collecting = null;
         if (lines is null)
         {
-            Unannotate(document, tracked);
-            return false;
-        }
-        if (!ReferenceEquals(text, document.Text.Snapshot))
-        {
+            tracked.Blame = null;
+            if (tracked.Annotated)
+            {
+                Unannotate(document, tracked);
+                return false;
+            }
             return true;
         }
-        tracked.Blame = lines;
-        document.GutterAnnotations = Labels(lines);
+        // The edits made while git blamed are carried from the text it read.
+        CarriedBlame carried = new(lines, text);
+        foreach (DocumentChangedEventArgs change in collecting)
+        {
+            carried.Follow(change);
+        }
+        tracked.Blame = carried;
+        Relabel(document);
+        Blamed?.Invoke(this, document);
         return true;
+    }
+
+    /// <summary>An annotated file's labels from its blame carried to its text as it stands.</summary>
+    private void Relabel(OpenDocument document)
+    {
+        if (documents.TryGetValue(document, out Tracked? tracked) && tracked.Annotated && BlameOf(document) is { } lines)
+        {
+            document.GutterAnnotations = Labels(lines);
+        }
     }
 
     /// <summary>A file's text as its save would write it (its encoding, byte order mark and CR breaks), off the window's
@@ -902,7 +978,7 @@ public sealed class VcsController : IDisposable
     /// <summary>Why a commit cannot be made of what is chosen (<paramref name="anyChosen"/>) with a message, in the order a
     /// commit refuses: files in conflict, a rebase stopped for them, nothing chosen, a chosen file no commit takes, the
     /// message empty; null when one can be made.</summary>
-    public string? WhyNotCommit(bool anyChosen, string message, bool amend, IReadOnlyList<FileChange>? chosen = null) =>
+    public Words? WhyNotCommit(bool anyChosen, string message, bool amend, IReadOnlyList<FileChange>? chosen = null) =>
         Conflicts.Count > 0 ? Refusals.CommitWithConflicts
         // Stopped for conflicts, a commit of its own would go beside the rebase's; a step that stops it (an edit) asks for one.
         : Merge.Operation is MergeOperation.Rebase && Merge.Stop is null ? $"{Merge.UnderWay}: Continue Rebase commits what is resolved and goes on, or Abort Rebase ends it"
@@ -927,7 +1003,7 @@ public sealed class VcsController : IDisposable
         }
         if (((push ? WhyNotRemote : null) ?? WhyNotCommit(chosen.Count > 0, message, amend, chosen)) is { } refused)
         {
-            return new CommitResult(Report(false, refused), null, null);
+            return new CommitResult(Report(false, refused.Shown), null, null);
         }
         bool merging = Merge.CommitsWhole && !amend;
         if (!Begin(Committing, $"Committing {Plural.Of(chosen.Count, "file")}…", out Working? work))
@@ -1035,7 +1111,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Push, $"Pushing {Branch}…", out Working? work, stoppable: true))
         {
@@ -1062,7 +1138,7 @@ public sealed class VcsController : IDisposable
         return Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {Branch}" : $"Push failed: {pushed.Message}");
     }
 
-    /// <summary>Asks which of several remotes a branch that tracks none is pushed to, given the branch and the remotes; null
+    /// <summary>Asks which of several remotes to take, given the question's words ("Push feature to") and the remotes; null
     /// once the person gives up. The window's, unset with none to ask in.</summary>
     public Func<string, IReadOnlyList<string>, Task<string?>>? ChooseRemote { get; set; }
 
@@ -1083,7 +1159,7 @@ public sealed class VcsController : IDisposable
         {
             return (null, $"{branch} tracks no remote's branch, and there are {Numbers.Said(remotes.Count)} remotes to push it to ({string.Join(", ", remotes)}): Push… in the window asks which");
         }
-        return await choose(branch, remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
+        return await choose($"Push {branch} to", remotes) is { } chosen ? (chosen, null) : (null, $"{branch} was not pushed: no remote was chosen");
     }
 
     /// <summary>Update Project: the upstream fetched, then its commits brought in as the person's git config says (merged
@@ -1098,7 +1174,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (Conflicts.Count > 0)
         {
@@ -1117,7 +1193,7 @@ public sealed class VcsController : IDisposable
             }
             if (await repository.UpstreamAsync() is not { } upstream)
             {
-                return Report(false, Refusals.Untracked(branch));
+                return Report(false, Refusals.Untracked(branch).Shown);
             }
             // Stop ends the fetch alone: the merge or rebase after it is the tree's own, never left halfway.
             if (await RemoteAsync(work, repository.FetchUpstreamAsync) is not { } fetched)
@@ -1185,7 +1261,7 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(AppActions.Fetch, "Fetching…", out Working? work, stoppable: true))
         {
@@ -1196,6 +1272,29 @@ public sealed class VcsController : IDisposable
         await RefreshAsync();
         return fetched is null ? Report(false, "Fetch stopped")
             : Report(fetched.Succeeded, fetched.Succeeded ? "Fetched" : $"Fetch failed: {fetched.Message}");
+    }
+
+    /// <summary>One remote's branches fetched, from its menu in the branches panel.</summary>
+    public async Task<VcsOutcome> FetchRemoteAsync(string remote)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted.Shown);
+        }
+        if (!Begin(AppActions.Fetch, $"Fetching {remote}…", out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(AppActions.Fetch));
+        }
+        using Working? held = work;
+        GitResult? fetched = await RemoteAsync(work, (stopping, asker) => repository.FetchRemoteAsync(remote, stopping, asker));
+        await RefreshAsync();
+        return fetched is null ? Report(false, "Fetch stopped")
+            : Report(fetched.Succeeded, fetched.Succeeded ? $"Fetched {remote}" : $"Fetch failed: {fetched.Message}");
     }
 
     /// <summary>Begins an operation's work in the window, saying its first stage: false when one of its kind is under way
@@ -1295,6 +1394,10 @@ public sealed class VcsController : IDisposable
             return Unsigned(await change(repository, signer), setup);
         }, done, activity, conflicted);
 
+    /// <summary>Where a rebase stopped at a step of its list (an edit), in the words the Commit window says it in; null
+    /// where none is under way, or it stopped for conflicts.</summary>
+    private string? RebaseStopped() => Merge is { Operation: MergeOperation.Rebase, Stop: not null } ? Merge.UnderWay : null;
+
     /// <summary>A git that was to sign, its words masked as every secret is, and where it failed for its signing, what the
     /// person is told in place of git's words.</summary>
     private static GitResult Unsigned(GitResult said, SigningSetup setup)
@@ -1372,6 +1475,22 @@ public sealed class VcsController : IDisposable
         return null;
     }
 
+    /// <summary>The global git config git config --global writes: GIT_CONFIG_GLOBAL's, else ~/.gitconfig, but where only
+    /// XDG's git/config is there.</summary>
+    public static string GlobalConfigFile
+    {
+        get
+        {
+            if (Environment.GetEnvironmentVariable(GitVariables.ConfigGlobal) is { Length: > 0 } named)
+            {
+                return named;
+            }
+            string home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gitconfig");
+            return !File.Exists(home) && XdgFolders.Config(XdgFolders.Own) is { } config && File.Exists(Path.Combine(config, "git", "config"))
+                ? Path.Combine(config, "git", "config") : home;
+        }
+    }
+
     /// <summary>The allowed signers file Commit Signing… lists the person's key in where it sets signing up for all their
     /// repositories: git's own folder in the person's config folder (XDG_CONFIG_HOME, else ~/.config); null where the person
     /// has no home to find it in.</summary>
@@ -1394,7 +1513,7 @@ public sealed class VcsController : IDisposable
     }
 
     /// <summary>What an operation asked for again while it works says.</summary>
-    private string UnderWay(string id) => Work?.Of(id) is { } under ? ActionWork.Busy(under) : "Already under way";
+    private string UnderWay(string id) => (Work?.Of(id) is { } under ? ActionWork.Busy(under) : "Already under way").Shown;
 
     /// <summary>An operation's outcome, told to the status bar in the words it is returned in.</summary>
     private VcsOutcome Report(bool succeeded, string message)
@@ -1451,6 +1570,17 @@ public sealed class VcsController : IDisposable
     public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> BranchTreeAsync() =>
         git is { } repository ? await repository.BranchTreeAsync() : ([], []);
 
+    /// <summary>The local branches and the remotes' branches, the one committed to last first, with the remotes; none outside a
+    /// working tree.</summary>
+    public async Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> RecentBranchesAsync() =>
+        git is { } repository ? await repository.RecentBranchesAsync() : ([], []);
+
+    /// <summary>The remote a remote's branch is of: the longest of <paramref name="remotes"/> its name begins with, else what
+    /// comes before its first slash.</summary>
+    public static string RemoteOf(BranchInfo branch, IReadOnlyList<string> remotes) =>
+        remotes.Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
+        ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
+
     /// <summary>The local branches, the one committed to last first; none outside a working tree.</summary>
     public async Task<IReadOnlyList<BranchInfo>> LocalBranchesAsync() => git is { } repository ? await repository.LocalBranchesAsync() : [];
 
@@ -1466,14 +1596,102 @@ public sealed class VcsController : IDisposable
         {
             return SwitchAsync(repository => repository.CheckoutRevisionAsync(branch.Ref.FullName), $"Checked out {branch.Name}", "Git checkout");
         }
-        string local = LocalNameOf(branch);
-        return all.Any(b => b.Kind == RefKind.Local && b.Name == local)
+        return LocalOf(branch, all) is { } local
             ? CheckoutAsync(local)
-            : SwitchAsync(repository => repository.CheckoutTrackingAsync(branch.Name), $"Checked out new branch {local} from {branch.Name}", "Git checkout");
+            : SwitchAsync(repository => repository.CheckoutTrackingAsync(branch.Name), $"Checked out new branch {LocalNameOf(branch)} from {branch.Name}", "Git checkout");
     }
 
     /// <summary>The local branch a remote's branch is checked out as: its name past the remote's.</summary>
     private static string LocalNameOf(BranchInfo branch) => branch.Name[(branch.Name.IndexOf('/', StringComparison.Ordinal) + 1)..];
+
+    /// <summary>The local branch Checkout of a remote's branch checks out where there is one: the one tracking it, else the
+    /// one of its name; null where it makes one.</summary>
+    public static string? LocalOf(BranchInfo remote, IReadOnlyList<BranchInfo> all) =>
+        all.FirstOrDefault(b => b.Kind == RefKind.Local && b.Upstream == remote.Name)?.Name
+        ?? all.FirstOrDefault(b => b.Kind == RefKind.Local && b.Name == LocalNameOf(remote))?.Name;
+
+    /// <summary>What Checkout of a branch or tag moves the working tree to, as git names it: the local branch it checks
+    /// out, the remote's branch it makes one from, or the tag.</summary>
+    public static string TargetOf(BranchInfo branch, IReadOnlyList<BranchInfo> all) =>
+        branch.Kind == RefKind.Remote && LocalOf(branch, all) is { } local ? $"refs/heads/{local}" : branch.Ref.FullName;
+
+    /// <summary>The uncommitted changes git would have to write over to move the working tree to <paramref name="target"/>
+    /// (<see cref="Git.InTheWayAsync"/>); null where it would carry them along, or there is no working tree.</summary>
+    public async Task<ChangesInTheWay?> InTheWayAsync(string target) => git is { } repository ? await repository.InTheWayAsync(target) : null;
+
+    /// <summary>The uncommitted changes as they stand once what is open is saved and the status read again, which a checkout
+    /// would take along; none, and why, where the saves were refused.</summary>
+    public async Task<(IReadOnlyList<FileChange> Changes, string? Unsaved)> ChangesSavedAsync()
+    {
+        UiThread.Check();
+        if (await SavedFirstAsync() is { } unsaved)
+        {
+            return ([], unsaved);
+        }
+        await RefreshAsync();
+        return (Changes, null);
+    }
+
+    /// <summary>A checkout (<paramref name="checkout"/>, to <paramref name="to"/>) with the uncommitted changes stashed
+    /// first, new files too, under words saying where the checkout went, and unstashed again where it fails: what came of
+    /// it, and the stash it left where it went.</summary>
+    public async Task<(VcsOutcome Outcome, StashInfo? Stash)> StashedCheckoutAsync(string to, Func<Task<VcsOutcome>> checkout)
+    {
+        VcsOutcome stashed = await StashAsync(StashedFor(to));
+        if (!stashed.Succeeded)
+        {
+            return (stashed, null);
+        }
+        StashInfo? stash = (await StashesAsync()).FirstOrDefault();
+        VcsOutcome switched = await checkout();
+        if (switched.Succeeded || stash is null)
+        {
+            return (switched, switched.Succeeded ? stash : null);
+        }
+        VcsOutcome back = await UnstashAsync(stash, pop: true);
+        return (Report(false, back.Succeeded ? $"{switched.Message}. Your changes were unstashed again" : $"{switched.Message}. {back.Message}"), null);
+    }
+
+    /// <summary>What a stash a checkout made says, beside the branch git names it was made on.</summary>
+    public static string StashedFor(string to) => $"Changes left as {to} was checked out";
+
+    /// <summary>The stashes a checkout made that are unstashed as the branch they were made on is checked out again, by the
+    /// folder's repositories' tops, as the folder keeps them.</summary>
+    public IReadOnlyList<ReturningStash> Returning
+    {
+        get => returning;
+        set
+        {
+            if (!returning.SequenceEqual(value))
+            {
+                returning = value;
+                KeptChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private IReadOnlyList<ReturningStash> returning = [];
+
+    /// <summary>Has <paramref name="stash"/> unstashed as <paramref name="branch"/> is checked out again here.</summary>
+    public void ReturnOnCheckout(string branch, StashInfo stash)
+    {
+        if (git is { } repository)
+        {
+            Returning = [.. returning.Where(r => !(r.Repository == repository.Root && r.Branch == branch)), new ReturningStash(repository.Root, branch, stash.Commit)];
+        }
+    }
+
+    /// <summary>The stash to unstash now that <paramref name="branch"/> is checked out again, taken from those kept, where it
+    /// is listed still; null where none is.</summary>
+    public async Task<StashInfo?> TakeReturningAsync(string branch)
+    {
+        if (git is not { } repository || returning.FirstOrDefault(r => r.Repository == repository.Root && r.Branch == branch) is not { } kept)
+        {
+            return null;
+        }
+        Returning = [.. returning.Where(r => r != kept)];
+        return (await StashesAsync()).FirstOrDefault(s => s.Commit == kept.Stash);
+    }
 
     /// <summary>New Branch from: a branch made where another (or a tag) is, checked out.</summary>
     public Task<VcsOutcome> NewBranchFromAsync(string name, BranchInfo from) =>
@@ -1508,6 +1726,74 @@ public sealed class VcsController : IDisposable
         return SignedSwitchAsync((repository, signer) => repository.RebaseAsync(current, branch.Name, signer), $"Checked out {branch.Name} and rebased it on {current}", "Git rebase", "Rebase stopped due to conflicts");
     }
 
+    /// <summary>Why Interactively Rebase from Here cannot plan a rebase now: no working tree, or git in the middle of
+    /// something; null where it can.</summary>
+    public string? WhyNotInteractiveRebase => git is null ? NoRepository
+        : Merge.UnderWay is { } underWay ? $"{underWay}: it is finished or aborted first"
+        : IsBusy ? Busy
+        : null;
+
+    /// <summary>Interactively Rebase from Here's plan: <paramref name="from"/> and the commits after it up to HEAD, each
+    /// picked, or why there is none.</summary>
+    public async Task<(RebasePlan? Plan, string? WhyNot)> RebasePlanAsync(CommitInfo from)
+    {
+        UiThread.Check();
+        if (WhyNotInteractiveRebase is { } refused)
+        {
+            return (null, refused);
+        }
+        return await git!.RebasePlanAsync(from.Hash);
+    }
+
+    /// <summary>Where a planned rebase will stop for conflicts, foreseen off the window's thread by replaying it
+    /// (<see cref="Git.ConflictsAheadAsync"/>); null where git cannot say, or there is no repository.</summary>
+    public Task<IReadOnlyList<ForeseenConflict>?> ConflictsAheadAsync(RebasePlan plan, CancellationToken cancel)
+    {
+        UiThread.Check();
+        return git is { } repository ? BackgroundWork.Run(() => repository.ConflictsAheadAsync(plan, cancel), cancel) : Task.FromResult<IReadOnlyList<ForeseenConflict>?>(null);
+    }
+
+    /// <summary>An interactive rebase as planned, held as its action's work: one change in Local History, stopping where git
+    /// does, at an edit (said as the Commit window says it) or for conflicts (the Conflicts dialog).</summary>
+    public async Task<VcsOutcome> InteractiveRebaseAsync(RebasePlan plan)
+    {
+        if ((WhyNotInteractiveRebase ?? plan.WhyNot) is { } refused)
+        {
+            return Report(false, refused);
+        }
+        if (!Begin(AppActions.InteractiveRebase, "Rebasing…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.InteractiveRebase));
+        }
+        using Working? held = work;
+        string branch = Branch ?? "HEAD";
+        int made = plan.Outcome().Count;
+        return await SignedSwitchAsync((repository, signer) => repository.InteractiveRebaseAsync(plan, Product.Program, signer),
+            $"Rebased {branch} as planned, making {Plural.Of(made, "commit")} of the {Numbers.Said(plan.Commits.Count)}", "Git rebase", "Rebase stopped due to conflicts");
+    }
+
+    /// <summary>Skip Commit, where a rebase stopped for its conflicts: that commit left out and the rest replayed, held as
+    /// its action's work.</summary>
+    public async Task<VcsOutcome> SkipRebaseAsync()
+    {
+        if (WhyNotSkip is { } refused)
+        {
+            return Report(false, refused);
+        }
+        if (!Begin(AppActions.SkipRebase, "Skipping the commit…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.SkipRebase));
+        }
+        using Working? held = work;
+        return await SignedSwitchAsync((repository, signer) => repository.SkipRebaseAsync(signer), "Rebase successful", "Git rebase", "Rebase stopped due to conflicts");
+    }
+
+    /// <summary>Why Skip Commit cannot leave a commit out now: no rebase under way, or one stopped at a step of its list,
+    /// whose commit is made already; null where it stopped for conflicts.</summary>
+    public string? WhyNotSkip => Merge.Operation is not MergeOperation.Rebase ? "No rebase in progress"
+        : Merge.Stop is not null ? $"{Merge.UnderWay}, its commit made: Continue Rebase goes on"
+        : null;
+
     /// <summary>Rename of a local branch.</summary>
     public Task<VcsOutcome> RenameBranchAsync(BranchInfo branch, string name) =>
         SwitchAsync(repository => repository.RenameBranchAsync(branch.Name, name), $"Branch {branch.Name} was renamed to {name}", "Git branch");
@@ -1524,13 +1810,226 @@ public sealed class VcsController : IDisposable
             case RefKind.Local:
                 return SwitchAsync(repository => repository.DeleteBranchAsync(branch.Name, force), $"Deleted branch {branch.Name}", "Git branch");
             case RefKind.Tag:
-                return SwitchAsync(repository => repository.DeleteTagAsync(branch.Name), $"Deleted tag {branch.Name}", "Git tag");
+                return SwitchAsync(repository => repository.DeleteTagAsync(branch.Name),
+                    $"Deleted tag {branch.Name} here: a remote that has it keeps it until it is deleted there (Delete on Remote…)", "Git tag");
             default:
                 string remote = (remotes ?? []).Where(r => branch.Name.StartsWith(r + "/", StringComparison.Ordinal)).MaxBy(r => r.Length)
                     ?? branch.Name[..Math.Max(0, branch.Name.IndexOf('/', StringComparison.Ordinal))];
                 return RemoteSwitchAsync(AppActions.Push, $"Deleting {branch.Name}…", "Delete", (repository, stopping, asker) => repository.DeleteRemoteBranchAsync(remote, branch.Name[(remote.Length + 1)..], stopping, asker),
                     $"Deleted remote branch {branch.Name}", "Git push");
         }
+    }
+
+    /// <summary>The tag of this name as it stands, or null where there is none or no working tree.</summary>
+    public async Task<TagInfo?> TagOfAsync(string name) => git is { } repository ? await repository.TagOfAsync(name) : null;
+
+    /// <summary>The commit a revision names as the log lists it, or null where it names none or there is no working tree.</summary>
+    public async Task<CommitInfo?> CommitAtAsync(string revision) => git is { } repository ? await repository.CommitAtAsync(revision) : null;
+
+    /// <summary>The remotes' names; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<string>> RemotesAsync() => git is { } repository ? await repository.RemotesAsync() : [];
+
+    /// <summary>New Tag…'s plan carried out, held as its action's work: the tag made, or moved from the commit it named, an
+    /// annotated one signed as planned (a key's passphrase asked in the window, one not signed saying why and how to mend
+    /// it), then pushed where planned, in place of the remote's own of the name where it moves one; told in words that say
+    /// what it means for others.</summary>
+    public async Task<VcsOutcome> MakeTagAsync(TagPlan plan)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (plan.PushTo is not null && WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted.Shown);
+        }
+        string making = plan.Moving is null ? $"Tagging {plan.Commit.Short} as {plan.Name}…" : $"Moving {plan.Name} to {plan.Commit.Short}…";
+        if (!Begin(AppActions.NewTag, making, out Working? work, stoppable: plan.PushTo is not null))
+        {
+            return Report(false, UnderWay(AppActions.NewTag));
+        }
+        using Working? held = work;
+        return await OneAtATimeAsync(async () =>
+        {
+            GitResult made;
+            if (plan.Sign)
+            {
+                (Signer signer, SigningSetup setup) = await SignerAsync(repository, CommitSigning.AsConfigured with { Sign = true });
+                made = Unsigned(await repository.MakeTagAsync(plan, signer), setup with { Signs = true });
+            }
+            else
+            {
+                made = await repository.MakeTagAsync(plan);
+            }
+            if (!made.Succeeded)
+            {
+                return Report(false, $"{plan.Name} was not {(plan.Moving is null ? "made" : "moved")}: {made.Message}");
+            }
+            string done = plan.Moving is null
+                ? $"Tagged {plan.Commit.Short} as {plan.Name}{(plan.IsAnnotated ? plan.Sign ? ", annotated and signed" : ", annotated" : string.Empty)}"
+                : $"Moved {plan.Name} from {GitHashes.Short(plan.Moving.Commit)} to {plan.Commit.Short}";
+            if (plan.PushTo is not { } remote)
+            {
+                await RefreshAsync();
+                return Report(true, plan.Moving is null ? $"{done}: it is in this repository alone until pushed" : $"{done} here: a remote that has it keeps it where it was until it is pushed");
+            }
+            work?.Say($"Pushing {plan.Name} to {remote}…");
+            GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushTagAsync(remote, plan.Name, replace: plan.Moving is not null, stopping, asker));
+            await RefreshAsync();
+            return pushed is null ? Report(false, $"{done} here, but its push to {remote} was stopped")
+                : !pushed.Succeeded ? Report(false, $"{done} here, but it was not pushed to {remote}: {pushed.Message}")
+                : Report(true, plan.Moving is null ? $"{done} and pushed it to {remote}, where whoever fetches gets it" : $"{done} here and on {remote}: whoever fetched it before keeps it where it was");
+        }, refused => refused);
+    }
+
+    /// <summary>The remote a tag goes to or is deleted on: the only one, or the one of several the person chooses, asked
+    /// as <paramref name="asking"/> ("Push tag v1.0 to"); null where there is none, said as every outcome is.</summary>
+    public async Task<string?> TagRemoteAsync(string tag, string asking)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Refused(NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Refused(untrusted.Shown);
+        }
+        IReadOnlyList<string> remotes = await repository.RemotesAsync();
+        return remotes switch
+        {
+            [string only] => only,
+            [] => Refused($"The repository has no remote for tag {tag}"),
+            _ when ChooseRemote is { } choose => await choose(asking, remotes) ?? Refused($"No remote was chosen for tag {tag}"),
+            _ => Refused($"There are {Numbers.Said(remotes.Count)} remotes ({string.Join(", ", remotes)}) and none to ask which"),
+        };
+
+        string? Refused(string why)
+        {
+            Report(false, why);
+            return null;
+        }
+    }
+
+    /// <summary>A tag's Push…: the tag pushed to <paramref name="remote"/>, in place of the remote's own of the name where
+    /// <paramref name="replace"/>; one the remote refused for having its own says so, which the window asks to replace.</summary>
+    public async Task<TagPush> PushTagAsync(string tag, string remote, bool replace = false)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return new TagPush(Report(false, NoRepository), false);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return new TagPush(Report(false, untrusted.Shown), false);
+        }
+        if (!Begin(AppActions.Push, $"Pushing tag {tag} to {remote}…", out Working? work, stoppable: true))
+        {
+            return new TagPush(Report(false, UnderWay(AppActions.Push)), false);
+        }
+        using Working? held = work;
+        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushTagAsync(remote, tag, replace, stopping, asker));
+        await RefreshAsync();
+        if (pushed is null)
+        {
+            return new TagPush(Report(false, "Push stopped"), false);
+        }
+        if (!pushed.Succeeded && TagNames.RemoteHasAnother(pushed))
+        {
+            return new TagPush(Report(false, $"{remote} has its own tag {tag}, naming another commit: pushing it in place of that one moves it there for whoever fetches"), true);
+        }
+        return new TagPush(pushed.Succeeded
+            ? Report(true, replace ? $"Pushed tag {tag} to {remote} in place of its own: whoever fetched the old one keeps it until they fetch tags again with --force"
+                : $"Pushed tag {tag} to {remote}, where whoever fetches gets it")
+            : Report(false, $"Tag {tag} was not pushed to {remote}: {pushed.Message}"), false);
+    }
+
+    /// <summary>A tag's Delete on Remote…: the tag deleted on <paramref name="remote"/>, this repository's own kept.</summary>
+    public async Task<VcsOutcome> DeleteRemoteTagAsync(string tag, string remote)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted.Shown);
+        }
+        if (!Begin(AppActions.Push, $"Deleting tag {tag} on {remote}…", out Working? work, stoppable: true))
+        {
+            return Report(false, UnderWay(AppActions.Push));
+        }
+        using Working? held = work;
+        GitResult? deleted = await RemoteAsync(work, (stopping, asker) => repository.DeleteRemoteTagAsync(remote, tag, stopping, asker));
+        await RefreshAsync();
+        return deleted is null ? Report(false, "Delete stopped")
+            : deleted.Succeeded ? Report(true, $"Deleted tag {tag} on {remote}: a repository that fetched it keeps its own, this one's too, until it is deleted there")
+            : Report(false, $"Tag {tag} was not deleted on {remote}: {deleted.Message}");
+    }
+
+    /// <summary>The repository's working trees, the main one first; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<WorktreeInfo>> WorktreesAsync() => git is { } repository ? await repository.WorktreesAsync() : [];
+
+    /// <summary>Why New Worktree… cannot add one: no working tree, or a folder not trusted, where checking a branch out
+    /// would run the repository's filters and hooks.</summary>
+    public string? WhyNotNewWorktree => (git is null ? NoRepository : WhyNotRemote)?.Shown;
+
+    /// <summary>New Worktree…'s plan carried out, held as its action's work: a branch checked out in a folder of its own,
+    /// made first where it is new; told in words that say what a worktree is.</summary>
+    public async Task<VcsOutcome> AddWorktreeAsync(WorktreePlan plan)
+    {
+        UiThread.Check();
+        if (WhyNotNewWorktree is { } refused)
+        {
+            return Report(false, refused);
+        }
+        if (!Begin(AppActions.NewWorktree, $"Checking {plan.Branch} out in {Path.GetFileName(plan.Folder)}…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.NewWorktree));
+        }
+        using Working? held = work;
+        GitResult added = await git!.AddWorktreeAsync(plan);
+        await RefreshAsync();
+        return added.Succeeded
+            ? Report(true, $"Checked {plan.Branch} out in the worktree {PathNames.Shown(plan.Folder, null)}: its own files, sharing this repository's commits and branches")
+            : Report(false, $"No worktree was made for {plan.Branch}: {added.Message}");
+    }
+
+    /// <summary>How many files a working tree has changed or new; null where git could not say (its folder gone).</summary>
+    public async Task<int?> WorktreeChangesAsync(WorktreeInfo worktree) =>
+        git is { } repository && worktree.Gone is null ? await repository.WorktreeChangesAsync(worktree.Folder) : null;
+
+    /// <summary>A working tree removed: its folder moved to the Trash, its changes no commit holds with it (none where the
+    /// folder is gone already), then forgotten by git; told where the folder went. Its branch and commits stay.</summary>
+    public async Task<VcsOutcome> RemoveWorktreeAsync(WorktreeInfo worktree)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        Trashed? went = null;
+        if (worktree.Gone is null)
+        {
+            try
+            {
+                went = Trash.Move(worktree.Folder);
+            }
+            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+            {
+                return Report(false, $"The worktree {worktree.Name} was not removed: its folder could not be moved to the Trash: {refused.Message}");
+            }
+        }
+        GitResult forgot = await repository.ForgetWorktreeAsync(worktree.Folder);
+        await RefreshAsync();
+        string kept = worktree.BranchName is { } branch ? $"; {branch} and its commits stay" : string.Empty;
+        string trashed = worktree.Gone is not null ? "Forgot the worktree" : went is null ? "Moved to the Trash the folder of the worktree"
+            : $"Moved to the Trash, as {PathNames.Shown(went.At, null)}, the folder of the worktree";
+        return forgot.Succeeded ? Report(true, $"{trashed} {worktree.Name}{kept}")
+            : Report(false, $"{trashed} {worktree.Name}, but git did not forget it: {forgot.Message}");
     }
 
     /// <summary>Update of a local branch: the one checked out updated as Update Project does, another brought
@@ -1543,15 +2042,124 @@ public sealed class VcsController : IDisposable
         }
         if (branch.UpstreamRemote is not { } remote || branch.UpstreamBranch is not { } tracked)
         {
-            return Task.FromResult(Report(false, Refusals.Untracked(branch.Name)));
+            return Task.FromResult(Report(false, Refusals.Untracked(branch.Name).Shown));
         }
         return RemoteSwitchAsync(AppActions.UpdateProject, $"Updating {branch.Name}…", "Update", (repository, stopping, asker) => repository.FetchIntoAsync(remote, tracked, branch.Name, stopping, asker),
             $"Updated {branch.Name}", "Git update");
     }
 
-    /// <summary>Push of a branch: pushed to the branch it tracks, or where it tracks none, to the only remote or the one
-    /// of several the person chooses, then tracked.</summary>
-    public async Task<VcsOutcome> PushBranchAsync(BranchInfo branch)
+    /// <summary>The remotes with their URLs, in git's order; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<RemoteInfo>> RemoteUrlsAsync() => git is { } repository ? await repository.RemoteUrlsAsync() : [];
+
+    /// <summary>A URL as Passenger shows it anywhere: a password or token it holds masked (<see cref="ContainerSecrets"/>).</summary>
+    public static string UrlShown(string url) => ContainerSecrets.InSaid(url);
+
+    /// <summary>Add Remote… and Edit Remote…'s plan carried out, held as Manage Remotes…'s work: a new remote added, then its
+    /// branches fetched where planned; one there renamed (its branches here and those tracking them following) and given
+    /// its new URL, each only where it changed; told in words that say what it means here.</summary>
+    public async Task<VcsOutcome> SaveRemoteAsync(RemotePlan plan)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (plan.Fetch && WhyNotRemote is { } untrusted)
+        {
+            return Report(false, untrusted.Shown);
+        }
+        if (!Begin(AppActions.ManageRemotes, plan.Was is null ? $"Adding the remote {plan.Name}…" : $"Changing the remote {plan.Was}…", out Working? work, stoppable: plan.Fetch))
+        {
+            return Report(false, UnderWay(AppActions.ManageRemotes));
+        }
+        using Working? held = work;
+        return await OneAtATimeAsync(async () =>
+        {
+            string url = UrlShown(plan.Url);
+            if (plan.Was is null)
+            {
+                GitResult added = await repository.AddRemoteAsync(plan.Name, plan.Url);
+                if (!added.Succeeded)
+                {
+                    await RefreshAsync();
+                    return Report(false, $"The remote {plan.Name} was not added: {added.Message}");
+                }
+                string done = $"Added the remote {plan.Name}, at {url}";
+                if (!plan.Fetch)
+                {
+                    await RefreshAsync();
+                    return Report(true, $"{done}: Fetch brings its branches in");
+                }
+                work?.Say($"Fetching {plan.Name}…");
+                GitResult? fetched = await RemoteAsync(work, (stopping, asker) => repository.FetchRemoteAsync(plan.Name, stopping, asker));
+                await RefreshAsync();
+                return fetched is null ? Report(false, $"{done}, but its fetch was stopped")
+                    : fetched.Succeeded ? Report(true, $"{done} and fetched its branches")
+                    : Report(false, $"{done}, but its branches were not fetched: {fetched.Message}");
+            }
+            List<string> said = [];
+            string name = plan.Was;
+            if (plan.Name != plan.Was)
+            {
+                GitResult renamed = await repository.RenameRemoteAsync(plan.Was, plan.Name);
+                if (!renamed.Succeeded)
+                {
+                    await RefreshAsync();
+                    return Report(false, $"The remote {plan.Was} was not renamed: {renamed.Message}");
+                }
+                name = plan.Name;
+                said.Add($"Renamed the remote {plan.Was} to {plan.Name}, its branches here and those tracking them following");
+            }
+            if ((await repository.RemoteUrlsAsync()).FirstOrDefault(r => r.Name == name) is { } stands && stands.Url != plan.Url)
+            {
+                GitResult repointed = await repository.SetRemoteUrlAsync(name, plan.Url);
+                await RefreshAsync();
+                return repointed.Succeeded
+                    ? Report(true, string.Join("; ", [.. said, $"{(said.Count == 0 ? $"The remote {name}" : "it")} fetches from and pushes to {url} now"]))
+                    : Report(false, string.Join("; ", [.. said, $"{(said.Count == 0 ? $"The remote {name}" : "its")} URL was not changed: {repointed.Message}"]));
+            }
+            await RefreshAsync();
+            return Report(true, said.Count > 0 ? said[0] : $"The remote {name} is as it was");
+        }, refused => refused);
+    }
+
+    /// <summary>The local branches that track a remote's branch.</summary>
+    public async Task<IReadOnlyList<string>> TrackingAsync(string remote) =>
+        [.. (await LocalBranchesAsync()).Where(b => b.UpstreamRemote == remote).Select(b => b.Name)];
+
+    /// <summary>Remove Remote…, once the person agreed: the remote forgotten with its branches here, the local branches that
+    /// tracked it tracking nothing; the repository it named keeps everything.</summary>
+    public async Task<VcsOutcome> RemoveRemoteAsync(string name)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return Report(false, NoRepository);
+        }
+        if (!Begin(AppActions.ManageRemotes, $"Removing the remote {name}…", out Working? work))
+        {
+            return Report(false, UnderWay(AppActions.ManageRemotes));
+        }
+        using Working? held = work;
+        return await OneAtATimeAsync(async () =>
+        {
+            IReadOnlyList<string> tracking = await TrackingAsync(name);
+            GitResult removed = await repository.RemoveRemoteAsync(name);
+            await RefreshAsync();
+            return removed.Succeeded ? Report(true, VcsWords.RemovedRemote(name, tracking.Count, Plural.Listed(Words.Names(tracking))).Shown)
+                : Report(false, $"The remote {name} was not removed: {removed.Message}");
+        }, refused => refused);
+    }
+
+    /// <summary>What pushing a local branch to a remote's branch would send, as the remote was last fetched; none outside a
+    /// working tree.</summary>
+    public async Task<PushPreview?> PushPreviewAsync(string branch, string remote, string remoteBranch) =>
+        git is { } repository ? await repository.PushPreviewAsync(branch, remote, remoteBranch) : null;
+
+    /// <summary>The Push dialog's plan carried out, held as Push's work: the branch pushed to the remote's branch named,
+    /// whatever it tracks, tracking that one from then on where planned, and forced under a lease where planned (Force
+    /// Push), which git refuses where someone pushed there since it was last fetched.</summary>
+    public async Task<VcsOutcome> PushToAsync(PushPlan plan)
     {
         UiThread.Check();
         if (git is not { } repository)
@@ -1560,26 +2168,19 @@ public sealed class VcsController : IDisposable
         }
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
-        string? remote = null;
-        if (branch.UpstreamRemote is null || branch.UpstreamBranch is null)
-        {
-            (remote, string? refused) = await RemoteForAsync(repository, branch.Name, ask: true);
-            if (refused is not null)
-            {
-                return Report(false, refused);
-            }
-        }
-        if (!Begin(AppActions.Push, $"Pushing {branch.Name}…", out Working? work, stoppable: true))
+        if (!Begin(AppActions.Push, $"{(plan.Force ? "Force pushing" : "Pushing")} {plan.Branch} to {plan.Remote}…", out Working? work, stoppable: true))
         {
             return Report(false, UnderWay(AppActions.Push));
         }
         using Working? held = work;
-        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushBranchAsync(branch, remote, stopping, asker));
+        GitResult? pushed = await RemoteAsync(work, (stopping, asker) => repository.PushToAsync(plan, stopping, asker));
         await RefreshAsync();
-        return pushed is null ? Report(false, "Push stopped")
-            : Report(pushed.Succeeded, pushed.Succeeded ? $"Pushed {branch.Name}" : $"Push failed: {pushed.Message}");
+        string there = $"{plan.Remote}/{plan.RemoteBranch}";
+        return pushed is null ? Report(false, plan.Force ? "Force push stopped" : "Push stopped")
+            : !pushed.Succeeded ? Report(false, $"{plan.Branch} was not {(plan.Force ? "force pushed" : "pushed")} to {there}: {pushed.Message}")
+            : Report(true, $"{(plan.Force ? "Force pushed" : "Pushed")} {plan.Branch} to {there}{(plan.Track ? $", which it tracks from now on" : string.Empty)}");
     }
 
     /// <summary>The files a Show Diff with Working Tree tab lists: those that differ between a branch or tag and the
@@ -1596,11 +2197,34 @@ public sealed class VcsController : IDisposable
     public Task<VcsOutcome> NewBranchAsync(string name) =>
         SwitchAsync(repository => repository.NewBranchAsync(name), $"Created and checked out {name}", "Git checkout");
 
-    /// <summary>Stash Changes: every uncommitted change, new files too, put away under a message; the open files
-    /// take the head's text again.</summary>
-    public Task<VcsOutcome> StashAsync(string message) => WhyNotStash is { } unfiltered
+    /// <summary>Stash Changes: every uncommitted change put away under a message, new files too unless
+    /// <paramref name="untracked"/> is false; the open files take the head's text again.</summary>
+    public Task<VcsOutcome> StashAsync(string message, bool untracked = true) => WhyNotStash is { } unfiltered
         ? Task.FromResult(Report(false, unfiltered))
-        : SwitchAsync(repository => repository.StashAsync(message.Trim()), "Stashed the changes", "Git stash");
+        : SwitchAsync(repository => repository.StashAsync(message.Trim(), untracked), untracked ? "Stashed the changes" : "Stashed the changes, new files left in place", "Git stash");
+
+    /// <summary>Why files cannot take a revision's text here (Get from Branch): in a folder not trusted, one git stores
+    /// through a filter; null where each can.</summary>
+    public async Task<string?> WhyNotWrittenOutAsync(IReadOnlyList<string> paths) => git is { } repository ? await repository.WhyNotWrittenOutAsync(paths) : NoRepository;
+
+    /// <summary>The files a stash holds, its new files last; none outside a working tree.</summary>
+    public async Task<IReadOnlyList<FileChange>> StashFilesAsync(StashInfo stash) => git is { } repository ? await repository.StashFilesAsync(stash) : [];
+
+    /// <summary>The stash of this one's commit where the list has it now; null where it is listed no more.</summary>
+    public async Task<StashInfo?> StashNowAsync(StashInfo stash) => git is { } repository ? await repository.StashNowAsync(stash) : null;
+
+    /// <summary>A dropped stash put back at the top of the list (a drop's Undo): null once back, else why not.</summary>
+    public async Task<string?> RestoreStashAsync(StashInfo stash)
+    {
+        UiThread.Check();
+        if (git is not { } repository)
+        {
+            return NoRepository;
+        }
+        GitResult stored = await repository.StoreStashAsync(stash.Commit, stash.Message);
+        await RefreshAsync();
+        return stored.Succeeded ? null : $"The stash \"{stash.Message}\" could not be put back: {stored.Message}";
+    }
 
     public async Task<IReadOnlyList<StashInfo>> StashesAsync() => git is { } repository ? await repository.StashesAsync() : [];
 
@@ -1824,7 +2448,7 @@ public sealed class VcsController : IDisposable
             {
                 return stopped;
             }
-            return Report(switched.Succeeded, switched.Succeeded ? done : switched.Message);
+            return Report(switched.Succeeded, switched.Succeeded ? RebaseStopped() ?? done : switched.Message);
         }, refused => refused);
     }
 
@@ -1835,7 +2459,7 @@ public sealed class VcsController : IDisposable
     {
         if (WhyNotRemote is { } untrusted)
         {
-            return Report(false, untrusted);
+            return Report(false, untrusted.Shown);
         }
         if (!Begin(id, stage, out Working? work, stoppable: true))
         {
@@ -2107,6 +2731,13 @@ public sealed class VcsController : IDisposable
         return await ReadAsync(repository.StoredAtAsync(revision, [path]), encoding, readAs);
     }
 
+    /// <summary>Whether a revision holds a symbolic link at a path, which is no text of a file's (<see cref="Git.IsLinkAtAsync"/>).</summary>
+    public Task<bool> IsLinkAtAsync(string revision, string path)
+    {
+        UiThread.Check();
+        return git is { } repository ? repository.IsLinkAtAsync(revision, path) : Task.FromResult(false);
+    }
+
     /// <summary>The encoding the open file at a path is read in, or null when none holds its text.</summary>
     private System.Text.Encoding? EncodingOf(string path) => Holding(path)?.Encoding;
 
@@ -2319,7 +2950,14 @@ public sealed class VcsController : IDisposable
         public int Generation { get; set; }
         public Compared? Last { get; set; }
         public bool Annotated { get; set; }
-        public IReadOnlyList<BlameLine>? Blame { get; set; }
+
+        /// <summary>Whether its signposts want its authors, which keeps it blamed.</summary>
+        public bool Wanted { get; set; }
+
+        /// <summary>The changes made while git blames it, carried from the text it read once the blame lands.</summary>
+        public List<DocumentChangedEventArgs>? Collecting { get; set; }
+
+        public CarriedBlame? Blame { get; set; }
 
         /// <summary>The newest blame's number: one that lands under another was overtaken, or annotations closed.</summary>
         public int Blaming { get; set; }
@@ -2345,6 +2983,9 @@ public sealed class VcsController : IDisposable
 /// <summary>A conflicted file's versions as the merge window shows them: the one both sides came from, yours (left) and
 /// theirs (right), and the words for its sides.</summary>
 public sealed record MergeTexts(string Path, string Base, string Left, string Right, ConflictSides Sides);
+
+/// <summary>What a tag's push came to, and whether the remote refused it for having its own tag of the name.</summary>
+public sealed record TagPush(VcsOutcome Outcome, bool RemoteHasAnother);
 
 /// <summary>What an operation on the working tree came to: whether it worked, and what the person is told of it (git's own
 /// words when it did not), the words the status bar is told as it lands.</summary>

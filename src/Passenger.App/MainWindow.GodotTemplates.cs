@@ -20,7 +20,7 @@ public partial class MainWindow
 
     private void AddGodotTemplates()
     {
-        actions!.Add(new IdeAction(AppActions.GodotScriptTemplates, "Write C# Script Templates for Godot…", "Godot", _ => IdeErrors.Observe(WriteGodotTemplatesAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotScriptTemplates, ActionTitles.GodotScriptTemplates, ActionGroups.Godot, _ => IdeErrors.Observe(WriteGodotTemplatesAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotCSharpProject() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 9)],
@@ -64,7 +64,7 @@ public partial class MainWindow
     {
         if (await GodotTemplateStyleAsync() is not ({ } folder, { } style) || GodotCSharpProject() is not { } project)
         {
-            return (false, Refusals.NoGodotProject);
+            return (false, Refusals.NoGodotProject.Shown);
         }
         List<CheckBox> boxes = [.. GodotScriptTemplates.Bases.Select(b => new CheckBox { Content = b, IsChecked = true })];
         StackPanel checks = new() { Spacing = Gaps.Tight };

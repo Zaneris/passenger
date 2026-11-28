@@ -3,7 +3,8 @@ namespace Passenger.Dap;
 /// <summary>The requests the IDE and Passenger's debug adapter make of each other, by the protocol's names, each written once
 /// for both ends, so a name one end misspells is a build error rather than a request the other never answers. Passenger's
 /// own extend the protocol: <see cref="ResolveStackFrame"/>, <see cref="HotReloadState"/>, <see cref="ApplyChanges"/>,
-/// <see cref="HotReloadRelease"/> and <see cref="Input"/>.</summary>
+/// <see cref="HotReloadRelease"/>, <see cref="Input"/>, <see cref="MarkObject"/>, <see cref="UnmarkObject"/>, <see cref="Record"/>,
+/// <see cref="Timeline"/>, <see cref="Moment"/> and <see cref="Ahead"/>.</summary>
 [IdentifierHome]
 public static class DapCommands
 {
@@ -21,6 +22,8 @@ public static class DapCommands
     public const string Scopes = "scopes";
     public const string Variables = "variables";
     public const string Evaluate = "evaluate";
+    public const string ReadMemory = "readMemory";
+    public const string ResolveMemory = "passenger/resolveMemory";
     public const string SetExpression = "setExpression";
     public const string GotoTargets = "gotoTargets";
     public const string Goto = "goto";
@@ -51,6 +54,24 @@ public static class DapCommands
 
     /// <summary>Passenger's own: text for the program's standard input, or its input closed.</summary>
     public const string Input = "input";
+
+    /// <summary>Passenger's own: an object marked, to be known again at every stop and named by its label.</summary>
+    public const string MarkObject = "markObject";
+
+    /// <summary>Passenger's own: a marked object let go of.</summary>
+    public const string UnmarkObject = "unmarkObject";
+
+    /// <summary>Passenger's own: the program's calls recorded from now on, or no longer (<see cref="RecordArguments"/>).</summary>
+    public const string Record = "record";
+
+    /// <summary>Passenger's own: the recording's moments on a thread (<see cref="TimelineResponse"/>).</summary>
+    public const string Timeline = "timeline";
+
+    /// <summary>Passenger's own: a recorded moment as a past stop, its frames and values (<see cref="SnapshotEvent"/>'s).</summary>
+    public const string Moment = "moment";
+
+    /// <summary>Passenger's own: the code a stop's frame won't run and the values ahead, from its values (<see cref="AheadResponse"/>).</summary>
+    public const string Ahead = "ahead";
 }
 
 /// <summary>The events Passenger's debug adapter tells the IDE, by the protocol's names, each written once for both ends.</summary>
@@ -67,6 +88,9 @@ public static class DapEvents
     public const string Process = "process";
     public const string Output = "output";
     public const string Continued = "continued";
+
+    /// <summary>Passenger's own: a snapshot point's capture (<see cref="SnapshotEvent"/>).</summary>
+    public const string Snapshot = "snapshot";
 }
 
 /// <summary>Why the program stopped, the stopped event's reason, by the protocol's names: what the engine reports, what the
@@ -123,13 +147,13 @@ public static class EvaluateContexts
 [IdentifierHome]
 public static class EventReasons
 {
-    /// <summary>A breakpoint bound, moved or given a message.</summary>
+    /// <summary>A breakpoint bound, moved or given a message; a module's symbols loaded.</summary>
     public const string Changed = "changed";
 
     /// <summary>A module loaded.</summary>
     public const string New = "new";
 
-    /// <summary>A module unloaded.</summary>
+    /// <summary>A module unloaded, or a temporary breakpoint went at its hit.</summary>
     public const string Removed = "removed";
 
     /// <summary>A thread started.</summary>
@@ -296,4 +320,25 @@ public static class AdapterFlags
 
     /// <summary>The client is on another machine (the adapter in a container): the processes it tells of are not local.</summary>
     public const string Remote = "--remote";
+}
+
+/// <summary>What a recorded moment is (<see cref="DapMoment.Kind"/>), written once for both ends.</summary>
+[IdentifierHome]
+public static class DapMomentKinds
+{
+    /// <summary>A call of the user's code entered, its arguments read.</summary>
+    public const string Call = "call";
+
+    /// <summary>A call returning to its caller, the value it returned read.</summary>
+    public const string Return = "return";
+
+    /// <summary>An exception thrown in the user's code, or reaching it from code that is not.</summary>
+    public const string Thrown = "thrown";
+
+    /// <summary>An exception caught in the user's code.</summary>
+    public const string Caught = "caught";
+
+    /// <summary>One of the person's breakpoints passed by: its condition false, its hit count not reached, a tracepoint's
+    /// message logged, a snapshot taken.</summary>
+    public const string Passed = "passed";
 }

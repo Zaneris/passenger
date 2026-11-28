@@ -222,6 +222,7 @@ public static class FileIconSet
         [".db"] = new("SQLite", Blue),
         [".graphql"] = new("GraphQL", Pink),
         [".gql"] = new("GraphQL", Pink),
+        [".proto"] = new("Protobuf", Purple),
         [".prisma"] = new("Prisma", Blue),
         [".http"] = new("Code", Red),
         [".rest"] = new("Code", Red),

@@ -1,5 +1,6 @@
 using Avalonia.Media;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Lsp;
 using Passenger.Text;
 
@@ -19,6 +20,16 @@ internal abstract class LanguageAssist
 
     /// <summary>Opens completion or Parameter Info for what was just typed in the file shown, as its language has it.</summary>
     public virtual bool Typed(string text) => false;
+
+    /// <summary>Whether the language writes more once a key has typed <paramref name="typed"/> at the one caret of the file
+    /// shown, asked before it is typed (<see cref="Passenger.Editor.CodeEditor.FormatsTyped"/>).</summary>
+    public virtual bool FormatsTyped(string typed) => false;
+
+    /// <summary>Enter that opened no block at the one caret of the file shown, where the language writes what goes on from it,
+    /// joined to Enter's step of Undo (<see cref="Passenger.Editor.CodeEditor.LineBroken"/>).</summary>
+    public virtual void FormatLineBreak()
+    {
+    }
 
     /// <summary>The completion list at the caret.</summary>
     public virtual Task<bool> CompleteAsync(string? trigger, bool incomplete) => Passed;
@@ -104,11 +115,13 @@ internal abstract class LanguageAssist
 /// .editorconfig's keys, a .gitattributes' attributes, a .gitignore's paths, an MSBuild file's,
 /// XAML's, a compose file's, a settings file's configuration, a page's stylesheets' classes, a GDScript's own reading
 /// while Godot's server has not started, a web language's, a Godot shader's, a Godot scene's, a .feature file's (and a C# step
-/// definition's steps), then C#'s, Razor's and any file left; the first that answers is the command's.</summary>
+/// definition's steps), a SQL file's, then C#'s, Razor's and any file left; the first that answers is the command's.</summary>
 internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorConfigAssist editorConfig, GitAttributesAssist gitAttributes, GitIgnoreAssist gitIgnore, MSBuildAssist msbuild, XamlAssist xaml, ComposeAssist compose, SettingsAssist settings,
-    CssClassAssist classes, GDScriptAssist gdscript, WebAssist web, GodotShaderAssist shaders, GodotAssist godot, GherkinAssist gherkin, CSharpAssist csharp)
+    CssClassAssist classes, GDScriptAssist gdscript, WebAssist web, GodotShaderAssist shaders, GodotAssist godot, GherkinAssist gherkin, SqlAssist sql, CSharpAssist csharp)
 {
-    private readonly IReadOnlyList<LanguageAssist> ladder = [links, http, editorConfig, gitAttributes, gitIgnore, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, gherkin, csharp];
+    private readonly IReadOnlyList<LanguageAssist> ladder = [links, http, editorConfig, gitAttributes, gitIgnore, msbuild, xaml, compose, settings, classes, gdscript, web, shaders, godot, gherkin, sql, csharp];
+
+    public SqlAssist Sql => sql;
 
     public GherkinAssist Gherkin => gherkin;
 
@@ -137,6 +150,18 @@ internal sealed class LanguageAssists(LinkAssist links, HttpAssist http, EditorC
     public WebAssist Web => web;
 
     public CSharpAssist CSharp => csharp;
+
+    /// <summary>Whether any language writes more once a key has typed this at the one caret (<see cref="LanguageAssist.FormatsTyped"/>).</summary>
+    public bool FormatsTyped(string typed) => ladder.Any(language => language.FormatsTyped(typed));
+
+    /// <summary>Each language's writing after Enter that opened no block (<see cref="LanguageAssist.FormatLineBreak"/>).</summary>
+    public void FormatLineBreak()
+    {
+        foreach (LanguageAssist language in ladder)
+        {
+            language.FormatLineBreak();
+        }
+    }
 
     public void Typed(string text)
     {
@@ -294,7 +319,7 @@ internal sealed record FilePreview(string File, string Named, PreviewKind Kind, 
 /// <summary>Where Go to Declaration goes, the window's and an agent's alike: its places as a language server names them,
 /// each with the words its choice shows (<see cref="Names"/>, none for one shown by its line of code); else a page that
 /// declares it (an image's registry page), or the words for there being none.</summary>
-internal sealed record Declared(IReadOnlyList<LspLocation> Places, string None)
+internal sealed record Declared(IReadOnlyList<LspLocation> Places, Words None)
 {
     /// <summary>The words each place's choice shows, in order; null where each is shown by its line of code.</summary>
     public IReadOnlyList<string?>? Names { get; init; }

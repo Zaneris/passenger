@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -338,20 +337,8 @@ public sealed class IdeErrorsTests : IDisposable
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         List<string> found = [];
         List<string> read = [];
-        foreach (string project in Directory.GetDirectories(Path.Combine(root, "src")).Order(StringComparer.Ordinal))
+        foreach ((string name, string assembly) in SrcAssemblies.Built())
         {
-            string name = Path.GetFileName(project);
-            string projectFile = Path.Combine(project, $"{name}.csproj");
-            if (!File.Exists(projectFile))
-            {
-                continue;
-            }
-            Match named = Regex.Match(File.ReadAllText(projectFile), "<AssemblyName>([^<]+)</AssemblyName>");
-            string assembly = Path.Combine(root, "artifacts", "bin", name, "debug", $"{(named.Success ? named.Groups[1].Value : name)}.dll");
-            if (!File.Exists(assembly))
-            {
-                continue;
-            }
             read.Add(name);
             foreach ((string file, int line) in DroppedTasks.In(assembly))
             {
@@ -831,7 +818,7 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.True(said.Contains("The C# language server ended as it started; starting it again"),
             $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
         Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of C# left stopped, having said: {string.Join(" | ", said)}");
-        Assert.Equal("start it again", window.StatusPlace?.Name);
+        Assert.Equal("start it again", window.StatusPlace?.Name.English);
 
         Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
         Ui.WaitFor(() => csharp.IsReady, () => $"C# left stopped to be started again by the status bar's words ({csharp.State}; the status bar says {window.Status})");
@@ -851,7 +838,7 @@ public sealed class IdeErrorsTests : IDisposable
     {
         MainWindow window = OpenProgram(Calls);
         Ui.PlaceAfter(window.EditorArea.CodeEditor, "static void Ot");
-        Task<string?> shown = window.ShowCallHierarchyAsync();
+        Task<Words?> shown = window.ShowCallHierarchyAsync();
         Assert.Null(Ui.Await(shown, "the call hierarchy"));
         HierarchyRow caller = Assert.Single(window.Hierarchy.Rows, r => r.Depth == 1);
         Assert.Contains("Helper", caller.Node.Item.Name, StringComparison.Ordinal);
@@ -859,7 +846,7 @@ public sealed class IdeErrorsTests : IDisposable
 
         OwnProcess stopped = OwnProcess.Of(first);
         stopped.Suspend("The language server");
-        Task<string?> asked;
+        Task<Words?> asked;
         try
         {
             asked = window.ShowCallHierarchyAsync();
@@ -870,12 +857,12 @@ public sealed class IdeErrorsTests : IDisposable
         {
             stopped.Kill(alone: true);
         }
-        Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", Ui.AwaitPumped(asked, "Call Hierarchy to give up on the server that ended"));
+        Assert.Equal("Call Hierarchy failed: the language server stopped before it answered", Ui.AwaitPumped(asked, "Call Hierarchy to give up on the server that ended")?.English);
 
         Ui.PumpUntil(() => window.CSharpService.Session is null, "the ended server to be let go");
-        Task<string?> starting = window.ShowCallHierarchyAsync();
+        Task<Words?> starting = window.ShowCallHierarchyAsync();
         Assert.True(starting.IsCompleted, "Call Hierarchy waited for a server that is not there");
-        string? refused = Ui.Await(starting, "Call Hierarchy's refusal");
+        string? refused = Ui.Await(starting, "Call Hierarchy's refusal")?.English;
         Assert.StartsWith("Call Hierarchy needs the C# language server: ", refused, StringComparison.Ordinal);
         Assert.Equal(refused, window.Status);
         Ui.WaitFor(() => window.CSharpService.Session is { IsLoaded: true }, $"the language server to be started again ({window.CSharpService.State})");
@@ -886,7 +873,7 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.True(caller.IsExpanded, "The caller's row did not open");
         Assert.All(caller.Children!, c => Assert.Contains("Main", c.Item.Name, StringComparison.Ordinal));
 
-        Task<string?> again = window.ShowCallHierarchyAsync();
+        Task<Words?> again = window.ShowCallHierarchyAsync();
         Assert.Null(Ui.Await(again, "the call hierarchy from the new server"));
         Assert.Contains(window.Hierarchy.Rows, r => r.Depth == 1 && r.Node.Item.Name.Contains("Helper", StringComparison.Ordinal));
         window.Close();

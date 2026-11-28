@@ -26,11 +26,15 @@ public sealed class OpenDocument : Observable
     private string? projectContext;
     private IReadOnlyList<LineMark> lineMarks = [];
     private IReadOnlyList<LineAnnotation> lineAnnotations = [];
+    private IReadOnlyList<LineAnnotation> complexityAnnotations = [];
     private IReadOnlyList<LineAnnotation> liveValues = [];
+    private IReadOnlyList<LineAnnotation> pinnedValues = [];
 
-    /// <summary>The line of each of <see cref="lineAnnotations"/> and of <see cref="liveValues"/>, carried by the text.</summary>
+    /// <summary>The line of each of <see cref="lineAnnotations"/>, <see cref="liveValues"/> and <see cref="pinnedValues"/>,
+    /// carried by the text.</summary>
     private AnchoredLine[] annotationLines = [];
     private AnchoredLine[] liveLines = [];
+    private AnchoredLine[] pinnedLines = [];
     private IReadOnlyList<SceneMark> sceneMarks = [];
 
     /// <summary>The line of each of <see cref="sceneMarks"/>, carried by the text.</summary>
@@ -160,6 +164,28 @@ public sealed class OpenDocument : Observable
     /// for a file's.</summary>
     public Editors.ToolTab? Tool { get; private init; }
 
+    /// <summary>What the Database window shows in this tab of no file (<see cref="OfDatabase"/>); null for a file's.</summary>
+    public Database.IDatabaseTab? DatabaseTab { get; private init; }
+
+    /// <summary>The table whose rows this tab shows, where it shows one's.</summary>
+    public Database.DatabaseTableTab? DatabaseTable => DatabaseTab as Database.DatabaseTableTab;
+
+    public static OpenDocument OfDatabase(Database.IDatabaseTab tab, string path)
+    {
+        OpenDocument document = new(path, new FileText(string.Empty, new UTF8Encoding(false), false), Language.PlainText, null) { DatabaseTab = tab };
+        document.FollowReadOnly();
+        return document;
+    }
+
+    /// <summary>Its title or its tab's mark changed: a table's connection renamed or marked, a console's connection marked, a
+    /// tool window's title.</summary>
+    internal void TitleChanged() => Raise(nameof(Title));
+
+    /// <summary>Whether its tab holds changes not yet written anywhere but in it: a table's not yet submitted.</summary>
+    public bool HasPending => DatabaseTable is { Edits.IsEmpty: false };
+
+    internal void PendingChanged() => Raise(nameof(HasPending));
+
     /// <summary>What Save saves with this tab shown: the file, or the open file a diff's tab edits (itself where it edits none).</summary>
     public OpenDocument Saves => Diff?.Shown.File ?? this;
 
@@ -268,6 +294,13 @@ public sealed class OpenDocument : Observable
         Path = path;
         Text = new TextDocument(file.Text);
         Decorations = new DocumentDecorations(Text);
+        Decorations.Changed += (_, kind) =>
+        {
+            if (kind == DecorationKind.Folds && ownFolds.Count > 0 && FoldRegions.Any(r => r is { Kind: FoldKind.Own, Folded: false }))
+            {
+                FoldRegions = WithOwn(FoldRegions);
+            }
+        };
         Encoding = file.Encoding;
         HasBom = file.HasBom;
         EncodingName = file.EncodingName;
@@ -291,6 +324,10 @@ public sealed class OpenDocument : Observable
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
             if (liveValues.Count > 0 && Set(ref liveValues, Carried(liveValues, liveLines), nameof(LiveValues)))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+            if (pinnedValues.Count > 0 && Set(ref pinnedValues, Carried(pinnedValues, pinnedLines), nameof(PinnedValues)))
             {
                 Decorations.SetLineAnnotations(ShownAnnotations);
             }
@@ -547,6 +584,14 @@ public sealed class OpenDocument : Observable
         set => Set(ref lineMarks, value);
     }
 
+    /// <summary>The ranges drawn faded, as its owner (the debugger's code a stop won't run) sets them; none once the text
+    /// changes.</summary>
+    public IReadOnlyList<TextRange> Faded
+    {
+        get => Decorations.Faded;
+        set => Decorations.SetFaded(value);
+    }
+
     /// <summary>The tests' run icons beside the test methods and classes it declares.</summary>
     public IReadOnlyList<TestMark> TestMarks
     {
@@ -569,6 +614,40 @@ public sealed class OpenDocument : Observable
     }
 
     private IReadOnlyList<Testing.StepMark> stepMarks = [];
+
+    /// <summary>The coverage a run measured, marked on the file's lines and carried with its text; null for none. Marks set
+    /// in place of others let the others go.</summary>
+    public Testing.CoveredLines? Coverage
+    {
+        get => coverage;
+        set
+        {
+            Testing.CoveredLines? was = coverage;
+            if (Set(ref coverage, value))
+            {
+                was?.Clear();
+            }
+        }
+    }
+
+    private Testing.CoveredLines? coverage;
+
+    /// <summary>Which tests run the file's lines and how they last ended, as continuous testing mapped them, marked on its lines
+    /// and carried with its text; null while it tests nothing here. Marks set in place of others let the others go.</summary>
+    public Testing.ReachedLines? Reach
+    {
+        get => reach;
+        set
+        {
+            Testing.ReachedLines? was = reach;
+            if (Set(ref reach, value))
+            {
+                was?.Clear();
+            }
+        }
+    }
+
+    private Testing.ReachedLines? reach;
 
     /// <summary>The run icons beside what a run configuration runs from it: a program's entry point, a launch profile, a
     /// compose file's services, a Dockerfile's image.</summary>
@@ -676,6 +755,46 @@ public sealed class OpenDocument : Observable
     /// closed, else those Settings folds by default); none while unset. A region that holds a caret stays open.</summary>
     public Func<FoldRegion, bool>? FoldsAtFirst { get; set; }
 
+    /// <summary>The stretches the person folded themselves, carried through every edit by their anchors; one an edit emptied
+    /// or the person unfolded is let go.</summary>
+    private readonly List<AnchoredRange> ownFolds = [];
+
+    /// <summary>The person's own folds the file opens with (kept with its other folds), laid as its regions are first found.</summary>
+    public IReadOnlyList<(int Start, int End)> OwnFoldsAtFirst { get; set; } = [];
+
+    /// <summary>The stretches the person folded themselves, as they stand now.</summary>
+    public IReadOnlyList<(int Start, int End)> OwnFolds => [.. ownFolds.Where(f => f.End > f.Start).Select(f => (f.Start, f.End))];
+
+    /// <summary>Folds a stretch of the person's own (Collapse Selection, Collapse Block), kept folded through every edit by
+    /// its anchors until it is unfolded or an edit takes its text away.</summary>
+    public void FoldOwn(TextRange range)
+    {
+        ownFolds.Add(Text.RangeAt(range, AnchorGravity.After, AnchorGravity.Before));
+        FoldRegions = WithOwn(FoldRegions);
+    }
+
+    /// <summary>The regions with the person's own folds laid over them, folded, where their anchors stand now: those the
+    /// regions hold unfolded (the person opened them) or an edit emptied are let go first.</summary>
+    private IReadOnlyList<FoldRegion> WithOwn(IReadOnlyList<FoldRegion> regions)
+    {
+        if (ownFolds.Count == 0)
+        {
+            return regions;
+        }
+        HashSet<(int, int)> opened = [.. FoldRegions.Where(r => r is { Kind: FoldKind.Own, Folded: false }).Select(r => (r.Start, r.End))];
+        ownFolds.RemoveAll(fold =>
+        {
+            bool gone = fold.End <= fold.Start || opened.Contains((fold.Start, fold.End));
+            if (gone)
+            {
+                fold.Remove();
+            }
+            return gone;
+        });
+        return [.. regions.Where(r => r.Kind != FoldKind.Own).Concat(ownFolds.Select(f => new FoldRegion(f.Start, f.End, "…", Folded: true, Kind: FoldKind.Own)))
+            .OrderBy(r => r.Start).ThenByDescending(r => r.End)];
+    }
+
     /// <summary>Whether the file's regions have been found, so which of them are folded is the person's to keep.</summary>
     public bool FoldsFound { get; private set; }
 
@@ -738,6 +857,34 @@ public sealed class OpenDocument : Observable
         }
     }
 
+    /// <summary>The values pinned to its lines (<see cref="Debugging.PinnedValues"/>), each its expression and, at a stop, its
+    /// value: shown after <see cref="LineAnnotations"/>, whether or not anything is debugged.</summary>
+    public IReadOnlyList<LineAnnotation> PinnedValues
+    {
+        get => pinnedValues;
+        set
+        {
+            pinnedLines = Anchored(value, pinnedLines);
+            if (Set(ref pinnedValues, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
+
+    /// <summary>The increments for the function selected in the current C# parse, recomputed as the source changes.</summary>
+    internal IReadOnlyList<LineAnnotation> ComplexityAnnotations
+    {
+        get => complexityAnnotations;
+        set
+        {
+            if (Set(ref complexityAnnotations, value))
+            {
+                Decorations.SetLineAnnotations(ShownAnnotations);
+            }
+        }
+    }
+
     /// <summary>The lines of annotations, anchored in the text, those of the ones they replace let go.</summary>
     private AnchoredLine[] Anchored(IReadOnlyList<LineAnnotation> annotations, AnchoredLine[] replaced)
     {
@@ -769,10 +916,11 @@ public sealed class OpenDocument : Observable
         return moved ?? annotations;
     }
 
-    /// <summary>What its editors show after its lines: the debugger's annotations, then the app's live values, a run's errors
-    /// and its failed steps' words.</summary>
-    public IReadOnlyList<LineAnnotation> ShownAnnotations => liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
-        : [.. lineAnnotations, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
+    /// <summary>What its editors show after its lines: complexity increments, debugger annotations, pinned and live
+    /// values, and the errors of a run or failed step.</summary>
+    public IReadOnlyList<LineAnnotation> ShownAnnotations => complexityAnnotations.Count == 0 && pinnedValues.Count == 0
+        && liveValues.Count == 0 && errorPins.Count == 0 && stepMarks.Count == 0 ? lineAnnotations
+        : [.. complexityAnnotations, .. lineAnnotations, .. pinnedValues, .. liveValues, .. errorPins.Select(p => new LineAnnotation(p.Line, p.Last, p.Warnings ? LineAnnotationLook.Muted : LineAnnotationLook.Error)),
             .. stepMarks.Where(m => m.Failure is not null).Select(m => new LineAnnotation(m.Line, m.Failure!, LineAnnotationLook.Error))];
 
     private IReadOnlyList<Editors.ErrorPin> errorPins = [];
@@ -814,6 +962,7 @@ public sealed class OpenDocument : Observable
         closed = true;
         Diff?.LetGo();
         Tool?.LetGo();
+        DatabaseTab?.Dispose();
         Asset?.Dispose();
         (Highlighter as IDisposable)?.Dispose();
         if (!ReferenceEquals(parser, Highlighter))
@@ -828,7 +977,7 @@ public sealed class OpenDocument : Observable
 
     /// <summary>What its tab is called: its name, a diff's title ("Shop.cs: HEAD and your version"), or for release notes the
     /// app carries what they are ("What's New in 0.2.0").</summary>
-    public string Title => Tool?.Window.Title ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
+    public string Title => DatabaseTab?.Title ?? Tool?.Window.Title.Shown ?? Diff?.Shown.Title ?? (Updates.ReleaseNotes.VersionOf(Path) is { } version ? Updates.ReleaseNotes.TitleOf(version) : Name);
 
     /// <summary>Whether this is release notes the app carries, which its tab shows rendered (What's New), read-only.</summary>
     public bool IsReleaseNotes => Updates.ReleaseNotes.VersionOf(Path) is not null;
@@ -896,7 +1045,7 @@ public sealed class OpenDocument : Observable
     {
         if (WhyNotConverted(toTabs) is { } why)
         {
-            throw new IOException(why);
+            throw new IOException(why.English);
         }
         IndentOptions from = Indentation.Options;
         // Tabs as wide as a level, so the lines stand where they stood.
@@ -919,7 +1068,7 @@ public sealed class OpenDocument : Observable
     /// takes no tabs, the lines that begin inside a string are not known, as C#'s are from its syntax at once and another
     /// language's once its grammar has read the whole file (never, once it failed; a language with neither has none known
     /// unless it holds none), or its language would read a block of the result otherwise.</summary>
-    public string? WhyNotConverted(bool toTabs) =>
+    public Words? WhyNotConverted(bool toTabs) =>
         ReadOnlyWhy is { } readOnly ? readOnly
         : toTabs && Language.IndentsWithSpacesAlone ? Refusals.SpacesAlone(Name, Language.Name)
         : parser is TextMateHighlighter { Failure: { } failure } ? Refusals.GrammarFailed(Name, Language.Name, failure.Message)
@@ -1132,7 +1281,7 @@ public sealed class OpenDocument : Observable
         }
         if (ReadOnlyWhy is { } readOnly)
         {
-            throw new IOException(readOnly);
+            throw new IOException(readOnly.English);
         }
         Stored before = Current;
         SelectionSet carets = Selections;
@@ -1258,10 +1407,15 @@ public sealed class OpenDocument : Observable
         if (!FoldsFound)
         {
             FoldsFound = true;
-            FoldRegions = Opening(found);
+            TextSnapshot text = Text.Snapshot;
+            foreach ((int start, int end) in OwnFoldsAtFirst.Where(f => f.Start >= 0 && f.End <= text.Length && f.End > f.Start))
+            {
+                ownFolds.Add(Text.RangeAt(TextRange.FromBounds(start, end), AnchorGravity.After, AnchorGravity.Before));
+            }
+            FoldRegions = WithOwn(Opening(found));
             return;
         }
-        if (Same(FoldRegions, found))
+        if (ownFolds.Count == 0 && Same(FoldRegions, found))
         {
             return;
         }
@@ -1269,12 +1423,12 @@ public sealed class OpenDocument : Observable
         IReadOnlyList<FoldRegion> regions = FoldRegions;
         for (int i = 0; i < regions.Count; i++)
         {
-            if (regions[i].Folded)
+            if (regions[i] is { Folded: true, Kind: not FoldKind.Own })
             {
                 (folded ??= []).Add(regions[i].Start);
             }
         }
-        FoldRegions = folded is null ? found : FoldList.Of(found).FoldedAt(folded);
+        FoldRegions = WithOwn(folded is null ? found : FoldList.Of(found).FoldedAt(folded));
     }
 
     /// <summary>The first regions, folded as the file opens: as <see cref="FoldsAtFirst"/> says, but for one hiding a caret.</summary>
@@ -1325,12 +1479,12 @@ public sealed class OpenDocument : Observable
     /// SDK or any file of a package as NuGet restored it, a copy of a container's file or of what the engine says of one, a
     /// copy of a source generator's code, or a stylesheet a page links on the web as it was downloaded: those its path decides
     /// read-only whether open or not (<see cref="ReadOnlyFiles"/>).</summary>
-    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || IsWorkbook || IsBinary || ReadOnlyFiles.Holds(Path);
+    public bool IsReadOnly => Asset is not null || Diff is not null || Tool is not null || DatabaseTab is not null || IsWorkbook || IsBinary || ReadOnlyFiles.Holds(Path);
 
     /// <summary>Why every change of it is refused, in Refusals' words, while it is read-only (<see cref="IsReadOnly"/>); null
     /// while it is not. Its text read-only by where it lies is refused as every write of such a file is, open or not, a
     /// package's naming the package (<see cref="ReadOnlyFiles.Refused"/>); a tab holding none of its file's text as read-only.</summary>
-    public string? ReadOnlyWhy => !IsReadOnly ? null : (HoldsText ? ReadOnlyFiles.Refused(Path, Name) : null) ?? Refusals.ReadOnly(Name);
+    public Words? ReadOnlyWhy => !IsReadOnly ? null : (HoldsText ? ReadOnlyFiles.Refused(Path, Name) : null) ?? Refusals.ReadOnly(Name);
 
     /// <summary>The text refuses every change while the file is read-only, whatever asks it: the one place that holds it so.</summary>
     private void FollowReadOnly() => Text.IsReadOnly = IsReadOnly;
@@ -1356,10 +1510,11 @@ public sealed class OpenDocument : Observable
     /// <summary>Whether its tab holds the file's text: an asset preview's and a workbook's hold an empty stand-in, a
     /// binary file's its bytes drawn as signs, release notes' their Markdown shown rendered and a diff's none, so nothing searches, reads,
     /// edits or writes it as the file's (<see cref="ShownAs"/> says what the file is instead).</summary>
-    public bool HoldsText => Asset is null && Diff is null && Tool is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
+    public bool HoldsText => Asset is null && Diff is null && Tool is null && DatabaseTab is null && !IsWorkbook && !IsBinary && !IsReleaseNotes;
 
     /// <summary>What a file whose tab holds no text is shown as, for what refuses its text to say; null for text.</summary>
-    public string? ShownAs => Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
+    public string? ShownAs => DatabaseTab is { } shown ? shown.ShownAs
+        : Asset is { Kind: AssetKind.Image } ? "an image, shown as a read-only preview"
         : Asset is not null ? "a font, shown as a read-only preview"
         : IsWorkbook ? "an Excel workbook, shown as its sheets' cells"
         : IsBinary ? "a binary file, shown as its bytes' text"
@@ -1375,11 +1530,12 @@ public sealed class OpenDocument : Observable
         : Diff is not null ? "A diff of two versions of the file, side by side"
         : Product.Carries(Path) ? "Passenger's own file, as the app carries it, read-only"
         : MSBuild.MSBuildFiles.IsInstalled(Path) ? "An MSBuild file of the .NET SDK or a package, as installed, read-only"
-        : Packages.PackageFolders.PackageOf(Path) is { } package ? $"{Refusals.Sentence(Refusals.PackagesOwn(package))}, read-only"
+        : Packages.PackageFolders.PackageOf(Path) is { } package ? Refusals.PackagesFileReadOnly(package).Shown
         : Containers.ContainerFilesPane.IsCopy(Path) ? "A copy of what a container holds, or of what the engine says of it, read-only"
         : Endpoints.RequestLog.IsCommandCopy(Path) ? "SQL a running app issued, or an EF Core query's the debugger read, copied to read, read-only"
         : CSharp.GeneratedCode.IsCopy(Path) ? "Code a source generator made, as the C# language server has it, read-only"
         : Web.RemoteStylesheets.IsCopy(Path) ? "A stylesheet a page links on the web, as it was downloaded, read-only"
+        : Database.DatabaseDdl.IsCopy(Path) ? "A database object's definition, as its database gives it, read-only"
         : Path.Contains("SourceLink", StringComparison.OrdinalIgnoreCase) || Path.Contains("Embedded", StringComparison.OrdinalIgnoreCase)
         ? "Source from the library's Source Link or PDB, read-only"
         : "Decompiled code: the language server made this from the assembly, so it is read-only";
@@ -1395,10 +1551,11 @@ public sealed class OpenDocument : Observable
 
     /// <summary>Whether text has unsaved changes; a read-only asset is never considered modified.</summary>
     public bool IsModified => Asset is null && Text.IsModified;
-    public Avalonia.Media.Geometry Icon => Tool is { } tool && Avalonia.Application.Current is { } app
-        && app.TryGetResource(tool.Window.Icon, app.ActualThemeVariant, out object? found) && found is Avalonia.Media.Geometry glyph ? glyph
-        : Diff is not null ? Explorer.FileIcons.ForDiff : Explorer.FileIcons.ForFile(Path);
-    public string IconTint => Explorer.FileIcons.TintForFile(Path);
+    /// <summary>The theme's key of its tab's icon: its tool window's, a diff's, or its file's by its name.</summary>
+    public string IconKey => DatabaseTab is not null ? IconKeys.Database : Tool is { } tool ? tool.Window.Icon : Diff is not null ? Explorer.FileIcons.DiffKey : Explorer.FileIcons.FileKey(Path);
+
+    /// <summary>The theme's key of its tab's icon's tint, its file's.</summary>
+    public string IconBrushKey => Explorer.FileIcons.FileBrushKey(Path);
 
     /// <summary>The carets: the editor's while the file is shown there, as left otherwise, moved by every change to the text.</summary>
     public SelectionSet Selections { get; set; } = SelectionSet.Single(0);
@@ -1589,7 +1746,7 @@ public sealed class OpenDocument : Observable
         }
         if (ReadOnlyWhy is { } readOnly)
         {
-            throw new IOException(readOnly);
+            throw new IOException(readOnly.English);
         }
         if (!IsModified && !overDisk)
         {

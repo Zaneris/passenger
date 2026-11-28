@@ -51,7 +51,7 @@ public static class DesktopPrograms
     /// it, and the package a project takes the framework by, or a package named under it.</summary>
     private static readonly (string File, string Called, string Package)[] Frameworks =
     [
-        (AvaloniaAssembly, Avalonia, AvaloniaPackage), ("Microsoft.WinUI.dll", "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", Maui, "Microsoft.Maui.Controls"),
+        (AvaloniaAssembly, Avalonia, AvaloniaPackage), (WinUIAssembly, "a WinUI app", "Microsoft.WindowsAppSDK"), ("Microsoft.Maui.dll", Maui, "Microsoft.Maui.Controls"),
         ("Uno.UI.dll", "an Uno Platform app", "Uno.WinUI"), ("Eto.dll", "an Eto.Forms app", "Eto.Forms"), ("GtkSharp.dll", "a GTK app", "GtkSharp"),
     ];
 
@@ -101,6 +101,12 @@ public static class DesktopPrograms
 
     /// <summary>Whether a program's file is an Avalonia app's, <see cref="AvaloniaAssembly"/> beside it.</summary>
     public static bool BesideAvalonia(string file) => File.Exists(Path.Combine(Path.GetDirectoryName(file)!, AvaloniaAssembly));
+
+    /// <summary>The WinUI projection found beside a WinUI app.</summary>
+    public const string WinUIAssembly = "Microsoft.WinUI.dll";
+
+    /// <summary>Whether a program's file is a WinUI app's, <see cref="WinUIAssembly"/> beside it.</summary>
+    public static bool BesideWinUI(string file) => File.Exists(Path.Combine(Path.GetDirectoryName(file)!, WinUIAssembly));
 
     private static bool OpensWindows(string library)
     {
@@ -160,10 +166,16 @@ public static class DesktopPrograms
         (OfProject(project, projects) == Avalonia && !project.Packages.Any(p => AvaloniaElsewhere.Contains(p.Name, StringComparer.OrdinalIgnoreCase)))
         || project.WithReferenced(projects).Any(p => p.Evaluated?.Dependencies.Any(d => FrameworkNames.UsesWpf(d.FrameworkReferences)) == true);
 
+    /// <summary>Whether a project, or one it references, takes Windows Forms (its frameworks' references name it), whose app
+    /// Passenger's inspector looks into on Windows.</summary>
+    public static bool TakesForms(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
+        project.WithReferenced(projects).Any(p => p.Evaluated?.Dependencies.Any(d => FrameworkNames.UsesWindowsForms(d.FrameworkReferences)) == true);
+
     /// <summary>Whether Passenger's inspector looks into the app a project builds, by what it and the projects it references
-    /// say: an Avalonia or WPF app of this computer's desktop (<see cref="TakesXaml"/>), or a .NET MAUI app.</summary>
+    /// say: an Avalonia or WPF app of this computer's desktop (<see cref="TakesXaml"/>), a Windows Forms app
+    /// (<see cref="TakesForms"/>), or a .NET MAUI app.</summary>
     public static bool Inspected(ProjectModel project, IReadOnlyList<ProjectModel> projects) =>
-        TakesXaml(project, projects) || OfProject(project, projects) == Maui;
+        TakesXaml(project, projects) || TakesForms(project, projects) || OfProject(project, projects) == Maui;
 
     /// <summary>Whether a framework's own packages, as evaluated, bring Avalonia's desktop platforms (<see cref="AvaloniaDesktop"/>),
     /// so its app runs on this computer's desktop.</summary>

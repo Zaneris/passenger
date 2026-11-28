@@ -55,25 +55,25 @@ public sealed class MissingSdkTests : IDisposable
         Ui.Settle();
         Assert.True(window.Status == Missing && window.StatusSeverity == ProblemSeverity.Error,
             $"Without the SDK global.json asks for, the status bar said ({window.StatusSeverity}): {window.Status}");
-        Assert.Equal("download the .NET SDK 1.0.100", window.StatusPlace?.Name);
+        Assert.Equal("download the .NET SDK 1.0.100", window.StatusPlace?.Name.English);
         Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
         Assert.Equal("https://dotnet.microsoft.com/download/dotnet/1.0", Assert.Single(window.Browsed).AbsoluteUri);
 
         ExplorerNode app = window.ExplorerView.Tree.Rows.Single(r => r.Kind == NodeKind.Project && r.Name == "App");
-        Assert.Equal("(no SDK)", app.Detail);
-        Assert.True(app.Tip?.StartsWith(Missing, StringComparison.Ordinal) == true && app.Tip.Contains("Install the [1.0.100] .NET SDK", StringComparison.Ordinal),
+        Assert.Equal("(no SDK)", app.Detail?.English);
+        Assert.True(app.Tip?.English.StartsWith(Missing, StringComparison.Ordinal) == true && app.Tip.English.Contains("Install the [1.0.100] .NET SDK", StringComparison.Ordinal),
             $"App's row, which no SDK evaluates, has the tip: {app.Tip}");
 
-        Assert.Equal(Missing, window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
+        Assert.Equal(Missing, window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context())?.Shown);
         Ui.Run(window, AppActions.RunProgram);
         Assert.True(window.Status == Missing && !window.Session.RunProgram.IsRunning, $"Run without the SDK said: {window.Status}");
 
         // A global.json that asks for no SDK of its own has the newest installed evaluate the project.
         TestFolders.Write(root, "Shop/global.json", "{}\n");
-        Ui.WaitFor(() => window.Session.Models.MissingSdk is null && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail == TestProjects.Framework),
+        Ui.WaitFor(() => window.Session.Models.MissingSdk is null && window.ExplorerView.Tree.Rows.Any(r => r.Kind == NodeKind.Project && r.Detail?.English == TestProjects.Framework),
             () => $"App to be evaluated once global.json asks for no SDK it lacks: App's row says {window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Name == "App")?.Detail}", TimeSpan.FromMinutes(1));
         Assert.NotEqual(Missing, window.Status);
-        Assert.Null(window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context())?.Shown);
         window.Close();
     }
 

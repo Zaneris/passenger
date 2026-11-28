@@ -1,6 +1,7 @@
 #!/bin/sh
 # Passenger for Linux: `just package-linux [linux-x64|linux-arm64]` makes artifacts/package/Passenger-linux-x64.tar.gz
-# (or -arm64), a name each release keeps. It holds one passenger/ folder: the Release publish (self-contained,
+# (or -arm64) and Passenger-duckdb-linux-x64.tar.gz, DuckDB's engine, which it leaves out, names each release keeps. It
+# holds one passenger/ folder: the Release publish (self-contained,
 # ReadyToRun, the debugger and Roslyn's server beside it) in app/, the `passenger` launcher, install.sh, and the desktop
 # entry's template, its icon and the file types it opens (tools/linux). The archive is then unpacked again and checked:
 # its layout, every ELF file built for its processor, and the launcher running the app, as installed and as a portable
@@ -25,12 +26,17 @@ stage="$work/stage"
 folder="$stage/passenger"
 check="$work/check"
 archive="$out/Passenger-linux-${rid#linux-}.tar.gz"
+duckdb="$out/Passenger-duckdb-$rid.tar.gz"
 
 version=$(release_version "$root")
 
-rm -rf "$work" "$archive"
+rm -rf "$work" "$archive" "$duckdb"
 mkdir -p "$work"
 publish_app "$root" "$rid" "$version" -o "$publish" -nologo -v quiet
+# DuckDB's engine is a release file of its own, downloaded the first time a DuckDB connection opens.
+duckdb_engine=$(duckdb_engine_of "$rid")
+take_duckdb "$publish" "$duckdb_engine" "$work/duckdb"
+tar -C "$work/duckdb" -czf "$duckdb" "$duckdb_engine"
 
 linux="$root/tools/linux"
 mkdir -p "$folder"
@@ -88,5 +94,8 @@ if [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = "$(echo "$machine" | tr - _)" 
     check_portable "$shipped/passenger" "$shipped"
 fi
 
+[ ! -e "$shipped/app/$duckdb_engine" ] || fail "the archive carries DuckDB's engine, which a release downloads"
+[ "$(tar -tzf "$duckdb")" = "$duckdb_engine" ] || fail "$duckdb holds $(tar -tzf "$duckdb" | tr '\n' ' '), not DuckDB's engine alone"
 size=$(du -h "$archive" | cut -f1 | tr -d ' ')
 echo "package: $archive ($size, Passenger $version for $rid)"
+echo "package: $duckdb ($(du -h "$duckdb" | cut -f1 | tr -d ' '), DuckDB's engine, downloaded the first time a DuckDB connection opens)"

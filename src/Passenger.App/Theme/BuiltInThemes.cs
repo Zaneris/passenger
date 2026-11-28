@@ -37,6 +37,24 @@ public static class BuiltInThemes
     public static byte[]? Bytes(bool code, string name) =>
         Listed(ThemeResources.Kinds).Listed.FirstOrDefault(l => l.Code == code && l.Read.Read?.Name == name)?.Bytes;
 
+    /// <summary>A theme or scheme laid over the carried theme it names as its base (<see cref="ThemeFile.BuiltInBase"/>), a
+    /// scheme over that theme's code alone (<see cref="ThemeFiles.CodeOf"/>); the file as it is where it names none; why
+    /// not where the base is not carried or does not read.</summary>
+    public static (ThemeFile? Whole, string? Why) Under(ThemeFile file, bool code)
+    {
+        if (file.BuiltInBase is not { } named)
+        {
+            return (file, null);
+        }
+        // A carried theme over another is carried whole, never round in a ring.
+        if (named == file.Name || Listed(ThemeResources.Kinds).Listed.FirstOrDefault(l => !l.Code && l.Read.Read?.Name == named)?.Read.Read is not { } carried
+            || carried.BuiltInBase is not null)
+        {
+            return (null, $"{file.Name}'s base {named} is no theme Passenger carries whole");
+        }
+        return (ThemeFiles.Over(code ? ThemeFiles.CodeOf(carried) : carried, file), null);
+    }
+
     /// <summary>A picture a built-in theme names, beside its file among the app's resources, or null where none is carried
     /// or it is no picture a background may be.</summary>
     public static byte[]? Image(bool code, string name, string image)
@@ -52,6 +70,18 @@ public static class BuiltInThemes
         }
         byte[] bytes = Read(ThemeImages.Beside(listed.Path, image));
         return ThemeImages.WhyNot(image, bytes) is null ? bytes : null;
+    }
+
+    /// <summary>A file a built-in theme names beside its own among the app's resources (an icon's SVG), as it is, or null where
+    /// none is carried.</summary>
+    public static byte[]? Beside(string name, string file)
+    {
+        if (Listed(ThemeResources.Kinds).Listed.FirstOrDefault(l => !l.Code && l.Read.Read?.Name == name) is not { } listed
+            || !AssetLoader.Exists(new Uri(Root, ThemeImages.Beside(listed.Path, file))))
+        {
+            return null;
+        }
+        return Read(ThemeImages.Beside(listed.Path, file));
     }
 
     private static ListedTheme File(string path, bool code, IReadOnlyDictionary<string, ThemeTokenKind> kinds)

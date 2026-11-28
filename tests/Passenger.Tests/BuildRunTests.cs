@@ -1,12 +1,15 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Docking;
 using Passenger.App.Explorer;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
@@ -72,8 +75,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>Rerun asks first and Stop ends the program, each stream's lines heard and shown whole however the other
     /// writes into them, characters outside the system's code page reaching both ways, the apphost started on
-    /// Passenger's dotnet, and a message naming a file linked, as one flow, each step the check one test made in an
-    /// instance of its own.</summary>
+    /// Passenger's dotnet, a message naming a file linked, and the build's compiled code shown, as one flow, each step the
+    /// check one test made in an instance of its own.</summary>
     [AvaloniaFact]
     public void The_run_window_shows_a_programs_output_whole_and_reruns_or_stops_as_asked()
     {
@@ -82,7 +85,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Flow.StepApart("the run window shows each streams line whole whatever the other writes into it and a prompt as written", () => new BuildRunTests(folders), t => t.The_run_window_shows_each_streams_line_whole_whatever_the_other_writes_into_it_and_a_prompt_as_written());
         Flow.StepApart("a programs characters outside the systems code page reach the run window as written and the program as typed", () => new BuildRunTests(folders), t => t.A_programs_characters_outside_the_systems_code_page_reach_the_run_window_as_written_and_the_program_as_typed());
         Flow.StepApart("Run starts the projects apphost on the dotnet passenger builds with", () => new BuildRunTests(folders), t => t.Run_starts_the_projects_apphost_on_the_dotnet_passenger_builds_with());
+        Flow.StepApart("Choose and Run runs the configuration chosen and Run Anything a command line in a Terminal tab from their keys", () => new BuildRunTests(folders), t => t.Choose_and_Run_runs_the_configuration_chosen_and_Run_Anything_a_command_line_in_a_Terminal_tab_from_their_keys());
         Flow.StepApart("a build message naming a file but no place in it links the file and opens it", () => new BuildRunTests(folders), t => t.A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it());
+        Flow.StepApart("Compiled Code shows the last build's IL and low-level C# of the file shown and follows the caret and the file", () => new BuildRunTests(folders), t => t.Compiled_Code_shows_the_last_builds_il_and_low_level_csharp_of_the_file_shown_and_follows_the_caret_and_the_file());
     }
 
     /// <summary>Under dotnet watch a program that ends or whose build fails is said to wait for a change that builds,
@@ -141,13 +146,13 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             ExplorerTree tree = window.ExplorerView.Tree;
             tree.Expand(Assert.Single(tree.Rows, r => r.Kind == NodeKind.SolutionFolder && r.Name == "src"));
             ExplorerNode loaded = Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello");
-            Assert.Equal(TestProjects.Framework, loaded.Detail);
+            Assert.Equal(TestProjects.Framework, loaded.Detail?.English);
             string hello = loaded.Path!;
             Assert.Equal(["Hello"], window.Configurations.Select(c => c.Name));
 
             window.SetUnloaded(hello, unloaded: true);
             ExplorerNode unloaded = Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello");
-            Assert.Equal("(unloaded)", unloaded.Detail);
+            Assert.Equal("(unloaded)", unloaded.Detail?.English);
             Assert.True(unloaded.IsDimmed);
             Assert.False(unloaded.HasChildren);
             Assert.Empty(window.Configurations);
@@ -156,7 +161,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             window.SetUnloaded(hello, unloaded: false);
             Assert.Equal(["Hello"], window.Configurations.Select(c => c.Name));
-            Assert.Equal(TestProjects.Framework, Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello").Detail);
+            Assert.Equal(TestProjects.Framework, Assert.Single(tree.Rows, r => r.Kind == NodeKind.Project && r.Name == "Hello").Detail?.English);
         }
         finally
         {
@@ -166,7 +171,8 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
     /// <summary>With Ask before stopping a running configuration to start it again on, Run of the program that runs asks
     /// first: Cancel leaves it running, Stop ends it and starts nothing, a Run with nothing running asks nothing, and Stop and
-    /// Rerun with Don't ask again ticked runs it again and turns the question off.</summary>
+    /// Rerun with Don't ask again ticked runs it again and turns the question off. The first Run in the folder's repository
+    /// asks too, without taking the keys, whether Run runs with Hot Reload, once, its answer Settings' Hot Reload.</summary>
     private void Asked_before_a_rerun_cancel_leaves_the_program_running_stop_ends_it_and_stop_and_rerun_starts_it_again()
     {
         string started = Path.Combine(Folder, "program.pid");
@@ -188,7 +194,12 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         try
         {
             Assert.True(window.Perform(AppActions.RunProgram), $"Run could not run: {window.Status}");
+            ConfirmDialog hotReload = window.Questions.Showing(Declared.RunWithHotReload)
+                ?? throw new Xunit.Sdk.XunitException("The first Run in the repository did not ask whether to run with Hot Reload");
+            Assert.False(hotReload.IsActive, "The question took the keys from what the person was doing");
+            Assert.DoesNotContain(hotReload.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
             Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) > 0, "the program to run", TimeSpan.FromMinutes(2));
+            Assert.False(window.Builds.WatchesHotReload, "The run the question came with ran with Hot Reload before it was answered");
             int first = Processes.ReadId(started);
 
             ChoiceDialog cancelled = RunAgainAsked(window);
@@ -212,6 +223,11 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.WaitFor(() => window.Runner.IsRunning && Processes.ReadId(started) is int third && third > 0 && third != second, "the program to run again", TimeSpan.FromMinutes(2));
             Assert.False(Processes.IsRunning(second), "Stop and Rerun left the program it stopped running beside the new one");
             Assert.False(window.Settings.AskBeforeRerun, "Don't ask again left the question on");
+
+            Assert.True(window.Questions.Showing(Declared.RunWithHotReload) == hotReload, "The Hot Reload question was asked again while it showed");
+            Ui.ClickButton(hotReload, "Run with Hot Reload");
+            Assert.True(window.Settings.HotReload, "Run with Hot Reload did not turn on Settings' Hot Reload");
+            Assert.False(window.Questions.WouldAsk(Declared.RunWithHotReload), "The repository's Hot Reload question would be asked again");
         }
         finally
         {
@@ -249,7 +265,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
             Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
             Ui.Press(window, Ui.Shortcut(AppActions.Build), settle: false);
-            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Build)?.Stage == "Waiting for Program.cs to be saved…",
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Build)?.Stage.Shown == "Waiting for Program.cs to be saved…",
                 "the build to wait for Program.cs's save", TimeSpan.FromSeconds(10));
         }
         Ui.WaitFor(() => !window.IsBuilding, () => $"the build to end once Program.cs was saved: {window.Status}", TimeSpan.FromMinutes(2));
@@ -300,7 +316,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         Assert.Equal(new TextPosition(1, 12), window.EditorArea.CodeEditor.CaretPosition);
 
         window.ShowToolWindow(ToolWindowIds.Problems);
-        string? refused = Ui.Await(window.RunAsync(), "the run's build", TimeSpan.FromMinutes(2));
+        string? refused = Ui.Await(window.RunAsync(), "the run's build", TimeSpan.FromMinutes(2))?.English;
         Assert.StartsWith("Build failed: 1 error", refused, StringComparison.Ordinal);
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "The build before the run failed, but the Build window did not come forward with its error as Rider's does");
         Assert.Contains("Program.cs(2,13): error CS0029", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
@@ -366,6 +382,101 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>A compiler's message about a file as a whole, which names no place in it (MSBuild's "file : warning
     /// AVLN3001: ...", as Avalonia's XAML compiler writes one), links its file in the Build window, a path with a space in it
     /// whole, and the link opens it.</summary>
+    private void Compiled_Code_shows_the_last_builds_il_and_low_level_csharp_of_the_file_shown_and_follows_the_caret_and_the_file()
+    {
+        string folder = TestFolders.Create("il-viewer");
+        string project = TestFolders.Write(folder, "Sample.csproj", TestProjects.Library());
+        string first = TestFolders.Write(folder, "Counter.cs", """
+            using System.Threading.Tasks;
+
+            public static partial class Counter
+            {
+                [Marker]
+                public static async Task<int> CountAsync()
+                {
+                    await Task.Yield();
+                    return 1;
+                }
+            }
+            """);
+        string second = TestFolders.Write(folder, "Counter.Other.cs", """
+            public static partial class Counter
+            {
+                public static int OtherCount() => 2;
+            }
+
+            public sealed class MarkerAttribute : System.Attribute { }
+            """);
+        MainWindow window = Ui.OpenFolder(project);
+        try
+        {
+            Ui.WaitFor(() => window.Projects is [{ IsEvaluated: true }], "the C# project evaluation");
+            Assert.Null(window.OpenFile(first));
+            Ui.WaitFor(() => window.EditorArea.Active?.ProjectContext is not null, "the active file's C# project context", Restore.Limit);
+            ToggleButton stripe = window.GetVisualDescendants().OfType<ToggleButton>()
+                .Single(button => button.Tag as string == ToolWindowIds.IlViewer);
+            Ui.Click(stripe);
+            ToolWindow tool = window.DockHost[ToolWindowIds.IlViewer];
+            Assert.Equal(ToolAnchor.RightTop, tool.Anchor);
+            Ui.WaitFor(() => tool.Content.GetVisualDescendants().OfType<TextBlock>().Any(text =>
+                text.Text == "Build the project to see the compiled code for Counter.cs."), "the prompt to build first");
+
+            BuildOutcome built = Ui.Await(window.BuildAsync(), "the C# project build", Restore.Limit);
+            Assert.True(built.Succeeded, built.Message + string.Join(Environment.NewLine, built.Output));
+            CodeEditor output = tool.Content.GetVisualDescendants().OfType<CodeEditor>().Single();
+            Ui.WaitFor(() => Text().Contains("IL_0000", StringComparison.Ordinal), "IL from the build");
+            Assert.Contains("CountAsync", Text(), StringComparison.Ordinal);
+            Assert.DoesNotContain("OtherCount", Text(), StringComparison.Ordinal);
+
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "await Task.Yield()");
+            Ui.WaitFor(() => Highlight().Contains("::Yield()", StringComparison.Ordinal), "the IL instructions for the await statement");
+            Assert.DoesNotContain("ldc.i4.1", Highlight(), StringComparison.Ordinal);
+            Ui.PlaceAfter(window.EditorArea.CodeEditor, "return 1");
+            Ui.WaitFor(() => Highlight().Contains("ldc.i4.1", StringComparison.Ordinal), "the IL instructions for the return statement");
+            Assert.DoesNotContain("::Yield()", Highlight(), StringComparison.Ordinal);
+
+            int opcode = Text().IndexOf("ldc.i4.1", output.Highlights[0].Start, StringComparison.Ordinal);
+            Assert.True(output.Highlights[0].Contains(opcode));
+            Assert.Contains(output.Highlighter!.GetSpans(output.Document.Snapshot, opcode - 9, 17), span =>
+                span is { Kind: TokenKind.Keyword } && span.Start == opcode && span.Length == "ldc.i4.1".Length);
+            Assert.Contains(output.Highlighter.GetSpans(output.Document.Snapshot, opcode - 9, 17), span =>
+                span is { Kind: TokenKind.Constant } && span.Start < opcode);
+            Ui.RestOn(output, opcode + 1);
+            Ui.Settle();
+            Ui.WaitFor(() => ToolTip.GetIsOpen(output), "the opcode tooltip");
+            StackPanel tip = Assert.IsType<StackPanel>(ToolTip.GetTip(output));
+            Assert.Contains(tip.Children.OfType<TextBlock>(), text => text.Text == "ldc.i4.1");
+            Assert.Contains(tip.Children.OfType<TextBlock>(), text => text.Text?.Contains("pop 0 · push 1", StringComparison.Ordinal) == true);
+            Ui.RestOn(output, opcode - 5);
+            Ui.Settle();
+            Ui.WaitFor(() => !ToolTip.GetIsOpen(output), "the tooltip dismissing over the IL offset");
+
+            Ui.Click(tool.Content.GetVisualDescendants().OfType<ToggleButton>().Single(button => button.Name == "IlViewerCSharp"));
+            Ui.WaitFor(() => Text().Contains("void MoveNext()", StringComparison.Ordinal), "the decompiled async state machine");
+            Assert.Contains("IAsyncStateMachine", Text(), StringComparison.Ordinal);
+            int attribute = Text().IndexOf("[Marker]", StringComparison.Ordinal) + 1;
+            Assert.True(attribute > 0);
+            Assert.NotNull(output.LinkOn(attribute));
+            output.GoTo(output.Document.Snapshot.GetPosition(attribute));
+            Ui.Settle();
+            Ui.Click(output, output.PointOf(attribute + 1) + new Point(0, output.LineHeight / 2));
+            Ui.WaitFor(() => window.EditorArea.Active?.Text.Snapshot.ToString().Contains("class MarkerAttribute", StringComparison.Ordinal) == true,
+                "the clicked attribute's declaration", TimeSpan.FromSeconds(10));
+
+            Assert.Null(window.OpenFile(second));
+            Ui.WaitFor(() => Text().Contains("OtherCount", StringComparison.Ordinal), "the second file's compiled output");
+            Assert.DoesNotContain("CountAsync", Text(), StringComparison.Ordinal);
+
+            string Text() => output.Document.Snapshot.ToString();
+            string Highlight() => output.Highlights.Count == 1 ? Text().Substring(output.Highlights[0].Start, output.Highlights[0].Length) : string.Empty;
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+    }
+
     private void A_build_message_naming_a_file_but_no_place_in_it_links_the_file_and_opens_it()
     {
         Write("src/Hello/Hello.csproj",
@@ -639,7 +750,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             int first = EndOnDeletedMethod("Later() =>", "Later(int times = 1) =>");
             Assert.True(window.Runner.IsRunning, "dotnet watch ended with the program, where it waits for a change");
-            Assert.Equal("open the Run window", window.StatusPlace?.Name);
+            Assert.Equal("open the Run window", window.StatusPlace?.Name.English);
             Assert.Null(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges));
 
             // A change saved by the Apply: dotnet watch builds and starts the program again, and the window says so.
@@ -775,7 +886,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
                 Problem? error = window.BottomPanel.Problems.Problems.SingleOrDefault(p => p.Code == code);
                 Assert.True(error is not null, $"dotnet watch's build failed on {code}, but Problems' Build lists [{string.Join(", ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where}"))}]");
                 Assert.Equal($"Hot Reload: Hello's build failed: {error.Message} ({where}); {later}", window.Status);
-                Assert.Equal("see it in Problems, Build", window.StatusPlace?.Name);
+                Assert.Equal("see it in Problems, Build", window.StatusPlace?.Name.English);
                 window.ShowToolWindow(ToolWindowIds.Run);
                 Ui.Settle();
                 Assert.Equal($"Hello's build failed with 1 error: {later}", window.BottomPanel.Run.Waiting);
@@ -925,6 +1036,72 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         {
             window.Close();
         }
+    }
+
+    /// <summary>Choose and Run's keys list the folder's configurations, Edit Configurations last, and Enter on one chooses it
+    /// and runs it; Choose and Debug's open its own list; Run Anything's double Ctrl takes a command line typed and runs it in
+    /// a Terminal tab of the open folder, then offers it again, kept with the folder, Ctrl's double tap in that terminal
+    /// opening it too (#2314, #2388).</summary>
+    private void Choose_and_Run_runs_the_configuration_chosen_and_Run_Anything_a_command_line_in_a_Terminal_tab_from_their_keys()
+    {
+        string settings = TestFolders.Create("state-");
+        MainWindow window = Keeping(settings);
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(c => c.Name == "Hello"), "Hello's run configuration");
+            Ui.Run(window, AppActions.ChooseDebugConfiguration);
+            Assert.True(window.Popup is RunOffersPopup { Title.English: "Choose and Debug" }, $"Choose and Debug's key opened {window.Popup?.GetType().Name ?? "nothing"}");
+            Ui.Press(window, "ESCAPE");
+            Ui.Run(window, AppActions.ChooseRunConfiguration);
+            RunOffersPopup choose = Assert.IsType<RunOffersPopup>(window.Popup);
+            Assert.True(choose.Rows.Select(r => r.Label.English).SequenceEqual([.. window.Configurations.Select(c => c.Name), "Edit Configurations…"]),
+                $"Choose and Run listed [{string.Join(", ", choose.Rows.Select(r => r.Label))}], where it lists the configurations, Edit Configurations last");
+            window.KeyTextInput("Hello");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "Hello to run and end", TimeSpan.FromMinutes(2));
+            Assert.True(window.Configuration?.Name == "Hello" && Output(window).Contains("Hello from the run", StringComparison.Ordinal),
+                $"Choose and Run on Hello did not run it, chosen: {window.Configuration?.Name}; {window.Status}\n{Output(window)}");
+
+            Ui.Press(window, "control , control");
+            RunOffersPopup anything = Assert.IsType<RunOffersPopup>(window.Popup);
+            Assert.Equal("Run Anything", anything.Title.English);
+            window.KeyTextInput("echo ran-from-anything");
+            Assert.True(anything.Rows is [.., { Command: "echo ran-from-anything" }], $"Run Anything offered no command line for what was typed: [{string.Join(", ", anything.Rows.Select(r => r.Label))}]");
+            Ui.Press(window, "ENTER");
+            Ui.WaitFor(() => window.TerminalPanel.Active is { } shell && TerminalTests.Screen(shell).Split('\n').Any(l => l.Trim() == "ran-from-anything"),
+                () => $"the command line to run in a Terminal tab: {(window.TerminalPanel.Active is { } shell ? TerminalTests.Screen(shell) : "no tab")}");
+            // A lone Ctrl types nothing in the shell, so its double tap opens Run Anything from the terminal too.
+            window.TerminalPanel.FocusView();
+            Ui.Settle();
+            Assert.True(window.TerminalPanel.View.IsFocused, "The terminal did not have the keys before Ctrl's double tap");
+            Ui.Press(window, "control , control");
+            Assert.Contains(Assert.IsType<RunOffersPopup>(window.Popup).Rows, r => r is { Command: "echo ran-from-anything", Detail.English: RunWords.RecentInTerminal });
+            Ui.Press(window, "ESCAPE");
+            window.Close();
+
+            window = Keeping(settings);
+            window.ExplorerView.FocusRows();
+            Ui.Press(window, "control , control");
+            Assert.True(window.Popup is RunOffersPopup { Rows: [.., { Command: "echo ran-from-anything" }] },
+                "Run Anything offered no command line run before the folder opened again: it is not kept with the folder");
+            Ui.Press(window, "ESCAPE");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(settings);
+        }
+    }
+
+    /// <summary>A window on the solution that keeps the folder's state in its own state folder, as a person's does.</summary>
+    private MainWindow Keeping(string settings)
+    {
+        MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
+        window.Show();
+        window.KeepLayout();
+        window.OpenFolder(Folder);
+        Ui.Settle();
+        return window;
     }
 
     private static string Output(MainWindow window) => window.BottomPanel.Run.Document.Snapshot.ToString();
@@ -1495,9 +1672,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         string place = frame[(frame.IndexOf(" in ", StringComparison.Ordinal) + 4)..];
         int link = start + frame.Length - place.Length;
 
-        Rest(window, run.Editor, start + frame.IndexOf("Orders.Load", StringComparison.Ordinal));
+        Rest(run.Editor, start + frame.IndexOf("Orders.Load", StringComparison.Ordinal));
         Assert.Null(run.Editor.HoveredLink);
-        Rest(window, run.Editor, link + 3);
+        Rest(run.Editor, link + 3);
         TextLink hovered = run.Editor.HoveredLink ?? throw new Xunit.Sdk.XunitException($"The pointer rests on the frame's file but nothing is underlined:\n{frame}");
         Assert.Equal(place, run.Document.Snapshot.GetText(hovered.Range.Start, hovered.Range.Length));
         Assert.Contains(run.Editor.Highlighter!.GetSpans(run.Document.Snapshot, start, frame.Length), span => span.Kind == TokenKind.Link && span.Start == link && span.Length == place.Length);
@@ -1539,8 +1716,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Ui.Settle();
             int line = editor.LinesShown.Last - 2;
             TextLink link = Assert.Single(editor.Links!(editor.Document.Snapshot, line));
-            Point on = editor.TranslatePoint(editor.PointOf(link.Range.Start + 2 + i) + new Point(1, editor.LineHeight / 2), window)!.Value;
-            window.MouseMove(on, Avalonia.Input.RawInputModifiers.None);
+            Ui.RestOn(editor, link.Range.Start + 2 + i);
             Ui.Settle();
             Assert.Equal(link.Range, editor.HoveredLink?.Range);
         }
@@ -1554,10 +1730,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
         string Frame(int i) => $"   at Orders.Load{i}(String file) in {source}:line {(i % 3) + 1}\n";
     }
 
-    /// <summary>Settings' Toolset and Build, Presentation: Build opens the Build window as it starts, unless "when
-    /// build is explicitly invoked" is off, and a build's end brings it forward as "Showing build results after build
-    /// completed" says, by default only when errors were received; Run's build, an implicit one, opens it only with
-    /// "even when the build is invoked implicitly".</summary>
+    /// <summary>Settings' Build page: Build opens the Build window as it starts, unless "Open the Build window as a build
+    /// starts" is off, and a build's end brings it forward as "Bring the Build window forward as a build ends" says, by
+    /// default only with errors; Run's build opens it only with "Open it too for the build before Run, Debug or Profile".</summary>
     private void Build_opens_the_build_window_as_it_starts_and_its_end_brings_it_forward_as_settings_say()
     {
         MainWindow window = Open();
@@ -1572,7 +1747,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             window.ApplySettings(window.Settings with { OpenBuildWindowOnBuild = false });
             window.ShowToolWindow(ToolWindowIds.Problems);
             window.Perform(AppActions.Build);
-            Assert.True(window.IsBuilding && window.DockHost.IsShown(ToolWindowIds.Problems), "With Rider's \"when build is explicitly invoked\" off, Build Solution still opened the Build window");
+            Assert.True(window.IsBuilding && window.DockHost.IsShown(ToolWindowIds.Problems), "With \"Open the Build window as a build starts\" off, Build Solution still opened the Build window");
             BuildToEnd(window, "Build succeeded");
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Problems), "A build that succeeded brought the Build window forward, which Rider does only for errors by default");
             Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello\");\nint count = \"three\";\n");
@@ -1610,7 +1785,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Write("src/Hello/Program.cs", "Console.WriteLine(\"Hello again\");\n");
             window.Perform(AppActions.RunProgram);
             Ui.PumpUntil(() => window.IsBuilding, "the second run's build to start", TimeSpan.FromMinutes(1));
-            Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "With Rider's \"even when the build is invoked implicitly\" on, Run's build did not open the Build window");
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "With \"Open it too for the build before Run, Debug or Profile\" on, Run's build did not open the Build window");
             Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the second program to finish", TimeSpan.FromMinutes(2));
             Assert.True(window.DockHost.IsShown(ToolWindowIds.Run), "The program ran after a build in the Build window, but its Run window is not in front");
         }
@@ -1742,9 +1917,9 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     }
 
     /// <summary>The pointer brought to rest on a character of a console.</summary>
-    private static void Rest(MainWindow window, CodeEditor editor, int offset)
+    private static void Rest(CodeEditor editor, int offset)
     {
-        window.MouseMove(At(window, editor, offset));
+        Ui.RestOn(editor, offset);
         Ui.Settle();
     }
 
@@ -1761,11 +1936,10 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
     /// <summary>Over a character's left half, in the window, its line scrolled into view first.</summary>
     private static Point At(MainWindow window, CodeEditor editor, int offset)
     {
-        int line = editor.Document.Snapshot.GetLineFromOffset(offset);
         Point top = editor.PointOf(offset);
         if (top.Y < 0 || top.Y + editor.LineHeight > editor.Bounds.Height - 20)
         {
-            editor.ScrollTo(new Vector(0, Math.Max(0, (line * editor.LineHeight) - (editor.Bounds.Height / 3))));
+            editor.ScrollTo(new Vector(0, Math.Max(0, editor.ScrollOffset.Y + top.Y - (editor.Bounds.Height / 3))));
             Ui.Settle();
             top = editor.PointOf(offset);
         }
@@ -1817,7 +1991,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
             Assert.True(window.EditorArea.Active is { Name: "Program.cs", IsModified: true }, "The edit of the read-only Program.cs was not kept unsaved");
 
             BuildOutcome built = Ui.Landed(window.BuildAsync(), "the build's outcome");
-            Assert.True(built.Status == BuildStatus.NotStarted && built.Message == Refused,
+            Assert.True(built.Status == BuildStatus.NotStarted && built.Message.English == Refused,
                 $"A build with Program.cs's edit unsaved ended {built.Status}, saying \"{built.Message}\": it built the disk's older text");
             Assert.Equal(Refused, window.Status);
 

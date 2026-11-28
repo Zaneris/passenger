@@ -4,6 +4,7 @@
     <Project Path="src/Passenger.App/Passenger.App.csproj" />
     <Project Path="src/Passenger.ContainerTools/Passenger.ContainerTools.csproj" />
     <Project Path="src/Passenger.Core/Passenger.Core.csproj" />
+    <Project Path="src/Passenger.CoverageMap/Passenger.CoverageMap.csproj" />
     <Project Path="src/Passenger.Dap/Passenger.Dap.csproj" />
     <Project Path="src/Passenger.DebugAdapter/Passenger.DebugAdapter.csproj" />
     <Project Path="src/Passenger.Debugger/Passenger.Debugger.csproj" />
@@ -13,6 +14,8 @@
     <Project Path="src/Passenger.Host/Passenger.Host.csproj" />
     <Project Path="src/Passenger.Inspector/Passenger.Inspector.csproj" />
     <Project Path="src/Passenger.Inspector.Maui/Passenger.Inspector.Maui.csproj" />
+    <Project Path="src/Passenger.Inspector.WinForms/Passenger.Inspector.WinForms.csproj" />
+    <Project Path="src/Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" />
     <Project Path="src/Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" />
     <Project Path="src/Passenger.Languages/Passenger.Languages.csproj" />
     <Project Path="src/Passenger.Launcher/Passenger.Launcher.csproj" />
@@ -23,10 +26,12 @@
     <Project Path="src/Passenger.Roslyn.Extension/Passenger.Roslyn.Extension.csproj" />
     <Project Path="src/Passenger.Terminal/Passenger.Terminal.csproj" />
     <Project Path="src/Passenger.TestFrames/Passenger.TestFrames.csproj" />
+    <Project Path="src/Passenger.TestHits/Passenger.TestHits.csproj" />
     <Project Path="src/Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" />
     <Project Path="src/Passenger.Text/Passenger.Text.csproj" />
     <Project Path="src/Passenger.Vcs/Passenger.Vcs.csproj" />
     <Project Path="src/Passenger.Workspace/Passenger.Workspace.csproj" />
+    <Project Path="src/Passenger.WinFormsDesigner/Passenger.WinFormsDesigner.csproj" />
     <Project Path="src/Passenger.WpfPreview/Passenger.WpfPreview.csproj" />
     <Project Path="src/Passenger.Xaml/Passenger.Xaml.csproj" />
   </Folder>

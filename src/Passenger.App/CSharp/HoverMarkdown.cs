@@ -9,8 +9,8 @@ namespace Passenger.App.CSharp;
 /// <summary>A hover's Markdown as language servers write it, read once for the window's card (its words) and an agent (its
 /// text): fenced code apart from the prose between it, and in a line of prose, outside a code span, a backslash before
 /// punctuation and a character reference (<see cref="XmlEntities"/>, and <c>&amp;nbsp;</c>) read as the character each
-/// stands for, a code span's characters as written, and neither an image nor a data URI's bytes, which are no words. A
-/// hover of plain text is read as written (<see cref="ByKind"/>).</summary>
+/// stands for, a code span's characters as written, a link to a symbol as its words, and neither an image nor a data URI's
+/// bytes, which are no words. A hover of plain text is read as written (<see cref="ByKind"/>).</summary>
 internal static partial class HoverMarkdown
 {
     /// <summary>The first of the Private Use Area's characters, which no Markdown mark is, that a line's parts are held as
@@ -79,7 +79,7 @@ internal static partial class HoverMarkdown
             // More parts than the Area has characters: read with Markdown's marks left in.
             return Imageless(Held(line, words, null)!);
         }
-        string shown = Imageless(marked);
+        string shown = SymbolLink().Replace(Imageless(marked), "$1");
         if (words)
         {
             shown = MarkdownItalic().Replace(MarkdownLink().Replace(shown, "$1")
@@ -244,6 +244,10 @@ internal static partial class HoverMarkdown
     /// <summary>A Markdown link, shown as its words (the CSS server's MDN Reference).</summary>
     [GeneratedRegex(@"\[([^\]]+)\]\([^)\s]*\)")]
     private static partial Regex MarkdownLink();
+
+    /// <summary>A link to a symbol a C# card's documentation names, which says nothing past its words.</summary>
+    [GeneratedRegex(@"\[([^\]]+)\]\(" + Roslyn.Extension.SymbolLinks.Scheme + @":[^)\s]*\)")]
+    private static partial Regex SymbolLink();
 
     /// <summary>A data URI's base64 bytes.</summary>
     [GeneratedRegex(@"\bdata:[\w.+/-]*(?:;[\w.+=-]+)*;base64,[A-Za-z0-9+/=]+")]

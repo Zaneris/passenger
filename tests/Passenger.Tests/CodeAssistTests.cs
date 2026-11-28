@@ -9,7 +9,9 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.DependencyMap;
 using Passenger.App.Editors;
+using Passenger.Roslyn.Extension;
 using Passenger.App.Navigation;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
@@ -76,7 +78,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a method chosen from the list is written called, the caret inside its brackets when it takes arguments", () => new CodeAssistTests(project), t => t.A_method_chosen_from_the_list_is_written_called_the_caret_inside_its_brackets_when_it_takes_arguments());
         Flow.StepApart("a method chosen is written at once, its brackets following in its step of Undo unless typed on before they came", () => new CodeAssistTests(project), t => t.A_method_chosen_is_written_at_once_its_brackets_following_in_its_step_of_undo_unless_typed_on_before_they_came());
         Flow.StepApart("with parentheses turned off a method chosen from the list is written as its name alone", () => new CodeAssistTests(project), t => t.With_parentheses_turned_off_a_method_chosen_from_the_list_is_written_as_its_name_alone());
-        Flow.StepApart("typing after a dot completes, filtered as you type, and Enter commits it", () => new CodeAssistTests(project), t => t.Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out());
+        Flow.StepApart("typing after a dot completes, filtered as you type, its item's card asked again where the server cancelled the question, and Enter commits it", () => new CodeAssistTests(project), t => t.Typing_after_a_dot_completes_filtered_as_you_type_and_enter_commits_it_without_the_visual_studio_assemblies_passenger_leaves_out());
         Flow.StepApart("CamelHumps typed offer the names they start after the prefix matches, and Enter writes the one chosen", () => new CodeAssistTests(project), t => t.CamelHumps_typed_offer_the_names_they_start_after_the_prefix_matches_and_enter_writes_the_one_chosen());
         Flow.StepApart("a space after override lists the members to override and no template, and Enter writes one", () => new CodeAssistTests(project), t => t.A_space_after_override_lists_the_members_to_override_and_no_template_and_Enter_writes_one());
         Flow.StepApart("a list still asked for is let go by an Escape or the caret moved out of its name", () => new CodeAssistTests(project), t => t.A_list_still_asked_for_is_let_go_by_an_escape_or_the_caret_moved_out_of_its_name());
@@ -99,23 +101,35 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>What the window says of the code around the caret: the status bar's path, a hover card and File
-    /// Structure, once the server has the file; the structure window following the editor; Go to Symbol's generated
-    /// declarations; parameter info's overloads, those the arguments no longer fit set back; and documentation as its
-    /// tags write it in every card.</summary>
+    /// Structure, once the server has the file; the structure and syntax tree windows following the editor; Go to Symbol's generated
+    /// declarations; parameter info's overloads, those the arguments no longer fit set back; documentation as its tags
+    /// write it in every card; a hover's signature with the attributes declared on what it names; and the peeks at the
+    /// caret.</summary>
     [AvaloniaFact]
     public void The_code_around_the_caret_is_named_and_its_overloads_shown_as_the_server_has_it()
     {
         Flow.StepApart("the path, a hover card, File Structure and Go to Symbol name the code and go to it", () => new CodeAssistTests(project), t => t.The_path_a_hover_card_file_structure_and_go_to_symbol_name_the_code_and_go_to_it());
+        Flow.StepApart("the links in a wrapped hover signature go to their own declarations", () => new CodeAssistTests(project), t => t.Hover_signature_links_go_to_their_own_declarations());
+        Flow.StepApart("File Structure finds members by their kind's words beside their names, alone or before a name, and an agent's outline names the same kinds", () => new CodeAssistTests(project), t => t.File_structure_finds_members_by_their_kinds_words_beside_their_names_alone_or_before_a_name_and_an_agents_outline_names_the_same_kinds());
+        Flow.StepApart("a method breakpoint names a parameter of a global alias by the type the server says it stands for", () => new CodeAssistTests(project), t => t.A_method_breakpoint_names_a_parameter_of_a_global_alias_by_the_type_the_server_says_it_stands_for());
         Flow.StepApart("a file shown before its folder's server has it names the member the caret is in once it does", () => new CodeAssistTests(project), t => t.A_file_shown_before_its_folders_server_has_it_names_the_member_the_caret_is_in_once_it_does());
         Flow.StepApart("the structure window shows the shown file's outline whenever it is shown, once the server has the file, and follows the editor", () => new CodeAssistTests(project), t => t.The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor());
+        Flow.StepApart("the syntax tree window shows the shown C# file's syntax at the selection, follows its unsaved edits and the file shown, and a row chosen selects its code", () => new CodeAssistTests(project), t => t.The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code());
         Flow.StepApart("Go to Symbol lists a generated method's own declaration alone, and what only a generator wrote after", () => new CodeAssistTests(project), t => t.Go_to_Symbol_lists_a_generated_methods_own_declaration_alone_and_what_only_a_generator_wrote_after());
         Flow.StepApart("parameter info shows every overload, setting back those the arguments no longer fit", () => new CodeAssistTests(project), t => t.Parameter_info_shows_every_overload_setting_back_those_the_arguments_no_longer_fit());
+        Flow.StepApart("the peeks show an interface member's implementation, the caret line's problem, an expression's type and the file's folders", () => new CodeAssistTests(project), t => t.The_peeks_show_an_interface_members_implementation_the_caret_lines_problem_an_expressions_type_and_the_files_folders());
+        Flow.StepApart("paste from history pastes a line copied before the one the clipboard holds now", () => new CodeAssistTests(project), t => t.Paste_from_history_pastes_a_line_copied_before_the_one_the_clipboard_holds_now());
+        Flow.StepApart("copy reference names the symbol at the caret whole and elsewhere the file's place", () => new CodeAssistTests(project), t => t.Copy_reference_names_the_symbol_at_the_caret_whole_and_elsewhere_the_files_place());
+        Flow.StepApart("smart type completion lists only what fits the type expected at the caret", () => new CodeAssistTests(project), t => t.Smart_type_completion_lists_only_what_fits_the_type_expected_at_the_caret());
         Flow.StepApart("documentation shows bold, emphasis, underline, code and links in the hover, completion and parameter cards, tags written escaped too", () => new CodeAssistTests(project), t => t.Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too());
+        Flow.StepApart("a documentation comment's tags, attributes' names and values and words take colours of their own and a cref's names keep those of what they name", () => new CodeAssistTests(project), t => t.A_documentation_comments_tags_attributes_names_and_values_and_words_take_colours_of_their_own_and_a_crefs_names_keep_those_of_what_they_name());
+        Flow.StepApart("a hover's signature shows the attributes declared on the symbol and its parameters, those out of reach left out", () => new CodeAssistTests(project), t => t.A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out());
     }
 
     /// <summary>Find Usages groups, previews and keeps each search, lists each place once and gives its results the
-    /// keys; Show Usages hands them to the Find window; a file another program has just written lists its caller; and
-    /// the call hierarchy finds callers at a use in another file and a record's positional property.</summary>
+    /// keys; Show Usages hands them to the Find window; a file another program has just written lists its caller; the
+    /// call hierarchy finds callers at a use in another file and a record's positional property; and the signposts above
+    /// each type and member count what uses and implements it, and say how complex each function is.</summary>
     [AvaloniaFact]
     public void Usages_and_callers_are_listed_once_each_given_the_keys_and_followed_into_a_file_just_written()
     {
@@ -124,6 +138,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("Find Usages gives its results the keys, so Down and Enter open the next usage", () => new CodeAssistTests(project), t => t.Find_usages_gives_its_results_the_keys_so_Down_and_Enter_open_the_next_usage());
         Flow.StepApart("Find Usages in a file another program has just written lists the caller it wrote beside it", () => new CodeAssistTests(project), t => t.Find_usages_in_a_file_another_program_has_just_written_lists_the_caller_it_wrote_beside_it());
         Flow.StepApart("the call hierarchy at a use in another file and at a record's positional property shows its callers", () => new CodeAssistTests(project), t => t.Call_hierarchy_at_a_use_in_another_file_and_at_a_records_positional_property_shows_its_callers());
+        Flow.StepApart("Inspect This offers what the caret's symbol has to inspect and follows where its value comes from and goes", () => new CodeAssistTests(project), t => t.Inspect_this_offers_what_the_carets_symbol_has_to_inspect_and_follows_where_its_value_comes_from_and_goes());
+        Flow.StepApart("signposts above each type and member count what uses and implements it, a press shows them and Settings turns them off", () => new CodeAssistTests(project), t => t.Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off());
+        Flow.StepApart("a function's cognitive complexity shows in its signpost in its colour, a press showing what each line adds", () => new CodeAssistTests(project), t => t.Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits());
+        Flow.StepApart("the dependency map opens at the caret and reads its nodes and edges as the compiler binds them", () => new CodeAssistTests(project), t => t.The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them());
     }
 
     /// <summary>Reformat Code of a method, on save as one step of Undo or turned off, changes only its own file and
@@ -183,6 +201,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
         Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
         Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
+        Flow.StepApart("Rename offers names from the declaration, asked again where the server cancelled the question, filters them as typed, every one for the name it opened on, and commits the editable name in one undo step", () => new CodeAssistTests(project), t => t.Rename_offers_names_filters_them_and_commits_the_editable_name());
         Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
         Flow.StepApart("a live template ends when its editor shows another file, and Enter there breaks the line", () => new CodeAssistTests(project), t => t.A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line());
         Flow.StepApart("Extend Selection grows through the code around the caret, and Shrink takes it back", () => new CodeAssistTests(project), t => t.Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back());
@@ -206,8 +225,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(["Program.cs", "Program"], window.Breadcrumbs);
 
         int at = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + 2;
-        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Point point = Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card");
         Assert.Contains("int Helper.Twice(int value)", window.Assist.HoverText, StringComparison.Ordinal);
         TheCardIsReachedSelectedAndCopied(window, editor, point);
@@ -241,6 +259,51 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>Toggle Method Breakpoint on a method taking a type by a global alias another file declares sets the breakpoint
+    /// at once, then names the parameter by the type the server says the alias stands for, which the debugger's metadata has;
+    /// toggled again there, the breakpoint so named goes.</summary>
+    private void A_method_breakpoint_names_a_parameter_of_a_global_alias_by_the_type_the_server_says_it_stands_for()
+    {
+        MainWindow window = project.Open("Ledger.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        Ui.WaitFor(() => window.CSharpService?.IsReady == true, () => $"the language server, {window.CSharpService?.State}");
+        Ui.PlaceAfter(editor, "Po");
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run: {Ui.Said(window)}");
+        string Named() => string.Join(", ", window.Debugger.Breakpoints.Methods.Select(m => m.Name));
+        Ui.WaitFor(() => Named() == "Ledger.Post(global::System.Guid, int)", () => $"the breakpoint named by the alias's type, not [{Named()}]");
+        Assert.Equal(2, Assert.Single(window.Debugger.Breakpoints.Methods).Line);
+        Assert.True(window.Perform(AppActions.ToggleMethodBreakpoint), $"Toggle Method Breakpoint did not run again: {Ui.Said(window)}");
+        Assert.True(window.Debugger.Breakpoints.Methods.Count == 0, $"Toggle Method Breakpoint again left [{Named()}]");
+        window.Close();
+    }
+
+    /// <summary>File Structure finds members by their kind's words as well as their names: ctor a constructor, prop a property,
+    /// meth (a method's word begun) the methods, and a kind's word before a name that kind's of that name, each under its type;
+    /// an agent's outline of the file calls each member what File Structure does, the constructor a constructor.</summary>
+    private void File_structure_finds_members_by_their_kinds_words_beside_their_names_alone_or_before_a_name_and_an_agents_outline_names_the_same_kinds()
+    {
+        MainWindow window = WithoutNavigationBar(project.Open("Worker.cs"));
+        (string Typed, Passenger.Lsp.SymbolKind Kind, int Count)[] asked = [("ctor", Passenger.Lsp.SymbolKind.Constructor, 1),
+            ("prop", Passenger.Lsp.SymbolKind.Property, 1), ("meth", Passenger.Lsp.SymbolKind.Method, 2), ("method Re", Passenger.Lsp.SymbolKind.Method, 1)];
+        foreach ((string typed, Passenger.Lsp.SymbolKind kind, int count) in asked)
+        {
+            Ui.Run(window, AppActions.FileStructure);
+            SymbolPopup structure = Assert.IsType<SymbolPopup>(window.Popup);
+            Ui.WaitFor(() => structure.IsSettled && structure.Rows.Count > 0, "the file's outline");
+            window.KeyTextInput(typed);
+            string Listed() => string.Join(", ", structure.Rows.Select(r => $"{r.Name} ({r.Kind})"));
+            Ui.WaitFor(() => structure.IsSettled && structure.Rows.Count == count + 1, () => $"File Structure for '{typed}' to list {count} under Worker, not [{Listed()}]");
+            Assert.True(structure.Rows[0] is { Name: "Worker", Depth: 0 } && structure.Rows.Skip(1).All(r => r.Kind == kind),
+                $"File Structure for '{typed}' listed [{Listed()}], not Worker's {kind} members under it");
+            Ui.Press(window, "ESCAPE");
+        }
+
+        string outline = Await(new Passenger.App.Mcp.PassengerTools(window).Outline("Worker.cs"), "the outline an agent asks for");
+        Assert.True(outline.Contains("\n  Worker() (constructor, line 3)\n", StringComparison.Ordinal) && outline.Contains("\n  Run(int) : void (method, line 11)\n", StringComparison.Ordinal),
+            $"An agent's outline of Worker.cs did not call its constructor a constructor and Run a method, as File Structure does:\n{outline}");
+        window.Close();
+    }
+
     /// <summary>The hover card under the word at <paramref name="word"/> takes the pointer: crossed to from its word, it
     /// stays past the pause it waits before going; its code dragged over is selected and Copy's keys copy that, its menu
     /// offers Copy while the card stays, and Escape takes the card away, the editor having its keys back (#2259).</summary>
@@ -251,6 +314,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             .GetVisualDescendants().OfType<SelectableTextBlock>().Single();
         Point from = code.TranslatePoint(new Point(1, code.Bounds.Height / 2), window)!.Value;
         Point to = code.TranslatePoint(new Point(code.Bounds.Width - 1, code.Bounds.Height / 2), window)!.Value;
+        // Along its word the card neither goes nor is placed again (#2415).
+        Point placed = card.TranslatePoint(default, window)!.Value;
+        window.MouseMove(word + new Point(4, 0), Avalonia.Input.RawInputModifiers.None);
+        Ui.Hold(TimeSpan.FromMilliseconds(400), "past the pause a card waits once the pointer left its word");
+        Assert.True(window.Assist.HoverCard == card, "The hover card went as the pointer moved along the word it is of, so it can never be reached");
+        Ui.Hold(TimeSpan.FromMilliseconds(300), "past the rest that asks for a card");
+        Assert.True(window.Assist.HoverCard == card && card.TranslatePoint(default, window) == placed,
+            $"The hover card was placed again from {placed} to {card.TranslatePoint(default, window)} as the pointer rested on along the word it is of");
         // Across the gap between the word's line and the card, onto it.
         window.MouseMove(new Point(word.X, card.TranslatePoint(default, window)!.Value.Y - 1), Avalonia.Input.RawInputModifiers.None);
         window.MouseMove(from, Avalonia.Input.RawInputModifiers.None);
@@ -275,6 +346,142 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, "ESCAPE");
         Ui.WaitFor(() => window.Assist.HoverCard is null, "the card gone at Escape");
         Assert.True(editor.IsKeyboardFocusWithin, $"Escape on the hover card left the editor without its keys, which {window.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} has");
+    }
+
+    private void A_hovers_signature_shows_the_attributes_declared_on_the_symbol_and_its_parameters_those_out_of_reach_left_out()
+    {
+        MainWindow window = WithoutNavigationBar(project.Open("AttributeUses.cs"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+
+        Assert.Contains("[CachePolicy(\"cache\")]", Hover("Cache cache", "Cache"), StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"cache\")]\nCache.Cache([CachePolicy(\"capacity\")] int capacity)",
+            Hover("new Cache(2)", "Cache"), StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"property\")]", Hover("cache.Count", "Count"), StringComparison.Ordinal);
+        string field = Hover("cache.Capacity", "Capacity");
+        Assert.Contains("[CachePolicy(\"field\", Slots = new int[]", field, StringComparison.Ordinal);
+        Assert.Contains("[CachePolicy(\"event\")]", Hover("cache.Changed", "Changed"), StringComparison.Ordinal);
+
+        string first = Hover("cache.Clear(1)", "Clear");
+        const string declaration = "[CachePolicy(\"short\", Priority = 2)]\n[Description(\"Evicts entries\")]\n"
+            + "void Cache.Clear([CachePolicy(\"count\", Priority = 1)] int count, [CachePolicy(\"scope\")] [string scope = \"default\"])";
+        ColouredCode code = Assert.Single(window.Assist.HoverCard!.GetVisualDescendants().OfType<ColouredCode>());
+        Assert.StartsWith(declaration, code.Code, StringComparison.Ordinal);
+        Assert.True(code.TryFindResource(TokenKeys.Syntax_String, code.ActualThemeVariant, out object? stringBrush));
+        Assert.True(code.TryFindResource(TokenKeys.Syntax_Number, code.ActualThemeVariant, out object? numberBrush));
+        IBrush stringColour = Assert.IsAssignableFrom<IBrush>(stringBrush);
+        IBrush numberColour = Assert.IsAssignableFrom<IBrush>(numberBrush);
+        Assert.Contains(code.Runs, run => run.Text == "\"short\"" && run.Foreground == stringColour);
+        Assert.Contains(code.Runs, run => run.Text == "\"count\"" && run.Foreground == stringColour);
+        Assert.Contains(code.Runs, run => run.Text == "2" && run.Foreground == numberColour);
+        Assert.Contains("Clears the requested number of entries.", first, StringComparison.Ordinal);
+        Assert.DoesNotContain("[CachePolicy(\"named\")]", first, StringComparison.Ordinal);
+
+        string second = Hover("cache.Clear(\"key\")", "Clear");
+        Assert.StartsWith("[CachePolicy(\"named\")]\nvoid Cache.Clear([CachePolicy(\"key\")] string key)", second, StringComparison.Ordinal);
+
+        Assert.StartsWith("void Cache.Set([CachePolicy(\"value\", Slots = new int[] { 1, 2 })] int @class)",
+            Hover("cache.Set(3)", "Set"), StringComparison.Ordinal);
+        Assert.StartsWith("(int value, int size) Cache.Pair([CachePolicy(\"pair\")] (int, int) value)",
+            Hover("cache.Pair((1, 2))", "Pair"), StringComparison.Ordinal);
+        Assert.StartsWith("[CachePolicy(\"extend\")]\n(extension) void Cache.Extend([CachePolicy(\"size\")] int size)",
+            Hover("cache.Extend(3)", "Extend"), StringComparison.Ordinal);
+
+        string plain = Hover("cache.Reset()", "Reset");
+        Assert.True(plain.StartsWith("void Cache.Reset()", StringComparison.Ordinal) && !plain.Contains("[CachePolicy", StringComparison.Ordinal),
+            $"A method's hover shows an attribute its caller could not name, a private one of its class:\n{plain}");
+        window.Close();
+
+        string Hover(string usage, string name)
+        {
+            window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+            Ui.WaitFor(() => window.Assist.HoverText is null, "the previous hover card has closed");
+            int offset = text.IndexOf(usage, StringComparison.Ordinal) + usage.IndexOf(name, StringComparison.Ordinal) + 1;
+            Ui.RestOn(editor, offset);
+            Ui.WaitFor(() => window.Assist.HoverText is not null, $"the hover for {usage}");
+            return window.Assist.HoverText!;
+        }
+    }
+
+    private void Hover_signature_links_go_to_their_own_declarations()
+    {
+        project.Write("Order.cs", "sealed class Order { }");
+        project.Write("Customer.cs", "sealed class Customer { }");
+        project.Write("OrderService.cs", """
+            static class OrderService
+            {
+                public static Order GetOrder(int id) => new();
+                public static Order GetOrder(Customer customer, string noteForTheOrderConfirmation = "Thank you for your order") => new();
+            }
+            """);
+        project.Write("OrderCall.cs", """
+            static class OrderCall
+            {
+                public static void Run(Customer customer) => OrderService.GetOrder(customer);
+            }
+            """);
+        MainWindow window = WithoutNavigationBar(project.Open("OrderCall.cs"));
+        foreach ((string name, string file, TextPosition declaration) in new (string, string, TextPosition)[]
+        {
+            ("Order", "Order.cs", new TextPosition(0, 13)),
+            ("GetOrder", "OrderService.cs", new TextPosition(3, 24)),
+            ("Customer", "Customer.cs", new TextPosition(0, 13)),
+        })
+        {
+            window.OpenFile(project.PathOf("OrderCall.cs"));
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int at = editor.Document.Snapshot.ToString().IndexOf("GetOrder", StringComparison.Ordinal) + 2;
+            Point word = Ui.RestOn(editor, at);
+            Ui.WaitFor(() => window.Assist.HoverText?.Contains("GetOrder(Customer", StringComparison.Ordinal) == true, "the chosen overload in the hover card");
+
+            Border card = window.Assist.HoverCard!;
+            ColouredCode code = card.GetVisualDescendants().OfType<ColouredCode>().Single();
+            SelectableTextBlock text = code.GetVisualDescendants().OfType<SelectableTextBlock>().Single();
+            Assert.Contains('\n', code.Shown);
+            Assert.DoesNotContain(code.Runs, run => run.TextDecorations?.Count > 0);
+            Rect hit = BoundsOf(name);
+            Point link = hit.Center;
+            Point[] underline = InkBelow(hit);
+            Point[] neighbour = InkBelow(BoundsOf(name == "Order" ? "GetOrder" : "Order"));
+            Color[] resting = Ui.Pixels(window, underline);
+            Color[] neighbourResting = Ui.Pixels(window, neighbour);
+            window.MouseMove(new Point(word.X, card.TranslatePoint(default, window)!.Value.Y - 1), Avalonia.Input.RawInputModifiers.None);
+            window.MouseMove(text.TranslatePoint(link, window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Ui.Settle();
+            Assert.Same(card, window.Assist.HoverCard);
+            Assert.False(resting.SequenceEqual(Ui.Pixels(window, underline)), $"There was no underline while pointing at {name}");
+            Assert.Equal(neighbourResting, Ui.Pixels(window, neighbour));
+            window.MouseMove(text.TranslatePoint(BoundsOf("(").Center, window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Ui.Settle();
+            Assert.Equal(resting, Ui.Pixels(window, underline));
+
+            if (name == "Order")
+            {
+                Point from = text.TranslatePoint(new Point(hit.Left + 1, hit.Center.Y), window)!.Value;
+                Point to = text.TranslatePoint(new Point(hit.Right - 1, hit.Center.Y), window)!.Value;
+                Ui.Drag(window, from, to);
+                Assert.Same(card, window.Assist.HoverCard);
+                Assert.NotEmpty(text.SelectedText);
+                Assert.Contains(text.SelectedText, name, StringComparison.Ordinal);
+                Ui.Press(window, Ui.Command("C"));
+                Assert.Equal(text.SelectedText, Ui.Clipboard(window));
+            }
+
+            Ui.Click(text, link);
+            Ui.WaitFor(() => window.EditorArea.Active?.Path == PathNames.Canonical(project.PathOf(file)), $"the declaration of {name}");
+            Assert.Equal(declaration, window.EditorArea.CodeEditor.CaretPosition);
+
+            Rect BoundsOf(string label)
+            {
+                int start = code.Shown.IndexOf(label, StringComparison.Ordinal);
+                return text.TextLayout.HitTestTextRange(start, label.Length).First().Translate(new Vector(text.Padding.Left, text.Padding.Top));
+            }
+
+            Point[] InkBelow(Rect bounds) => [.. new double[] { 0.5, 1, 1.5 }.Select(inset =>
+                text.TranslatePoint(new Point(bounds.Center.X, bounds.Bottom - inset), window)!.Value)];
+        }
+        window.Close();
     }
 
     /// <summary>Where the status bar's path is drawn.</summary>
@@ -356,6 +563,143 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         {
             window.Close();
         }
+    }
+
+    /// <summary>The Syntax Tree window, at the right's top, shows the shown C# file's syntax as the window parsed it: the
+    /// node, token or trivia the editor's selection is in is chosen a moment after it moves, the editor keeping the keys; a
+    /// row clicked, or moved to by the keys, selects its code; a kind's description is its tip and its Properties' row;
+    /// unsaved edits and another file shown are followed, the divider kept where it was dragged; a row deeper and longer
+    /// than the tree is wide reads whole once the tree is scrolled sideways to it; a file of no C# says so.</summary>
+    private void The_syntax_tree_window_shows_the_shown_files_syntax_at_the_selection_follows_its_unsaved_edits_and_the_file_shown_and_a_row_chosen_selects_its_code()
+    {
+        const string code = "class Calculator\n{\n    int Combine(int left, int right)\n    {\n        // Combine the values.\n        return left + right;\n    }\n}\n";
+        const string expression = "left + right";
+        string folder = TestFolders.Create("syntax-tree-");
+        string source = TestFolders.Write(folder, "Calculator.cs", code);
+        TestFolders.Write(folder, "Other.cs", "record Other;\n");
+        TestFolders.Write(folder, "Notes.txt", "plain text");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false, autosaves: false);
+        try
+        {
+            window.OpenFile("Calculator.cs");
+            Ui.Settle();
+            Passenger.App.Docking.ToolWindow tool = Assert.Single(window.DockHost.Windows, w => w.Title.English == "Syntax Tree");
+            Assert.Equal(Passenger.App.Docking.ToolAnchor.RightTop, tool.Anchor);
+            Assert.Single(window.DockHost.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>(), b => Equals(b.Tag, tool.Id));
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            int start = code.IndexOf(expression, StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(start + 1);
+            Assert.True(window.Perform(AppActions.ShowSyntaxTree));
+            Ui.Settle();
+            Assert.Equal(Selection.At(start + 1), editor.Selections.Primary);
+            TreeList tree = Assert.Single(tool.Content.GetVisualDescendants().OfType<TreeList>());
+            PaneSplit panes = Assert.Single(tool.Content.GetVisualDescendants().OfType<PaneSplit>());
+            Assert.True(panes.IsStacked);
+            editor.Focus();
+            Ui.WaitFor(() => SelectedKind(tree, "IdentifierToken"), "the identifier token at the caret");
+            Assert.Same(editor, window.FocusManager?.GetFocusedElement());
+
+            ListBoxItem identifierName = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex - 1));
+            Assert.Contains(identifierName.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "IdentifierName");
+            Ui.Click(identifierName);
+            Ui.WaitFor(() => editor.Selections.Primary.Range == new TextRange(start, "left".Length), "the source span chosen from the identifier name");
+            Ui.Settle();
+            Assert.True(SelectedKind(tree, "IdentifierName"));
+
+            editor.Focus();
+            editor.Selections = SelectionSet.Single(new Selection(start + expression.Length, start));
+            Ui.WaitFor(() => SelectedKind(tree, "AddExpression"), "the addition covering the backward selection");
+            Assert.Equal(start, editor.Selections.Primary.Caret);
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "BinaryExpressionSyntax");
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == expression);
+            const string description = "A binary + expression.";
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<SelectableWords>(), text => text.Text == description);
+            ListBoxItem addition = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex));
+            AssertTip(addition, $"{description}\n{new Microsoft.CodeAnalysis.Text.TextSpan(start, expression.Length)}");
+            Assert.True(tree.ContainerFromIndex(0)?.GetVisualDescendants().OfType<RowGlyphs>().Single().Turned);
+
+            // From a row clicked the keys move on, each row they reach selecting its code: past the name's token to the plus.
+            int operation = start + "left ".Length;
+            ListBoxItem leftName = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex + 1));
+            Ui.Click(leftName);
+            Ui.Press(window, "down");
+            Ui.Press(window, "down");
+            Ui.WaitFor(() => editor.Selections.Primary.Start == operation && editor.Selections.Primary.Length == 1, "the plus operator selected in the editor by the keys");
+            Assert.True(SelectedKind(tree, "PlusToken"));
+            Assert.DoesNotContain(tool.Content.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "Description");
+            ListBoxItem plus = Assert.IsAssignableFrom<ListBoxItem>(tree.ContainerFromIndex(tree.SelectedIndex));
+            AssertTip(plus, new Microsoft.CodeAnalysis.Text.TextSpan(operation, 1).ToString());
+
+            double initialTreeHeight = tree.Bounds.Height;
+            Point divider = Ui.Centre(panes.Divider.Splitter, window);
+            Ui.Drag(window, divider, divider - new Vector(0, 60));
+            Ui.WaitFor(() => tree.Bounds.Height < initialTreeHeight - 40, "the lower property pane made taller by dragging");
+            double resizedTreeHeight = tree.Bounds.Height;
+
+            int comment = code.IndexOf("Combine the values", StringComparison.Ordinal);
+            editor.Selections = SelectionSet.Single(comment);
+            Ui.WaitFor(() => SelectedKind(tree, "SingleLineCommentTrivia"), "the comment trivia at the caret");
+
+            editor.Focus();
+            editor.Selections = SelectionSet.Single(new Selection(operation, operation + 1));
+            window.KeyTextInput("*");
+            editor.Selections = SelectionSet.Single(new Selection(start, start + "left * right".Length));
+            Ui.WaitFor(() => SelectedKind(tree, "MultiplyExpression"), "multiplication before saving");
+            Assert.Contains(tool.Content.GetVisualDescendants().OfType<SelectableWords>(), text => text.Text == "A binary * expression.");
+            Assert.Equal(code, File.ReadAllText(source));
+
+            window.KeyTextInput("0");
+            window.OpenFile("Other.cs");
+            CodeEditor other = window.EditorArea.CodeEditor;
+            other.Selections = SelectionSet.Single(1);
+            Ui.WaitFor(() => SelectedKind(tree, "RecordKeyword"), "the record keyword in the newly active file");
+            Ui.Settle();
+            Assert.True(SelectedKind(tree, "RecordKeyword"));
+            Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
+
+            window.DockHost.Hide(ToolWindowIds.SyntaxTree);
+            window.OpenFile("Calculator.cs");
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(1);
+            Assert.Equal(0, tree.ItemCount);
+            Assert.True(window.Perform(AppActions.ShowSyntaxTree));
+            Ui.WaitFor(() => SelectedKind(tree, "ClassKeyword"), "the active file's syntax after reopening the pane");
+            Assert.Equal(resizedTreeHeight, tree.Bounds.Height, precision: 1);
+
+            // A row deeper and longer than the narrowed tree is wide scrolls it sideways, and reads whole once scrolled to.
+            Passenger.App.Docking.DockLayout standing = window.DockHost.Capture();
+            window.DockHost.Apply(standing with { RightWidth = 200, Wide = null });
+            window.EditorArea.CodeEditor.Selections = SelectionSet.Single(comment);
+            Ui.WaitFor(() => SelectedKind(tree, "SingleLineCommentTrivia"), "the comment trivia at the caret in the narrowed tree");
+            TextBlock commentKind = tree.ContainerFromIndex(tree.SelectedIndex)!.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == "SingleLineCommentTrivia");
+            ScrollViewer rowsView = tree.GetVisualDescendants().OfType<ScrollViewer>().First();
+            Avalonia.Controls.Presenters.ScrollContentPresenter rowsShown = rowsView.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ScrollContentPresenter>().First();
+            Assert.True(rowsView.Extent.Width > rowsView.Viewport.Width + 0.5 && KindShown().Right > rowsShown.Bounds.Width + 0.5,
+                $"The tree's rows run {rowsView.Extent.Width:0.#} wide in its {rowsView.Viewport.Width:0.#}, the comment's kind at {KindShown()}, so its row is cut rather than scrolled to");
+            Point over = Ui.Centre(tree, window);
+            for (int turn = 0; turn < 20 && KindShown().Right > rowsShown.Bounds.Width + 0.5; turn++)
+            {
+                window.MouseWheel(over, new Vector(-1, 0));
+                Ui.Settle();
+            }
+            Assert.True(KindShown() is { Left: >= -0.5 } shown && shown.Right <= rowsShown.Bounds.Width + 0.5,
+                $"Scrolled sideways to {rowsView.Offset.X:0.#}, the comment's row shows its kind at {KindShown()} in the tree's {rowsShown.Bounds.Width:0.#}, not whole");
+            window.DockHost.Apply(standing);
+
+            Rect KindShown() => new(commentKind.TranslatePoint(default, rowsShown) ?? default, new Size(commentKind.TextLayout.Width, commentKind.Bounds.Height));
+
+            window.OpenFile("Notes.txt");
+            Ui.WaitFor(() => !tree.IsEffectivelyVisible && tree.ItemCount == 0, "the empty state for a non-C# file");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
+        }
+
+        static void AssertTip(Control row, string text) => Assert.Contains(row.GetVisualDescendants().OfType<Control>(), child => Equals(ToolTip.GetTip(child), text));
+
+        static bool SelectedKind(TreeList tree, string kind) => tree.SelectedIndex >= 0
+            && tree.ContainerFromIndex(tree.SelectedIndex)?.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == kind) == true;
     }
 
     private void The_structure_window_shows_the_shown_files_outline_whenever_it_is_shown_and_once_the_server_has_the_file_and_follows_the_editor()
@@ -555,6 +899,128 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         + "        var count = label.Length;\n        double half = first / 2.0;\n        int Doubled(int value, bool loud) => loud ? value * 2 : value;\n"
         + "        _ = label;\n        _ = Described(label, label, first);\n        _ = System.Math.Max(1, 2);\n        return Doubled(count, false) + (int)half;\n    }\n\n"
         + "    public static string Described(string firstName, string lastName, int yearOfBirth, bool includeTheMiddleInitial = false) => firstName;\n}\n";
+
+    /// <summary>Quick Implementations, Error Description and Expression Type Info each show their card at the caret from their
+    /// keys where the keymap in force has some, and Show File Path lists the file and its folders, the one chosen shown in
+    /// the file manager.</summary>
+    private void The_peeks_show_an_interface_members_implementation_the_caret_lines_problem_an_expressions_type_and_the_files_folders()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        void Run(string action)
+        {
+            if (window.Actions.Keymap.ShortcutsFor(action) is [var key, ..])
+            {
+                Ui.Press(window, key.Notation());
+            }
+            else
+            {
+                Assert.Null(window.Actions.Run(action)?.Shown);
+                Ui.Settle();
+            }
+        }
+
+        Ui.PlaceAfter(editor, "any.Re");
+        Run(AppActions.QuickImplementations);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("public int Read() => 1;", StringComparison.Ordinal) == true,
+            () => $"Dial's Read in the Quick Implementations card, which says [{window.Assist.HoverText}] ({window.Status})");
+        Assert.Contains("Gauges.cs:8", window.Assist.HoverText, StringComparison.Ordinal);
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "dial.Read()");
+        Run(AppActions.ExpressionTypeInfo);
+        Ui.WaitFor(() => window.Assist.HoverText?.Trim() == "int", () => $"int in the Expression Type Info card, which says [{window.Assist.HoverText}] ({window.Status})");
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "any.Read();");
+        window.KeyTextInput(" static int Wrong() => \"text\";");
+        Ui.WaitFor(() => editor.Markers.Any(m => m.Kind == MarkerKind.Error), () => "the error of a string returned as an int marked");
+        Run(AppActions.ErrorDescription);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("string", StringComparison.Ordinal) == true,
+            () => $"the error in the Error Description card, which says [{window.Assist.HoverText}] ({window.Status})");
+        Ui.Press(window, "ESCAPE");
+        Ui.Press(window, Ui.Command("Z"));
+
+        string folder = Path.GetDirectoryName(window.EditorArea.Active!.Path)!;
+        Run(AppActions.ShowFilePath);
+        Ui.WaitFor(() => window.Assist.Offered.Count > 1, "the file and its folders listed");
+        Assert.Equal(["Gauges.cs", Path.GetFileName(folder)], window.Assist.Offered.Take(2));
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Assert.Equal([folder], window.ShownInFileManager);
+        window.Close();
+    }
+
+    /// <summary>Two lines copied in turn: Paste from History lists both, newest first, each by its text, and the older chosen
+    /// goes above the caret's line as the whole line it was copied as, then stands first in the history.</summary>
+    private void Paste_from_history_pastes_a_line_copied_before_the_one_the_clipboard_holds_now()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string before = editor.Document.Snapshot.ToString();
+        editor.Focus();
+        Ui.PlaceAfter(editor, "int Read();");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Copy));
+        Ui.PlaceAfter(editor, "public int Read() => 1;");
+        Ui.Press(window, Ui.Shortcut(EditorActions.Copy));
+        Ui.Press(window, Ui.Shortcut(AppActions.PasteFromHistory));
+        Ui.Landed(() => window.Popup is Passenger.App.Vcs.ChoicePopup, "Paste from History's list");
+        Passenger.App.Vcs.ChoicePopup popup = (Passenger.App.Vcs.ChoicePopup)window.Popup!;
+        Assert.True(popup.Rows.Take(2).Select(r => r.Label.English).SequenceEqual(["public int Read() => 1;", "/* Read */ int Read();"]),
+            $"Paste from History listed [{string.Join("; ", popup.Rows.Select(r => r.Label))}], not the two lines copied, newest first");
+        Ui.Press(window, "DOWN");
+        Ui.Press(window, "ENTER");
+        Ui.Settle();
+        Assert.Contains("    /* Read */ int Read();\n    public int Read() => 1;", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Assert.Equal("    /* Read */ int Read();\n", window.Copied[0].Text);
+        Ui.Press(window, Ui.Command("Z"));
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+        window.Close();
+    }
+
+    /// <summary>Copy Reference on Dial's Read puts Dial.Read on the clipboard, as C# names it whole; on a blank line, where
+    /// no symbol stands, the file's path in the folder and the line.</summary>
+    private void Copy_reference_names_the_symbol_at_the_caret_whole_and_elsewhere_the_files_place()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        editor.Focus();
+        Ui.PlaceAfter(editor, "dial.Re");
+        Ui.Press(window, Ui.Shortcut(AppActions.CopyReference));
+        Ui.WaitFor(() => window.Copied.FirstOrDefault().Text == "Dial.Read", () => $"Dial.Read copied, where the history starts [{window.Copied.FirstOrDefault().Text}] ({window.Status})");
+        editor.Selections = SelectionSet.Single(editor.Document.Snapshot.ToString().IndexOf("\n\nclass Dial", StringComparison.Ordinal) + 1);
+        Ui.Press(window, Ui.Shortcut(AppActions.CopyReference));
+        Ui.WaitFor(() => window.Copied.FirstOrDefault().Text == "Gauges.cs:5", () => $"Gauges.cs:5 copied, where the history starts [{window.Copied.FirstOrDefault().Text}] ({window.Status})");
+        window.Close();
+    }
+
+    /// <summary>Smart Type Completion after a method's arrow returning int lists what fits int there (the int parameter, the
+    /// methods returning int) and none of the rest (a string parameter, a Dial).</summary>
+    private void Smart_type_completion_lists_only_what_fits_the_type_expected_at_the_caret()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string before = editor.Document.Snapshot.ToString();
+        editor.Focus();
+        Ui.PlaceAfter(editor, "dial.Read() + any.Read();");
+        Ui.Press(window, "ENTER");
+        window.KeyTextInput("static int Count(Dial dial, int number, string label) => ");
+        Ui.Press(window, "ESCAPE");
+        Ui.Settle();
+        Ui.Press(window, Ui.Shortcut(AppActions.SmartTypeCompletion));
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("number"), () => $"the int parameter offered, where the list holds [{string.Join(", ", window.Assist.CompletionLabels.Take(20))}] ({window.Status})");
+        IReadOnlyList<string> offered = window.Assist.CompletionLabels;
+        Assert.True(offered.Contains("Both") && !offered.Contains("label") && !offered.Contains("dial"),
+            $"Smart Type Completion for an int offered [{string.Join(", ", offered)}], not what returns or holds an int alone");
+        Ui.Press(window, "ESCAPE");
+        for (int i = 0; i < 5 && editor.Document.Snapshot.ToString() != before; i++)
+        {
+            Ui.Press(window, Ui.Command("Z"));
+        }
+        Assert.Equal(before, editor.Document.Snapshot.ToString());
+        window.Close();
+    }
 
     /// <summary>Parameter Info at a call of several overloads shows each: those the arguments so far no longer fit set back,
     /// the parameter the caret's argument fills strong in each that fits. An argument typed that only one overload takes sets
@@ -1030,11 +1496,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         window.KeyTextInput("W");
         Ui.Settle();
+        // The first question for WriteLine's card is cancelled, as the server cancels one a change it took in made stale; the card still comes.
+        Task cancelled = window.CSharpService!.Session!.Server.HoldNextAnswer(window.CSharpService.For(window.EditorArea.Active!)!.Lsp!.ResolveMethod,
+            p => p is Passenger.Lsp.CompletionItem { Label: "WriteLine" }, Task.FromCanceled(new CancellationToken(canceled: true)));
         window.KeyTextInput("riteL");
         Ui.Settle();
         Assert.True(window.Assist.IsCompletionOpen);
         Assert.Equal("WriteLine", window.Assist.CompletionLabels.FirstOrDefault());
-        Ui.WaitFor(() => window.Assist.ItemDocumentation is { Length: > 0 }, "WriteLine's documentation");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation is { Length: > 0 }, "WriteLine's documentation, asked again where the server cancelled the question");
+        Assert.True(cancelled.IsCompleted, "No question for WriteLine's card was cancelled, so the step no longer holds the card to asking again");
         string card = window.Assist.ItemDocumentation!;
         int listed = window.Assist.ItemCard!.GetVisualDescendants().OfType<ColouredCode>().Count();
         Assert.True(listed == 8 && card.Contains(" more overloads", StringComparison.Ordinal) && card.Contains("Writes", StringComparison.Ordinal),
@@ -1153,6 +1623,127 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Show Usages, from its keys, lists the usages Find Usages finds in a popup under the caret, framed as every
     /// popup is, the declaration first with what each does and the usage in its line; Enter goes to the one chosen, and its
     /// link hands the usages to the Find window.</summary>
+    private void Signposts_above_each_type_and_member_count_what_uses_and_implements_it_a_press_shows_them_and_settings_turns_them_off()
+    {
+        MainWindow window = project.Open("Shapes.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line).SelectMany(r => r.Words).Select(w => w.Text));
+        Ui.WaitFor(() => Said(0) == "1 usage / 1 implementation" && Said(2) == "no usages / 1 implementation",
+            () => $"the signposts counted: IShape's says '{Said(0)}' and Sides' '{Said(2)}', where they say '1 usage / 1 implementation' and 'no usages / 1 implementation' "
+                + $"(the language server {(window.CSharpService is { } csharp ? $"{(csharp.IsReady ? "ready" : "not ready")}, '{csharp.State}', the file {(csharp.For(window.EditorArea.Active!)?.Lsp is null ? "not " : string.Empty)}opened in it" : "not started")})");
+        Assert.True(Said(5) == "no usages" && Said(7) == "no usages", $"Square's signpost says '{Said(5)}' and its Sides' '{Said(7)}', where nothing uses either");
+        Assert.True(Math.Abs(editor.PointOf(0).Y + editor.ScrollOffset.Y - editor.LineHeight) < 0.5, "IShape's declaration is not a row lower for its signpost");
+
+        Ui.Click(editor, editor.RowAbovePoint(2, 0, 1) ?? throw new InvalidOperationException("Sides' signpost is not drawn"));
+        Ui.WaitFor(() => editor.CaretPosition.Line == 7, () => $"Go to Implementation from Sides' signpost: the caret is on line {editor.CaretPosition.Line + 1}");
+        Ui.Click(editor, editor.RowAbovePoint(0, 0, 0) ?? throw new InvalidOperationException("IShape's signpost is not drawn"));
+        Ui.WaitFor(() => window.Popup is UsagesPopup, () => $"Show Usages' popup from IShape's signpost ({window.Status})");
+        Assert.True(((UsagesPopup)window.Popup!).Rows is [{ Line: 5 }], $"Show Usages from IShape's signpost lists {((UsagesPopup)window.Popup!).Rows.Count} places, where its signpost counts Square's 1 use");
+        Ui.Press(window, "ESCAPE");
+
+        // An interface member, its name in a comment before it, whose implementation is called too: its list is what its count counts.
+        window.OpenFile(project.PathOf("Gauges.cs"));
+        Ui.Settle();
+        Ui.WaitFor(() => Said(2) == "1 usage / 1 implementation", () => $"IGauge.Read's signpost says '{Said(2)}', where it is called once itself and implemented once");
+        Ui.Click(editor, editor.RowAbovePoint(2, 0, 0) ?? throw new InvalidOperationException("IGauge.Read's signpost is not drawn"));
+        Ui.WaitFor(() => window.Popup is UsagesPopup, () => $"Show Usages' popup from IGauge.Read's signpost ({window.Status})");
+        IReadOnlyList<Usage> read = ((UsagesPopup)window.Popup!).Rows;
+        Assert.True(read is [{ Line: 12 } only] && only.LineText.Contains("any.Read()", StringComparison.Ordinal),
+            $"Show Usages from IGauge.Read's signpost, which counts 1 use, lists {string.Join("; ", read.Select(u => $"line {u.Line + 1}: {u.LineText.Trim()}"))}");
+        Ui.Press(window, "ESCAPE");
+        window.OpenFile(project.PathOf("Shapes.cs"));
+        Ui.Settle();
+
+        Assert.True(window.Settings.Signposts, "Signposts are off by default");
+        Passenger.App.Settings.SettingsDialog settingsDialog = window.ShowSettings();
+        Ui.Settle();
+        settingsDialog.Query = "signposts";
+        Ui.Settle();
+        Assert.Contains("Show signposts above types and members", settingsDialog.Shown);
+        settingsDialog.Change(s => s with { Signposts = false });
+        Ui.Settle();
+        Assert.True(editor.RowsAbove.Count == 0 && window.Settings.Signposts, "Turned off in Settings, not yet applied, the signposts still stood above the code");
+        settingsDialog.Close();
+        Ui.WaitFor(() => Said(0) == "1 usage / 1 implementation", () => $"IShape's signpost back as Settings closed: '{Said(0)}'");
+
+        AppSettings before = window.Settings;
+        try
+        {
+            window.ApplySettings(before with { SignpostUsages = false });
+            Ui.WaitFor(() => Said(0) == "1 implementation", () => $"IShape's signpost without its usages says '{Said(0)}'");
+            window.ApplySettings(before with { Signposts = false });
+            Ui.Settle();
+            Assert.True(editor.RowsAbove.Count == 0 && Math.Abs(editor.PointOf(0).Y + editor.ScrollOffset.Y) < 0.5, "Signposts turned off left rows above the code");
+        }
+        finally
+        {
+            window.ApplySettings(before);
+            window.Close();
+        }
+    }
+
+    private void Complexity_signposts_toggle_the_increments_at_the_line_ends_and_follow_edits()
+    {
+        MainWindow window = project.Open("Complexity.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        AppSettings before = window.Settings;
+        try
+        {
+            AppSettings complexityOnly = before with
+            {
+                SignpostUsages = false, SignpostInheriting = false, SignpostAuthors = false,
+                SignpostComplexity = true, SignpostComplexityMinimum = 3, SignpostComplexityYellowFrom = 8, SignpostComplexityRedFrom = 16,
+            };
+            window.ApplySettings(complexityOnly);
+            IEnumerable<(string Text, string? DotBrush)> Scores() => editor.RowsAbove.SelectMany(r => r.Words).Select(w => (w.Text, w.DotBrush));
+            IEnumerable<(int Line, string Text)> Increments() => editor.LineAnnotations
+                .Where(a => a.Text.StartsWith('+')).Select(a => (a.Line, a.Text));
+            Ui.WaitFor(() => editor.RowsAbove.Count == 2, () => $"Complexity signposts: {string.Join(", ", Scores())}");
+            Assert.Equal([("8", TokenKeys.Editor_Warning), ("21", TokenKeys.Editor_Error)], Scores());
+            Assert.Empty(Increments());
+
+            window.ApplySettings(complexityOnly with { SignpostComplexityMinimum = 0, SignpostComplexityYellowFrom = 9, SignpostComplexityRedFrom = 22 });
+            Assert.Equal([("0", TokenKeys.Editor_Fine), ("8", TokenKeys.Editor_Fine), ("21", TokenKeys.Editor_Warning)], Scores());
+            window.ApplySettings(complexityOnly);
+
+            LineAnnotation debuggerValue = new(2, "value: 1", LineAnnotationLook.Muted);
+            window.EditorArea.Active!.LineAnnotations = [debuggerValue];
+            ClickScore(3);
+            Assert.Equal([(5, "+6"), (6, "+2")], Increments());
+            Assert.Contains(debuggerValue, editor.LineAnnotations);
+            Assert.Null(window.Popup);
+
+            // The chosen function keeps its show state as the contributing lines move.
+            editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.GetLineStart(5), 0, "\n")]);
+            Ui.WaitFor(() => Increments().SequenceEqual([(6, "+6"), (7, "+2")]), () => "Complexity increments follow the edit");
+            ClickScore(3);
+            Assert.Empty(Increments());
+            Assert.Contains(debuggerValue, editor.LineAnnotations);
+
+            ClickScore(3);
+            ClickScore(10);
+            Assert.Equal([(12, "+21")], Increments());
+
+            window.ApplySettings(complexityOnly with { SignpostComplexityMinimum = 22 });
+            Assert.Empty(editor.RowsAbove);
+            Assert.Equal([debuggerValue], editor.LineAnnotations);
+
+            window.ApplySettings(complexityOnly);
+            Ui.WaitFor(() => editor.RowsAbove.Count == 2, () => "Complexity scores return when the minimum is restored");
+            ClickScore(10);
+            window.ApplySettings(complexityOnly with { SignpostComplexity = false });
+            Assert.Empty(editor.RowsAbove);
+            Assert.Equal([debuggerValue], editor.LineAnnotations);
+        }
+        finally
+        {
+            window.ApplySettings(before);
+            window.Close();
+        }
+
+        void ClickScore(int line) => Ui.Click(editor, editor.RowAbovePoint(line, 0, 0) ?? throw new InvalidOperationException("Complexity score is not drawn"));
+    }
+
     private void Show_usages_lists_them_in_a_popup_under_the_caret_goes_to_the_one_chosen_and_hands_them_to_the_find_window()
     {
         MainWindow window = project.Open("Loop.cs");
@@ -1162,7 +1753,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.ShowUsages)[0].Notation());
         Ui.WaitFor(() => window.Popup is UsagesPopup { Rows.Count: 3 }, () => $"the usages of total in Show Usages' popup ({window.Status})");
         UsagesPopup usages = (UsagesPopup)window.Popup!;
-        Assert.Equal("Usages of total  3 usages", usages.Title);
+        Assert.Equal("Usages of total  3 usages", usages.Title.English);
         Assert.Equal([(4, "int total = 0;"), (7, "total += i * 2;"), (9, "return total;")], usages.Rows.Select(u => (u.Line, u.LineText.Trim())));
         Assert.Equal(Languages.CSharp.UsageKind.Declaration, usages.Rows[0].Kind);
         Border frame = PopupFrame.FrameOf(usages)!;
@@ -1375,18 +1966,43 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     private const string Spaced = "class Spaced\n{\n    public static int Two( )\n    {\n        return   2;\n    }\n}\n";
     private const string SpacedLaid = "class Spaced\n{\n    public static int Two()\n    {\n        return 2;\n    }\n}\n";
 
-    /// <summary>Settings' Reformat on save: File, Save lays the changed file out as Reformat Code does before writing it, and
-    /// one Undo takes the layout back; a language server that does not answer in time leaves the file saved as typed,
-    /// saying why; turned off, the file is saved as typed.</summary>
+    /// <summary>Settings' Reformat on save: the person's first save of a C# file in the folder's repository asks, without
+    /// taking the keys, whether a save tidies C# files, a key the file's .editorconfig sets said as its own, and what is ticked
+    /// is turned on; then File, Save lays the changed file out as Reformat Code does before writing it, and one Undo takes
+    /// the layout back; a language server that does not answer in time leaves the file saved as typed, saying why; turned
+    /// off, the file is saved as typed; and Optimize imports on save removes the unused usings and sorts the rest.</summary>
     private void Reformat_on_save_lays_a_file_out_before_writing_it_as_one_step_of_undo_and_without_the_server_or_turned_off_saves_it_as_typed()
     {
         const string Laid = "using System.Text;\nusing System;\nusing System.Collections.Generic;\n\nstatic class Messy\n{\n    public static int Count()\n    {\n"
             + "        List<string> names = [];\n        Console.WriteLine(names.Count);\n        int extra = names.Count;\n        return names.Count;\n    }\n}\n";
-        MainWindow window = project.Open("Messy.cs");
+        // Seen, as only a window the person sees asks them.
+        MainWindow window = project.Open("Tabs/Tabbed.cs", seen: true);
         CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument tabbed = window.EditorArea.Active!;
+        string written = tabbed.Text.Snapshot.ToString();
+        editor.ApplyEdits([new TextEdit(written.Length, 0, "\n")]);
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => window.Questions.Showing(Declared.SaveFormatting) is not null, "the question whether a save tidies C# files, at the first save of one");
+        ConfirmDialog asked = window.Questions.Showing(Declared.SaveFormatting)!;
+        Assert.False(asked.IsActive, "The question took the keys from what the person was doing");
+        Assert.DoesNotContain(asked.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
+        CheckBox[] boxes = [.. asked.GetVisualDescendants().OfType<CheckBox>()];
+        Assert.Equal(["Reformat on save", "Optimize imports on save"], boxes.Select(b => b.Content as string));
+        Assert.True(asked.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Ensure a final line break on save: this file's .editorconfig sets insert_final_newline = true, which every save follows."),
+            "The question did not say the file's .editorconfig decides its final line break");
+        Ui.Click(boxes[1]);
+        Ui.ClickButton(asked, "Turn On");
+        Assert.True(window.Settings is { ReformatOnSave: true, OptimizeImportsOnSave: false, EnsureFinalLineBreak: false },
+            $"Turn On did not turn on what was ticked alone: Reformat on save {window.Settings.ReformatOnSave}, Optimize imports on save {window.Settings.OptimizeImportsOnSave}, a final line break {window.Settings.EnsureFinalLineBreak}");
+        editor.ApplyEdits([new TextEdit(written.Length, 1, string.Empty)]);
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !tabbed.IsModified, "Tabbed.cs saved as it was");
+        Assert.True(File.ReadAllText(project.PathOf("Tabs/Tabbed.cs")) == written, $"Tabbed.cs was not saved back as it was:\n{File.ReadAllText(project.PathOf("Tabs/Tabbed.cs"))}");
+        Assert.True(window.Questions.Showing(Declared.SaveFormatting) is null && window.Questions.WasAsked(Declared.SaveFormatting), "The next save in the repository asked again");
+
+        window.OpenFile(project.PathOf("Messy.cs"));
         OpenDocument document = window.EditorArea.Active!;
         string path = project.PathOf("Messy.cs");
-        window.ApplySettings(window.Settings with { ReformatOnSave = true });
         editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.ToString().IndexOf("      return", StringComparison.Ordinal), 0, "        int  extra=names.Count;\n")]);
         string typed = editor.Document.Snapshot.ToString();
         Ui.Run(window, AppActions.Save);
@@ -1412,6 +2028,14 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Run(window, AppActions.Save);
         Ui.WaitFor(() => !document.IsModified, "Messy.cs saved again");
         Assert.True(File.ReadAllText(path) == kept, $"Save with Reformat on save off did not write the file as typed:\n{File.ReadAllText(path)}");
+
+        window.ApplySettings(window.Settings with { OptimizeImportsOnSave = true });
+        editor.ApplyEdits([new TextEdit(editor.Document.Snapshot.ToString().IndexOf("      return", StringComparison.Ordinal), 0, "        int  most=2;\n")]);
+        string optimized = editor.Document.Snapshot.ToString().Replace("using System.Text;\nusing System;\n", "using System;\n", StringComparison.Ordinal);
+        Ui.Run(window, AppActions.Save);
+        Ui.WaitFor(() => !document.IsModified, "Messy.cs saved with its imports optimized");
+        Assert.True(File.ReadAllText(path) == optimized, $"Save with Optimize imports on save on did not write the file with its unused using gone:\n{File.ReadAllText(path)}");
+        window.ApplySettings(window.Settings with { OptimizeImportsOnSave = false });
         window.Close();
     }
 
@@ -1583,7 +2207,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         Assert.Contains("int result  = Helper.Twice(2);", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
-        Assert.Null(window.Actions.Run(AppActions.Reformat));
+        Assert.Null(window.Actions.Run(AppActions.Reformat)?.Shown);
         window.KeyTextInput("s");
         Ui.WaitFor(() => window.Status is "Reformatted" or "Already formatted" || window.Status?.Contains("not applied", StringComparison.Ordinal) == true,
             "the reformat's answer");
@@ -1674,6 +2298,120 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Contains("int result = Helper.Double(2);", text, StringComparison.Ordinal);
         window.Close();
     }
+
+    private void Rename_offers_names_filters_them_and_commits_the_editable_name()
+    {
+        MainWindow window = project.Open("RenameOffers.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string original = editor.Document.Snapshot.ToString();
+
+        string[] Suggestions() => [.. window.GetVisualDescendants().OfType<ListBoxItem>()
+            .Where(item => item.IsEffectivelyVisible && item.Content is string)
+            .Where(item => item.FindAncestorOfType<Passenger.App.CSharp.RenameBox>() is not null)
+            .Select(item => (string)item.Content!)];
+
+        void RenameAt(string after, string first)
+        {
+            Ui.PlaceAfter(editor, after);
+            Ui.Run(window, AppActions.Rename);
+            Ui.WaitFor(() => Suggestions().FirstOrDefault() == first, () => $"Rename to offer {first}, where it offered [{string.Join(", ", Suggestions())}]");
+        }
+
+        void AssertOffers(string after, params string[] candidates)
+        {
+            RenameAt(after, candidates[0]);
+            Assert.Equal(candidates, Suggestions());
+            Ui.Press(window, "ESCAPE");
+        }
+
+        string[] fromInitializer = ["pendingOrders", "orders", "pendingOrderArray", "orderArray"];
+        // The first question for the names is cancelled, as the server cancels one a change it took in made stale; they still come.
+        Task cancelled = window.CSharpService!.Session!.Server.HoldNextAnswer(Passenger.Lsp.LspMethods.DispatchDocumentExtensionMessage, AsksNames,
+            Task.FromCanceled(new CancellationToken(canceled: true)));
+        RenameAt("var draft", "pendingOrders");
+        Assert.True(cancelled.IsCompleted, "No question for Rename's names was cancelled, so the step no longer holds the box to asking again");
+        Assert.Equal(fromInitializer, Suggestions());
+        window.KeyTextInput("ord");
+        Ui.WaitFor(() => Suggestions() is ["orders", "orderArray", "pendingOrders", "pendingOrderArray"],
+            "the names ord matches, those it begins first, as completion narrows its names");
+        Assert.Equal("ord", window.Assist.Renaming);
+        Ui.Press(window, "DOWN");
+        Assert.Equal("orders", window.Assist.Renaming);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+        window.KeyTextInput("ToReview");
+        Ui.WaitFor(() => Suggestions().Length == 0, "the list to hide for a custom name");
+        Assert.Equal("ordersToReview", window.Assist.Renaming);
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => editor.Document.Snapshot.ToString().Contains("return ordersToReview.Length;", StringComparison.Ordinal), "Rename to use the edited name");
+        Assert.Contains("var ordersToReview =", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
+        Ui.Run(window, EditorActions.Undo);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+
+        RenameAt("return draft", "pendingOrders");
+        Assert.Equal(fromInitializer, Suggestions());
+        // The name the box opened on, typed back, offers every name, as when the box's word of it comes after the names.
+        Ui.Press(window, "END");
+        window.KeyTextInput("s");
+        Ui.WaitFor(() => Suggestions().Length == 0, "the list to hide for drafts, which no name offered matches");
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => Suggestions().SequenceEqual(fromInitializer), () => $"every name offered again for draft, where it offered [{string.Join(", ", Suggestions())}]");
+        Ui.Click(OfferedRow(window, "pendingOrders"));
+        Assert.Equal("pendingOrders", window.Assist.Renaming);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+        Assert.IsType<TextBox>(window.FocusManager?.GetFocusedElement());
+        Ui.Press(window, "ESCAPE");
+        Assert.Null(window.Assist.Renaming);
+        Assert.Equal(original, editor.Document.Snapshot.ToString());
+
+        AssertOffers("var other", "pendingOrders", "pendingOrderArray", "orderArray");
+        AssertOffers("void With(Order target", "order");
+        AssertOffers("IEnumerable<Order> sequence", "orders");
+        AssertOffers("Order Item", "Order");
+        AssertOffers("CustomerOrderRepository service", "customerOrderRepository", "orderRepository", "repository");
+        AssertOffers("IRepository<CustomerOrder> storage", "customerOrderRepository", "orderRepository", "repository");
+        AssertOffers("List<CustomerOrder> buffer", "customerOrders", "orders", "customerOrderList", "orderList");
+        AssertOffers("List<int> counts", "numbers", "numberList");
+        AssertOffers("IReadOnlyDictionary<CustomerId, CustomerOrder> table",
+            "customerOrdersByCustomerId", "customerOrdersById", "customerOrderMap", "orderMap", "customerOrders", "orders");
+
+        const string First = "pendingInventoryAdjustmentRequests";
+        const string Last = "inventoryAdjustmentRequestList";
+        RenameAt("var overflow", First);
+        Assert.Equal([First, "inventoryAdjustmentRequests", "adjustmentRequests", "requests", "pendingInventoryAdjustmentRequestList", Last], Suggestions());
+        window.KeyTextInput("requestL");
+        Ui.WaitFor(() => Suggestions() is ["requestList", ..], "a name requestL begins, outside the first six, to come first");
+        Ui.Press(window, "ESCAPE");
+
+        window.OpenFile(project.PathOf("RenameReader.cs"));
+        Ui.Settle();
+        AssertOffers("RenameOffers.stash", "s_order");
+
+        window.OpenFile(project.PathOf("RenameOffers.cs"));
+        window.Width = 860;
+        window.Height = 600;
+        window.ShowToolWindow(ToolWindowIds.Problems);
+        Ui.Settle();
+        editor.Focus();
+        RenameAt("var overflow", First);
+        ScrollViewer scroll = OfferedRow(window, First).FindAncestorOfType<ScrollViewer>()!;
+        Assert.True(scroll.Extent.Height > scroll.Viewport.Height, "The six candidates should scroll in the shortened editor");
+        Ui.Press(window, "UP");
+        Assert.Equal(Last, window.Assist.Renaming);
+        Ui.WaitFor(() => scroll.Offset.Y > 0, "the last candidate to scroll into view");
+
+        window.Height = MainWindow.SmallestHeight;
+        Ui.Settle();
+        Ui.Press(window, "ESCAPE");
+        RenameAt("var overflow", First);
+        Ui.Click(OfferedRow(window, First));
+        Assert.Equal(First, window.Assist.Renaming);
+        Ui.Press(window, "ESCAPE");
+        window.Close();
+    }
+
+    /// <summary>How Passenger's extension is asked for the names Rename offers.</summary>
+    private static bool AsksNames(object parameters) =>
+        parameters is Passenger.Lsp.RoslynExtension.DispatchExtensionMessageParams { MessageName: Passenger.Roslyn.Extension.Handlers.RenameSuggestions };
 
     private void Opening_the_open_folder_again_through_mcp_keeps_the_open_files_language_server()
     {
@@ -1816,9 +2554,10 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>On a library type's decompiled source, every action of the Code and Refactor menus that would change the file
-    /// greys saying it is read-only (those of another language's files saying that instead), and those that only fold it
-    /// or act on the language server stay enabled, as do Go to Declaration and Find Usages, which only read it; Code
-    /// Cleanup's and Rename's keys there say so and change nothing.</summary>
+    /// greys saying it is read-only (another language's files' saying that instead), those that only fold it, find its
+    /// clones, inspect the solution or act on the language server stay enabled, as do Go to Declaration and Find Usages, and
+    /// Create Fake, which writes a test project's file, greys only for its own reasons; Code Cleanup's and Rename's keys
+    /// there say so and change nothing.</summary>
     private void Every_action_of_the_code_and_refactor_menus_that_would_change_a_decompiled_file_greys_saying_it_is_read_only()
     {
         MainWindow window = project.Open("Program.cs");
@@ -1827,7 +2566,9 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         string readOnly = $"{decompiled.Name} is read-only";
         HashSet<string> reading = [EditorActions.Unfold, EditorActions.UnfoldAll, EditorActions.Fold, EditorActions.FoldToDefinitions, EditorActions.FoldAll,
             EditorActions.UnfoldDocComments, EditorActions.FoldDocComments, EditorActions.ToggleFold, EditorActions.UnfoldRecursively, EditorActions.FoldRecursively,
-            .. EditorActions.UnfoldToLevels, .. EditorActions.UnfoldAllToLevels, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer];
+            .. EditorActions.UnfoldToLevels, .. EditorActions.UnfoldAllToLevels, AppActions.ToggleSolutionAnalysis, AppActions.RestartCSharpServer,
+            AppActions.FindClones, AppActions.FindClonesOfSelection, AppActions.RunInspectionByName];
+        HashSet<string> elsewhere = [AppActions.CreateFake];
         HashSet<string> otherLanguage = [AppActions.OrderScriptParts, AppActions.ExtractResource, AppActions.ExtractStyle];
 
         ActionContext context = window.Actions.Context();
@@ -1835,15 +2576,15 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         List<string> greyed = [];
         foreach (string id in MainMenu.Build(window.Actions.All).Where(m => m.Title is "Code" or "Refactor").SelectMany(ActionsIn))
         {
-            string? why = window.Actions.WhyNot(id, context);
-            if (reading.Contains(id) ? why is not null : otherLanguage.Contains(id) ? why is null : why != readOnly)
+            string? why = window.Actions.WhyNot(id, context)?.Shown;
+            if (reading.Contains(id) ? why is not null : otherLanguage.Contains(id) ? why is null : elsewhere.Contains(id) ? why == readOnly : why != readOnly)
             {
                 (reading.Contains(id) ? greyed : offered).Add($"{id} ({why ?? "enabled"})");
             }
         }
         foreach (string id in new[] { AppActions.GoToDeclaration, AppActions.FindUsages })
         {
-            if (window.Actions.WhyNot(id, context) is { } why)
+            if (window.Actions.WhyNot(id, context)?.Shown is { } why)
             {
                 greyed.Add($"{id} ({why})");
             }
@@ -2113,7 +2854,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         editor.Focus();
         int key = editor.Document.Snapshot.ToString().IndexOf("csharp_style_var_elsewhere", StringComparison.Ordinal) + 1;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(key) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, key);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the key's hover card");
         string card = window.Assist.HoverText!;
         Assert.True(card.Contains("var preferences", StringComparison.Ordinal) && card.Contains("Takes true or false", StringComparison.Ordinal)
@@ -2504,22 +3245,61 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
     }
 
+    /// <summary>A documentation comment's /// and tags, its attributes' names, their values and its words each take a colour
+    /// of their own from the file's parse, four colours apart in either look; and the names a cref holds take the server's
+    /// colours of what they name, as their declarations and calls have them.</summary>
+    private void A_documentation_comments_tags_attributes_names_and_values_and_words_take_colours_of_their_own_and_a_crefs_names_keep_those_of_what_they_name()
+    {
+        MainWindow window = project.Open("Worker.cs");
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        string text = editor.Document.Snapshot.ToString();
+        TokenKind? KindAt(int offset) => editor.Highlighter!.GetSpans(editor.Document.Snapshot, offset, 1)
+            .Where(s => s.Start <= offset && offset < s.End).Cast<SyntaxSpan?>().FirstOrDefault()?.Kind;
+        int At(string code, int into = 0) => text.IndexOf(code, StringComparison.Ordinal) + into;
+        (string Part, int Offset, TokenKind Kind)[] parts =
+        [
+            ("///", At("/// <summary>"), TokenKind.DocCommentTag), ("<summary>", At("<summary>Calls", 1), TokenKind.DocCommentTag),
+            ("Calls", At("Calls <see"), TokenKind.DocComment), ("cref", At("cref="), TokenKind.DocCommentAttributeName),
+            ("cref's quote", At("\"Worker.Reset"), TokenKind.DocCommentAttributeValue), ("/>", At("/> with"), TokenKind.DocCommentTag),
+            ("name", At("name=\"count\""), TokenKind.DocCommentAttributeName), ("The reset count", At("The reset count"), TokenKind.DocComment),
+        ];
+        foreach ((string part, int offset, TokenKind kind) in parts)
+        {
+            Assert.True(KindAt(offset) == kind, $"The documentation comment's {part} is coloured as {KindAt(offset)}, not as {kind}");
+        }
+        foreach (ThemeVariant look in (ThemeVariant[])[ThemeVariant.Dark, ThemeVariant.Light])
+        {
+            Color[] colours = [.. ((string[])[TokenKeys.Syntax_DocComment, TokenKeys.Syntax_DocCommentTag, TokenKeys.Syntax_DocCommentAttributeName,
+                TokenKeys.Syntax_DocCommentAttributeValue]).Select(key => editor.TryFindResource(key, look, out object? brush) && brush is ISolidColorBrush solid ? solid.Color : default)];
+            Assert.True(colours.Distinct().Count() == 4, $"In {look} a documentation comment's words, tags, attributes' names and values share colours: {string.Join(", ", colours)}");
+        }
+
+        int worker = At("cref=\"Worker", "cref=\"".Length);
+        int reset = worker + "Worker.".Length;
+        Ui.WaitFor(() => KindAt(worker) == TokenKind.Class && KindAt(reset) == TokenKind.Method,
+            () => $"the server's colours on the cref's names, which are {KindAt(worker)} and {KindAt(reset)}");
+        Assert.Equal(KindAt(At("class Worker", "class ".Length)), KindAt(worker));
+        Assert.Equal(KindAt(At("=> Reset", "=> ".Length)), KindAt(reset));
+        window.Close();
+    }
+
     private void Documentation_shows_its_tags_in_the_hover_completion_and_parameter_cards_tags_written_escaped_too()
     {
         MainWindow window = project.Open("Documented.cs");
         CodeEditor editor = window.EditorArea.CodeEditor;
         Uri guide = new("https://example.test/guide?x=1&y=2");
 
-        Ui.PlaceAfter(editor, "return Documented.Re");
+        Ui.PlaceAfter(editor, "return Documented.Ec");
         Ui.Run(window, AppActions.QuickDocumentation);
-        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in hover");
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Echo's documentation in hover");
         MarkdownText hover = AssertDocumentation(window.Assist.HoverCard!, "quantity", "guide", guide);
         string shown = hover.Shown.Replace('\u00A0', ' ');
         Assert.Contains("Related", hover.Shown, StringComparison.Ordinal);
         Assert.Contains("or null.", shown, StringComparison.Ordinal);
-        Assert.Matches(@"Read more with value of type (?:T|int)\.\nSecond line\.", shown);
+        Assert.Matches(@"Echo a value of type (?:T|int)\.\nSecond line\.", shown);
         Assert.Contains("• First step", window.Assist.HoverText, StringComparison.Ordinal);
-        Assert.Contains("int value = 1;", window.Assist.HoverText, StringComparison.Ordinal);
+        Assert.Contains("1. Return the input", window.Assist.HoverText, StringComparison.Ordinal);
+        AssertExamples(window.Assist.HoverCard!);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "any value" && run.FontStyle == FontStyle.Italic);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "unchanged" && run.TextDecorations == TextDecorations.Underline);
         Assert.Contains(hover.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == "<b>literal</b>");
@@ -2527,24 +3307,69 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Assert.Equal(guide, window.Browsed.LastOrDefault());
         Ui.Press(window, "ESCAPE");
 
+        // What the documentation names is a link to it, a keyword it names alone code (#2415).
+        Ui.Run(window, AppActions.QuickDocumentation);
+        Ui.WaitFor(() => window.Assist.HoverText?.Contains("Use the", StringComparison.Ordinal) == true, "Echo's documentation in hover again");
+        MarkdownText[] blocks = [.. window.Assist.HoverCard!.GetVisualDescendants().OfType<MarkdownText>()];
+        (string Words, Uri Target)[] symbols = [.. blocks.SelectMany(b => b.Links).Where(l => l.Target.Scheme == Passenger.Roslyn.Extension.SymbolLinks.Scheme)];
+        string[] named = [.. symbols.Select(l => l.Words)];
+        // The cref is written as its minimal name, Documented.Related(), each name in it a link to its own symbol.
+        Assert.True(named.Length == 4 && named[0] == "Documented" && named[1] == "Related" && named[2] == "value" && named[3] is "T" or "int",
+            $"The documentation's cref, paramref and typeparamref are links [{string.Join(", ", named)}]");
+        Avalonia.Controls.Documents.Run[] runs = [.. blocks.SelectMany(b => b.Inlines!.OfType<Avalonia.Controls.Documents.Run>())];
+        FontFamily code = runs.First(run => run.Text == "<b>literal</b>").FontFamily;
+        Assert.Contains(runs, run => run.Text == "null" && run.FontFamily == code);
+        MarkdownText related = blocks.First(b => b.Links.Any(l => l.Words == "Related"));
+        Ui.Click(related, related.PointOf(symbols[1].Target));
+        Ui.WaitFor(() => editor.CaretPosition.Line == editor.Document.Snapshot.GetLineFromOffset(editor.Document.Snapshot.ToString().IndexOf("int Related()", StringComparison.Ordinal)),
+            "the caret at Related's declaration");
+        Assert.Null(window.Assist.HoverCard);
+
         Ui.PlaceAfter(editor, "public static int Run()\n    {\n");
         window.KeyTextInput("        Documented");
         window.KeyTextInput(".");
         Ui.WaitFor(() => window.Assist.IsCompletionOpen, "members of Documented");
-        window.KeyTextInput("Rea");
-        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("Use the", StringComparison.Ordinal) == true, "Read's documentation in completion");
+        window.KeyTextInput("Ech");
+        Ui.WaitFor(() => window.Assist.ItemDocumentation?.Contains("Use the", StringComparison.Ordinal) == true, "Echo's documentation in completion");
         AssertDocumentation(window.Assist.ItemCard!, "quantity", "guide", guide);
+        AssertExamples(window.Assist.ItemCard!);
         Ui.Press(window, "ESCAPE");
 
-        Ui.PlaceAfter(editor, "return Documented.Read(");
+        Ui.PlaceAfter(editor, "return Documented.Echo(");
         Ui.Run(window, AppActions.ParameterInfo);
-        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Read's parameter documentation");
+        Ui.WaitFor(() => window.Assist.SignatureText?.Contains("The value", StringComparison.Ordinal) == true, "Echo's parameter documentation");
         AssertDocumentation(window.Assist.SignatureCard!, "value", "parameter guide", guide);
+        AssertRows(window.Assist.SignatureText!, "T", "The input type");
         window.Close();
+
+        // A table's row: its term, a dash and its description, a line of their own.
+        static void AssertRows(string said, params string[] cells)
+        {
+            for (int i = 0; i < cells.Length; i += 2)
+            {
+                Assert.Matches($@"(?m)^{System.Text.RegularExpressions.Regex.Escape(cells[i])} *– *{System.Text.RegularExpressions.Regex.Escape(cells[i + 1])}$", said.Replace('\u00A0', ' '));
+            }
+        }
+
+        static void AssertExamples(Border card)
+        {
+            ColouredCode[] blocks = [.. card.GetVisualDescendants().OfType<ColouredCode>()];
+            ColouredCode example = Assert.Single(blocks, block => block.Code == "string text = Echo(\"hello\");");
+            IBrush keyword = Tokens.Brush(card, TokenKeys.Syntax_Keyword);
+            IBrush text = Tokens.Brush(card, TokenKeys.Syntax_String);
+            Ui.WaitFor(() => example.Runs.Any(run => run.Text == "string" && run.Foreground == keyword)
+                && example.Runs.Any(run => run.Text == "\"hello\"" && run.Foreground == text), "the example's C# keyword and string colours");
+
+            ColouredCode log = Assert.Single(blocks, block => block.Code == "[INFO] Worker ready");
+            Assert.Null(log.Language);
+            Assert.Empty(log.Runs);
+            AssertRows(string.Join('\n', card.GetVisualDescendants().OfType<MarkdownText>().Select(words => words.Shown)),
+                "Input", "Result", "hello", "The same string", "42", "The same integer");
+        }
 
         static MarkdownText AssertDocumentation(Border card, string bold, string label, Uri target)
         {
-            MarkdownText words = Assert.Single(card.GetVisualDescendants().OfType<MarkdownText>(), block => block.Links.Any());
+            MarkdownText words = Assert.Single(card.GetVisualDescendants().OfType<MarkdownText>(), block => block.Links.Any(link => link.Target == target));
             Assert.Contains((label, target), words.Links);
             Assert.Contains(words.Inlines!.OfType<Avalonia.Controls.Documents.Run>(), run => run.Text == bold && run.FontWeight == FontWeight.Bold);
             Assert.DoesNotContain("<see", words.Shown, StringComparison.Ordinal);
@@ -2609,7 +3434,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     }
 
     /// <summary>The hints in one window: types the code leaves out show after their names, a hint's card says what its
-    /// type is, and Settings turns type name hints off and on again, parameter name hints staying; the caret steps
+    /// type is, from the data each hint keeps as the bytes the server gave and nothing more, and Settings turns type name
+    /// hints off and on again, parameter name hints staying; the caret steps
     /// across a hint as one place and typing at a name keeps its type after it; and a literal argument shows its
     /// parameter's name before it, the text after making room, until Settings turns them off.</summary>
     private void Type_and_parameter_name_hints_show_where_Rider_shows_them_make_room_step_as_one_place_and_go_with_Settings()
@@ -2640,6 +3466,11 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.MouseMove(editor.TranslatePoint(hint, window)!.Value, Avalonia.Input.RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hint's hover card");
         Assert.Contains("Int32", window.Assist.HoverText, StringComparison.Ordinal);
+        Passenger.Lsp.LspInlayHint[] given = [.. editor.InlayHints.Select(h => h.Data).OfType<Passenger.Lsp.LspInlayHint>()];
+        (long held, string most) = HeldBytes.Of(given, _ => false);
+        long data = given.Sum(h => (long)(h.Data?.Utf8.Length ?? 0));
+        Assert.True(held - data < 300L * given.Length, $"Each of the server's {given.Length} hints holds {(held - data) / given.Length:N0} bytes beside its data's own "
+            + $"{data / given.Length:N0} ({most}), where its place, its words and its data's bytes alone take under 300: a file of a thousand calls holds a thousand");
         window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
         Ui.Settle();
 
@@ -2650,7 +3481,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Ui.Settle();
         dialog.Query = "type name hints";
         Ui.Settle();
-        Assert.Equal(SettingsDialog.EditorPage, dialog.Page);
+        Assert.Equal(SettingsDialog.AnalysisPage, dialog.Page);
         Assert.Contains("Show type name hints", dialog.Shown);
         dialog.Change(s => s with { TypeHints = false });
         dialog.Ok();
@@ -3025,7 +3856,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.OpenFile(project.PathOf("Shapes.cs"));
         Ui.Settle();
         Ui.PlaceAfter(editor, "interface ISh");
-        Task<string?> types = window.ShowTypeHierarchyAsync();
+        Task<Words?> types = window.ShowTypeHierarchyAsync();
         Ui.WaitFor(() => types.IsCompleted, "the type hierarchy");
         Task subtypes = window.Hierarchy.ChooseAsync(first: false);
         Ui.WaitFor(() => subtypes.IsCompleted, "the subtypes");
@@ -3059,6 +3890,182 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         window.Close();
 
         string[] Listed() => [.. window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} {Path.GetFileName(r.Node.Path)}:{r.Node.Where.Line + 1}")];
+    }
+
+    /// <summary>Inspect This, from its keys, offers at the caret what its symbol has to inspect: at a method its value's origins
+    /// and destinations beside its callers and callees, at a local its value's alone. The method's value goes where each call
+    /// of it lands whole (Main's local) and comes from what it returns; the local's comes from its declaration.</summary>
+    private void Inspect_this_offers_what_the_carets_symbol_has_to_inspect_and_follows_where_its_value_comes_from_and_goes()
+    {
+        MainWindow window = project.Open("Helper.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Tw");
+        Inspect(["Value Origins", "Value Destinations", "Callers", "Callees"], "Value Destinations");
+        Ui.WaitFor(() => window.Hierarchy.Title == "Value of Twice" && window.Hierarchy.Rows.Count > 1, () => $"where Twice's value goes; the Hierarchy window shows "
+            + $"{window.Hierarchy.Title}: [{string.Join("; ", Listed())}], the window saying {window.Status}");
+        Assert.False(window.Hierarchy.IsFirst);
+        Assert.Equal(["Twice Helper.cs:3", "  int result = Helper.Twice(2); Program.cs:5"], Listed());
+        Assert.Equal("local result", window.Hierarchy.Rows[1].Node.Item.Detail);
+
+        Task origins = window.Hierarchy.ChooseAsync(first: true);
+        Ui.WaitFor(() => origins.IsCompleted, "where Twice's value comes from");
+        Assert.True(Listed() is ["Twice Helper.cs:3", .. var returned] && returned.Length > 0 && returned.All(r => r == "  public static int Twice(int value) => value * 2; Helper.cs:3"),
+            $"Twice's value comes from [{string.Join("; ", Listed())}], not what it returns");
+
+        window.OpenFile(project.PathOf("Program.cs"));
+        Ui.Settle();
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "int resu");
+        Inspect(["Value Origins", "Value Destinations"], "Value Origins");
+        Ui.WaitFor(() => window.Hierarchy.Title == "Value of result" && window.Hierarchy.Rows.Count > 1, () => $"where result's value comes from; the Hierarchy window shows "
+            + $"{window.Hierarchy.Title}: [{string.Join("; ", Listed())}], the window saying {window.Status}");
+        Assert.Equal(["result Program.cs:5", "  int result = Helper.Twice(2); Program.cs:5"], Listed());
+        window.Close();
+
+        void Inspect(string[] offered, string chosen)
+        {
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.InspectThis));
+            Ui.WaitFor(() => window.Assist.OfferedTitle == "Inspect This", () => $"Inspect This's choices; the window says {window.Status}");
+            Assert.Equal(offered, window.Assist.Offered);
+            for (int i = 0; i < Array.IndexOf(offered, chosen); i++)
+            {
+                Ui.Press(window, "DOWN");
+            }
+            Ui.Press(window, "ENTER");
+        }
+
+        string[] Listed() => [.. window.Hierarchy.Rows.Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Item.Name} {Path.GetFileName(r.Node.Path)}:{r.Node.Where.Line + 1}")];
+    }
+
+    /// <summary>Show Dependency Map in a method opens the map among the editors down to it, the project, its namespace, its
+    /// type and the method chosen, in the tree as in the picture; its edges say what it uses by kind as the compiler binds
+    /// the code (a call, a parameter's type), an open node counting what crosses it from below, a row cut short whole in its
+    /// tip; the types beside it say what they implement; a kind hidden leaves its edges out; Enter on a row and a double
+    /// click go to its code; an edit's new call shows once typing rests; a closed file opens it at its first type.</summary>
+    private void The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them()
+    {
+        MainWindow window = project.Open("Gauges.cs");
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "static int Bo");
+        Assert.Null(window.Actions.Run(AppActions.ShowDependencyMap)?.Shown);
+        DependencyMapView map = window.DependencyMapWindow;
+        Ui.WaitFor(() => map.Chosen?.Name == "Both(Dial, IGauge)" && !map.IsReading, () => $"the map chosen at Readings.Both, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
+        Assert.True(window.EditorArea.Active?.Tool?.Window.Id == ToolWindowIds.DependencyMap,
+            $"the map opened among the editors, where {window.EditorArea.Active?.Name} is shown");
+        Assert.Equal(["Sample project", "  <global namespace> namespace", "    Readings class", "      Both(Dial, IGauge) method"],
+            [.. map.Rows.Where(r => r.Node.Name is "Sample" or "<global namespace>" or "Readings" || r.Node.Parent?.Name == "Readings")
+                .Select(r => $"{new string(' ', r.Depth * 2)}{r.Node.Name} {r.Node.Kind}")]);
+        Assert.Equal(["Uses Dial: calls 1, parameter types 1", "Uses IGauge: calls 1, parameter types 1"], [.. map.EdgeRows.Select(e => e.Words.English)]);
+        Assert.True(map.Picture.Boxes.ContainsKey(map.Chosen!), "the method chosen stands in the picture");
+        // A row the side pane's width cuts short says itself whole in its tip.
+        Assert.Equal("Both(Dial, IGauge): method · uses 2 · used by 0", TipOf(Ui.Row(map.Tree, map.Rows.Single(r => r.Node == map.Chosen))));
+        Assert.Equal("Uses Dial: calls 1, parameter types 1", TipOf(Ui.Row(map.EdgeList, map.EdgeRows[0])));
+        MapNode readings = map.Chosen!.Parent!;
+        map.Choose(readings, fromPicture: false);
+        Assert.Equal(["Both(Dial, IGauge) uses Dial: calls 1, parameter types 1", "Both(Dial, IGauge) uses IGauge: calls 1, parameter types 1"],
+            [.. map.EdgeRows.Select(e => e.Words.English)]);
+
+        MapNode dial = map.Graph.Roots[0].Children!.Single(n => n.Name == "<global namespace>").Children!.Single(n => n.Name == "Dial");
+        map.Choose(dial, fromPicture: false);
+        Assert.Contains("Uses IGauge: implements 1", map.EdgeRows.Select(e => e.Words.English));
+        Assert.Contains(map.ShownEdges, e => e.From == dial && e.To.Name == "IGauge" && e.Kinds.ContainsKey(DependencyKinds.Implements));
+
+        Ui.Click(map.Kinds.Button);
+        Ui.WaitFor(() => map.Kinds.OpenMenu is not null, "the map's kinds menu");
+        Ui.Click(map.Kinds.OpenMenu!.Items.OfType<MenuItem>().Single(i => i.Header as string == "Implements"));
+        Ui.WaitFor(() => !map.ShownEdges.Any(e => e.Kinds.ContainsKey(DependencyKinds.Implements)), "the implements edges hidden");
+        Assert.Contains(map.ShownEdges, e => e.Kinds.ContainsKey(DependencyKinds.Calls));
+
+        Ui.Click(Ui.Row(map.Tree, map.Rows.Single(r => r.Node == dial)));
+        Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Gauges.cs" && window.EditorArea.CodeEditor.CaretPosition.Line == 5,
+            () => $"Enter on Dial's row going to its declaration, not {window.EditorArea.Active?.Name}:{window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(0, 0));
+        window.ShowToolWindow(ToolWindowIds.DependencyMap);
+        Ui.Settle();
+        Ui.DoubleClick(map.Picture, map.Picture.Shown(dial)!.Value.Center);
+        Ui.WaitFor(() => window.EditorArea.Active?.Name == "Gauges.cs" && window.EditorArea.CodeEditor.CaretPosition.Line == 5,
+            () => $"a double click on Dial going to its declaration, not {window.EditorArea.Active?.Name}:{window.EditorArea.CodeEditor.CaretPosition.Line + 1}");
+
+        // The map in the smallest window keeps its chosen node in view, where a click reaches it.
+        (double width, double height) = (window.Width, window.Height);
+        window.Width = MainWindow.SmallestWidth;
+        window.Height = MainWindow.SmallestHeight;
+        window.ShowToolWindow(ToolWindowIds.DependencyMap);
+        Ui.Settle();
+        Rect small = map.Picture.Shown(dial)!.Value;
+        Assert.True(new Rect(map.Picture.Bounds.Size).Contains(small.Center), $"Dial stands at {small} in the smallest window's map of {map.Picture.Bounds.Size}");
+        Ui.Click(map.Picture, small.Center);
+        Assert.Same(dial, map.Chosen);
+        window.Width = width;
+        window.Height = height;
+        window.OpenFile(project.PathOf("Gauges.cs"));
+        Ui.Settle();
+
+        // The map follows an edit made while it was out of sight: Both made to call Area.Of, read again as the map shows.
+        map.Choose(map.Rows.Single(r => r.Node.Name == "Both(Dial, IGauge)").Node, fromPicture: false);
+        Ui.PlaceAfter(window.EditorArea.CodeEditor, "any.Read()");
+        window.KeyTextInput(" + Area.Of(1, 1)");
+        window.ShowToolWindow(ToolWindowIds.DependencyMap);
+        Ui.WaitFor(() => map.EdgeRows.Any(e => e.Words.English == "Uses Area: calls 1"),
+            () => $"the map following Both's call of Area.Of, its edges [{string.Join("; ", map.EdgeRows.Select(e => e.Words))}]");
+        window.OpenFile(project.PathOf("Gauges.cs"));
+        Ui.Press(window, "meta Z");
+
+        // A C# file chosen in the Explorer opens the map at its first type closed as it is open.
+        Assert.DoesNotContain(window.EditorArea.Documents, d => d.Name == "Shapes.cs");
+        Passenger.App.Explorer.ExplorerNode shapes = window.ExplorerView.Tree.Reveal(project.PathOf("Shapes.cs")) ?? throw new InvalidOperationException("Shapes.cs is not in the Explorer");
+        Ui.Await(window.ShowDependencyMapAsync(new ActionContext(window.EditorArea.Active, window.EditorArea.CodeEditor, null, null, null) { ExplorerRow = shapes }),
+            "the map of the closed Shapes.cs");
+        Ui.WaitFor(() => map.Chosen?.Name == "IShape" && !map.IsReading, () => $"the map chosen at closed Shapes.cs's first type, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
+        window.Close();
+        AnswersOutOfTurn();
+
+        static string? TipOf(Control row) => row.GetVisualDescendants().Prepend(row).OfType<Control>().Select(c => ToolTip.GetTip(c)).OfType<string>().FirstOrDefault();
+    }
+
+    /// <summary>A map's answers taken as they stand when they come: an older read of the projects after a newer one passed
+    /// over, a level of a node a refresh put another in the place of taken under the node there now, and a node chosen that a
+    /// refresh took away no longer chosen.</summary>
+    private static void AnswersOutOfTurn()
+    {
+        List<(string? Of, TaskCompletionSource<DependenciesFound> Answer)> asks = [];
+        DependencyMapView probe = new();
+        Task shown = probe.ShowAsync(of =>
+        {
+            TaskCompletionSource<DependenciesFound> answer = new();
+            asks.Add((of, answer));
+            return answer.Task;
+        });
+        asks[0].Answer.SetResult(Projects("Stale", "Kept"));
+        Ui.Await(shown, "the map's projects");
+
+        Task older = probe.RefreshAsync();
+        Task newer = probe.RefreshAsync();
+        asks[2].Answer.SetResult(Projects("Latest", "Kept"));
+        Ui.Await(newer, "the newer read of the projects");
+        asks[1].Answer.SetResult(Projects("Stale", "Kept"));
+        Ui.Await(older, "the older read of the projects");
+        Assert.True(probe.Graph.Roots.Select(r => r.Name).SequenceEqual(["Latest", "Kept"]),
+            $"the map shows {string.Join(", ", probe.Graph.Roots.Select(r => r.Name))}, an older read taken over the newer");
+
+        Task opening = probe.OpenAsync(probe.Graph["p|Kept"]!);
+        Task replacing = probe.RefreshAsync();
+        asks[4].Answer.SetResult(Projects("Latest", "Kept", "New"));
+        Ui.Await(replacing, "the read of the projects putting Kept's node in its place");
+        asks[3].Answer.SetResult(new DependenciesFound([new DependencyNode("n|Kept|Inside", "Inside", "namespace", null, null, Expands: false)], []));
+        Ui.Await(opening, "Kept's level");
+        Assert.True(probe.Graph["p|Kept"] is { IsOpen: true, Children: [{ Name: "Inside" }] },
+            "Kept's level was taken under the node a refresh put in its place, which shows nothing of it");
+
+        probe.Choose(probe.Graph["p|New"]!, fromPicture: false);
+        Task taking = probe.RefreshAsync();
+        asks[5].Answer.SetResult(Projects("Latest", "Kept"));
+        Ui.WaitFor(() => asks.Count == 7, "Kept's level asked again");
+        asks[6].Answer.SetResult(new DependenciesFound([new DependencyNode("n|Kept|Inside", "Inside", "namespace", null, null, Expands: false)], []));
+        Ui.Await(taking, "the read of the projects taking New away");
+        Assert.True(probe.Chosen is null && probe.EdgeRows.Count == 0, $"New, gone, is still chosen as {probe.Chosen?.Name} with {probe.EdgeRows.Count} edges");
+
+        static DependenciesFound Projects(params string[] names) =>
+            new([.. names.Select(n => new DependencyNode($"p|{n}", n, "project", null, null, Expands: true))], []);
     }
 
     /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter
@@ -3493,8 +4500,146 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Sample.csproj"),
                 TestProjects.Console());
             File.WriteAllText(PathOf("Program.cs"), "class Program\n{\n    static void Main()\n    {\n        int result = Helper.Twice(2);\n    }\n}\n");
+            File.WriteAllText(PathOf(".editorconfig"), """
+                root = true
+
+                [RenameOffers.cs]
+                dotnet_naming_rule.static_fields.symbols = static_fields
+                dotnet_naming_rule.static_fields.style = static_style
+                dotnet_naming_rule.static_fields.severity = suggestion
+                dotnet_naming_symbols.static_fields.applicable_kinds = field
+                dotnet_naming_symbols.static_fields.required_modifiers = static
+                dotnet_naming_style.static_style.required_prefix = s_
+                dotnet_naming_style.static_style.capitalization = camel_case
+                """);
+            File.WriteAllText(PathOf("RenameOffers.cs"), """
+                using System.Collections.Generic;
+                using System.Threading.Tasks;
+
+                namespace Renaming;
+
+                sealed class Order;
+                sealed class CustomerOrder;
+                sealed class CustomerOrderRepository;
+                sealed class InventoryAdjustmentRequest;
+                readonly record struct CustomerId(int Value);
+                interface IRepository<T>;
+
+                sealed class RenameOffers
+                {
+                    public static readonly Order stash = new();
+                    public Order Item { get; } = new();
+                    public void With(Order target) { }
+                    public void WithAll(IEnumerable<Order> sequence) { }
+                    public void WithConcrete(CustomerOrderRepository service) { }
+                    public void WithGeneric(IRepository<CustomerOrder> storage) { }
+                    public void WithList(List<CustomerOrder> buffer) { }
+                    public void WithNumbers(List<int> counts) { }
+                    public void WithDictionary(IReadOnlyDictionary<CustomerId, CustomerOrder> table) { }
+
+                    public async Task<int> CountAsync()
+                    {
+                        var draft = await GetPendingOrdersAsync();
+                        return draft.Length;
+                    }
+
+                    public async Task<int> CountWithConflictAsync()
+                    {
+                        Order[] orders = [];
+                        var other = await GetPendingOrdersAsync();
+                        return other.Length + orders.Length;
+                    }
+
+                    public static int CountInventory()
+                    {
+                        var overflow = GetPendingInventoryAdjustmentRequests();
+                        return overflow.Count;
+                    }
+
+                    private static List<InventoryAdjustmentRequest> GetPendingInventoryAdjustmentRequests() => [];
+                    private static Task<Order[]> GetPendingOrdersAsync() => Task.FromResult<Order[]>([]);
+                }
+                """);
+            File.WriteAllText(PathOf("RenameReader.cs"), "namespace Renaming;\n\nstatic class RenameReader { public static Order Read() => RenameOffers.stash; }\n");
             File.WriteAllText(PathOf("Helper.cs"), "static class Helper\n{\n    public static int Twice(int value) => value * 2;\n}\n");
+            File.WriteAllText(PathOf("AttributeUses.cs"), """
+                static class AttributeUses
+                {
+                    public static void Run()
+                    {
+                        Cache cache = new Cache(2);
+                        _ = cache.Count;
+                        _ = cache.Capacity;
+                        cache.Changed += static () => { };
+                        cache.Clear(1);
+                        cache.Clear("key");
+                        cache.Set(3);
+                        _ = cache.Pair((1, 2));
+                        cache.Extend(3);
+                        cache.Reset();
+                    }
+                }
+                """);
+            File.WriteAllText(PathOf("AttributedCache.cs"), """
+                using System;
+                using System.ComponentModel;
+
+                [CachePolicy("cache")]
+                sealed class Cache
+                {
+                    private const int DefaultPriority = 2;
+                    public Cache([CachePolicy("capacity")] int capacity) => Capacity = capacity;
+                    [CachePolicy("property")] public int Count { get; }
+                    [CachePolicy("field", Slots = new int[] { })] public int Capacity = 8;
+                    [CachePolicy("event")] public event Action? Changed;
+
+                    /// <summary>Clears the requested number of entries.</summary>
+                    [CachePolicy("short", Priority = DefaultPriority)]
+                    [Description("Evicts entries")]
+                    public void Clear([CachePolicy("count", Priority = 1)] int count, [CachePolicy("scope")] string scope = "default") => Changed?.Invoke();
+
+                    [CachePolicy("named")]
+                    public void Clear([CachePolicy("key")] string key) { }
+                    public void Set([CachePolicy("value", Slots = new int[] { 1, 2 })] int @class) { }
+                    public (int value, int size) Pair([CachePolicy("pair")] (int, int) value) => value;
+                    [Kept] public void Reset() { }
+
+                    private sealed class KeptAttribute : Attribute;
+                }
+
+                static class CacheExtensions
+                {
+                    [CachePolicy("extend")]
+                    public static void Extend([CachePolicy("receiver")] this Cache cache, [CachePolicy("size")] int size) { }
+                }
+
+                sealed class CachePolicyAttribute(string name) : Attribute
+                {
+                    public string Name { get; } = name;
+                    public int Priority { get; set; }
+                    public int[]? Slots { get; set; }
+                }
+                """);
+            File.WriteAllText(PathOf("Complexity.cs"), """
+                class ComplexityFixture
+                {
+                    int Plain() => 0;
+                    int Medium(bool a)
+                    {
+                        if (a) { if (a) { if (a) { } } }
+                        if (a && a) { }
+                        return 0;
+                    }
+                    int High(bool a)
+                    {
+                        if (a) { if (a) { if (a) { if (a) { if (a) { if (a) { } } } } } }
+                        return 0;
+                    }
+                }
+                """);
             File.WriteAllText(PathOf("Shapes.cs"), "interface IShape\n{\n    int Sides { get; }\n}\n\nclass Square : IShape\n{\n    public int Sides => 4;\n}\n");
+            File.WriteAllText(PathOf("Gauges.cs"), "interface IGauge\n{\n    /* Read */ int Read();\n}\n\nclass Dial : IGauge\n{\n    public int Read() => 1;\n}\n\n"
+                + "static class Readings\n{\n    static int Both(Dial dial, IGauge any) => dial.Read() + any.Read();\n}\n");
             File.WriteAllText(PathOf("Area.cs"), "static class Area\n{\n    public static int Of(int width, int height) => width * height;\n    public static int Room() => Of(3, 4);\n}\n");
             File.WriteAllText(PathOf("Point.cs"), "class Point\n{\n    public int X { get; }\n    public int Y { get; }\n}\n");
             File.WriteAllText(PathOf("Selected.cs"), SelectedLines);
@@ -3513,7 +4658,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Breaks/CrlfFile.cs"), "class CrlfFile\r\n{\r\n    public int X { get; }\r\n\r\n    static void Make()\r\n    {\r\n        int made = 0;\r\n    }\r\n}\r\n");
             // Tabs: an .editorconfig asks for tabs. Detected: no .editorconfig says, and each file's own lines do.
             Directory.CreateDirectory(PathOf("Tabs"));
-            File.WriteAllText(PathOf("Tabs/.editorconfig"), "[*.cs]\nindent_style = tab\n");
+            File.WriteAllText(PathOf("Tabs/.editorconfig"), "[*.cs]\nindent_style = tab\ninsert_final_newline = true\n");
             File.WriteAllText(PathOf("Tabs/Tabbed.cs"), "class Tabbed\n{\n\tpublic int X { get; }\n\n\tstatic void Make()\n\t{\n\t\tint made = 0;\n\t}\n}\n");
             // Keys: an .editorconfig setting what Roslyn reads, and what nothing reads.
             Directory.CreateDirectory(PathOf("Keys"));
@@ -3568,18 +4713,48 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             File.WriteAllText(PathOf("Paths.cs"), "static class Paths\n{\n"
                 + "    /// <summary>Keeps its logs under <c>C:\\temp</c>, in C:\\temp\\logs, &quot;never&quot; elsewhere.</summary>\n"
                 + "    public static int Keep() => 1;\n}\n");
+            // A global alias the project's other files take, which only the server reads for a method breakpoint.
+            File.WriteAllText(PathOf("LedgerKeys.cs"), "global using LedgerKey = System.Guid;\n");
+            File.WriteAllText(PathOf("Ledger.cs"), "static class Ledger\n{\n    public static int Post(LedgerKey key, int count) => count;\n}\n");
+            File.WriteAllText(PathOf("Worker.cs"), """
+                public sealed class Worker
+                {
+                    public Worker()
+                    {
+                    }
+
+                    public int Count { get; private set; }
+
+                    /// <summary>Calls <see cref="Worker.Reset(int)"/> with the requested count.</summary>
+                    /// <param name="count">The reset count.</param>
+                    public void Run(int count) => Reset(count);
+
+                    private void Reset(int count)
+                    {
+                    }
+                }
+                """);
             File.WriteAllText(PathOf("Documented.cs"), """
                 static class Documented
                 {
                     /// <summary>
                     /// Use the &lt;b&gt;quantity&lt;/b&gt; in the &lt;see href=&quot;https://example.test/guide?x=1&amp;y=2&quot;&gt;guide&lt;/see&gt;.
                     /// See <see cref="Related"/> or type <c>&lt;b&gt;literal&lt;/b&gt;</c>. Pass <i>any value</i> or <see langword="null"/>. It comes back <u>unchanged</u>.
-                    /// <para>Read more with <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
+                    /// <para>Echo a <paramref name="value"/> of type <typeparamref name="T"/>.<br/>Second line.</para>
                     /// <list type="bullet"><item><description>First step</description></item></list>
-                    /// <code>int value = 1;</code>
+                    /// <list type="number"><item><description>Return the input</description></item></list>
+                    /// <list type="table">
+                    /// <listheader><term>Input</term><description>Result</description></listheader>
+                    /// <item><term><c>hello</c></term><description>The same string</description></item>
+                    /// <item><term><c>42</c></term><description>The same integer</description></item>
+                    /// </list>
+                    /// <code>string text = Echo("hello");</code>
+                    /// <code>[INFO] Worker ready</code>
                     /// </summary>
-                    /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.</param>
-                    public static T Read<T>(T value) => value;
+                    /// <param name="value">The <b>value</b> in the <see href="https://example.test/guide?x=1&amp;y=2">parameter guide</see>.
+                    /// <list type="table"><item><term><c>T</c></term><description>The input type</description></item></list>
+                    /// </param>
+                    public static T Echo<T>(T value) => value;
                     public static int Related() => 0;
                 }
 
@@ -3588,7 +4763,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
                     public static int Run()
                     {
 
-                        return Documented.Read(1);
+                        return Documented.Echo(1);
                     }
                 }
                 """);

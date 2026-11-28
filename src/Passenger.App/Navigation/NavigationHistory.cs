@@ -128,6 +128,22 @@ public sealed class NavigationHistory
         }
     }
 
+    /// <summary>Whether Back (a step of -1) or Forward (1) has a place to go to from the caret's, as <see cref="Back"/> and
+    /// <see cref="Forward"/> find one, taking none.</summary>
+    public bool CanStep(int step, HistoryPlace? here, Func<string, bool> exists)
+    {
+        List<Spot> places = step < 0 ? behind : ahead;
+        for (int i = places.Count - 1; i >= 0; i--)
+        {
+            HistoryPlace place = places[i].Place;
+            if (exists(place.Path) && (step > 0 || here is null || !place.SameTab(here) || place.Offset != here.Offset))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>Where Back goes from the caret's place, which goes ahead; null with nothing behind. A place whose file
     /// is gone is passed over, as is the caret's own (a file shown again as its tab closed), which would show nothing.</summary>
     public HistoryPlace? Back(HistoryPlace? here, Func<string, bool> exists)

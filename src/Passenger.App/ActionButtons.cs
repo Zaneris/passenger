@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -26,11 +28,19 @@ public static class ActionButtons
     public static bool IsWorking(Control button) => button.GetValue(WorkingProperty);
 
     /// <summary>Makes the button run the action through <paramref name="request"/> (the window's, which says why one cannot
-    /// run) and show its work, its tip naming the action's keys (<see cref="ActionTips"/>).</summary>
+    /// run) and show its work, its tip naming the action's keys (<see cref="ActionTips"/>) after the words it was given,
+    /// else the action's title.</summary>
     public static void Bind(Button button, string id, ActionRegistry actions, Func<string, bool> request)
     {
         button.Click += (_, _) => request(id);
-        ActionTips.Set(button, id, ToolTip.GetTip(button) as string ?? actions[id]?.Title ?? id);
+        Words? own = ShownWords.Of(button, ToolTip.TipProperty);
+        Words? given = own ?? (Words?)(ToolTip.GetTip(button) as string);
+        if (own is not null)
+        {
+            // ActionTips says them from here, with the action's keys, again as the language changes.
+            ShownWords.Set(button, ToolTip.TipProperty, null);
+        }
+        ActionTips.Set(button, id, given ?? actions[id]?.Title ?? id);
         Show(button, id, actions);
     }
 

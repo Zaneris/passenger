@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="StructuredLogs" xml:space="preserve">
+    <value>Structured logs</value>
+    <comment>The Telemetry tab's page and list of a run's structured logs.</comment>
+  </data>
+  <data name="Traces" xml:space="preserve">
+    <value>Traces</value>
+    <comment>The Telemetry tab's page and list of a run's traces.</comment>
+  </data>
+  <data name="SpanHierarchy" xml:space="preserve">
+    <value>Trace span hierarchy</value>
+    <comment>The accessible name of the list of a trace's spans.</comment>
+  </data>
+  <data name="ShowLogTrace" xml:space="preserve">
+    <value>Show the structured log's trace and span</value>
+    <comment>The logs page's button going to the chosen log's trace.</comment>
+  </data>
+  <data name="ShowSpanLogs" xml:space="preserve">
+    <value>Show a retained log of this trace and span</value>
+    <comment>The traces page's button going to the chosen span's logs.</comment>
+  </data>
+  <data name="LogsStreamHere" xml:space="preserve">
+    <value>Structured logs stream here while this page is shown.</value>
+    <comment>The logs page's words before anything is read.</comment>
+  </data>
+  <data name="TracesStreamHere" xml:space="preserve">
+    <value>Traces stream here while this page is shown.</value>
+    <comment>The traces page's words before anything is read.</comment>
+  </data>
+  <data name="Connecting" xml:space="preserve">
+    <value>Connecting to dashboard telemetry…</value>
+    <comment>A page's words while it connects to the dashboard.</comment>
+  </data>
+  <data name="LiveTraces" xml:space="preserve">
+    <value>Live · {count, number} retained traces</value>
+    <comment>The traces page's words as they stream: how many the dashboard keeps.</comment>
+  </data>
+  <data name="LiveLogs" xml:space="preserve">
+    <value>Live · {count, number} retained structured logs</value>
+    <comment>The logs page's words as they stream: how many the dashboard keeps.</comment>
+  </data>
+  <data name="Ended" xml:space="preserve">
+    <value>Telemetry ended. Refresh to reconnect.</value>
+    <comment>A page's words once the dashboard's stream ended.</comment>
+  </data>
+  <data name="FailedReconnect" xml:space="preserve">
+    <value>{reason}. Refresh to reconnect.</value>
+    <comment>A page's words once its read failed; {reason} says what failed.</comment>
+  </data>
+  <data name="NoDashboard" xml:space="preserve">
+    <value>{run}'s dashboard is not up: it has no logs or traces to read</value>
+    <comment>Why a run's logs and traces cannot be read.</comment>
+  </data>
+  <data name="Unread" xml:space="preserve">
+    <value>The dashboard's logs and traces could not be read: {reason}</value>
+    <comment>A failed read of a dashboard; {reason} is its own words, secrets masked.</comment>
+  </data>
+  <data name="NoProgram" xml:space="preserve">
+    <value>{name} runs no .NET program on this machine to read metrics from</value>
+    <comment>The Stats page's words for a run with no .NET program here.</comment>
+  </data>
+  <data name="WaitingForMetrics" xml:space="preserve">
+    <value>Waiting for {name}'s first metrics…</value>
+    <comment>The Stats page's words until the program's first readings come.</comment>
+  </data>
+  <data name="Failed" xml:space="preserve">
+    <value>{name}: {why}</value>
+    <comment>The Stats page's words where reading the program's metrics failed.</comment>
+  </data>
+  <data name="WaitingForPort" xml:space="preserve">
+    <value>Waiting for {name}'s runtime to open its diagnostic port…</value>
+    <comment>The Stats page's words while the program's runtime starts.</comment>
+  </data>
+  <data name="AskingAgain" xml:space="preserve">
+    <value>{name}: {why}; asking again…</value>
+    <comment>The Stats page's words where a read failed and is asked again.</comment>
+  </data>
+  <data name="EndedBefore" xml:space="preserve">
+    <value>{name} ended before its first metrics</value>
+    <comment>The Stats page's words where the program ended before any reading.</comment>
+  </data>
+  <data name="EndedAfter" xml:space="preserve">
+    <value>{name} ended: its metrics stop at its end</value>
+    <comment>The Stats page's words once the program ended.</comment>
+  </data>
+  <data name="NoneThisSecond" xml:space="preserve">
+    <value>none this second</value>
+    <comment>A histogram's line for a second it measured nothing.</comment>
+  </data>
+  <data name="SentEverySecond" xml:space="preserve">
+    <value>{name}: sent every second</value>
+    <comment>The Stats page's words for metrics a source sends (a Godot game's monitors).</comment>
+  </data>
+  <data name="ReadEverySecond" xml:space="preserve">
+    <value>{name}, process {process}{container, select, true { in its container} other {}}: read every second</value>
+    <comment>The Stats page's words once the program's metrics are read; {process} is its id.</comment>
+  </data>
+</root>

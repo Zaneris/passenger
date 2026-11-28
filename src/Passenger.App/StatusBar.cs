@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Media;
 using Passenger.App.Docking;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -13,14 +14,14 @@ namespace Passenger.App;
 
 /// <summary>Where what the status bar says has more to see, and the way there: a click on the words goes, while they are
 /// said. <see cref="Name"/> is what the click does, as the tooltip words it after "Click to".</summary>
-public sealed record StatusPlace(string Name, Action Go)
+public sealed record StatusPlace(Words Name, Action Go)
 {
     /// <summary>A tool window, shown in its place.</summary>
-    public static StatusPlace Window(DockHost dock, string id) => new($"open the {dock[id].Title} window", () => dock.Show(id));
+    public static StatusPlace Window(DockHost dock, string id) => new(SharedWords.OpenWindow(dock[id].Title), () => dock.Show(id));
 
     /// <summary>Problems on one of its tabs, the first problem <paramref name="which"/> picks chosen.</summary>
     public static StatusPlace Problems(DockHost dock, ProblemsModel problems, ProblemsTab tab, Func<Problem, bool>? which = null) =>
-        new($"see it in Problems, {ProblemsModel.TitleOf(tab)}", () =>
+        new(SharedWords.SeeInProblems(ProblemsModel.TitleOf(tab)), () =>
         {
             dock.Show(ToolWindowIds.Problems);
             problems.Reveal(tab, which);
@@ -29,7 +30,7 @@ public sealed record StatusPlace(string Name, Action Go)
 }
 
 /// <summary>Says something in the window's status bar, with where a click on it shows more (none when null).</summary>
-public delegate void StatusSay(string said, StatusPlace? more = null);
+public delegate void StatusSay(Words said, StatusPlace? more = null);
 
 /// <summary>The window's status bar: what the last action came to (an error's or a warning's marked with its icon until
 /// something else is said, and a link to where it has more to see while it has a place, its whole text on hover), and
@@ -75,6 +76,7 @@ public sealed class StatusBar
         this.icon = icon;
         this.working = working;
         this.vimMode = vimMode;
+        ToolTip.SetTip(vimMode, $"Vim mode's mode, and a command typed so far ({SettingsDialog.PlaceOfRow(SettingsDialog.TypingPage, "Vim mode")})");
         this.caretButton = caretButton;
         this.caret = caret;
         this.indentButton = indentButton;
@@ -190,7 +192,7 @@ public sealed class StatusBar
         StatusPlace? place = Place;
         message.Classes.Set(StyleClasses.Place, place is not null);
         string? said = text.Text;
-        ToolTip.SetTip(message, string.IsNullOrEmpty(said) ? null : place is null ? said : $"{said}\n\nClick to {place.Name}");
+        ToolTip.SetTip(message, string.IsNullOrEmpty(said) ? null : place is null ? said : $"{said}\n\nClick to {place.Name.Shown}");
     }
 
     /// <summary>An action's work begun, at a new stage, or ended: its stage said beside the turning ring while it is under
@@ -200,9 +202,9 @@ public sealed class StatusBar
         working.IsVisible = latest is not null;
         if (!change.Ended)
         {
-            Show(change.Work.Stage, null, null);
+            Show(change.Work.Stage.Shown, null, null);
             Announcer.Live(text, Urgency.Polite);
-            announcer.TellStage(change.Work.Stage);
+            announcer.TellStage(change.Work.Stage.Shown);
         }
     }
 

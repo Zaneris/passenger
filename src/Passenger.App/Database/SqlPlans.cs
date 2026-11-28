@@ -1,0 +1,259 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Xml.Linq;
+
+namespace Passenger.App.Database;
+
+/// <summary>A step of a statement's plan: what the database does (a scan, a join, a sort), what it does it to, what it
+/// expects it to cost (with the steps under it, in the database's own units) and how many rows it expects, and the steps
+/// it takes their rows from.</summary>
+public sealed record PlanStep(string Operation, string Detail, double? Cost, double? Rows, IReadOnlyList<PlanStep> Steps)
+{
+    /// <summary>What the step costs alone: its cost less its steps'.</summary>
+    public double? Own => Cost is { } cost ? Math.Max(0, cost - Steps.Sum(s => s.Cost ?? 0)) : null;
+}
+
+/// <summary>A statement's plan as each database explains it without running it: PostgreSQL's EXPLAIN (FORMAT JSON), MySQL's
+/// and MariaDB's EXPLAIN FORMAT=JSON, SQL Server's SHOWPLAN_XML, SQLite's EXPLAIN QUERY PLAN (which says no cost or rows),
+/// DuckDB's EXPLAIN (FORMAT json), ClickHouse's EXPLAIN json = 1 (PostgreSQL's shape), Snowflake's EXPLAIN USING JSON and
+/// Redshift's EXPLAIN, whose plan is text alone, read into one tree of steps.</summary>
+public static class SqlPlans
+{
+    /// <summary>What a database is asked to explain a statement: the statement read and planned, never run.</summary>
+    public static string Asked(string statement, DatabaseKind kind) => kind switch
+    {
+        DatabaseKind.Postgres => $"EXPLAIN (FORMAT JSON) {statement}",
+        DatabaseKind.MySql => $"EXPLAIN FORMAT=JSON {statement}",
+        DatabaseKind.Sqlite => $"EXPLAIN QUERY PLAN {statement}",
+        DatabaseKind.DuckDb => $"EXPLAIN (FORMAT json) {statement}",
+        DatabaseKind.ClickHouse => $"EXPLAIN json = 1, description = 1 {statement}",
+        DatabaseKind.Snowflake => $"EXPLAIN USING JSON {statement}",
+        DatabaseKind.Redshift => $"EXPLAIN {statement}",
+        _ => statement,
+    };
+
+    /// <summary>Whether a statement has a plan to ask for: a query or a change of rows, never an EXPLAIN already.</summary>
+    public static bool Explains(string statement, DatabaseKind kind)
+    {
+        List<SqlText.Token> tokens = SqlText.Tokens(statement, kind);
+        string first = tokens.Count == 0 || tokens[0].Quoted ? string.Empty : tokens[0].Word;
+        return first is "SELECT" or "WITH" or "INSERT" or "UPDATE" or "DELETE" or "MERGE" or "VALUES" or "TABLE" or "REPLACE" or "(";
+    }
+
+    /// <summary>PostgreSQL's plan: its JSON's Plan, each step's Plans under it.</summary>
+    public static PlanStep FromPostgres(string json)
+    {
+        using JsonDocument read = JsonDocument.Parse(json);
+        JsonElement plan = read.RootElement.ValueKind == JsonValueKind.Array && read.RootElement.GetArrayLength() > 0 ? read.RootElement[0] : read.RootElement;
+        return Postgres(Passenger.Core.JsonMembers.Value(plan, "Plan") ?? plan);
+
+        static PlanStep Postgres(JsonElement step)
+        {
+            string operation = Text(step, "Node Type");
+            string join = Text(step, "Join Type");
+            string strategy = Text(step, "Strategy");
+            string detail = string.Join(" ", new[]
+            {
+                Text(step, "Relation Name") is { Length: > 0 } relation ? "on " + relation + (Text(step, "Alias") is { Length: > 0 } alias && alias != relation ? " " + alias : string.Empty) : string.Empty,
+                Text(step, "Index Name") is { Length: > 0 } index ? "using " + index : string.Empty,
+                Text(step, "Hash Cond") is { Length: > 0 } hash ? hash : Text(step, "Index Cond") is { Length: > 0 } cond ? cond : string.Empty,
+                Text(step, "Filter") is { Length: > 0 } filter ? "filter " + filter : string.Empty,
+            }.Where(w => w.Length > 0));
+            List<PlanStep> steps = Passenger.Core.JsonMembers.Value(step, "Plans") is { ValueKind: JsonValueKind.Array } plans ? [.. plans.EnumerateArray().Select(Postgres)] : [];
+            return new PlanStep(string.Join(" ", new[] { strategy is "Sorted" or "Hashed" or "Plain" && operation == "Aggregate" ? strategy : string.Empty, join is { Length: > 0 } && operation.Contains("Join", StringComparison.Ordinal) || operation is "Nested Loop" ? join : string.Empty, operation }.Where(w => w.Length > 0)),
+                detail, Number(step, "Total Cost"), Number(step, "Plan Rows"), steps);
+        }
+    }
+
+    /// <summary>MySQL's and MariaDB's plan: each query block, the tables it reads (their access, rows and cost) and the
+    /// operations over them (a nested loop, an ordering, a grouping, a subquery).</summary>
+    public static PlanStep FromMySql(string json)
+    {
+        using JsonDocument read = JsonDocument.Parse(json);
+        return MySql("query_block", Passenger.Core.JsonMembers.Value(read.RootElement, "query_block") ?? read.RootElement);
+
+        static PlanStep MySql(string name, JsonElement step)
+        {
+            List<PlanStep> steps = [];
+            foreach (JsonProperty part in step.EnumerateObject())
+            {
+                if (part.Value.ValueKind == JsonValueKind.Object && part.Name is not ("cost_info" or "used_columns" or "possible_keys" or "attached_condition"))
+                {
+                    steps.Add(MySql(part.Name, part.Value));
+                }
+                else if (part.Value.ValueKind == JsonValueKind.Array && part.Value.EnumerateArray().All(e => e.ValueKind == JsonValueKind.Object))
+                {
+                    steps.AddRange(part.Value.EnumerateArray().Select(e => e.EnumerateObject().ToList() is [var only] && only.Value.ValueKind == JsonValueKind.Object
+                        ? MySql(only.Name, only.Value) : MySql(part.Name, e)));
+                }
+            }
+            // A table's step stands for the table itself, as its access and keys say.
+            string table = Text(step, "table_name");
+            string detail = string.Join(" ", new[]
+            {
+                table.Length > 0 ? "on " + table : string.Empty,
+                Text(step, "key") is { Length: > 0 } key ? "using " + key : string.Empty,
+                Text(step, "attached_condition") is { Length: > 0 } condition ? "filter " + condition : string.Empty,
+            }.Where(w => w.Length > 0));
+            double? cost = Number(step, "cost") ?? (Passenger.Core.JsonMembers.Value(step, "cost_info") is { ValueKind: JsonValueKind.Object } info
+                ? Number(info, "query_cost") ?? Number(info, "prefix_cost") ?? Number(info, "read_cost") : null);
+            double? rows = Number(step, "rows") ?? Number(step, "rows_produced_per_join") ?? Number(step, "rows_examined_per_scan");
+            string operation = table.Length > 0 ? $"{Text(step, "access_type") switch { "ALL" => "full scan", "index" => "index scan", "range" => "range scan", "ref" or "eq_ref" => "key lookup", "const" or "system" => "one row", var other => other }}"
+                : name.Replace('_', ' ');
+            return new PlanStep(operation, detail, cost, rows, steps);
+        }
+    }
+
+    /// <summary>SQL Server's plan: each RelOp of its showplan, its physical and logical operation, estimated subtree cost
+    /// and rows, the RelOps nearest under it its steps.</summary>
+    public static PlanStep FromSqlServer(string xml)
+    {
+        XDocument plan = XDocument.Parse(xml);
+        XElement? top = plan.Descendants().FirstOrDefault(e => e.Name.LocalName == "RelOp");
+        if (top is null)
+        {
+            XElement? statement = plan.Descendants().FirstOrDefault(e => e.Name.LocalName == "StmtSimple");
+            return new PlanStep(statement?.Attribute("StatementType")?.Value ?? "statement", string.Empty, Number(statement?.Attribute("StatementSubTreeCost")?.Value), null, []);
+        }
+        return SqlServer(top);
+
+        static PlanStep SqlServer(XElement step)
+        {
+            string physical = step.Attribute("PhysicalOp")?.Value ?? string.Empty;
+            string logical = step.Attribute("LogicalOp")?.Value ?? string.Empty;
+            XElement? obj = step.Elements().SelectMany(e => e.Elements()).FirstOrDefault(e => e.Name.LocalName == "Object");
+            string detail = string.Join(" ", new[]
+            {
+                logical.Length > 0 && logical != physical ? logical.ToLowerInvariant() : string.Empty,
+                obj?.Attribute("Table")?.Value is { } table ? "on " + table.Trim('[', ']') : string.Empty,
+                obj?.Attribute("Index")?.Value is { } index ? "using " + index.Trim('[', ']') : string.Empty,
+            }.Where(w => w.Length > 0));
+            return new PlanStep(physical, detail, Number(step.Attribute("EstimatedTotalSubtreeCost")?.Value), Number(step.Attribute("EstimateRows")?.Value),
+                [.. Nearest(step).Select(SqlServer)]);
+        }
+
+        static IEnumerable<XElement> Nearest(XElement step)
+        {
+            foreach (XElement child in step.Elements())
+            {
+                if (child.Name.LocalName == "RelOp")
+                {
+                    yield return child;
+                }
+                else
+                {
+                    foreach (XElement under in Nearest(child))
+                    {
+                        yield return under;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>A plan as PostgreSQL's text says it, as Redshift gives its own: a step a line ("XN Seq Scan on orders
+    /// (cost=0.00..0.03 rows=3 width=36)"), each after the first written "->" under the step it is indented below, its
+    /// cost the total after "..", the lines between steps ("Sort Key: id") its detail.</summary>
+    public static PlanStep FromText(IReadOnlyList<string> lines)
+    {
+        List<(int Indent, string Operation, List<string> Detail, double? Cost, double? Rows, List<int> Steps)> made = [];
+        List<int> open = [];
+        foreach (string line in lines.SelectMany(l => l.Split('\n')).Where(l => l.Trim().Length > 0))
+        {
+            string trimmed = line.TrimStart();
+            int indent = line.Length - trimmed.Length;
+            if (made.Count > 0 && !trimmed.StartsWith("->", StringComparison.Ordinal))
+            {
+                made[open[^1]].Detail.Add(trimmed);
+                continue;
+            }
+            string step = trimmed.TrimStart('-', '>', ' ');
+            int costs = step.IndexOf("  (cost=", StringComparison.Ordinal);
+            string said = costs >= 0 ? step[(costs + 8)..].TrimEnd(')') : string.Empty;
+            double? Of(string name) => said.Split(' ').FirstOrDefault(w => w.StartsWith(name, StringComparison.Ordinal)) is { } word
+                && double.TryParse(word[name.Length..].Split("..")[^1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double value) ? value : null;
+            while (open.Count > 0 && made[open[^1]].Indent >= indent)
+            {
+                open.RemoveAt(open.Count - 1);
+            }
+            made.Add((indent, costs >= 0 ? step[..costs] : step, [], costs >= 0 ? Of(string.Empty) : null, Of("rows="), []));
+            if (open.Count > 0)
+            {
+                made[open[^1]].Steps.Add(made.Count - 1);
+            }
+            open.Add(made.Count - 1);
+        }
+        return made.Count == 0 ? new PlanStep("query plan", string.Empty, null, null, []) : Step(0);
+
+        PlanStep Step(int at) => new(made[at].Operation, string.Join("; ", made[at].Detail), made[at].Cost, made[at].Rows, [.. made[at].Steps.Select(Step)]);
+    }
+
+    /// <summary>SQLite's plan: its rows' details, each under the row its parent names.</summary>
+    public static PlanStep FromSqlite(IReadOnlyList<(long Id, long Parent, string Detail)> rows)
+    {
+        return new PlanStep("query plan", string.Empty, null, null, Under(0));
+
+        List<PlanStep> Under(long parent) => [.. rows.Where(r => r.Parent == parent && r.Id != parent).Select(r => new PlanStep(r.Detail, string.Empty, null, null, Under(r.Id)))];
+    }
+
+    /// <summary>DuckDB's plan: its JSON's operators, each with its children, its extra information said in its detail and
+    /// its estimated cardinality as its rows.</summary>
+    public static PlanStep FromDuckDb(string json)
+    {
+        using JsonDocument read = JsonDocument.Parse(json);
+        JsonElement[] roots = read.RootElement.ValueKind == JsonValueKind.Array ? [.. read.RootElement.EnumerateArray()] : [read.RootElement];
+        return roots.Length == 1 ? DuckDb(roots[0]) : new PlanStep("query plan", string.Empty, null, null, [.. roots.Select(DuckDb)]);
+
+        static PlanStep DuckDb(JsonElement step)
+        {
+            JsonElement? extra = Passenger.Core.JsonMembers.Value(step, "extra_info");
+            List<(string Name, string Value)> said = extra is { ValueKind: JsonValueKind.Object } info
+                ? [.. info.EnumerateObject().Select(p => (p.Name, p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() ?? string.Empty : p.Value.ToString()))] : [];
+            double? rows = said.Where(p => p.Name == "Estimated Cardinality").Select(p => Number(p.Value.TrimStart('~'))).FirstOrDefault();
+            string detail = string.Join(" · ", said.Where(p => p.Name != "Estimated Cardinality").Select(p => $"{p.Name}: {p.Value.ReplaceLineEndings(" ").Trim()}"));
+            List<PlanStep> steps = Passenger.Core.JsonMembers.Value(step, "children") is { ValueKind: JsonValueKind.Array } children ? [.. children.EnumerateArray().Select(DuckDb)] : [];
+            return new PlanStep(Text(step, "name").Trim(), detail, null, rows, steps);
+        }
+    }
+
+    /// <summary>Snowflake's plan: its JSON's operations, each under the one its parent operators name, its objects and
+    /// expressions said in its detail.</summary>
+    public static PlanStep FromSnowflake(string json)
+    {
+        using JsonDocument read = JsonDocument.Parse(json);
+        List<(long Id, string Operation, string Detail, double? Rows, long[] Parents)> operations = [];
+        if (Passenger.Core.JsonMembers.Value(read.RootElement, "Operations") is { ValueKind: JsonValueKind.Array } plans)
+        {
+            foreach (JsonElement operation in plans.EnumerateArray().SelectMany(p => p.ValueKind == JsonValueKind.Array ? p.EnumerateArray() : Enumerable.Repeat(p, 1)))
+            {
+                string detail = string.Join(" · ", new[] { "objects", "expressions" }.Select(n => Passenger.Core.JsonMembers.Value(operation, n))
+                    .Where(v => v is { ValueKind: JsonValueKind.Array }).SelectMany(v => v!.Value.EnumerateArray().Select(e => e.ToString())));
+                long[] parents = Passenger.Core.JsonMembers.Value(operation, "parentOperators") is { ValueKind: JsonValueKind.Array } up
+                    ? [.. up.EnumerateArray().Where(p => p.ValueKind == JsonValueKind.Number).Select(p => p.GetInt64())] : [];
+                operations.Add((Passenger.Core.JsonMembers.Value(operation, "id") is { ValueKind: JsonValueKind.Number } id ? id.GetInt64() : operations.Count,
+                    Text(operation, "operation"), detail, Number(operation, "rows"), parents));
+            }
+        }
+        return new PlanStep("query plan", string.Empty, null, null, Under(null));
+
+        List<PlanStep> Under(long? parent) => [.. operations.Where(o => parent is { } p ? o.Parents.Contains(p) : o.Parents.Length == 0)
+            .Select(o => new PlanStep(o.Operation, o.Detail, null, o.Rows, Under(o.Id)))];
+    }
+
+    /// <summary>The step that costs the most alone, where the plan says costs; null where it says none.</summary>
+    public static PlanStep? Costliest(PlanStep plan) => Each(plan).Where(s => s.Own is not null).MaxBy(s => s.Own);
+
+    /// <summary>Every step of a plan, each before those under it.</summary>
+    public static IEnumerable<PlanStep> Each(PlanStep plan) => [plan, .. plan.Steps.SelectMany(Each)];
+
+    private static string Text(JsonElement step, string name) => Passenger.Core.JsonMembers.Value(step, name) is { ValueKind: JsonValueKind.String } text ? text.GetString() ?? string.Empty : string.Empty;
+
+    private static double? Number(JsonElement step, string name) => Passenger.Core.JsonMembers.Value(step, name) switch
+    {
+        { ValueKind: JsonValueKind.Number } number => number.GetDouble(),
+        { ValueKind: JsonValueKind.String } text => Number(text.GetString()),
+        _ => null,
+    };
+
+    private static double? Number(string? text) => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ? value : null;
+}

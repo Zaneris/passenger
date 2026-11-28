@@ -55,7 +55,7 @@ public sealed partial class BuildRunController
         {
             return await PublishAppHostAsync(request, cancel);
         }
-        if (parts.Work.Begin(AppActions.Publish, $"Reading how {request.Shown} publishes…") is not { } work)
+        if (parts.Work.Begin(AppActions.Publish, BuildWords.ReadingPublish(request.Shown)) is not { } work)
         {
             return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!));
         }
@@ -74,16 +74,16 @@ public sealed partial class BuildRunController
         if (session.IsEnded || work.IsStopped || resolved is null)
         {
             work.Dispose();
-            return Said(session.IsEnded ? new BuildOutcome(BuildStatus.Refused, Refusals.SolutionClosed) : work.IsStopped ? new BuildOutcome(BuildStatus.Stopped, "Publish stopped")
+            return Said(session.IsEnded ? new BuildOutcome(BuildStatus.Refused, Refusals.SolutionClosed) : work.IsStopped ? new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("publish"))
                 : new BuildOutcome(BuildStatus.NotStarted, unread!));
         }
         if (resolved.Kind == PublishKind.Container)
         {
-            (PublishRequest? ready, string? refused) = await ImageReadyAsync(resolved, work);
+            (PublishRequest? ready, Words? refused) = await ImageReadyAsync(resolved, work);
             resolved = ready;
             if (resolved is null || session.IsEnded || IsBuilding)
             {
-                string said = refused ?? (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? "Publish stopped" : Refusals.Building);
+                Words said = refused ?? (session.IsEnded ? Refusals.SolutionClosed : work.IsStopped ? BuildWords.Stopped("publish") : Refusals.Building);
                 work.Tell(false, said);
                 work.Dispose();
                 return Said(new BuildOutcome(work.IsStopped ? BuildStatus.Stopped : BuildStatus.Refused, said));
@@ -91,43 +91,43 @@ public sealed partial class BuildRunController
         }
         return await StartPublishAsync(resolved, work, cancel);
 
-        BuildOutcome Refused(string why) => Said(new BuildOutcome(BuildStatus.Refused, why));
+        BuildOutcome Refused(Words why) => Said(new BuildOutcome(BuildStatus.Refused, why));
     }
 
     /// <summary>What a container publish needs before it starts: for a registry that asks for a login, one the SDK would find
     /// for it (never asked for here, nor given on a command line); for the engine on this machine, an engine that answers. The
     /// engine's CLI is first on the publish's PATH, so the SDK loads the image through it. The request, or why not.</summary>
-    private async Task<(PublishRequest? Ready, string? Refused)> ImageReadyAsync(PublishRequest request, Working work)
+    private async Task<(PublishRequest? Ready, Words? Refused)> ImageReadyAsync(PublishRequest request, Working work)
     {
         ContainerEngine engine = session.Containers.Engine;
         try
         {
             if (request.Registry is { } registry)
             {
-                work.Say($"Looking for a login for {registry}…");
+                work.Say(BuildWords.LookingForLogin(registry));
                 if (await RegistryLogins.WhyNotAsync(registry, work.Stopping) is { } none)
                 {
-                    work.Say($"Asking {registry} whether it wants a login…");
+                    work.Say(BuildWords.AskingForLogin(registry));
                     if (await RegistryLogins.AsksForLoginAsync(registry, work.Stopping))
                     {
-                        return (null, $"{request.Shown} was not pushed: {none}");
+                        return (null, BuildWords.NotPushed(request.Shown, none));
                     }
                 }
             }
             else
             {
-                work.Say("Asking the container engine…");
+                work.Say(LaunchWords.AskingEngine);
                 EngineState state = await engine.StateAsync(cancel: work.Stopping);
-                if (!state.IsReady)
+                if (state.IsWslc || !state.IsReady)
                 {
-                    return (null, $"{request.Shown} cannot be published into the engine: {state.Problem}");
+                    return (null, BuildWords.NotIntoEngine(request.Shown, state.IsWslc ? Refusals.WslcNoImageLoad : state.Problem ?? string.Empty));
                 }
                 request = request with { LocalRegistry = state.LocalRegistry };
             }
         }
         catch (OperationCanceledException) when (work.IsStopped)
         {
-            return (null, "Publish stopped");
+            return (null, BuildWords.Stopped("publish"));
         }
         return engine.Cli is { } cli && Path.GetDirectoryName(cli) is { } bin
             ? (request with { Environment = new Dictionary<string, string> { ["PATH"] = $"{bin}{Path.PathSeparator}{Environment.GetEnvironmentVariable("PATH")}" } }, null)
@@ -141,14 +141,14 @@ public sealed partial class BuildRunController
     private async Task<BuildOutcome> PublishAppHostAsync(PublishRequest request, CancellationToken cancel)
     {
         string output = request.Folder ?? session.Publishing.OutputOf(request.Project) ?? Path.Combine(Path.GetDirectoryName(request.Project)!, "aspire-output");
-        string begun = request.Deploys ? $"Running {request.Step} of {request.Name}…" : $"Publishing {request.Name} through its publishers…";
+        Words begun = request.Deploys ? BuildWords.RunningStep(request.Step, request.Name) : BuildWords.PublishingThrough(request.Name);
         if (parts.Work.Begin(AppActions.Publish, begun) is not { } work)
         {
             return Said(new BuildOutcome(BuildStatus.Refused, ActionWork.Busy(parts.Work.Of(AppActions.Publish)!)));
         }
         if (request.Needs != Aspire.DeployNeeds.None)
         {
-            work.Say($"Looking for what {request.Step} needs…");
+            work.Say(BuildWords.LookingForNeeds(request.Step));
             string? engineProblem;
             try
             {
@@ -159,18 +159,18 @@ public sealed partial class BuildRunController
             catch (OperationCanceledException) when (work.IsStopped)
             {
                 work.Dispose();
-                return Said(new BuildOutcome(BuildStatus.Stopped, "Publish stopped"));
+                return Said(new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("publish")));
             }
             if (Aspire.DeployLogins.Missing(request.Needs, engineProblem) is { } missing)
             {
-                string why = $"{request.Shown} was not run: {request.Step} {missing}";
+                Words why = BuildWords.StepNotRun(request.Shown, request.Step, missing);
                 work.Tell(false, why);
                 work.Dispose();
                 return Said(new BuildOutcome(BuildStatus.Refused, why));
             }
             if (session.IsEnded || IsBuilding)
             {
-                string said = session.IsEnded ? Refusals.SolutionClosed : Refusals.Building;
+                Words said = session.IsEnded ? Refusals.SolutionClosed : Refusals.Building;
                 work.Tell(false, said);
                 work.Dispose();
                 return Said(new BuildOutcome(BuildStatus.Refused, said));
@@ -187,9 +187,9 @@ public sealed partial class BuildRunController
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            work.Tell(false, error.Message);
+            work.Tell(false, RefusedException.Of(error));
             work.Dispose();
-            return Said(new BuildOutcome(BuildStatus.NotStarted, $"{request.Name} cannot be published: {error.Message}"));
+            return Said(new BuildOutcome(BuildStatus.NotStarted, BuildWords.CannotPublish(request.Name, RefusedException.Of(error))));
         }
         return await StartPublishAsync(request with
         {
@@ -225,26 +225,26 @@ public sealed partial class BuildRunController
 
     /// <summary>A publish that succeeded: the folder it landed in said in the Build window and the status bar (a way to open
     /// it), and its profile what Publish Again publishes the project with.</summary>
-    private BuildOutcome Published(PublishRequest publish, string warned)
+    private BuildOutcome Published(PublishRequest publish, int warnings)
     {
         if (publish.Kind == PublishKind.Container && !pushedImage)
         {
-            string why = session.Problems.LastOrDefault(p => p.Severity == ProblemSeverity.Warning)?.Message.Split('\n')[0] ?? "the Build window says why";
-            return new BuildOutcome(BuildStatus.Failed, $"{publish.Shown} made no image: {why}");
+            return new BuildOutcome(BuildStatus.Failed, session.Problems.LastOrDefault(p => p.Severity == ProblemSeverity.Warning)?.Message.Split('\n')[0] is { } why
+                ? BuildWords.NoImage(publish.Shown, why) : BuildWords.NoImageSaid(publish.Shown));
         }
         if (publish.Kind == PublishKind.Container)
         {
             string image = publish.Registry is { } registry
                 ? string.Join(", ", (publish.Image ?? publish.Name).Split(", ").Select(each => $"{RegistryLogins.HostOf(registry)}/{each}"))
                 : publish.Image ?? publish.Name;
-            string noun = image.Contains(", ", StringComparison.Ordinal) ? "images" : "image";
-            string said = publish.Registry is null ? $"Published {publish.Shown} as the {noun} {image}, into the engine" : $"Published {publish.Shown}: pushed the {noun} {image}";
-            parts.Views.Build.Append($"{said}\n");
+            int images = image.Split(", ").Length;
+            Words said = publish.Registry is null ? BuildWords.PublishedIntoEngine(publish.Shown, images, image) : BuildWords.PublishedPushed(publish.Shown, images, image);
+            parts.Views.Build.Append($"{said.English}\n");
             if (publish.Profile is { } kept)
             {
                 session.Publishing.Published(publish.Project, kept);
             }
-            return new BuildOutcome(BuildStatus.Succeeded, $"{said}{warned}") { Image = image };
+            return new BuildOutcome(BuildStatus.Succeeded, Warned(said, warnings)) { Image = image };
         }
         string? folder = publish.Folder is { } named && Directory.Exists(named) ? PathNames.Canonical(named) : null;
         if (folder is not null)
@@ -258,33 +258,36 @@ public sealed partial class BuildRunController
         {
             session.Publishing.Published(publish.Project, profile);
         }
-        string where = folder is null ? string.Empty : $" to {PathNames.Shown(folder, session.Folder)}";
-        return new BuildOutcome(BuildStatus.Succeeded, $"Published {publish.Shown}{where}{warned}") { Published = folder };
+        Words published = folder is null ? BuildWords.Published(publish.Shown) : BuildWords.PublishedTo(publish.Shown, PathNames.Shown(folder, session.Folder));
+        return new BuildOutcome(BuildStatus.Succeeded, Warned(published, warnings)) { Published = folder };
     }
+
+    /// <summary>What a build that succeeded came to, with how many warnings it gave where it gave any.</summary>
+    private static Words Warned(Words said, int warnings) => warnings > 0 ? BuildWords.WithWarnings(said, warnings) : said;
 
     /// <summary>An AppHost's publish that ran: the files its publishers wrote landed in its folder through the window's writes,
     /// each said in the Build window as a link to it; then the publish ends, saying so.</summary>
-    private async Task LandAsync(PublishRequest publish, string warned)
+    private async Task LandAsync(PublishRequest publish, int warnings)
     {
         string folder = publish.Folder!;
         string shown = PathNames.Shown(folder, session.Folder);
-        buildWork?.Say($"Publishing {publish.Name}: writing its files to {shown}…");
+        buildWork?.Say(BuildWords.WritingFiles(publish.Name, shown));
         (IReadOnlyList<string> Written, string? Problem) landed = parts.LandFiles is { } land
             ? await land(publish.Staging!, folder, $"Publish {publish.Name}")
             : ([], "this window writes no files");
         BuildOutcome ended;
         if (landed.Problem is { } problem)
         {
-            ended = new BuildOutcome(BuildStatus.Failed, $"{publish.Name} published, but its files were not written to {shown}: {problem}");
+            ended = new BuildOutcome(BuildStatus.Failed, BuildWords.FilesUnwritten(publish.Name, shown, problem));
         }
         else if (landed.Written.Count == 0 && publish.Deploys)
         {
             session.Publishing.PublishedTo(publish.Project, folder);
-            ended = new BuildOutcome(BuildStatus.Succeeded, $"Ran {publish.Step} of {publish.Name}{warned}") { Published = folder };
+            ended = new BuildOutcome(BuildStatus.Succeeded, Warned(BuildWords.RanStep(publish.Step, publish.Name), warnings)) { Published = folder };
         }
         else if (landed.Written.Count == 0)
         {
-            ended = new BuildOutcome(BuildStatus.Failed, $"{publish.Name}'s publishers wrote nothing: its code adds none (AddDockerComposeEnvironment adds Docker Compose's)");
+            ended = new BuildOutcome(BuildStatus.Failed, BuildWords.NothingWritten(publish.Name));
         }
         else
         {
@@ -295,10 +298,9 @@ public sealed partial class BuildRunController
                 parts.Views.Build.Links.Claim(line, line.Length - path.Length, path.Length, new FileLink(path, new TextPosition(0, 0)));
             }
             session.Publishing.PublishedTo(publish.Project, folder);
-            string files = Plural.Listed([.. landed.Written.Select(path => Path.GetRelativePath(folder, path))]);
-            ended = new BuildOutcome(BuildStatus.Succeeded, publish.Deploys
-                ? $"Ran {publish.Step} of {publish.Name}, its files written to {shown}: {files}{warned}"
-                : $"Published {publish.Name} to {shown}: {files}{warned}") { Published = folder };
+            Words files = Plural.Listed(Words.Names(landed.Written.Select(path => Path.GetRelativePath(folder, path))));
+            ended = new BuildOutcome(BuildStatus.Succeeded, Warned(publish.Deploys ? BuildWords.RanStepWrote(publish.Step, publish.Name, shown, files)
+                : BuildWords.PublishedFiles(publish.Name, shown, files), warnings)) { Published = folder };
         }
         FinishBuild(ended);
     }
@@ -309,15 +311,15 @@ public sealed partial class BuildRunController
     {
         string said = line.Trim();
         pushedImage |= said.StartsWith("Pushed image '", StringComparison.Ordinal);
-        string? stage = said.StartsWith("Determining projects to restore", StringComparison.Ordinal) ? $"Restoring {publish.Shown}…"
-            : said.StartsWith("Restored ", StringComparison.Ordinal) || said.EndsWith("up-to-date for restore.", StringComparison.Ordinal) ? $"Building {publish.Shown}…"
-            : said.StartsWith("Building image '", StringComparison.Ordinal) ? $"Publishing {publish.Shown}: making its image…"
-            : said.StartsWith("Pushed image '", StringComparison.Ordinal) ? $"Publishing {publish.Shown}: its image is {(publish.Registry is null ? "in the engine" : "pushed")}"
+        Words? stage = said.StartsWith("Determining projects to restore", StringComparison.Ordinal) ? BuildWords.Restoring(publish.Shown)
+            : said.StartsWith("Restored ", StringComparison.Ordinal) || said.EndsWith("up-to-date for restore.", StringComparison.Ordinal) ? BuildWords.Doing("build", publish.Shown)
+            : said.StartsWith("Building image '", StringComparison.Ordinal) ? BuildWords.MakingImage(publish.Shown)
+            : said.StartsWith("Pushed image '", StringComparison.Ordinal) ? (publish.Registry is null ? BuildWords.ImageInEngine(publish.Shown) : BuildWords.ImagePushed(publish.Shown))
             : Built().IsMatch(line) ? publish.Kind switch
             {
-                PublishKind.AppHost => publish.Deploys ? $"Running {publish.Step} of {publish.Name}…" : $"Publishing {publish.Name}: its publishers are writing…",
-                PublishKind.Container => $"Publishing {publish.Shown}: copying it to its folder for its image…",
-                _ => $"Publishing {publish.Shown}: copying it to its folder…",
+                PublishKind.AppHost => publish.Deploys ? BuildWords.RunningStep(publish.Step, publish.Name) : BuildWords.PublishersWriting(publish.Name),
+                PublishKind.Container => BuildWords.CopyingForImage(publish.Shown),
+                _ => BuildWords.Copying(publish.Shown),
             }
             : null;
         if (stage is not null && buildWork is { } work && work.Stage != stage)

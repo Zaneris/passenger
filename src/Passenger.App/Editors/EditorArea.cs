@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.Docking;
+using Passenger.App.State;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
@@ -146,19 +147,66 @@ public sealed partial class EditorArea : UserControl
         }
     }
 
-    private bool showsMarkdownPreview = true;
+    private PaneLayout markdownLayout;
 
-    /// <summary>Whether a Markdown file shows its preview beside its editor, in every group showing one.</summary>
+    /// <summary>Whether a Markdown file shows its preview, beside its editor or alone, in every group showing one; turned on,
+    /// the preview stands beside the editor.</summary>
     public bool ShowsMarkdownPreview
     {
-        get => showsMarkdownPreview;
+        get => MarkdownLayout.View != PaneView.Editor;
         set
         {
-            showsMarkdownPreview = value;
+            if (value != ShowsMarkdownPreview)
+            {
+                MarkdownLayout = MarkdownLayout with { View = value ? PaneView.Split : PaneView.Editor };
+            }
+        }
+    }
+
+    /// <summary>Another Markdown layout was chosen (<see cref="MarkdownLayout"/>).</summary>
+    internal event EventHandler? MarkdownLayoutChanged;
+
+    /// <summary>What a Markdown file shows, its editor, its preview or both, and how both stand, in every group showing one.</summary>
+    internal PaneLayout MarkdownLayout
+    {
+        get => markdownLayout;
+        set
+        {
+            if (markdownLayout == value)
+            {
+                return;
+            }
+            markdownLayout = value;
             foreach (EditorGroup group in AllGroups)
             {
                 group.FollowSidePreview();
             }
+            MarkdownLayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private PaneLayout formLayout = new(OperatingSystem.IsWindows() ? PaneView.Preview : PaneView.Editor);
+
+    /// <summary>Another form's layout was chosen (<see cref="FormLayout"/>).</summary>
+    internal event EventHandler? FormLayoutChanged;
+
+    /// <summary>What a Windows Forms form's file shows, its code, its design or both, and how both stand, in every group showing
+    /// one.</summary>
+    public PaneLayout FormLayout
+    {
+        get => formLayout;
+        set
+        {
+            if (formLayout == value)
+            {
+                return;
+            }
+            formLayout = value;
+            foreach (EditorGroup group in AllGroups)
+            {
+                group.FollowSidePreview();
+            }
+            FormLayoutChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -242,11 +290,15 @@ public sealed partial class EditorArea : UserControl
     /// <summary>Whether a file is an SVG, which shows its picture beside its text.</summary>
     public static bool IsSvg(OpenDocument document) => document.Path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A group's preview toggle pressed, for the window to run the preview's action: nothing outside the group
-    /// holds the toggle, so a closed split goes with it.</summary>
-    public event EventHandler<EditorGroup>? PreviewToggleClicked;
+    /// <summary>A button on a group's tab strip pressed (its preview toggle, a Markdown file's layouts), for the window to
+    /// run the button's action in that group: nothing outside the group holds the button, so a closed split goes with it.</summary>
+    public event EventHandler<string>? ActionAsked;
 
-    internal void PreviewToggled(EditorGroup group) => PreviewToggleClicked?.Invoke(this, group);
+    internal void Ask(EditorGroup group, string action)
+    {
+        SetActiveGroup(group);
+        ActionAsked?.Invoke(this, action);
+    }
 
     /// <summary>A group's list of the tabs its strip hides asked for, for the window to show it under the strip's button.</summary>
     public event EventHandler<EditorGroup>? HiddenTabsRequested;
@@ -280,6 +332,35 @@ public sealed partial class EditorArea : UserControl
 
     /// <summary>The file the active group shows.</summary>
     public OpenDocument? Active => activeGroup.Active;
+
+    /// <summary>The console a SQL file is, whose results stand under it, or null for a file run against no connection.</summary>
+    public Func<OpenDocument, Database.SqlConsole?>? ConsoleOf { get; set; }
+
+    /// <summary>Makes a group's view of a console's results.</summary>
+    public Func<Database.SqlConsoleView>? MakeConsoleView { get; set; }
+
+    /// <summary>The design of a file that is a Windows Forms form's (its code or designer file), made as it is first asked for;
+    /// null for any other file.</summary>
+    public Func<OpenDocument, WinForms.FormDesignPane?>? DesignOf { get; set; }
+
+    /// <summary>Whether a file is a Windows Forms form's, whose group shows its design by <see cref="FormLayout"/>.</summary>
+    public Func<OpenDocument, bool> Designs { get; set; } = _ => false;
+
+    /// <summary>The mark of the database connection a tab works on (a table's data, a console), which its tab shows.</summary>
+    public Func<OpenDocument, Database.DatabaseMark>? MarkOf { get; set; }
+
+    /// <summary>Whether a tab's close waits on a question of its own (a table's changes not submitted, a console's open
+    /// transaction), which closes the tab again once answered: true where it does.</summary>
+    public Func<EditorGroup, OpenDocument, bool>? AsksBeforeClosing { get; set; }
+
+    /// <summary>Each group shows its file's own pane again, as a SQL file becomes a console.</summary>
+    public void FollowSidePanes()
+    {
+        foreach (EditorGroup group in AllGroups)
+        {
+            group.FollowSidePreview();
+        }
+    }
 
     /// <summary>The file the main window's editors show (their group last worked in), whichever window is in front.</summary>
     public OpenDocument? ShownInMain => main.Current.Active;
@@ -328,6 +409,9 @@ public sealed partial class EditorArea : UserControl
 
     private IEnumerable<EditorGroup> AllGroups => frames.SelectMany(f => f.Groups);
 
+    /// <summary>What every tab of every editor window shows, each once: files, diffs, tool windows and tables.</summary>
+    public IEnumerable<OpenDocument> TabDocuments => AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Distinct();
+
     private EditorFrame ActiveFrame => FrameOf(activeGroup) ?? main;
 
     private EditorFrame? FrameOf(EditorGroup group) => frames.FirstOrDefault(f => f.Groups.Contains(group));
@@ -335,7 +419,8 @@ public sealed partial class EditorArea : UserControl
     /// <summary>The drag of a group's tabs, which its frame's surface measures.</summary>
     internal DragGesture<(EditorGroup Group, OpenDocument Document)>? TabDragOf(EditorGroup group) => FrameOf(group)?.TabDrag;
 
-    /// <summary>Runs for every editor there is and every one a split makes, as wiring for its events.</summary>
+    /// <summary>Runs for every editor there is and every one a split makes, as wiring for its events: the hook is kept for
+    /// the window's life, with all it holds, so a question of the editors there are now reads <see cref="Groups"/>.</summary>
     public void ForEachEditor(Action<CodeEditor> hook)
     {
         editorHooks.Add(hook);
@@ -630,6 +715,10 @@ public sealed partial class EditorArea : UserControl
         ClosedTab closing = new(document.Path, new WeakReference<EditorGroup>(group), group.Tabs.Select(t => t.Document).ToList().IndexOf(document),
             document.Text.Snapshot.GetPosition(Math.Min(group.SelectionsOf(document).Primary.Caret, document.Text.Snapshot.Length)),
             group.ScrollOf(document), group.IsPinned(document));
+        if (AllGroups.Count(g => g.Has(document)) == 1 && AsksBeforeClosing?.Invoke(group, document) == true)
+        {
+            return false;
+        }
         if (AllGroups.Count(g => g.Has(document)) > 1)
         {
             group.Remove(document);
@@ -641,7 +730,7 @@ public sealed partial class EditorArea : UserControl
             return false;
         }
         // A tool window's tab opens again as the window does, never from a file.
-        if (document.Tool is null)
+        if (document.Tool is null && document.DatabaseTab is null)
         {
             closedTabs.Add(document.Diff is { } diff ? closing with { Diff = diff.Shown.Kept } : closing);
         }
@@ -927,7 +1016,7 @@ public sealed partial class EditorArea : UserControl
             string name = Path.GetFileName(path);
             if (!landing.IsCompleted && work is not null)
             {
-                stage ??= work.Stage;
+                stage ??= work.Stage.Shown;
                 work.Say(Waiting([path]));
             }
             Exception? refused;
@@ -1110,7 +1199,7 @@ public sealed partial class EditorArea : UserControl
         }
         EditorGroup group = ((EditorFrame.Leaf)node).Group;
         // A diff's tab is not kept: what it compared may be gone by the next time, and the folder opens on its files.
-        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null && t.Document.Tool is null)];
+        List<EditorTab> kept = [.. group.Tabs.Where(t => t.Document.Diff is null && t.Document.Tool is null && t.Document.DatabaseTab is null)];
         return new EditorLayout
         {
             Tabs = [.. kept.Select(t =>
@@ -1257,6 +1346,10 @@ public sealed partial class EditorArea : UserControl
     /// the folder's.</summary>
     public bool CloseAll()
     {
+        foreach (OpenDocument table in AllGroups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.DatabaseTab is not null).Distinct().ToList())
+        {
+            Close(table, forGood: true);
+        }
         foreach (OpenDocument diff in Diffs)
         {
             Close(diff, forGood: true);

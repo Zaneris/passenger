@@ -74,22 +74,22 @@ public sealed class DeviceTestHosts(Func<ProjectModel, KeptTarget?> targets, Fun
         {
             if (!OperatingSystem.IsMacOS())
             {
-                return (null, $"{project.Name} cannot run here: {Refusals.MacCatalystOnMacAlone}");
+                return (null, LaunchWords.CannotRunHere(project.Name, Refusals.MacCatalystOnMacAlone).Shown);
             }
             (LaunchPlan? opened, string? unopened) = await MacCatalystApps.ReadyAsync(plan with { MacCatalyst = new MacCatalystLaunch(assembly.Framework) }, properties, cancel);
             return opened?.MacCatalyst?.App is not null ? (new DeviceTestApp(opened, unseen), null) : (null, unopened);
         }
         if (target is not { Kind: not TargetKind.ThisMachine } chosen || chosen.Platform != platform)
         {
-            return (null, Refusals.NoRunTarget(project.Name));
+            return (null, Refusals.NoRunTarget(project.Name).Shown);
         }
         (LaunchPlan? installed, string? uninstalled) = await DeviceLaunches.ReadyAsync(plan with { Device = new DeviceLaunch(chosen, assembly.Framework) }, properties, unseen,
             stage, found => listed(project, platform, found), cancel, booted);
         return installed?.Device?.App switch
         {
             SimulatorApp or AndroidApp { Instrumentation.Length: > 0 } => (new DeviceTestApp(installed, unseen), null),
-            AndroidApp => (null, Refusals.NoInstrumentation(project.Name)),
-            _ => (null, uninstalled ?? Refusals.NotYetOn(chosen.Name)),
+            AndroidApp => (null, Refusals.NoInstrumentation(project.Name).Shown),
+            _ => (null, (uninstalled ?? Refusals.NotYetOn(chosen.Name)).Shown),
         };
     }
 }

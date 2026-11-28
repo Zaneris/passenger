@@ -584,8 +584,8 @@ internal sealed class DockerfileCheck(EngineChecks owner, OpenDocument document,
     private async Task<IReadOnlyList<Finding>> BuildKitAsync(ContainerEngine engine, string path, TextSnapshot snapshot, string text, CancellationToken cancel)
     {
         EngineState state = await engine.StateAsync(cancel: cancel);
-        // Podman has no BuildKit of its own: Docker's buildx on it would start one in a container. Said once by the window.
-        if (state.IsPodman && state.Status is EngineStatus.Ready or EngineStatus.NoCompose)
+        // Podman has no BuildKit (buildx would start one in a container), WSL Containers no Buildx: said once by the window.
+        if ((state.IsPodman || state.IsWslc) && state.Status is EngineStatus.Ready or EngineStatus.NoCompose)
         {
             Owner.Limit(state);
             return [];

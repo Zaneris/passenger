@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -12,6 +13,9 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
 {
     private readonly Dictionary<string, IdeAction> byId = new(StringComparer.Ordinal);
     private IReadOnlyList<IdeAction>? sorted;
+
+    /// <summary>The language <see cref="sorted"/> was put in order in, as its titles say.</summary>
+    private UiLanguage? sortedIn;
 
     /// <summary>Adds an action; an id added twice is a mistake in the code, never a choice between two.</summary>
     public void Add(IdeAction action)
@@ -33,9 +37,20 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     /// refactoring writes by it, and Find Usages' results take the keys only where they still are.</summary>
     public event EventHandler<(IdeAction Action, ActionContext Context)>? Running;
 
-    /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title.</summary>
-    public IReadOnlyList<IdeAction> All => sorted ??=
-        InMenuOrder([.. byId.Values.OrderBy(a => a.Group, StringComparer.Ordinal).ThenBy(a => a.Title, StringComparer.Ordinal)]);
+    /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title, as the
+    /// language in force says them.</summary>
+    public IReadOnlyList<IdeAction> All
+    {
+        get
+        {
+            if (sorted is null || sortedIn != UiLanguage.InForce)
+            {
+                sortedIn = UiLanguage.InForce;
+                sorted = InMenuOrder([.. byId.Values.OrderBy(a => a.Group.Shown, StringComparer.Ordinal).ThenBy(a => a.Title.Shown, StringComparer.Ordinal)]);
+            }
+            return sorted;
+        }
+    }
 
     /// <summary>Actions as listed, but those that keep their menu's order (<see cref="IdeAction.KeepsMenuOrder"/>) put in
     /// it, each run of a menu's in the places its actions took.</summary>
@@ -111,7 +126,7 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     };
 
     /// <summary>The actions whose title, group, id or other names have every word typed, those whose title or other name
-    /// starts with the query first.</summary>
+    /// starts with the query first: the title as the person reads it and in English, so an action is found by either.</summary>
     public IReadOnlyList<IdeAction> Find(string query)
     {
         string[] words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -120,33 +135,33 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
             return All;
         }
         string typed = query.Trim();
-        IEnumerable<string> Names(IdeAction action) => [action.Title, .. action.Words];
+        IEnumerable<string> Names(IdeAction action) => [action.Title.Shown, action.Title.English, .. action.Words];
         return InMenuOrder([.. All
-            .Where(a => words.All(w => Names(a).Any(n => n.Contains(w, StringComparison.OrdinalIgnoreCase)) || a.Group.Contains(w, StringComparison.OrdinalIgnoreCase)
+            .Where(a => words.All(w => Names(a).Any(n => n.Contains(w, StringComparison.OrdinalIgnoreCase)) || a.Group.Shown.Contains(w, StringComparison.OrdinalIgnoreCase) || a.Group.English.Contains(w, StringComparison.OrdinalIgnoreCase)
                 || a.Id.Contains(w, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(a => Names(a).Any(n => n.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) ? 0
                 : Names(a).Any(n => words.All(w => n.Contains(w, StringComparison.OrdinalIgnoreCase))) ? 1 : 2)
-            .ThenBy(a => a.Title.Length)]);
+            .ThenBy(a => a.Title.Shown.Length)]);
     }
 
     /// <summary>Null when the action can run in this context, else why not: no action has the id, its work is under way
     /// already, or what it needs is not there.</summary>
-    public string? WhyNot(string id, ActionContext context) =>
-        !byId.TryGetValue(AppActions.Now(id), out IdeAction? action) ? $"No action is called {id}"
+    public Words? WhyNot(string id, ActionContext context) =>
+        !byId.TryGetValue(AppActions.Now(id), out IdeAction? action) ? Refusals.NoActionCalled(id)
         : work.Of(action.WorkId) is { } under ? ActionWork.Busy(under)
         : action.WhyNot(context);
 
     /// <summary>Runs an action where it is asked for now; null once it has run, else why it could not.</summary>
-    public string? Run(string id) => Run(id, Context());
+    public Words? Run(string id) => Run(id, Context());
 
     /// <summary>Runs an action an agent asks for (ide_action) where it is asked for now, without the person's keys or a
     /// window brought forward (<see cref="ActionContext.ByAgent"/>), and refused where it would open a popup or dialog
     /// (<see cref="AgentAsks.Act"/>); null once it has run, else why it could not.</summary>
-    public string? RunForAgent(string id) => Run(id, Context().ForAgent());
+    public Words? RunForAgent(string id) => Run(id, Context().ForAgent());
 
     /// <summary>Runs an action in a context made before something else took the keys (a menu, a popup); null once it has
     /// run, else why it could not.</summary>
-    public string? Run(string id, ActionContext context)
+    public Words? Run(string id, ActionContext context)
     {
         if (WhyNot(id, context) is { } why)
         {

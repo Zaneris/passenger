@@ -22,7 +22,7 @@ public partial class MainWindow
 
     private void AddRunTargets()
     {
-        actions!.Add(new IdeAction(A.ChooseRunTarget, "Choose Where It Runs…", "Run", _ => IdeErrors.Observe(ChooseRunTargetAsync()))
+        actions!.Add(new IdeAction(A.ChooseRunTarget, ActionTitles.ChooseRunTarget, ActionGroups.Run, _ => IdeErrors.Observe(ChooseRunTargetAsync()))
         {
             // Listing a project's targets runs its workload's targets, which a folder not trusted never runs.
             WhyNot = _ => Untrusted() ?? (TargetProject() is null ? "The run configuration chosen runs no app on a device, an emulator or a simulator" : null),
@@ -129,7 +129,7 @@ public partial class MainWindow
             if ((tools is null ? unlisted : tools.Lacks is { } lacks ? Refusals.NoAndroidPlatform(lacks)
                 : targets.Count == 0 ? Refusals.NoAndroidTarget(tools.AvdManager) : null) is { } problem)
             {
-                problems.Add(problem);
+                problems.Add(problem.Shown);
             }
         }
         // iOS's simulators run only on a Mac: elsewhere an iOS head is passed over unsaid, as its build is.
@@ -207,7 +207,7 @@ public partial class MainWindow
         UiThread.Check();
         if (Untrusted() is { } untrusted)
         {
-            throw new InvalidOperationException(untrusted);
+            throw new InvalidOperationException(untrusted.English);
         }
         RunConfiguration? named = session.Configurations.All.Where(c => input?.StartsWith(c.Name + ":", StringComparison.OrdinalIgnoreCase) == true)
             .MaxBy(c => c.Name.Length);
@@ -223,8 +223,8 @@ public partial class MainWindow
         await ListRunTargetsAsync(project);
         IReadOnlyList<DeviceTarget> listed = session.Targets.Listed(project);
         // What a platform lacks is said after what is listed, as the menu says it with them.
-        string offered = listed.Count == 0 ? targetsUnlisted ?? Refusals.NoTargets
-            : Plural.Listed([.. listed.Select(t => t.Shown)]) + (targetsUnlisted is { } lacking ? $"; {lacking}" : string.Empty);
+        string offered = (listed.Count == 0 ? targetsUnlisted ?? Refusals.NoTargets
+            : Plural.Listed([.. listed.Select(t => t.Shown)]) + (targetsUnlisted is { } lacking ? $"; {lacking}" : string.Empty)).Shown;
         if (input is not { Length: > 0 } wanted)
         {
             return $"{project.Name} runs on {session.Targets.InForce(project)?.Name ?? "nothing chosen yet"}; it can run on {offered}";

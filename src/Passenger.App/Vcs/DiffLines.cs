@@ -12,9 +12,29 @@ namespace Passenger.App.Vcs;
 public readonly record struct LinesAcross(int FromStart, int FromCount, int ToStart, int ToCount);
 
 /// <summary>What a diff and a merge share around their panes: where a line of one pane stands on another, the panes kept
-/// level as one scrolls, the keys that step between differences, and the bar and titles over the panes.</summary>
+/// level as one scrolls, the keys that step between differences, the bar and titles over the panes, and the strips between
+/// them that a drag moves.</summary>
 public static class DiffLines
 {
+    /// <summary>The least width a drag leaves a pane: room for its line numbers and a few words.</summary>
+    public const double LeastPane = 120;
+
+    /// <summary>Puts what stands between two panes (a strip of changes) in its column of <paramref name="panes"/>, under the
+    /// titles' row, over a divider as wide as it: a drag on it anywhere that takes no press of its own moves the panes
+    /// either side, each kept to <see cref="LeastPane"/>, its own width as it was.</summary>
+    public static void Divide(Grid panes, Control between, int column)
+    {
+        HairlineDivider divider = HairlineDivider.Under(GridResizeDirection.Columns);
+        Grid.SetColumn(divider, column);
+        Grid.SetRowSpan(divider, 2);
+        Grid.SetColumn(between, column);
+        Grid.SetRow(between, 1);
+        panes.Children.Add(divider);
+        panes.Children.Add(between);
+        panes.ColumnDefinitions[column - 1].MinWidth = LeastPane;
+        panes.ColumnDefinitions[column + 1].MinWidth = LeastPane;
+    }
+
     /// <summary>Where a line (fractional, from zero) stands on the other side, through the changes above it, given in
     /// order as <paramref name="count"/> spans.</summary>
     public static double Map(double line, int count, Func<int, LinesAcross> span)

@@ -142,7 +142,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
                     $"Evaluating turns, which the pause listed as {counted}, did not read it in the stop's frame: {evaluated}");
                 // Attached to as it ran, it reads its input from what started it, never the debugger: input is refused, saying so.
                 CallToolResult typed = await Result(client, McpTools.DebugInput, new() { ["text"] = "hello" });
-                Assert.True(typed.IsError == true && Text(typed).Contains(Refusals.InputFromStarter("LoopingConsoleApp", "from what started it"), StringComparison.Ordinal),
+                Assert.True(typed.IsError == true && Text(typed).Contains(Refusals.InputFromStarter("LoopingConsoleApp", "from what started it").English, StringComparison.Ordinal),
                     $"debug_input to a program the debugger attached to did not refuse, saying where it reads its input: {Text(typed)}");
                 Assert.Equal("Detached from LoopingConsoleApp, which runs on", (await Call(client, McpTools.Stop, new() { ["detach"] = true })).GetString());
                 Assert.Equal("not debugging", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
@@ -169,8 +169,8 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's stops and breakpoints as one flow, each step one test's check in an instance of its own: a
     /// million-character local answered by its first characters and length, a debugged test run's tally as it ends, an
     /// async program's unhandled exception stopping once at its throw, a Release build's step out and over, a
-    /// breakpoint at a lambda's column or line and one in a lambda written away from its closed file, and one outside a
-    /// file's lines or in no file refused.</summary>
+    /// breakpoint at a lambda's column or line and one in a lambda written away from its closed file, one outside a
+    /// file's lines or in no file refused, a temporary breakpoint and one waiting for another, and a recorded run stepped back.</summary>
     [Fact]
     public async Task An_agents_debugger_stops_steps_and_binds_breakpoints_as_the_code_is_written()
     {
@@ -181,13 +181,101 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agents breakpoint given a lambdas column stops inside it and one on its line at the statement", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_given_a_lambdas_column_stops_inside_it_and_one_on_its_line_at_the_statement());
         await Flow.StepApartAsync("an agents breakpoint in a lambda written away from its closed file stops at the statement listed by its line", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_in_a_lambda_written_away_from_its_closed_file_stops_at_the_statement_listed_by_its_line());
         await Flow.StepApartAsync("an agents breakpoint outside a files lines or in no file is refused and none is kept", () => new McpDebuggingTests(restored), t => t.An_agents_breakpoint_outside_a_files_lines_or_in_no_file_is_refused_and_none_is_kept());
+        await Flow.StepApartAsync("an agents temporary breakpoint and one waiting for a tracepoint stop as they say and are listed so", () => new McpDebuggingTests(restored), t => t.An_agents_temporary_breakpoint_and_one_waiting_for_a_tracepoint_stop_as_they_say_and_are_listed_so());
+        await Flow.StepApartAsync("an agents recorded run steps back into a call it ran past and reads its argument and return", () => new McpDebuggingTests(restored), t => t.An_agents_recorded_run_steps_back_into_a_call_it_ran_past_and_reads_its_argument_and_return());
+    }
+
+    /// <summary>An agent's debug_start with record true runs Twice(1) and stops before Twice(2): debug_step back reads Twice's
+    /// return, 2, beside its argument 1 as it was, Twice on top at its end above the loop's line; back again its call; of
+    /// timeline lists the moments newest first, the breakpoint's first hit going on before them; and debug_step forward twice
+    /// comes back to the live stop.</summary>
+    private async Task An_agents_recorded_run_steps_back_into_a_call_it_ran_past_and_reads_its_argument_and_return()
+    {
+        await TakeFolderAsync();
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4, ["condition"] = "i == 2" });
+        JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["record"] = true });
+        Assert.Equal(("Program.cs:4:5", "2"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+
+        JsonElement back = await Call(client, McpTools.DebugStep, new() { ["kind"] = "back" });
+        Assert.True(back.GetProperty("kind").GetString() == DapMomentKinds.Return && Valued(back, "Twice() returned") == "2" && Valued(back, "value") == "1"
+            && back.GetProperty("frames")[0].GetString()?.EndsWith("Helper.cs:7", StringComparison.Ordinal) == true
+            && back.GetProperty("frames")[1].GetString()?.EndsWith("Program.cs:4", StringComparison.Ordinal) == true,
+            $"debug_step back answered {back}, where Twice returned 2 from 1 at its end, Helper.cs:7, called from Program.cs:4");
+        back = await Call(client, McpTools.DebugStep, new() { ["kind"] = "back" });
+        Assert.True(back.GetProperty("kind").GetString() == DapMomentKinds.Call && back.GetProperty("said").GetString()?.Contains("Twice(1) called", StringComparison.Ordinal) == true
+            && Valued(back, "value") == "1", $"debug_step back again answered {back}, where Twice was called with 1");
+        JsonElement timeline = await Call(client, McpTools.DebugState, new() { ["of"] = "timeline" });
+        // The breakpoint's first hit went on before Twice(1), its condition false.
+        Assert.Equal(["Twice() returned 2", "Twice(1)", "The breakpoint went on: its condition i == 2 was false"],
+            timeline.EnumerateArray().Take(3).Select(m => m.GetProperty("said").GetString()));
+
+        await Call(client, McpTools.DebugStep, new() { ["kind"] = "forward" });
+        stop = await Call(client, McpTools.DebugStep, new() { ["kind"] = "forward" });
+        Assert.True(stop.GetProperty("location").GetString() == "Program.cs:4:5" && Local(stop, "i") == "2", $"debug_step forward past the newest moment answered {stop}, where the live stop is");
+        await Call(client, McpTools.Stop);
+
+        static string? Valued(JsonElement moment, string name) => moment.GetProperty("values").EnumerateArray()
+            .FirstOrDefault(v => v.GetProperty("name").GetString() == name) is { ValueKind: JsonValueKind.Object } found ? found.GetProperty("value").GetString() : null;
+    }
+
+    /// <summary>An agent's temporary breakpoint and one waiting for a tracepoint that holds at the loop's third turn are listed
+    /// so by debug_state; the temporary one stops at the first turn and is listed no more, and the waiting one stops at the
+    /// third turn alone, each stop saying how long the program ran to it (two turns' sleeps to the second); the list marked
+    /// at the first stop is read by its label at the second, as is a list assigned and marked in one call; one waiting for
+    /// no breakpoint is refused and never set.</summary>
+    private async Task An_agents_temporary_breakpoint_and_one_waiting_for_a_tracepoint_stop_as_they_say_and_are_listed_so()
+    {
+        await TakeFolderAsync();
+        Write("Program.cs", "int total = 0; List<int> seen = []; List<int> other = [9]; List<int> picked = [];\nfor (int i = 1; i <= 3; i++)\n{\n    total += i; seen.Add(i);\n    Console.WriteLine($\"at {i}\");\n    Thread.Sleep(150);\n}\n"
+            + "Console.WriteLine($\"total {total}\");\n");
+        await using McpClient client = await Start(["--mcp", Folder], languageServer: false);
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 4, ["temporary"] = true });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 5, ["condition"] = "i == 3", ["suspend"] = false });
+        await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 6, ["waitFor"] = "Program.cs:5" });
+        CallToolResult unwaited = await Result(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 8, ["waitFor"] = "Program.cs:2" });
+        Assert.True(unwaited.IsError == true, $"breakpoint_set waiting for no breakpoint answered {Text(unwaited)}");
+        JsonElement listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
+        Assert.True(Listed(listed, 8) is null, $"breakpoint_set refused for what it waits for left its breakpoint set: {listed}");
+        Assert.True(Listed(listed, 4) is { } once && once.TryGetProperty("temporary", out JsonElement temporary) && temporary.GetBoolean()
+            && Listed(listed, 6) is { } waiting && waiting.TryGetProperty("waitsFor", out JsonElement waits) && waits.GetString() == "Program.cs:5",
+            $"debug_state listed the temporary breakpoint and the one waiting for Program.cs:5 as {listed}");
+
+        JsonElement stop = await Call(client, McpTools.DebugStart);
+        Assert.Equal(("Program.cs:4:5", "1"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+        Assert.EndsWith(" since debugging began", stop.GetProperty("elapsed").GetString(), StringComparison.Ordinal);
+        JsonElement modules = await Call(client, McpTools.DebugState, new() { ["of"] = "modules" });
+        JsonElement first = modules.EnumerateArray().First();
+        Assert.True(first.GetProperty("name").GetString() == "Sum.dll" && first.GetProperty("userCode").GetBoolean() && first.GetProperty("symbols").GetString() == "Loaded"
+            && modules.EnumerateArray().Any(m => m.GetProperty("name").GetString() == "System.Private.CoreLib.dll" && !m.GetProperty("userCode").GetBoolean()),
+            $"debug_state of modules listed {modules}, where Sum.dll, user code with its symbols loaded, comes first and CoreLib is not user code");
+        JsonElement marked = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "seen", ["mark"] = true });
+        Assert.True(marked.TryGetProperty("mark", out JsonElement label) && label.GetString() == "$1", $"debug_evaluate with mark answered {marked}, where it marks seen as $1");
+        JsonElement picked = await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "picked", ["value"] = "other", ["mark"] = true });
+        Assert.True(picked.TryGetProperty("mark", out JsonElement named) && named.GetString() == "$2", $"debug_evaluate with value and mark answered {picked}, where it marks picked, assigned other, as $2");
+        listed = await Call(client, McpTools.DebugState, new() { ["of"] = "breakpoints" });
+        Assert.True(Listed(listed, 4) is null, $"The temporary breakpoint was still listed once it stopped: {listed}");
+        stop = await Call(client, McpTools.DebugContinue);
+        Assert.Equal(("Program.cs:6:5", "3"), (stop.GetProperty("location").GetString(), Local(stop, "i")));
+        Assert.Equal("3", (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "$1.Count" })).GetProperty("value").GetString());
+        Assert.Equal(("1", "9"), ((await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "picked.Count" })).GetProperty("value").GetString(),
+            (await Call(client, McpTools.DebugEvaluate, new() { ["expression"] = "$2[0]" })).GetProperty("value").GetString()));
+        string? elapsed = stop.GetProperty("elapsed").GetString();
+        Assert.True(elapsed is not null && System.Text.RegularExpressions.Regex.Match(elapsed, @"^([\d.,]+) (ms|s) since the last stop$") is { Success: true } said
+            && double.Parse(said.Groups[1].Value.Replace(",", "", StringComparison.Ordinal), System.Globalization.CultureInfo.InvariantCulture) * (said.Groups[2].Value == "s" ? 1000 : 1) >= 300,
+            $"The stop after two turns' sleeps of 150 ms said the program ran \"{elapsed}\", where it ran at least 300 ms since the last stop");
+        Assert.Equal("not debugging", (await Call(client, McpTools.DebugContinue)).GetProperty("state").GetString());
+
+        static JsonElement? Listed(JsonElement breakpoints, int line) => breakpoints.EnumerateArray()
+            .FirstOrDefault(b => b.TryGetProperty("line", out JsonElement at) && at.ValueKind == JsonValueKind.Number && at.GetInt32() == line) is { ValueKind: JsonValueKind.Object } found
+            ? found : null;
     }
 
     /// <summary>An agent's debug sessions as one flow, each step one test's check in an instance of its own:
     /// Passenger's helpers on its own runtime, a stop ending a session still starting, a running configuration ended
-    /// first, output answering the program debugged, a web app answered once it serves, one the runtime gives up on
-    /// said failed and ended, a long call telling what it does, and a launch never reaching its breakpoint saying what
-    /// it waits for.</summary>
+    /// first, output answering the program debugged, a web app answered once it serves, a snapshot point in one capturing
+    /// its requests without stopping it, one the runtime gives up on said failed and ended, a long call telling what it does,
+    /// and a launch never reaching its breakpoint saying what it waits for.</summary>
     [Fact]
     public async Task An_agents_debug_sessions_start_end_and_say_what_they_wait_for_on_Passengers_own_runtime()
     {
@@ -196,6 +284,7 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agents run and debug of a configuration that runs end it first and answer with the new start", () => new McpDebuggingTests(restored), t => t.An_agents_run_and_debug_of_a_configuration_that_runs_end_it_first_and_answer_with_the_new_start());
         await Flow.StepApartAsync("an agents output naming no console answers the program debugged naming it not the run that ended", () => new McpDebuggingTests(restored), t => t.An_agents_output_naming_no_console_answers_the_program_debugged_naming_it_not_the_run_that_ended());
         await Flow.StepApartAsync("an agents debug start of a web app answers once it serves saying where it listens", () => new McpDebuggingTests(restored), t => t.An_agents_debug_start_of_a_web_app_answers_once_it_serves_saying_where_it_listens());
+        await Flow.StepApartAsync("an agents snapshot point in a running web app captures each requests locals and never pauses it", () => new McpDebuggingTests(restored), t => t.An_agents_snapshot_point_in_a_running_web_app_captures_each_requests_locals_and_never_pauses_it());
         await Flow.StepApartAsync("an agents debug start whose debugging the runtime gives up answers that it failed and the app is ended", () => new McpDebuggingTests(restored), t => t.An_agents_debug_start_whose_debugging_the_runtime_gives_up_answers_that_it_failed_and_the_app_is_ended());
         await Flow.StepApartAsync("a call that takes a while tells its agent what it is doing and nothing reaches standard error", () => new McpDebuggingTests(restored), t => t.A_call_that_takes_a_while_tells_its_agent_what_it_is_doing_and_nothing_reaches_standard_error());
         await Flow.StepApartAsync("a launch that never reaches its breakpoint says so and its progress says what it waits for", () => new McpDebuggingTests(restored), t => t.A_launch_that_never_reaches_its_breakpoint_says_so_and_its_progress_says_what_it_waits_for());
@@ -658,6 +747,57 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
         await Call(client, McpTools.Stop);
     }
 
+    /// <summary>An agent's snapshot point in a web app's handler, reading an expression of its own, captures each of three
+    /// requests as the app serves it: debug_state of snapshots lists them newest first, each with the handler's locals (its
+    /// list's, set's, queue's and stack's items too) and the expression as they were at that request, and how long the app
+    /// was held for it, within the request's answer. The app never stops, answering with no continue, its session running.</summary>
+    private async Task An_agents_snapshot_point_in_a_running_web_app_captures_each_requests_locals_and_never_pauses_it()
+    {
+        string folder = await WebAppAsync("WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/order/{id:int}\", (int id) =>\n{\n"
+            + "    int total = id * 3;\n    string note = $\"order {id}\";\n    List<int> parts = [id, total];\n    HashSet<string> tags = [note];\n"
+            + "    Queue<int> waiting = new([id, id + 1]);\n    Stack<int> undo = new([id, id + 1]);\n    return $\"{note} costs {total}\";\n});\napp.Run();\n");
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement set = await Call(client, McpTools.BreakpointSet, new() { ["path"] = "Program.cs", ["line"] = 10, ["snapshot"] = true, ["capture"] = new[] { "total + 1" } });
+        Assert.True(set.EnumerateArray().Single().GetProperty("snapshot").GetString()?.StartsWith("captures the stack and locals with total + 1", StringComparison.Ordinal) == true,
+            $"breakpoint_set of a snapshot point answered {set}");
+        JsonElement started = await Call(client, McpTools.DebugStart, new() { ["configuration"] = "Web: Serve", ["waitSeconds"] = 600 });
+        Match listening = Regex.Match(started.GetProperty("status").GetString() ?? string.Empty, @"listening at (http://127\.0\.0\.1:\d+)");
+        Assert.True(started.GetProperty("state").GetString() == "running" && listening.Success, $"debug_start of a web app answered: {started.GetRawText()}");
+        List<TimeSpan> answered = [];
+        using (System.Net.Http.HttpClient http = new())
+        {
+            for (int id = 1; id <= 3; id++)
+            {
+                long asked = Stopwatch.GetTimestamp();
+                Assert.Equal($"order {id} costs {id * 3}", await http.GetStringAsync(new Uri($"{listening.Groups[1].Value}/order/{id}"), TestContext.Current.CancellationToken));
+                answered.Add(Stopwatch.GetElapsedTime(asked));
+            }
+        }
+        Assert.Equal("running", (await Call(client, McpTools.DebugState)).GetProperty("state").GetString());
+        JsonElement[] snapshots = [.. (await Call(client, McpTools.DebugState, new() { ["of"] = "snapshots" })).EnumerateArray()];
+        Assert.True(snapshots.Length == 3, $"debug_state of snapshots listed {snapshots.Length} after three requests: {string.Join(", ", snapshots.Select(s => s.GetRawText()))}");
+        for (int at = 0; at < 3; at++)
+        {
+            JsonElement snapshot = snapshots[at];
+            int id = 3 - at;
+            Dictionary<string, string?> locals = snapshot.GetProperty("locals").EnumerateArray().ToDictionary(l => l.GetProperty("name").GetString()!, l => l.GetProperty("value").GetString());
+            Assert.True(locals.GetValueOrDefault("id") == $"{id}" && locals.GetValueOrDefault("total") == $"{id * 3}" && locals.GetValueOrDefault("note") == $"\"order {id}\""
+                && snapshot.GetProperty("asked").EnumerateArray().Single().GetProperty("value").GetString() == $"{id * 3 + 1}",
+                $"The snapshot of request {id} read: {snapshot.GetRawText()}");
+            // The collections' counts and items, read from what each stores, a queue's head first and a stack's top first.
+            Dictionary<string, string> held = snapshot.GetProperty("locals").EnumerateArray().Where(l => l.TryGetProperty("members", out JsonElement m) && m.ValueKind == JsonValueKind.Array)
+                .ToDictionary(l => l.GetProperty("name").GetString()!, l => $"{l.GetProperty("value").GetString()}: "
+                    + string.Join(", ", l.GetProperty("members").EnumerateArray().Where(m => m.GetProperty("name").GetString()!.StartsWith('[')).Select(m => m.GetProperty("value").GetString())));
+            Assert.Equal((string[])[$"Count = 2: {id}, {id * 3}", $"Count = 1: \"order {id}\"", $"Count = 2: {id}, {id + 1}", $"Count = 2: {id + 1}, {id}"],
+                (string[])[.. ((string[])["parts", "tags", "waiting", "undo"]).Select(name => held.GetValueOrDefault(name) ?? $"no {name}")]);
+            double paused = snapshot.GetProperty("pausedMs").GetDouble();
+            Assert.True(paused > 0 && paused <= answered[id - 1].TotalMilliseconds,
+                $"The snapshot of request {id} said the app was held {paused} ms, where its answer took {answered[id - 1].TotalMilliseconds} ms in all");
+            TestContext.Current.TestOutputHelper?.WriteLine($"Request {id}: answered in {answered[id - 1].TotalMilliseconds:F1} ms, the app held {paused:F1} ms for its snapshot");
+        }
+        await Call(client, McpTools.Stop);
+    }
+
     /// <summary>An agent's debug_start of a web app whose debugging the runtime gives up for good as it starts, as it once did
     /// under load, holding the app where it stood, answers once the app is ended, saying its debugging failed and why,
     /// rather than waiting out its whole time for an app that will never serve; its console says so too.</summary>
@@ -677,14 +817,14 @@ public sealed class McpDebuggingTests : McpRig, IClassFixture<RestoredFolders>
             $"The Debug console of a program whose debugging failed reads:\n{console}");
     }
 
-    /// <summary>A web app that answers "served" at its root, restored, in a folder of the test's own; its launch profile Serve
-    /// listens at port 0, the port it took said only in its own words.</summary>
-    private async Task<string> WebAppAsync()
+    /// <summary>A web app that answers "served" at its root (or runs <paramref name="program"/>), restored, in a folder of the
+    /// test's own; its launch profile Serve listens at port 0, the port it took said only in its own words.</summary>
+    private async Task<string> WebAppAsync(string? program = null)
     {
         string folder = PathNames.Canonical(TestFolders.Create("mcp-web-"));
         DeleteAtEnd(folder);
         TestFolders.Write(folder, "Web.csproj", TestProjects.Web("<ImplicitUsings>enable</ImplicitUsings>"));
-        TestFolders.Write(folder, "Program.cs", "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
+        TestFolders.Write(folder, "Program.cs", program ?? "WebApplication app = WebApplication.Create(args);\napp.MapGet(\"/\", () => \"served\");\napp.Run();\n");
         TestFolders.Write(folder, "Properties/launchSettings.json",
             "{\n  \"profiles\": {\n    \"Serve\": { \"commandName\": \"Project\", \"applicationUrl\": \"http://127.0.0.1:0\" }\n  }\n}\n");
         await Restore.RunAsync(Path.Combine(folder, "Web.csproj"));

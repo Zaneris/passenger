@@ -9,10 +9,11 @@ namespace Passenger.App.Run;
 /// <summary>A launch profile from a project's <c>Properties/launchSettings.json</c> or a file-based program's
 /// <c>.run.json</c>: what it launches (its <c>commandName</c>), with what arguments, environment and working directory, and
 /// the browser it opens. Passenger launches the two kinds that run a program (<see cref="ProjectCommand"/> and
-/// <see cref="ExecutableCommand"/>), the two that run the project in a container (<c>Docker</c>, <c>SdkContainer</c>, with
-/// Visual Studio's container properties: its ports, whether it serves HTTPS, its <c>docker run</c> words and env files),
-/// and a Docker Compose project's (<see cref="DockerComposeCommand"/>, with its services' actions); every other kind is
-/// read too, and says why it does not run here.</summary>
+/// <see cref="ExecutableCommand"/>), on Windows the one that runs it as an app package (<see cref="PackageCommand"/>), the
+/// two that run the project in a container (<c>Docker</c>, <c>SdkContainer</c>, with Visual Studio's container properties:
+/// its ports, whether it serves HTTPS, its <c>docker run</c> words and env files), and a Docker Compose project's
+/// (<see cref="DockerComposeCommand"/>, with its services' actions); every other kind is read too, and says why it does not
+/// run here.</summary>
 public sealed record LaunchProfile(
     string Name,
     string? Command,
@@ -81,6 +82,9 @@ public sealed record LaunchProfile(
     /// <summary>Another program, named by <c>executablePath</c>.</summary>
     public const string ExecutableCommand = "Executable";
 
+    /// <summary>The project's program as a Windows app package, registered from its build's layout.</summary>
+    public const string PackageCommand = "MsixPackage";
+
     /// <summary>The file a project's launch profiles are in, under its folder's Properties.</summary>
     public const string SettingsFile = "launchSettings.json";
 
@@ -118,7 +122,7 @@ public sealed record LaunchProfile(
         _ when Is(ProjectCommand) || Is(ExecutableCommand) || RunsInContainer => null,
         _ when Is("IISExpress") => "an IIS Express profile runs under IIS Express on Windows, which Passenger does not start",
         _ when Is("IIS") => "an IIS profile runs under IIS on Windows, which Passenger does not drive",
-        _ when Is("MsixPackage") => "an MSIX package profile runs a deployed Windows package, which Passenger does not deploy",
+        _ when Is(PackageCommand) => OperatingSystem.IsWindows() ? null : "an MSIX package profile runs a Windows app package, which runs only on Windows",
         _ when Is("DebugRoslynComponent") => "a Roslyn component profile runs the compiler over another project, which Passenger does not",
         _ when Is(DockerComposeCommand) => "a Docker Compose profile belongs to a Docker Compose project (.dcproj), whose configurations run it",
         _ when Is("WSL2") => "a WSL 2 profile runs in Linux under Windows, which Passenger does not start",
@@ -128,10 +132,21 @@ public sealed record LaunchProfile(
     /// <summary>Whether this profile runs the project's own program.</summary>
     public bool RunsProject => Is(ProjectCommand);
 
+    /// <summary>Whether this profile runs the project's own program as a Windows app package.</summary>
+    public bool RunsPackage => Is(PackageCommand);
+
     public bool Is(string command) => string.Equals(Command, command, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The project's profiles of every kind in the file's order; none when it has no settings or they do not read.</summary>
-    public static IReadOnlyList<LaunchProfile> Read(ProjectModel project) => Read(SettingsPath(project));
+    /// <summary>The project's profiles of every kind in the file's order; none when it has no settings or they do not read. A
+    /// file-based program's are its folder's launch settings where there are any, else its .run.json's (<see cref="FileSettingsPath"/>).</summary>
+    public static IReadOnlyList<LaunchProfile> Read(ProjectModel project) => project.IsProgram
+        ? Files.Read(SettingsIn(project.Folder), ReadFile) ?? Files.Read(Path.ChangeExtension(project.Path, ".run.json"), ReadFile) ?? []
+        : Read(SettingsIn(project.Folder));
+
+    /// <summary>Each settings file's profiles, kept by its stamp, so a list made again reads only the files changed since.</summary>
+    private static readonly FileMemo<IReadOnlyList<LaunchProfile>> Files = new();
+
+    private static IReadOnlyList<LaunchProfile> ReadFile(string path) => Parse(File.ReadAllText(path));
 
     /// <summary>Whether a project runs: an executable project, or one building no program (a library) whose launch profiles
     /// start a program of their own (<see cref="ExecutableCommand"/>, a host that loads it).</summary>
@@ -144,17 +159,7 @@ public sealed record LaunchProfile(
 
     /// <summary>A settings file's profiles of every kind in its order (a launchSettings.json, a .run.json); none when it is
     /// not there or does not read.</summary>
-    public static IReadOnlyList<LaunchProfile> Read(string path)
-    {
-        try
-        {
-            return File.Exists(path) ? Parse(File.ReadAllText(path)) : [];
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
-    }
+    public static IReadOnlyList<LaunchProfile> Read(string path) => Files.Read(path, ReadFile) ?? [];
 
     /// <summary>The profiles a settings file's text gives, in its order; none when it does not read or is no JSON object. A
     /// value that is not a string is taken as its JSON, as <c>dotnet run</c> takes it.</summary>

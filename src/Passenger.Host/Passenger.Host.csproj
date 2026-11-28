@@ -36,6 +36,8 @@
     <Compile Include="../Passenger.Core/ProjectFolders.cs" Link="ProjectFolders.cs" />
     <Compile Include="../Passenger.Core/FolderNames.cs" Link="FolderNames.cs" />
     <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <!-- A design-time build's infos carried as the JSON they are. -->
+    <Compile Include="../Passenger.Core/RawJson.cs" Link="RawJson.cs" />
     <Compile Include="../Passenger.Core/PooledBytes.cs" Link="PooledBytes.cs" />
     <Compile Include="../Passenger.Core/MSBuildNames.cs" Link="MSBuildNames.cs" />
     <!-- .NET's frameworks' names, by which the host reads an evaluation's framework. -->

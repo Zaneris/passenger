@@ -117,7 +117,7 @@ public sealed class AccessibilityTests : IDisposable
             Assert.True(statusWords.GetLiveSetting() == AutomationLiveSetting.Polite,
                 $"The status bar's words read as a {statusWords.GetLiveSetting()} live region, not a polite one");
 
-            string why = window.Actions.WhyNot(AppActions.GoToDeclaration, window.Actions.Context())
+            string why = window.Actions.WhyNot(AppActions.GoToDeclaration, window.Actions.Context())?.Shown
                 ?? throw new Xunit.Sdk.XunitException("Go to Declaration is not refused with no file open");
             Ui.Run(window, AppActions.GoToDeclaration);
             Ui.WaitFor(() => heard.Count > 0, "the refusal heard");
@@ -207,7 +207,7 @@ public sealed class AccessibilityTests : IDisposable
         try
         {
             AutomationPeer top = ControlAutomationPeer.CreatePeerForElement(window);
-            foreach (string words in (string[])[.. OperatingSystem.IsMacOS() ? (string[])[] : ["Main menu"], "Build solution", "Run", "Debug", "Profile", "Stop", "Search everywhere", "Settings", "Explorer", "Terminal", "Problems"])
+            foreach (string words in (string[])[.. OperatingSystem.IsMacOS() ? (string[])[] : ["Main menu"], "Back", "Forward", "Build solution", "Run", "Debug", "Profile", "Stop", "Search everywhere", "Settings", "Explorer", "Terminal", "Problems"])
             {
                 Assert.True(Button(top, words) is not null, $"The window has no button named {words}, only: {Heard(Walk(top).Where(IsButton))}");
             }
@@ -451,7 +451,7 @@ public sealed class AccessibilityTests : IDisposable
             (string Next, string Previous) keys = OperatingSystem.IsMacOS()
                 ? ("control meta BACK_QUOTE", "control meta shift BACK_QUOTE")
                 : ("control alt BACK_QUOTE", "control alt shift BACK_QUOTE");
-            foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ])
+            foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 window.EditorArea.CodeEditor.Focus();
@@ -474,7 +474,7 @@ public sealed class AccessibilityTests : IDisposable
             Assert.True(heard is [(var last, _)] && last == round[2].Said, $"Next Region pressed twice in quick turn was heard as {Said(heard)}, not as the region it came to");
             Assert.True(window.Actions.Find("Next Region").Any(a => a.Id == AppActions.NextRegion) && window.Actions.Find("Previous Region").Any(a => a.Id == AppActions.PreviousRegion),
                 "Find Action finds no Next Region and Previous Region");
-            Assert.True(window.Actions.WhyNot(AppActions.NextRegion, window.Actions.Context().ForAgent()) == Refusals.PersonsKeys,
+            Assert.True(window.Actions.WhyNot(AppActions.NextRegion, window.Actions.Context().ForAgent())?.Shown == Refusals.PersonsKeys.Shown,
                 "An agent's ide_action may move the person's keys to another region");
         }
         finally
@@ -527,7 +527,7 @@ public sealed class AccessibilityTests : IDisposable
             Assert.True(Equals(first.Tag, edge[0]) && Ringed(first) && heard.Any(h => h.Words == "Hidden tool windows, left edge"),
                 $"Previous Region twice from the editor came to {first.GetType().Name} {first.Tag}, ringed {Ringed(first)}, heard as {Said(heard)}, not to {edge[0]}'s tab on the left edge");
             AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(first);
-            Assert.True(peer.GetName() == dock[edge[0]].Title && peer.GetAutomationControlType() == AutomationControlType.Button,
+            Assert.True(peer.GetName() == dock[edge[0]].Title.English && peer.GetAutomationControlType() == AutomationControlType.Button,
                 $"{edge[0]}'s edge tab is heard as \"{peer.GetName()}\", a {peer.GetAutomationControlType()}, not as a button of its name");
 
             Ui.Press(window, "TAB");
@@ -586,9 +586,13 @@ public sealed class AccessibilityTests : IDisposable
         Named(new GitQuestionDialog(new GitQuestion(GitQuestionKind.Passphrase, "Enter passphrase for key '/keys/id': ", "/keys/id"), null), "Passphrase");
         Named(new CommitSigningDialog(new SigningSetup(false, SigningFormat.Ssh, null), null, Path.Combine(folder, "allowed_signers")), "Key");
         Named(new CloneDialog(folder), "URL", "Directory");
+        BreakpointStore store = new();
         BreakpointProperties breakpoint = new();
-        breakpoint.Show(new ExceptionBreakpoint("System.InvalidOperationException"));
+        breakpoint.Show(new ExceptionBreakpoint("System.InvalidOperationException"), store);
         Named(new Window { Title = "Breakpoints", Width = 640, SizeToContent = SizeToContent.Height, Content = breakpoint }, "Condition", "Hit count", "Log message");
+        BreakpointProperties line = new();
+        line.Show(store.Set(Path.Combine(folder, "Program.cs"), 3), store);
+        Named(new Window { Title = "Breakpoint", Width = 640, SizeToContent = SizeToContent.Height, Content = line }, "Condition", "Hit count", "Log message", "Wait for", "Remove once hit");
     }
 
     /// <summary>The refactorings that ask their options in a dialog, as a screen reader meets each: every field named by the

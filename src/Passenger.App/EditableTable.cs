@@ -1,13 +1,15 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Passenger.Core;
 
 namespace Passenger.App;
 
 /// <summary>A table whose rows are edited in place (a request's headers, a run's services, a configuration's projects),
 /// one look in every dialog: framed on the list's ground, its column titles over its rows, each row ruled under it
 /// (<see cref="Ruled"/>), and where it has no rows a muted line saying why in their place (<see cref="SayInstead"/>).
-/// <see cref="Changed"/> is raised for each edit a person makes, never for rows the code sets (<see cref="Setting"/>).</summary>
+/// <see cref="Changed"/> is raised for each edit a person makes, never for rows the code sets (<see cref="Setting"/>), a
+/// row's text box heard through <see cref="TypedText.Hear"/>.</summary>
 public abstract class EditableTable : Border
 {
     private readonly ColumnTitles titles;
@@ -16,7 +18,7 @@ public abstract class EditableTable : Border
     /// <param name="columns">The rows' column widths, as their grid has them.</param>
     /// <param name="titled">The columns' titles in order, empty for none.</param>
     /// <param name="scrolls">Whether its rows scroll inside it, for a table given a height of its own.</param>
-    protected EditableTable(string columns, IReadOnlyList<string> titled, bool scrolls = false)
+    protected EditableTable(string columns, IReadOnlyList<Words> titled, bool scrolls = false)
     {
         Classes.Add(StyleClasses.Framed);
         ClipToBounds = true;

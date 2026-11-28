@@ -28,6 +28,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly DockPanel debugger;
     /// <summary>The Debugger, Console and Telemetry tabs, by their words.</summary>
     private readonly ToolTabs.Strip<string> tabs = new();
+    internal DebugMemoryView Memory { get; }
     private readonly TelemetryPane telemetry = new() { IsVisible = false };
     private readonly Dictionary<string, Button> tools = [];
     private readonly ToggleButton mute;
@@ -35,6 +36,14 @@ public sealed class DebugView : DockPanel, IOwnKeys
     private readonly Banner offer = new();
     private readonly Button offerLink;
     private readonly DockPanel consolePane;
+    private readonly ListBox snapshots;
+    private readonly EmptyState noSnapshots;
+    private readonly Panel snapshotsPane;
+    private readonly ListBox moments;
+    private readonly EmptyState noMoments;
+    private readonly TextBlock timelineSaid;
+    private readonly DockPanel timelinePane;
+    private readonly ToggleButton record;
     private bool showingFrames;
 
     public DebugView(DebugModel model)
@@ -114,16 +123,40 @@ public sealed class DebugView : DockPanel, IOwnKeys
         variables.WatchRemoved += (_, watch) => model.Unwatch(watch);
         variables.SetValueRequested += (_, request) => model.SetValue(request.Node, request.Value);
         variables.RunWithThreadsRequested += (_, node) => model.RunWithThreads(node);
+        variables.PinRequested += (_, node) => model.Pin(node);
+        variables.MarkRequested += (_, node) => model.Mark(node);
+        variables.MarksWhyNot = () => model.MarksWhyNot();
         variables.DataBreakpointRequested += (_, node) => model.ToggleDataBreakpoint(node);
         variables.TextOpened += (_, node) => model.OpenText(node);
+        Memory = new DebugMemoryView(model);
+        variables.MemoryRequested += (_, request) =>
+        {
+            model.ShowMemory();
+            IdeErrors.Observe(Memory.OpenAsync(request.Address, request.Expression));
+        };
+        variables.CanReadMemory = () => model.Sessions.Any(tab => tab.IsChosen && tab.Session is { ReadsMemory: true, State: DebugState.Paused });
         ListMenus.Attach(frames, FramesMenu);
         ListMenus.Attach(threads, ThreadsMenu);
         // Over the values, once every thread ran in an evaluation: those read before it may have moved.
         Banner moved = new();
         moved.Link(ReadAgain, model.ReadAgain);
         moved.Say(model.Moved);
-        model.MovedChanged += (_, _) => moved.Say(model.Moved);
-        DockPanel variablesPane = new() { Children = { evaluate, moved, variables } };
+        // Over the values of a snapshot shown as a past stop: which it is, its values as they were then.
+        Banner past = Banner.Wrapping();
+        past.Link(BackToSnapshots, model.ShowSnapshots);
+        past.Say(PastSaid());
+        // Over the values of a recorded moment shown as a past stop: which it is, the live stop a link away.
+        Banner recalled = Banner.Wrapping();
+        recalled.Link(BackToLive, model.BackToLive);
+        recalled.Say(RecalledSaid());
+        model.MovedChanged += (_, _) =>
+        {
+            moved.Say(model.Moved);
+            past.Say(PastSaid());
+            recalled.Say(RecalledSaid());
+            ShowTools();
+        };
+        DockPanel variablesPane = new() { Children = { evaluate, moved, past, recalled, variables } };
 
         // The frames a third of the window and the variables the rest, so a narrow window narrows both.
         PaneSplit split = new(framesPane, variablesPane, "*,1,2*");
@@ -134,9 +167,60 @@ public sealed class DebugView : DockPanel, IOwnKeys
         offerLink = offer.Link(null, () => model.Console.TakeOffer());
         debugger = new DockPanel { Children = { offer, new Panel { Children = { split, placeholder } } } };
 
+        // The folder's snapshots, the newest first: Enter or a double click shows one as a past stop.
+        snapshots = new ListBox { Classes = { StyleClasses.Tree }, ItemsSource = model.Snapshots };
+        Avalonia.Automation.AutomationProperties.SetName(snapshots, SnapshotsTab);
+        ReusedRows.Use(snapshots, SnapshotRow);
+        ListKeys.Act(snapshots, new ListActs
+        {
+            Open = () =>
+            {
+                if (snapshots.SelectedItem is TakenSnapshot chosen)
+                {
+                    model.Choose(chosen);
+                }
+            },
+        });
+        ListMenus.Attach(snapshots, () => snapshots.SelectedItem is not TakenSnapshot chosen ? [] :
+        [
+            ListMenus.Open(ShowAsStop, () => model.Choose(chosen)),
+            ListMenus.Item("Copy Stack", () => IdeErrors.Observe(ListMenus.CopyAsync(this, string.Join('\n', chosen.Frames.Select(f => f.Source?.Path is { } path ? $"{f.Name} in {path}:{f.Line}" : f.Name))))),
+        ]);
+        noSnapshots = new EmptyState(Refusals.NoSnapshots.Shown);
+        noSnapshots.Offer(AppActions.ToggleSnapshotPoint, "Toggle Snapshot Point");
+        noSnapshots.ActionRequested += (_, action) => model.Request(action);
+        snapshotsPane = new Panel { IsVisible = false, Children = { snapshots, noSnapshots } };
+        model.Snapshots.CollectionChanged += (_, _) => noSnapshots.IsVisible = model.Snapshots.Count == 0;
+
+        // The chosen program's recorded moments, oldest first: Enter or a double click shows one as a past stop.
+        moments = new ListBox { Classes = { StyleClasses.Tree } };
+        Avalonia.Automation.AutomationProperties.SetName(moments, TimelineTab);
+        ReusedRows.Use(moments, MomentRow);
+        ListKeys.Act(moments, new ListActs
+        {
+            Open = () =>
+            {
+                if (moments.SelectedItem is DapMoment chosen)
+                {
+                    model.Choose(chosen);
+                }
+            },
+        });
+        ListMenus.Attach(moments, () => moments.SelectedItem is not DapMoment chosen ? [] : [ListMenus.Open(ShowAsStop, () => model.Choose(chosen))]);
+        noMoments = new EmptyState(Refusals.NothingRecorded.Shown);
+        noMoments.Offer(AppActions.RecordCalls, "Record Calls");
+        noMoments.ActionRequested += (_, action) => model.Request(action);
+        timelineSaid = new TextBlock { [DockProperty] = Dock.Top, Margin = new Thickness(Gaps.Normal, Gaps.Small), TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        timelineSaid.Classes.Add(StyleClasses.Muted);
+        timelinePane = new DockPanel { IsVisible = false, Children = { timelineSaid, new Panel { Children = { moments, noMoments } } } };
+        model.TimelineChanged += (_, _) => ShowTimeline();
+
         tabs.Add(DebuggerTab, DebuggerTab);
         tabs.Add(ConsoleTab, ConsoleTab);
+        tabs.Add(MemoryTab, MemoryTab, name: "debugMemoryTab");
         tabs.Add(RunWindows.TelemetryTab, RunWindows.TelemetryTab, name: "debugTelemetryTab").IsVisible = false;
+        tabs.Add(SnapshotsTab, SnapshotsTab, name: "debugSnapshotsTab");
+        tabs.Add(TimelineTab, TimelineTab, name: "debugTimelineTab");
         tabs.Choice = DebuggerTab;
         tabs.Chosen += (_, tab) =>
         {
@@ -144,11 +228,32 @@ public sealed class DebugView : DockPanel, IOwnKeys
             {
                 model.ShowTelemetry();
             }
+            else if (tab == SnapshotsTab)
+            {
+                model.ShowSnapshots();
+            }
+            else if (tab == TimelineTab)
+            {
+                model.ShowTimelineTab();
+            }
+            else if (tab == MemoryTab)
+            {
+                model.ShowMemory();
+            }
             else
             {
                 model.ShowTab(console: tab == ConsoleTab);
             }
         };
+        // Pressed while the programs debugged record their calls.
+        record = ToolButtons.Toggle(IconKeys.RecordCalls, "Record Calls");
+        ActionTips.Set(record, AppActions.RecordCalls, "Record Calls");
+        record.Click += (_, _) =>
+        {
+            model.Request(AppActions.RecordCalls);
+            record.IsChecked = model.ShowsRecording;
+        };
+
         ToolFlow top = new()
         {
             Margin = new Thickness(Gaps.Small, Gaps.Hair),
@@ -160,6 +265,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
                 Tool(AppActions.StepInto, IconKeys.StepInto, "Step Into"),
                 Tool(AppActions.SmartStepInto, IconKeys.SmartStepInto, "Smart Step Into"),
                 Tool(AppActions.StepOut, IconKeys.StepOut, "Step Out"),
+                record,
+                Tool(AppActions.StepBack, IconKeys.StepBack, "Step Back"),
+                Tool(AppActions.StepForward, IconKeys.StepForward, "Step Forward"),
                 Tool(AppActions.RunToCursor, IconKeys.RunToCursor, "Run to Cursor"),
                 Tool(AppActions.Evaluate, IconKeys.Evaluate, "Evaluate Expression"),
                 new Border { Width = 12 },
@@ -191,7 +299,7 @@ public sealed class DebugView : DockPanel, IOwnKeys
 
         Children.Add(leftBar);
         Children.Add(topBar);
-        Children.Add(new Panel { Children = { debugger, consolePane, telemetry } });
+        Children.Add(new Panel { Children = { debugger, consolePane, Memory, telemetry, snapshotsPane, timelinePane } });
         model.ToolsChanged += (_, _) => ShowTools();
         model.FramesShown += (_, _) => ShowChosen();
         model.TabShown += (_, _) => ShowTab();
@@ -210,9 +318,98 @@ public sealed class DebugView : DockPanel, IOwnKeys
     /// <summary>The link over Variables that reads the frame's values anew once every thread ran in an evaluation.</summary>
     public const string ReadAgain = "Read Again";
 
+    /// <summary>The link over a snapshot's values back to the list of snapshots.</summary>
+    public const string BackToSnapshots = "All Snapshots";
+
+    /// <summary>The link over a recorded moment's values back to the live stop.</summary>
+    public const string BackToLive = "Live Stop";
+
+    /// <summary>The tab of the chosen program's recorded moments.</summary>
+    public const string TimelineTab = "Timeline";
+
+    /// <summary>The Timeline tab's list, oldest first.</summary>
+    public ListBox MomentsList => moments;
+
+    /// <summary>What the Timeline tab says over its moments.</summary>
+    public string? TimelineWords => timelineSaid.Text;
+
+    /// <summary>A snapshot's menu item that shows it as a past stop, as Enter does.</summary>
+    public const string ShowAsStop = "Show Frames and Values";
+
     private const string DebuggerTab = "Debugger";
 
     private const string ConsoleTab = "Console";
+    private const string MemoryTab = "Memory";
+
+    /// <summary>The tab of the folder's snapshots.</summary>
+    public const string SnapshotsTab = "Snapshots";
+
+    /// <summary>The Snapshots tab's list, newest first.</summary>
+    public ListBox SnapshotsList => snapshots;
+
+    /// <summary>What Variables says over a snapshot's values shown as a past stop, null while it shows none.</summary>
+    private string? PastSaid() => model.ShownSnapshot is { Moment: null } shown ? shown.Taken.Cut is { } cut ? $"{shown.Said} {cut}." : shown.Said : null;
+
+    /// <summary>What Variables says over a recorded moment's values shown as a past stop, null while it shows none.</summary>
+    private string? RecalledSaid() => model.ShownSnapshot is { Moment: not null } shown ? shown.Taken.Cut is { } cut ? $"{shown.Said} {cut}." : shown.Said : null;
+
+    /// <summary>A recorded moment's row: what happened, indented by the recorded calls it ran in, then where and when, muted.</summary>
+    private Control MomentRow()
+    {
+        TextBlock said = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock where = new()
+        {
+            Classes = { StyleClasses.Caption },
+            Margin = new Thickness(Gaps.Normal, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        where.Classes.Add(StyleClasses.Muted);
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { said, where } };
+        return row.Showing<DapMoment>(moment =>
+        {
+            row.Margin = new Thickness(moment.Depth * Gaps.Indent, 0, 0, 0);
+            said.Text = moment.Said;
+            string place = moment.Place.Source?.Path is { } path ? $"{System.IO.Path.GetFileName(path)}:{moment.Place.Line}" : moment.Place.Name;
+            where.Text = $"{place} · {moment.At.ToLocalTime().ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture)}";
+        });
+    }
+
+    /// <summary>The timeline as last read, the moment shown chosen in it.</summary>
+    private void ShowTimeline()
+    {
+        if (!ReferenceEquals(moments.ItemsSource, model.Moments))
+        {
+            moments.ItemsSource = model.Moments;
+        }
+        timelineSaid.Text = model.TimelineSaid;
+        timelineSaid.IsVisible = model.TimelineSaid is not null;
+        noMoments.IsVisible = model.Moments.Count == 0;
+        DapMoment? shown = model.MomentShown is { } moment ? model.Moments.FirstOrDefault(m => m.Index == moment.Index) : null;
+        moments.SelectedItem = shown;
+        if (shown is not null)
+        {
+            moments.ScrollIntoView(shown);
+        }
+    }
+
+    /// <summary>A snapshot's row: its point and number, then when, on which thread and how long the program was held, muted.</summary>
+    private Control SnapshotRow()
+    {
+        TextBlock point = new() { VerticalAlignment = VerticalAlignment.Center };
+        TextBlock when = new()
+        {
+            Classes = { StyleClasses.Caption },
+            Margin = new Thickness(Gaps.Normal, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        when.Classes.Add(StyleClasses.Muted);
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { point, when } };
+        return row.Showing<TakenSnapshot>(snapshot =>
+        {
+            point.Text = $"{snapshot.Point} #{snapshot.Number}";
+            when.Text = $"{snapshot.Time} · {snapshot.Program} · {snapshot.ThreadName} · held {Core.Durations.Said(snapshot.Paused)}";
+        });
+    }
 
     /// <summary>The window header's own tools: the sessions' tabs.</summary>
     public Control HeaderTools { get; }
@@ -271,7 +468,8 @@ public sealed class DebugView : DockPanel, IOwnKeys
     {
         DebugState state = model.State;
         bool paused = state == DebugState.Paused;
-        foreach (string action in new[] { AppActions.StepOver, AppActions.StepInto, AppActions.SmartStepInto, AppActions.StepOut, AppActions.RunToCursor, AppActions.Evaluate, AppActions.Resume })
+        foreach (string action in new[] { AppActions.StepOver, AppActions.StepInto, AppActions.SmartStepInto, AppActions.StepOut, AppActions.StepBack, AppActions.StepForward,
+            AppActions.RunToCursor, AppActions.Evaluate, AppActions.Resume })
         {
             tools[action].IsEnabled = paused;
         }
@@ -281,8 +479,9 @@ public sealed class DebugView : DockPanel, IOwnKeys
         tools[AppActions.ApplyHotReloadChanges].IsVisible = model.HotReloadShown.On;
         tools[AppActions.ApplyHotReloadChanges].IsEnabled = model.HotReloadShown.CanApply;
         mute.IsChecked = model.ShowsMuted;
-        evaluate.IsEnabled = paused;
-        placeholder.IsVisible = state == DebugState.Ended && model.Frames.Count == 0;
+        record.IsChecked = model.ShowsRecording;
+        evaluate.IsEnabled = paused && model.ShownSnapshot is null;
+        placeholder.IsVisible = state == DebugState.Ended && model.Frames.Count == 0 && model.ShownSnapshot is null;
     }
 
     /// <summary>The Debugger or the Console tab, as the model shows it, the chosen session's console in the latter.</summary>
@@ -298,18 +497,26 @@ public sealed class DebugView : DockPanel, IOwnKeys
         tabs[RunWindows.TelemetryTab].IsVisible = telemetry.Source is not null;
         bool records = model.IsTelemetryShown && telemetry.Source is not null;
         bool console = model.IsConsoleShown || model.IsTelemetryShown && !records;
-        tabs.Choice = records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
-        debugger.IsVisible = !console && !records;
+        bool taken = model.IsSnapshotsShown;
+        bool recorded = model.IsTimelineShown;
+        bool memory = model.IsMemoryShown;
+        tabs.Choice = memory ? MemoryTab : recorded ? TimelineTab : taken ? SnapshotsTab : records ? RunWindows.TelemetryTab : console ? ConsoleTab : DebuggerTab;
+        debugger.IsVisible = !memory && !console && !records && !taken && !recorded;
+        Memory.IsVisible = memory;
+        Memory.UpdateStop();
+        timelinePane.IsVisible = recorded;
         consolePane.IsVisible = console;
         telemetry.IsVisible = records;
+        snapshotsPane.IsVisible = taken;
+        noSnapshots.IsVisible = model.Snapshots.Count == 0;
         ShowOffer();
     }
 
     /// <summary>What the chosen program's console offers, over the Debugger tab too.</summary>
     private void ShowOffer()
     {
-        offerLink.Content = model.Console.OfferLink;
-        offer.Say(model.Console.Offered);
+        ShownWords.Set(offerLink, ContentControl.ContentProperty, model.Console.OfferWords?.Link);
+        offer.Say(model.Console.OfferWords?.Said);
     }
 
     /// <summary>What the Debugger tab offers over its frames and values, null while it offers nothing.</summary>

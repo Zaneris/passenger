@@ -12,7 +12,6 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
     private readonly Func<string, string, IReadOnlyList<string>, Task<string?>> make;
     private readonly List<(Member Member, CheckBox Box)> members = [];
     private bool fileTyped;
-    private bool naming;
 
     public ExtractInterfaceDialog(InterfaceSource source, Func<string, string, IReadOnlyList<string>, Task<string?>> make)
         : base("Extract Interface", "Select base type and members",
@@ -21,21 +20,19 @@ public sealed class ExtractInterfaceDialog : RefactoringDialog
         this.make = make;
         NameBox = Field(source.Name);
         FileBox = Field(source.FileName);
-        NameBox.TextChanged += (_, _) =>
+        TypedText.Hear(NameBox, () =>
         {
             if (!fileTyped)
             {
-                naming = true;
-                FileBox.Text = $"{NameBox.Text?.Trim()}.cs";
-                naming = false;
+                TypedText.Set(FileBox, $"{NameBox.Text?.Trim()}.cs");
             }
             Changed();
-        };
-        FileBox.TextChanged += (_, _) =>
+        });
+        TypedText.Hear(FileBox, () =>
         {
-            fileTyped |= !naming;
+            fileTyped = true;
             Changed();
-        };
+        });
         StackPanel list = new() { Margin = new Thickness(Gaps.Normal, Gaps.Tight), Spacing = Gaps.Hair };
         foreach (Member member in source.Members)
         {

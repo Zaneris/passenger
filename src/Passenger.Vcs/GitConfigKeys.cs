@@ -11,6 +11,9 @@ public static class GitConfigKeys
     /// <summary>Whether every commit is signed.</summary>
     public const string CommitGpgSign = "commit.gpgsign";
 
+    /// <summary>Whether every tag git makes is an annotated tag, signed.</summary>
+    public const string TagGpgSign = "tag.gpgsign";
+
     /// <summary>The format a commit is signed in: openpgp (where unset), ssh or x509.</summary>
     public const string GpgFormat = "gpg.format";
 

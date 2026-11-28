@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AllUnloaded" xml:space="preserve">
+    <value>Nothing to build: every project is unloaded</value>
+    <comment>Why Build has nothing to build.</comment>
+  </data>
+  <data name="Doing" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuilding {what}…} clean {Cleaning {what}…} publish {Publishing {what}…} other {Building {what}…}}</value>
+    <comment>A build under way (a build, rebuild, clean or publish) of what it builds.</comment>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild stopped} clean {Clean stopped} publish {Publish stopped} other {Build stopped}}</value>
+    <comment>A build (a build, rebuild, clean or publish) stopped.</comment>
+  </data>
+  <data name="Succeeded" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild succeeded} clean {Clean succeeded} publish {Publish succeeded} other {Build succeeded}}</value>
+    <comment>A build (a build, rebuild, clean or publish) that succeeded.</comment>
+  </data>
+  <data name="SucceededWarned" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild succeeded with {warnings, plural, one {# warning} other {# warnings}}} clean {Clean succeeded with {warnings, plural, one {# warning} other {# warnings}}} publish {Publish succeeded with {warnings, plural, one {# warning} other {# warnings}}} other {Build succeeded with {warnings, plural, one {# warning} other {# warnings}}}}</value>
+    <comment>A build that succeeded, with how many warnings it gave.</comment>
+  </data>
+  <data name="FailedBecause" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed: {why}} clean {Clean failed: {why}} publish {Publish failed: {why}} other {Build failed: {why}}}</value>
+    <comment>A build that failed, and the SDK's words why.</comment>
+  </data>
+  <data name="FailedListed" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} clean {Clean failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} publish {Publish failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} other {Build failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them}}</value>
+    <comment>A build that failed, with its errors and warnings, which Problems lists.</comment>
+  </data>
+  <data name="FailedEnded" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} clean {Clean failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} publish {Publish failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} other {Build failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why}}</value>
+    <comment>A build that failed with no error to list: how dotnet ended ({exit}, as "exit code 1").</comment>
+  </data>
+  <data name="FailedInListed" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} clean {Clean failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} publish {Publish failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} other {Build failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them}}</value>
+    <comment>A build of several projects side by side that failed, the projects whose errors it named, with its errors and warnings.</comment>
+  </data>
+  <data name="FailedInEnded" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} clean {Clean failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} publish {Publish failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} other {Build failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why}}</value>
+    <comment>A build of several projects side by side that failed with no error to list, and how dotnet ended.</comment>
+  </data>
+  <data name="WaitingForDesignTime" xml:space="preserve">
+    <value>Waiting for the design-time build of {project} to end…</value>
+    <comment>A build waiting for the design-time build of a project, which writes what it would write.</comment>
+  </data>
+  <data name="WaitingForDesignTimes" xml:space="preserve">
+    <value>{count, plural, one {Waiting for the design-time builds of # project to end…} other {Waiting for the design-time builds of # projects to end…}}</value>
+    <comment>A build waiting for the design-time builds of several projects.</comment>
+  </data>
+  <data name="WaitingForBuild" xml:space="preserve">
+    <value>Waiting for the build under way to end…</value>
+    <comment>A start's build waiting for the build under way.</comment>
+  </data>
+  <data name="UpToDate" xml:space="preserve">
+    <value>{project} is up to date: nothing its build reads has changed since it was built, so it was not built again</value>
+    <comment>A start that did not build its project, which stands as last built.</comment>
+  </data>
+  <data name="AllUpToDate" xml:space="preserve">
+    <value>{projects} are up to date: nothing their builds read has changed since they were built, so they were not built again</value>
+    <comment>A start that built none of its projects, each standing as last built.</comment>
+  </data>
+  <data name="OpenFolderIn" xml:space="preserve">
+    <value>open {folder} in {fileManager}</value>
+    <comment>What a click on a publish's words in the status bar does, after "Click to": the folder it published to shown in the file manager (Finder, Explorer).</comment>
+  </data>
+  <data name="OpenFile" xml:space="preserve">
+    <value>open {file}</value>
+    <comment>What a click on a failed build's words in the status bar does, after "Click to": the file that chose the SDK opened.</comment>
+  </data>
+  <data name="ReadingPublish" xml:space="preserve">
+    <value>Reading how {what} publishes…</value>
+    <comment>A publish reading the project's profile for where and how it publishes.</comment>
+  </data>
+  <data name="LookingForLogin" xml:space="preserve">
+    <value>Looking for a login for {registry}…</value>
+    <comment>A container publish looking for a login the SDK would find for the registry it pushes to.</comment>
+  </data>
+  <data name="AskingForLogin" xml:space="preserve">
+    <value>Asking {registry} whether it wants a login…</value>
+    <comment>A container publish asking the registry whether a push needs a login.</comment>
+  </data>
+  <data name="NotPushed" xml:space="preserve">
+    <value>{what} was not pushed: {why}</value>
+    <comment>A container publish refused before it started: the registry wants a login none was found for.</comment>
+  </data>
+  <data name="NotIntoEngine" xml:space="preserve">
+    <value>{what} cannot be published into the engine: {why}</value>
+    <comment>A container publish into this machine's engine, refused as the engine cannot take it, and why.</comment>
+  </data>
+  <data name="RunningStep" xml:space="preserve">
+    <value>Running {step} of {name}…</value>
+    <comment>An AppHost's deploy step running.</comment>
+  </data>
+  <data name="PublishingThrough" xml:space="preserve">
+    <value>Publishing {name} through its publishers…</value>
+    <comment>An AppHost published through its own publishers (Docker Compose's, Kubernetes').</comment>
+  </data>
+  <data name="LookingForNeeds" xml:space="preserve">
+    <value>Looking for what {step} needs…</value>
+    <comment>An AppHost's deploy step looking for the logins and the engine it needs.</comment>
+  </data>
+  <data name="StepNotRun" xml:space="preserve">
+    <value>{what} was not run: {step} {missing}</value>
+    <comment>An AppHost's deploy step refused, and what it needs that is missing ("needs a login to Azure").</comment>
+  </data>
+  <data name="CannotPublish" xml:space="preserve">
+    <value>{name} cannot be published: {why}</value>
+    <comment>An AppHost's publish that could not start, and why.</comment>
+  </data>
+  <data name="NoImage" xml:space="preserve">
+    <value>{what} made no image: {why}</value>
+    <comment>A container publish whose build made no image, and the SDK's warning why.</comment>
+  </data>
+  <data name="NoImageSaid" xml:space="preserve">
+    <value>{what} made no image: the Build window says why</value>
+    <comment>A container publish whose build made no image, with no warning to say why.</comment>
+  </data>
+  <data name="PublishedIntoEngine" xml:space="preserve">
+    <value>Published {what} as the {images, plural, one {image} other {images}} {image}, into the engine</value>
+    <comment>A container publish into this machine's engine, the images it made named.</comment>
+  </data>
+  <data name="PublishedPushed" xml:space="preserve">
+    <value>Published {what}: pushed the {images, plural, one {image} other {images}} {image}</value>
+    <comment>A container publish pushed to a registry, the images it pushed named.</comment>
+  </data>
+  <data name="Published" xml:space="preserve">
+    <value>Published {what}</value>
+    <comment>A publish that succeeded.</comment>
+  </data>
+  <data name="PublishedTo" xml:space="preserve">
+    <value>Published {what} to {folder}</value>
+    <comment>A publish that succeeded, and the folder it published to.</comment>
+  </data>
+  <data name="WithWarnings" xml:space="preserve">
+    <value>{said} with {warnings, plural, one {# warning} other {# warnings}}</value>
+    <comment>A build or publish that succeeded ({said}, as "Published Api to bin/publish"), with how many warnings it gave.</comment>
+  </data>
+  <data name="WritingFiles" xml:space="preserve">
+    <value>Publishing {name}: writing its files to {folder}…</value>
+    <comment>An AppHost's publish putting the files its publishers wrote into the folder chosen.</comment>
+  </data>
+  <data name="FilesUnwritten" xml:space="preserve">
+    <value>{name} published, but its files were not written to {folder}: {why}</value>
+    <comment>An AppHost's publish whose files could not be put into the folder chosen.</comment>
+  </data>
+  <data name="RanStep" xml:space="preserve">
+    <value>Ran {step} of {name}</value>
+    <comment>An AppHost's deploy step that ran.</comment>
+  </data>
+  <data name="NothingWritten" xml:space="preserve">
+    <value>{name}'s publishers wrote nothing: its code adds none (AddDockerComposeEnvironment adds Docker Compose's)</value>
+    <comment>An AppHost's publish that wrote no files, as its code adds no publisher.</comment>
+  </data>
+  <data name="RanStepWrote" xml:space="preserve">
+    <value>Ran {step} of {name}, its files written to {folder}: {files}</value>
+    <comment>An AppHost's deploy step that ran, and the files it wrote.</comment>
+  </data>
+  <data name="PublishedFiles" xml:space="preserve">
+    <value>Published {name} to {folder}: {files}</value>
+    <comment>An AppHost's publish, and the files its publishers wrote.</comment>
+  </data>
+  <data name="Restoring" xml:space="preserve">
+    <value>Restoring {what}…</value>
+    <comment>A publish restoring the project's packages.</comment>
+  </data>
+  <data name="MakingImage" xml:space="preserve">
+    <value>Publishing {what}: making its image…</value>
+    <comment>A container publish making its image.</comment>
+  </data>
+  <data name="ImageInEngine" xml:space="preserve">
+    <value>Publishing {what}: its image is in the engine</value>
+    <comment>A container publish whose image is in this machine's engine.</comment>
+  </data>
+  <data name="ImagePushed" xml:space="preserve">
+    <value>Publishing {what}: its image is pushed</value>
+    <comment>A container publish whose image is pushed to its registry.</comment>
+  </data>
+  <data name="PublishersWriting" xml:space="preserve">
+    <value>Publishing {name}: its publishers are writing…</value>
+    <comment>An AppHost's publish whose publishers are writing its files.</comment>
+  </data>
+  <data name="CopyingForImage" xml:space="preserve">
+    <value>Publishing {what}: copying it to its folder for its image…</value>
+    <comment>A container publish copying the app to its folder for its image.</comment>
+  </data>
+  <data name="Copying" xml:space="preserve">
+    <value>Publishing {what}: copying it to its folder…</value>
+    <comment>A publish copying the app to its folder.</comment>
+  </data>
+  <data name="NoPresets" xml:space="preserve">
+    <value>{folder} has no {file}: make an export preset in Godot's editor (Project, Export)</value>
+    <comment>A Godot export refused: the game's folder has no export_presets.cfg.</comment>
+  </data>
+  <data name="NoPreset" xml:space="preserve">
+    <value>{file} has no preset {preset}: it has {presets}</value>
+    <comment>A Godot export refused: export_presets.cfg has no preset of the name asked, and the presets it has.</comment>
+  </data>
+  <data name="PresetNamesNoFile" xml:space="preserve">
+    <value>The preset {preset} names no file to export to (its export_path): give one, or set it in Godot's editor (Project, Export)</value>
+    <comment>A Godot export refused: its preset names no file to export to.</comment>
+  </data>
+  <data name="CannotExport" xml:space="preserve">
+    <value>{preset} cannot be exported: {why}</value>
+    <comment>A Godot export refused, and why.</comment>
+  </data>
+  <data name="ReadingExport" xml:space="preserve">
+    <value>Reading how {preset} exports…</value>
+    <comment>A Godot export reading its preset and the Godot that exports it.</comment>
+  </data>
+  <data name="TemplatesMissing" xml:space="preserve">
+    <value>{preset} cannot be exported: Godot {version} has no {missing} among its export templates: install them from a {archive} in Publish</value>
+    <comment>A Godot export refused: the Godot that exports lacks the export templates it needs, and how to install them.</comment>
+  </data>
+  <data name="TemplatesMissingIn" xml:space="preserve">
+    <value>{preset} cannot be exported: Godot {version} has no {missing} among its export templates ({folder}): install them from a {archive} in Publish</value>
+    <comment>A Godot export refused: the Godot that exports lacks export templates in its templates' folder, and how to install them.</comment>
+  </data>
+  <data name="ExportStopped" xml:space="preserve">
+    <value>Export stopped</value>
+    <comment>A Godot export stopped before Godot started.</comment>
+  </data>
+  <data name="FolderUnmade" xml:space="preserve">
+    <value>{folder} could not be made: {why}</value>
+    <comment>A Godot export whose output folder could not be made.</comment>
+  </data>
+  <data name="Exporting" xml:space="preserve">
+    <value>{kind, select, debug {Exporting {preset}, a debug export…} other {Exporting {preset}, a release export…}}</value>
+    <comment>A Godot export under way, a debug or a release export.</comment>
+  </data>
+  <data name="ExportingWith" xml:space="preserve">
+    <value>Exporting {preset} with Godot {version}</value>
+    <comment>A Godot export begun, and the Godot that exports.</comment>
+  </data>
+  <data name="ExportStage" xml:space="preserve">
+    <value>Exporting {preset}: {stage} ({done, number}%)</value>
+    <comment>A Godot export under way: what Godot says it is doing, and how much of it is done.</comment>
+  </data>
+  <data name="ExportOfStopped" xml:space="preserve">
+    <value>Export of {preset} stopped</value>
+    <comment>A Godot export stopped.</comment>
+  </data>
+  <data name="Exported" xml:space="preserve">
+    <value>Exported {preset} to {path}</value>
+    <comment>A Godot export that wrote the game.</comment>
+  </data>
+  <data name="GodotWroteNothing" xml:space="preserve">
+    <value>Godot ended without writing {path}</value>
+    <comment>How a Godot export failed: Godot ended well but wrote no game.</comment>
+  </data>
+  <data name="ExportFailed" xml:space="preserve">
+    <value>Export of {preset} failed ({ended})</value>
+    <comment>A Godot export that failed, and how Godot ended ({ended}, as "exit code 1").</comment>
+  </data>
+  <data name="ExportFailedSaying" xml:space="preserve">
+    <value>Export of {preset} failed ({ended}): {error}</value>
+    <comment>A Godot export that failed, how Godot ended, and the first error Godot said.</comment>
+  </data>
+</root>

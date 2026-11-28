@@ -195,8 +195,8 @@ public sealed class SettingsStore : IDisposable
     }
 
     /// <summary>The process's share of the look, put in force once for every window: the theme, its dark or light and the
-    /// code's colours only when their settings change, so one named on the command line stands until then; the code font and
-    /// the window's; the carets' width.</summary>
+    /// code's colours only when their settings change, so one named on the command line stands until then; plain folders'
+    /// icons; the code font and the window's; the carets' width.</summary>
     private static void VisualsInForce(AppSettings? before, AppSettings after)
     {
         if (Avalonia.Application.Current is { } app && (before is null || before.Theme != after.Theme))
@@ -215,6 +215,10 @@ public sealed class SettingsStore : IDisposable
         {
             Themes.UseStates(coloured, after.StatePalette);
         }
+        if (Avalonia.Application.Current is { } foldered && (before is null || before.PlainFolderIcons != after.PlainFolderIcons))
+        {
+            Explorer.FileIcons.ShowPlainFolders(foldered, after.PlainFolderIcons);
+        }
         FontsInForce(after);
         if (Avalonia.Application.Current is { } careted && (before is null || before.CaretWidth != after.CaretWidth))
         {
@@ -224,16 +228,22 @@ public sealed class SettingsStore : IDisposable
         {
             InterfaceScale.Use(scaled, after.DisplayScale);
         }
+        if (Avalonia.Application.Current is not null && (before is null || before.DisplayLanguage != after.DisplayLanguage))
+        {
+            UiLanguage.Put(LanguageSetting.InForce(after.DisplayLanguage));
+        }
     }
 
     /// <summary>The settings whose fonts are in force, which the theme's fonts give way to.</summary>
     private static AppSettings? fontsOf;
 
-    /// <summary>The code's and the window's family in force, as their names: a family Settings names, else the theme's.</summary>
-    private static (string? Code, string? Window)? fontsInForce;
+    /// <summary>The code's and the window's family in force, as their names (a family Settings names, else the theme's), and
+    /// the consoles' size.</summary>
+    private static (string? Code, string? Window, double Console)? fontsInForce;
 
     /// <summary>The code font and the window's: the family Settings names wherever the person named one, else the theme's,
-    /// else Passenger's own; put in force again as the theme's change.</summary>
+    /// else Passenger's own; and the consoles' size, which may follow the theme's code size: put in force again as the
+    /// theme's change.</summary>
     private static void FontsInForce(AppSettings after)
     {
         if (fontsOf is null)
@@ -250,7 +260,12 @@ public sealed class SettingsStore : IDisposable
         {
             WindowFonts.Use(framed, WindowFonts.Named(window) ?? WindowFonts.Carried);
         }
-        fontsInForce = Avalonia.Application.Current is null ? null : (code, window);
+        double console = after.ConsoleSize();
+        if (Avalonia.Application.Current is { } sized && fontsInForce?.Console != console)
+        {
+            ToolWindows.OutputView.UseSize(sized, console);
+        }
+        fontsInForce = Avalonia.Application.Current is null ? null : (code, window, console);
     }
 
     /// <summary>What belongs to the process, put in force once for every window: its share of the look, the keymap and the
@@ -263,6 +278,10 @@ public sealed class SettingsStore : IDisposable
             AppActions.Choose(after.Keymap, after.OwnShortcuts());
         }
         LogsInForce(before, after);
+        if (before is null || before.ContainerEngine != after.ContainerEngine)
+        {
+            Containers.ContainerEngine.Shared.Choose(after.ContainerEngine);
+        }
     }
 
     private static void LogsInForce(AppSettings? before, AppSettings after)

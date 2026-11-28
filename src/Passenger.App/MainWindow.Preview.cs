@@ -41,14 +41,14 @@ public partial class MainWindow
 
     private void AddPreview()
     {
-        actions!.Add(new IdeAction(A.XamlPreview, "XAML Preview", "Editor", _ => TogglePreview())
+        actions!.Add(new IdeAction(A.XamlPreview, ActionTitles.XamlPreview, ActionGroups.Editor, _ => TogglePreview())
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : session.Xaml.For(context.File) is null ? "The previewer is for the XAML of an Avalonia, WPF or .NET MAUI project" : null,
             IsChecked = _ => previewing,
             Menus = [new MenuPlace("View", 4, 0)],
         });
-        actions.Add(new IdeAction(A.BuildForPreview, XamlPreviewPane.BuildForPreviewTitle, "Editor", context => IdeErrors.Observe(BuildForPreviewAsync(context.File!)))
+        actions.Add(new IdeAction(A.BuildForPreview, ActionTitles.BuildForPreview, ActionGroups.Editor, context => IdeErrors.Observe(BuildForPreviewAsync(context.File!)))
         {
             WhyNot = context => context.File is null ? Refusals.NoFile
                 : session.Xaml.For(context.File) is null || ProjectModel.Owning(session.Projects, context.File.Path) is null ? "The previewer is for the XAML of an Avalonia, WPF or .NET MAUI project"
@@ -56,7 +56,7 @@ public partial class MainWindow
             Words = ["preview", "build", "framework"],
         });
         Editors.HasXamlPreview = document => session.Xaml.For(document) is not null;
-        Editors.PreviewToggleClicked += (_, group) => Request(group.PreviewAction ?? A.XamlPreview);
+        Editors.ActionAsked += (_, action) => Request(action);
         Editors.ActiveChanged += (_, _) => FollowPreviews();
         Editors.Closed += (_, document) => EndPreview(document);
         Editors.ForEachEditor(editor => editor.SelectionChanged += (_, _) => OutlineAtCaret(editor));

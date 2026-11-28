@@ -1,4 +1,7 @@
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Debugging;
 using Passenger.App.LiveTree;
@@ -13,8 +16,10 @@ namespace Passenger.Tests;
 /// <summary>A Godot game's configuration that starts several copies of it side by side, a server and its clients, each
 /// with its own arguments: Debug starts each in a tab of its own with its own console, each a source in the Live Visual
 /// Tree's chooser; a breakpoint only the server reaches stops it alone; Debug Another Copy starts one more beside them;
-/// Stop ends them all; one copy restarts alone. The game is GDScript alone, run headless with the run's user folders;
-/// without a Godot 4 each test skips saying why. It debugs through the window, so run alone.</summary>
+/// Stop ends them all; one copy restarts alone. Run starts each in a tab of the Run window of its own, Godot's errors folded
+/// in each, restarted and stopped alone, and Run Another Copy shows a game in the Run console as the first copy's tab. The
+/// game is GDScript alone, run headless with the run's user folders; without a Godot 4 each test skips saying why. It debugs
+/// through the window, so run alone.</summary>
 [Collection(Alone.Name)]
 public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
 {
@@ -38,7 +43,110 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         OpenWindows.CloseAll();
         Flow.Step(nameof(Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on),
             Restarting_one_debugged_copy_relaunches_it_alone_the_other_debugged_on);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Two_copies_run_each_in_a_Run_window_tab_their_errors_folded_each_restarted_and_stopped_alone),
+            Two_copies_run_each_in_a_Run_window_tab_their_errors_folded_each_restarted_and_stopped_alone);
+        OpenWindows.CloseAll();
+        Flow.Step(nameof(Another_copy_beside_a_game_in_the_Run_console_shows_that_game_as_the_first_tab_whose_Rerun_restarts_it_there),
+            Another_copy_beside_a_game_in_the_Run_console_shows_that_game_as_the_first_tab_whose_Rerun_restarts_it_there);
     }
+
+    /// <summary>Run of two copies runs each in a tab of the Run window of its own, never the Terminal window, its console its
+    /// copy's lines alone with Godot's errors folded (the server's error, said every tenth frame, shown once and counted); the
+    /// client's Rerun restarts it alone in its tab, the server running on in the same process, its Stop ends it alone, and
+    /// Stop ends the server too. Set to run in the terminal, the configuration runs its copies each in a Terminal tab.</summary>
+    private void Two_copies_run_each_in_a_Run_window_tab_their_errors_folded_each_restarted_and_stopped_alone()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window, 2, arguments: ["-- server noisy", "-- client"]);
+            Ui.Launched(window, window.RunAsync(), "the two copies' start", TimeSpan.FromMinutes(2));
+            string client = $"{Name} #2";
+            Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual([Name, client])
+                    && Text(window.RunParts[0]).Contains("role server", StringComparison.Ordinal) && Text(window.RunParts[1]).Contains("role client", StringComparison.Ordinal),
+                () => $"each copy in a tab of the Run window saying its own role ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            PartRun server = window.RunParts[0];
+            PartRun other = window.RunParts[1];
+            Assert.True(!Text(server).Contains("role client", StringComparison.Ordinal) && !Text(other).Contains("role server", StringComparison.Ordinal),
+                $"A copy's tab holds another's lines: {Runs(window)}");
+            Assert.True(window.RunInTerminal is null && window.Session.Games.Count == 2, $"The copies did not run as two games of the Run window: {window.Session.Games.Count} games");
+            Ui.WaitFor(() => server.Console.Fold?.Entries is [{ Count: > 2 } entry] && entry.Header.StartsWith("ERROR: lobby trouble", StringComparison.Ordinal),
+                () => $"the server's error, said every tenth frame, folded once with its count ({string.Join(", ", server.Console.Fold?.Entries.Select(e => $"{e.Header} x{e.Count}") ?? [])})", TimeSpan.FromMinutes(1));
+            Assert.True(other.Console.Fold is { Entries.Count: 0 }, "The client's tab folds an error only the server says");
+
+            int? serverProcess = server.ProcessId;
+            int? clientProcess = other.ProcessId;
+            Ui.Click(window.GetVisualDescendants().OfType<ToggleButton>().First(b => b.Name == "runPart2Tab"));
+            Ui.Click(Button(other.Console, "Rerun"));
+            Ui.WaitFor(() => other.IsRunning && other.ProcessId != clientProcess && Text(other).Contains("role client", StringComparison.Ordinal),
+                () => $"the client's Rerun to start it again in its tab ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(server.IsRunning && server.ProcessId == serverProcess && window.RunParts.Count == 2, $"The client's restart ended the server, which was to run on: {Runs(window)}");
+
+            Ui.Click(Button(other.Console, "Stop"));
+            Ui.WaitFor(() => !other.IsRunning && window.Session.Games.Count == 1, () => $"the client's Stop to end it alone ({Runs(window)})", TimeSpan.FromMinutes(1));
+            Assert.True(server.IsRunning, $"The client's Stop ended the server: {Runs(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.RunParts.All(p => !p.IsRunning) && !window.IsRunning && window.Session.Games.Count == 0,
+                () => $"Stop to end the server too ({Runs(window)})", TimeSpan.FromMinutes(1));
+
+            // The person's choice to run it in the terminal keeps its copies there, each a tab of the Terminal window.
+            Assert.True(window.Session.Configurations.UseConsole(Name, ConsoleKind.Terminal), "The configuration could not be set to run in the terminal");
+            Ui.Launched(window, window.RunAsync(), "the two copies' start in the terminal", TimeSpan.FromMinutes(2));
+            Ui.WaitFor(() => window.TerminalPanel.Tabs.Count(t => (t.Name == Name || t.Name == client) && !t.HasEnded) == 2 && window.Session.Games.Count == 2,
+                () => $"each copy in a tab of the Terminal window ({string.Join(", ", window.TerminalPanel.Tabs.Select(t => $"{t.Name} {(t.HasEnded ? "ended" : "running")}"))}; {window.Status})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(window.RunParts.All(p => !p.IsRunning), $"A copy run in the terminal also has a tab of the Run window: {Runs(window)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    /// <summary>Run Another Copy beside a game Run started in the Run console: that game becomes the first copy's tab, over the
+    /// Run console, and the second copy a tab of its own; the console's Rerun restarts the first in place, in the console, the
+    /// second running on in the same process.</summary>
+    private void Another_copy_beside_a_game_in_the_Run_console_shows_that_game_as_the_first_tab_whose_Rerun_restarts_it_there()
+    {
+        MainWindow window = Open();
+        try
+        {
+            Choose(window, 1);
+            Ui.Launched(window, window.RunAsync(), "the game's start in the Run console", TimeSpan.FromMinutes(2));
+            // One game alone takes no copy's arguments: a client.
+            Ui.WaitFor(() => window.BottomPanel.Run.Document.Snapshot.ToString().Contains("role client", StringComparison.Ordinal),
+                () => $"the game in the Run console to say its role ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.Actions.Run(AppActions.RunAnotherCopy)?.Shown);
+            string client = $"{Name} #2";
+            Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual([Name, client]) && Text(window.RunParts[1]).Contains("role client", StringComparison.Ordinal),
+                () => $"the game in the Run console and another copy beside it, each a tab ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            PartRun first = window.RunParts[0];
+            PartRun second = window.RunParts[1];
+            Assert.True(first.Console == window.BottomPanel.Run && first.IsRunning, $"The game in the Run console is not the first copy's tab over it: {Runs(window)}");
+
+            int? firstProcess = first.ProcessId;
+            int? secondProcess = second.ProcessId;
+            Ui.Click(window.GetVisualDescendants().OfType<ToggleButton>().First(b => b.Name == "runPart1Tab"));
+            Ui.Click(window.BottomPanel.Run.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string tip && tip.StartsWith("Rerun", StringComparison.Ordinal) && b.IsEffectivelyVisible));
+            Ui.WaitFor(() => first.IsRunning && first.ProcessId != firstProcess && window.BottomPanel.Run.Document.Snapshot.ToString().Contains("role client", StringComparison.Ordinal)
+                    && window.Actions.Work.Of(AppActions.RunProgram) is null,
+                () => $"the first copy's Rerun to start it again in the Run console ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(window.RunParts.Count == 2 && window.RunParts[0] == first && first.Console == window.BottomPanel.Run && second.IsRunning && second.ProcessId == secondProcess,
+                $"The first copy's Rerun did not restart it alone in the Run console, the second running on: {Runs(window)}");
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
+    private static Button Button(OutputView console, string tip) =>
+        console.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is string said && said == tip && b.IsEffectivelyVisible);
+
+    private static string Text(PartRun part) => part.Runner.Shown().ToString();
+
+    private static string Runs(MainWindow window) => string.Join(", ", window.RunParts.Select(r => $"{r.Name} ({r.Said}): {string.Join(" / ", Text(r).Split('\n').Where(l => l.Length > 0).TakeLast(2))}"));
 
     private void Three_copies_debug_each_in_its_own_tab_and_console_one_stops_alone_another_comes_beside_and_Stop_ends_them_all()
     {
@@ -66,7 +174,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
             Ui.WaitFor(() => Tab(window, Name)?.Session?.State == DebugState.Paused, () => $"the server to stop at its breakpoint ({Sessions(window)})", TimeSpan.FromMinutes(1));
             Assert.True(copies.Skip(1).All(c => Tab(window, c)?.Session?.State == DebugState.Running), $"A client stopped with the server: {Sessions(window)}");
 
-            Assert.Null(window.Actions.Run(AppActions.DebugAnotherCopy));
+            Assert.Null(window.Actions.Run(AppActions.DebugAnotherCopy)?.Shown);
             Ui.WaitFor(() => window.Session.Games.Count == 4 && Console(window, $"{Name} #4").Contains("role client", StringComparison.Ordinal),
                 () => $"a fourth copy beside them, a client ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
 
@@ -119,15 +227,16 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
     }
 
     /// <summary>The game's configuration, run headless with the run's user folders, starting <paramref name="copies"/> copies: the
-    /// first a server, the second a client, the rest clients too, given no arguments of their own.</summary>
-    private void Choose(MainWindow window, int copies, string name = Name)
+    /// first a server, the second a client, the rest clients too, given no arguments of their own; or each with its line of
+    /// <paramref name="arguments"/>.</summary>
+    private void Choose(MainWindow window, int copies, string name = Name, string[]? arguments = null)
     {
         Ui.WaitFor(() => window.Configurations.Any(c => c.Generated && c.Name == "Lobby"),
             () => $"the game's configuration ({string.Join(", ", window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));
         RunConfiguration generated = window.Configurations.Single(c => c.Generated && c.Name == "Lobby");
         window.SetConfigurations([generated with
         {
-            Name = name, Generated = false, Arguments = "--headless", Environment = new(game.Homes), GodotCopies = copies, CopyArguments = ["-- server", "-- client"],
+            Name = name, Generated = false, Arguments = "--headless", Environment = new(game.Homes), GodotCopies = copies, CopyArguments = [.. arguments ?? ["-- server", "-- client"]],
         }], name);
     }
 
@@ -135,7 +244,7 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the copies to end ({Sessions(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();
@@ -152,7 +261,8 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
         string.Join(", ", window.Debugger.Tabs.Select(t => $"{t.Name}: {t.Session?.State.ToString() ?? "none"}"));
 
     /// <summary>A Godot 4 project of GDScript alone named Lobby at 20 frames a second: its Main node is the server where its
-    /// user arguments say server, else a client, says so every tenth frame, and counts frames served past the fortieth.</summary>
+    /// user arguments say server, else a client, says so every tenth frame (with an error too where they say noisy), and
+    /// counts frames served past the fortieth.</summary>
     public sealed class Game
     {
         public Game()
@@ -174,6 +284,8 @@ public sealed class GodotCopiesTests : IClassFixture<GodotCopiesTests.Game>
                 	frames += 1
                 	if frames % 10 == 0:
                 		print("role ", role, " frame ", frames)
+                		if OS.get_cmdline_user_args().has("noisy"):
+                			push_error("lobby trouble")
                 	if role == "server" and frames > 40:
                 		served += 1
 

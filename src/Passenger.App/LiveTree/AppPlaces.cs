@@ -31,10 +31,12 @@ public static class AppPlaces
         return place with { Line = at.Line + 1, Column = at.Column + 1 };
     }
 
-    /// <summary>An element's details with every place in them at the editor's line, each file read once.</summary>
+    /// <summary>An element's details with every place in them at the editor's line, each file read once; a Windows Forms one's
+    /// read from its designer code (<see cref="DesignerPlaces"/>).</summary>
     public static ElementDetails InEditor(ElementDetails details, EditorArea editors)
     {
         Func<string, TextSnapshot?> texts = ServerPlaces.Texts(editors);
+        details = DesignerPlaces.Placed(details, texts);
         SourcePlace? Placed(SourcePlace? place) => place is null ? null : InEditor(place, texts);
         return details with
         {

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Xml;
 using Passenger.Core;
 
 namespace Passenger.App;
@@ -6,7 +7,8 @@ namespace Passenger.App;
 /// <summary>A theme's background pictures as data: each file's kind and size read from its header alone (PNG, JPEG or WebP),
 /// checked against <see cref="ThemeFiles.MostImageBytes"/>, <see cref="ThemeFiles.MostImageSide"/> and
 /// <see cref="ThemeFiles.MostImagePixels"/> before anything decodes it, so a small file never becomes a huge bitmap; only
-/// Avalonia's own decoders read one whole. Called on any thread.</summary>
+/// Avalonia's own decoders read one whole. Its icons' SVGs alike, held to <see cref="ThemeFiles.MostIconBytes"/> and an
+/// SVG's root. Called on any thread.</summary>
 public static class ThemeImages
 {
     /// <summary>A picture's width and height from its header, or null where it is no PNG, JPEG or WebP this reads.</summary>
@@ -46,25 +48,45 @@ public static class ThemeImages
         return null;
     }
 
-    /// <summary>Every picture a theme names, each read through <paramref name="read"/> by its path beside the theme's file and
-    /// checked; why not, naming the first that cannot be.</summary>
+    /// <summary>Every picture and icon a theme names, each read through <paramref name="read"/> by its path beside the theme's
+    /// file and checked; why not, naming the first that cannot be.</summary>
     public static async Task<(Dictionary<string, byte[]> Images, string? Why)> ReadAsync(ThemeFile theme, Func<string, Task<(byte[]? Bytes, string? Why)>> read)
     {
         Dictionary<string, byte[]> images = new(StringComparer.Ordinal);
-        foreach (string image in theme.Images)
+        foreach ((string image, bool icon) in theme.Images.Select(i => (i, false)).Concat(theme.IconFiles.Select(i => (i, true))))
         {
+            string named = icon ? $"{theme.Name}'s icon {image}" : $"{theme.Name}'s background {image}";
             (byte[]? bytes, string? why) = await read(image);
             if (bytes is null)
             {
-                return (images, $"{theme.Name}'s background {image} could not be read: {why}");
+                return (images, $"{named} could not be read: {why}");
             }
-            if (WhyNot($"{theme.Name}'s background {image}", bytes) is { } refused)
+            if ((icon ? IconWhyNot(named, bytes) : WhyNot(named, bytes)) is { } refused)
             {
                 return (images, refused);
             }
             images[image] = bytes;
         }
         return (images, null);
+    }
+
+    /// <summary>Why an icon's file cannot stand in for one of Passenger's, naming it: more than an icon may hold, or no
+    /// SVG, read as far as its first element; null where it can. What it draws is read as it is first drawn.</summary>
+    public static string? IconWhyNot(string name, byte[] bytes)
+    {
+        if (bytes.Length > ThemeFiles.MostIconBytes)
+        {
+            return $"{name} is {Sizes.Said(bytes.Length)}, more than the {Sizes.Said(ThemeFiles.MostIconBytes)} an icon may hold";
+        }
+        try
+        {
+            using XmlReader reader = XmlReader.Create(new MemoryStream(bytes), new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
+            return reader.MoveToContent() == XmlNodeType.Element && reader.LocalName == "svg" ? null : $"{name} is no SVG: its first element is <{reader.LocalName}>";
+        }
+        catch (XmlException error)
+        {
+            return $"{name} is no SVG: {error.Message}";
+        }
     }
 
     /// <summary>A picture's path beside a theme file's path in its source, its folders joined by /.</summary>

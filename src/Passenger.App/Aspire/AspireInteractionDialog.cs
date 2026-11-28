@@ -284,7 +284,7 @@ public sealed class AspireInteractionDialog : IdeWindow
                     PasswordChar = input.InputType == InputType.SecretText ? '●' : '\0',
                     MaxLength = input.MaxLength > 0 ? input.MaxLength : int.MaxValue,
                 };
-                text.TextChanged += (_, _) => Changed(input, text.Text ?? string.Empty);
+                TypedText.Hear(text, () => Changed(input, text.Text ?? string.Empty));
                 control = text;
                 if (input.InputType == InputType.Choice && input.Options.Count > 0)
                 {

@@ -309,7 +309,8 @@ public static class TextNavigation
     }
 
     /// <summary>The column a piece of text reaches on screen drawn from <paramref name="column"/>: a tab to its next
-    /// stop, every other character its <see cref="WideCharacters.Cells"/>.</summary>
+    /// stop, a control character its mark's (<see cref="ControlCharacters"/>), every other character its <see
+    /// cref="WideCharacters.Cells"/>.</summary>
     public static int ColumnAfter(ReadOnlySpan<char> piece, int column, int tabWidth)
     {
         for (int i = 0; i < piece.Length; i++)
@@ -322,7 +323,7 @@ public static class TextNavigation
             }
             else if (c < '\u0300')
             {
-                column++;
+                column += ControlCharacters.MarkOf(c) is { } mark ? mark.Length : 1;
             }
             else if (char.IsHighSurrogate(c) && i + 1 < piece.Length && char.IsLowSurrogate(piece[i + 1]))
             {

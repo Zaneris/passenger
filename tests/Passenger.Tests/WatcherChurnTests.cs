@@ -7,7 +7,8 @@ namespace Passenger.Tests;
 /// <summary>A build's churn under obj/ and bin/, which no registration of the language server's matches, costs the
 /// watchers no allocation for each change: a registration tells a build output's name it can never match without making a
 /// string, and a watcher counts such a change toward a burst without one once its folder has been heard of; what the
-/// registrations ask for under obj/ still matches.</summary>
+/// registrations ask for under obj/ still matches, and is matched without a string made; and the watchers over a change, or
+/// over a folder, are found among a thousand registrations elsewhere at what they cost among none.</summary>
 public sealed class WatcherChurnTests
 {
     private const string Project = "/game/App";
@@ -30,6 +31,44 @@ public sealed class WatcherChurnTests
         Assert.True(told == 0, $"Telling 1,000 build outputs from what the registrations ask for allocated {told:N0} bytes");
         Assert.True(sources.Matches($"{Project}/obj/Debug/net10.0/App.AssemblyInfo.cs"), "A source the build writes under obj/ no longer matches the registration of sources");
         Assert.True(assets.Matches($"{Project}/obj/project.assets.json"), "The restore's assets no longer match their registration");
+        string[] written = [.. Enumerable.Range(0, 1000).Select(i => $"{Project}/Folder{i % 10}/Source{i}.cs")];
+        before = GC.GetAllocatedBytesForCurrentThread();
+        foreach (string path in written)
+        {
+            matched += sources.Matches(path) ? 1 : 0;
+        }
+        long sourcesMatched = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal(written.Length, matched);
+        Assert.True(sourcesMatched == 0, $"Matching 1,000 sources the registration asks for allocated {sourcesMatched:N0} bytes");
+
+        // The same two registrations alone and among a thousand of folders elsewhere, as a solution's packages register them.
+        WatchIndex few = new([sources, assets]);
+        WatchIndex many = new([.. Enumerable.Range(0, 1000).Select(i => new FileWatch($"/packages/library{i}/lib", "**/*.dll", WatchKinds.All)), sources, assets]);
+        (long Told, long Concerned) Costs(WatchIndex index)
+        {
+            // Each look made once first, so what a first use sets up once (a static lambda's delegate) is not counted.
+            Assert.True(index.Covers(new FileEvent(written[0], FileChangeType.Changed)) && !index.Matches(built[0]) && index.Concerning($"{Project}/obj").Count == 2,
+                "The index did not find what the registrations ask for");
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            int covered = 0;
+            for (int i = 0; i < written.Length; i++)
+            {
+                covered += index.Covers(new FileEvent(written[i], FileChangeType.Changed)) ? 1 : 0;
+                covered += index.Matches(built[i]) ? 1 : 0;
+            }
+            long told = GC.GetAllocatedBytesForCurrentThread() - start;
+            Assert.Equal(written.Length, covered);
+            start = GC.GetAllocatedBytesForCurrentThread();
+            List<FileWatch> concerning = index.Concerning($"{Project}/obj");
+            long concerned = GC.GetAllocatedBytesForCurrentThread() - start;
+            Assert.Equal([sources, assets], concerning.OrderBy(w => w.Pattern, StringComparer.Ordinal));
+            return (told, concerned);
+        }
+        (long fewTold, long fewConcerned) = Costs(few);
+        (long manyTold, long manyConcerned) = Costs(many);
+        Assert.True(fewTold == 0 && manyTold == 0, $"Telling 2,000 changes from the watchers over each allocated {fewTold:N0} bytes among two registrations, {manyTold:N0} among a thousand more");
+        Assert.True(manyConcerned == fewConcerned, $"The registrations over a folder cost {manyConcerned:N0} bytes to find among a thousand registrations elsewhere, against {fewConcerned:N0} among none: "
+            + "every refresh of the server's watchers costs the square of its registrations");
 
         using Churn watcher = new(Project);
         watcher.Hear(built[0]);

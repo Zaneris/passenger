@@ -19,6 +19,16 @@ public interface IRunningProgram
     void Stop();
 }
 
+/// <summary>A program run in a tab of its own, of the Terminal window (<see cref="TerminalRun"/>) or the Run window
+/// (<see cref="PartRun"/>), by the name its tab shows.</summary>
+public interface INamedRun : IRunningProgram
+{
+    string Name { get; }
+
+    /// <summary>Whether it ended because the IDE ended it.</summary>
+    bool WasStopped { get; }
+}
+
 /// <summary>How a program of the folder came to run.</summary>
 public enum RunningKind
 {

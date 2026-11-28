@@ -129,7 +129,7 @@ public sealed class AspireExternalDataTests(AspireApp project) : IClassFixture<A
         window.KeyTextInput(title);
         Ui.Settle();
         Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-        Assert.Equal(title, popup.Rows[0].Title);
+        Assert.Equal(title, popup.Rows[0].Title.English);
         Ui.Press(window, "ENTER");
     }
 

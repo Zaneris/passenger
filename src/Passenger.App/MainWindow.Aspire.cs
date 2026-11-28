@@ -28,11 +28,11 @@ public partial class MainWindow
     private bool choosingAspireProfile;
     private EventHandler? aspireDisplayChanged;
 
-    private async Task<string?> ProfileAspireAsync(RunConfiguration configuration, string? arguments)
+    private async Task<Words?> ProfileAspireAsync(RunConfiguration configuration, string? arguments)
     {
         if (choosingAspireProfile)
         {
-            return "An Aspire service is already being chosen";
+            return LaunchWords.ChoosingAspireService;
         }
         choosingAspireProfile = true;
         ProjectSession current = session;
@@ -45,7 +45,7 @@ public partial class MainWindow
             IReadOnlyList<AspireResource> resources = await ReadAspireResourcesAsync(configuration.Project);
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             AspireSelection[] choices = resources.Select(resource => new AspireSelection(configuration.Project, resource))
                 .Where(selection => current.Aspire.FindService(selection)?.ProcessId is > 0).ToArray();
@@ -59,7 +59,7 @@ public partial class MainWindow
         }
         catch (Exception error) when (AspireFailure(error))
         {
-            return error.Message;
+            return RefusedException.Of(error);
         }
         finally
         {
@@ -166,6 +166,7 @@ public partial class MainWindow
                 ?? Task.FromResult<IReadOnlyList<AspireResource>>([])
             : null;
         model.ConsoleProvider = (selected, cancel) => next.Aspire.FindApp(selected.AppHostPath)?.Interactions?.WatchConsoleAsync(selected.Resource, cancel);
+        next.Aspire.Cli = AspireCliFrom;
         next.Aspire.ConnectInteractions = async (app, cancel) =>
         {
             if (app.ResourceServiceEndpoint is not { } endpoint)
@@ -295,7 +296,7 @@ public partial class MainWindow
     public Task<IReadOnlyList<AspireResource>> ReadAspireResourcesAsync(string appHost, CancellationToken cancel = default) =>
         session.Aspire.FindApp(appHost) is { IsTest: false } app
             ? app.Interactions?.GetResourcesAsync(cancel)
-                ?? Task.FromException<IReadOnlyList<AspireResource>>(new InvalidOperationException(Refusals.AppHostStarting))
+                ?? Task.FromException<IReadOnlyList<AspireResource>>(new RefusedException(Refusals.AppHostStarting))
             : AspireCli().GetResourcesAsync(appHost, cancel);
 
     private async Task<AspireSelection> ReadAspireSelectionAsync(string appHost, string resource, CancellationToken cancel)
@@ -315,7 +316,7 @@ public partial class MainWindow
         AspireSelection selection = await ReadAspireSelectionAsync(appHost, resource, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         return await ResourceCommandAsync(current, selection, command, () => true, cancel, forAgent: true);
     }
@@ -330,7 +331,7 @@ public partial class MainWindow
         if (command is "restart" or "resource-restart" && current.Aspire.FindService(selection) is IRunService service
             && current.Aspire.FindApp(selection.AppHostPath) is { IsTest: false } app)
         {
-            return await buildRun.RestartServiceAsync(app, service.Name, service) is { } failed ? throw new InvalidOperationException(failed) : $"{app.Name}: restarted {service.Name}";
+            return await buildRun.RestartServiceAsync(app, service.Name, service) is { } failed ? throw new RefusedException(failed) : $"{app.Name}: restarted {service.Name}";
         }
         return await ExecuteAspireCommandAsync(current, selection, command, isCurrent, cancel, forAgent);
     }
@@ -384,13 +385,13 @@ public partial class MainWindow
 
     /// <summary>The Aspire window's (and an agent's) Debug or Attach of a resource that runs: that service of the AppHost the
     /// window runs (<see cref="DebugAspireRunningAsync"/>). Null once done, else why not (said too).</summary>
-    private async Task<string?> DebugAspireServiceAsync(ProjectSession current, AspireSelection selection, bool attach, CancellationToken cancel = default)
+    private async Task<Words?> DebugAspireServiceAsync(ProjectSession current, AspireSelection selection, bool attach, CancellationToken cancel = default)
     {
         try
         {
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             (AspireAppRun app, AspireResourceRun service) = RunningOf(current, selection);
             return await DebugAspireRunningAsync(current, app, service, attach);
@@ -399,9 +400,9 @@ public partial class MainWindow
         {
             if (session == current)
             {
-                Say(error.Message);
+                Say(RefusedException.Of(error));
             }
-            return error.Message;
+            return RefusedException.Of(error);
         }
     }
 
@@ -411,14 +412,14 @@ public partial class MainWindow
         AspireAppRun app = current.Aspire.FindApp(selection.AppHostPath) is { IsTest: false } owned ? owned
             : throw new InvalidOperationException(NotRunHere(selection.AppHostPath));
         AspireResourceRun service = current.Aspire.FindService(selection)
-            ?? throw new InvalidOperationException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name));
+            ?? throw new RefusedException(Refusals.NotRunning(selection.Resource.DisplayName, app.Name));
         return (app, service);
     }
 
     /// <summary>Debug or Attach of a start of a service of an AppHost the window runs (a replica of several, by its own), as
     /// it runs now: its live Debug tab chosen when it has one, else the run of services' Debug (restarted held, attached as it
     /// starts) or Attach (as it runs), its tab chosen once attached. Null once done, else why not.</summary>
-    private async Task<string?> DebugAspireRunningAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service, bool attach)
+    private async Task<Words?> DebugAspireRunningAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service, bool attach)
     {
         using IDisposable held = BackgroundWork.Scope();
         if (service.DebugTab is { IsLive: true } existing)
@@ -429,7 +430,7 @@ public partial class MainWindow
             return null;
         }
         string name = ((IRunService)service).Name;
-        string? problem = attach ? await buildRun.AttachServiceAsync(app, name, service) : await buildRun.DebugServiceAsync(app, name, service);
+        Words? problem = attach ? await buildRun.AttachServiceAsync(app, name, service) : await buildRun.DebugServiceAsync(app, name, service);
         if (problem is null && session == current && app.Newest(service) is { } now)
         {
             current.Aspire.SelectService(now);
@@ -440,13 +441,13 @@ public partial class MainWindow
 
     /// <summary>The Aspire window's (and an agent's) Profile of a resource that runs: that service of the AppHost the window
     /// runs, recorded as it runs. Null once it records, else why not (said too).</summary>
-    private async Task<string?> ProfileAspireServiceAsync(ProjectSession current, AspireSelection selection)
+    private async Task<Words?> ProfileAspireServiceAsync(ProjectSession current, AspireSelection selection)
     {
         try
         {
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             (AspireAppRun app, AspireResourceRun service) = RunningOf(current, selection);
             return await ProfileAspireRunningAsync(current, app, service);
@@ -455,15 +456,15 @@ public partial class MainWindow
         {
             if (session == current)
             {
-                Say(error.Message);
+                Say(RefusedException.Of(error));
             }
-            return error.Message;
+            return RefusedException.Of(error);
         }
     }
 
     /// <summary>Profile of a start of a service of an AppHost the window runs (a replica of several, by its own), as it runs:
     /// the run of services' one recording of a service. Null once it records, else why not.</summary>
-    private async Task<string?> ProfileAspireRunningAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service)
+    private async Task<Words?> ProfileAspireRunningAsync(ProjectSession current, AspireAppRun app, AspireResourceRun service)
     {
         using IDisposable held = BackgroundWork.Scope();
         current.Aspire.SelectService(service);
@@ -472,20 +473,20 @@ public partial class MainWindow
 
     /// <summary>The run of services' one recording of a service, either kind's, held at its start or as it runs: the window's
     /// profiler's. Null once it records, else why not.</summary>
-    private Task<string?> RecordRunServiceAsync(ServiceRun run, IRunService service, ServiceProgram program, bool asItRuns, CancellationToken stop) =>
-        profiler is { } commands ? commands.RecordServiceAsync(run, service, program, asItRuns, stop) : Task.FromResult<string?>("The profiler is not available");
+    private Task<Words?> RecordRunServiceAsync(ServiceRun run, IRunService service, ServiceProgram program, bool asItRuns, CancellationToken stop) =>
+        profiler is { } commands ? commands.RecordServiceAsync(run, service, program, asItRuns, stop) : Task.FromResult<Words?>(LaunchWords.ProfilerUnavailable);
 
     /// <summary>The Aspire window's (and an agent's) Debug or Run without Debugger of a resource that does not run now (one
     /// the window ran before): the choice kept, and its AppHost asked to start it; one that runs goes through the run of
     /// services (Run without Debugger restarting it unheld). Null once asked, else why not (said too).</summary>
-    private async Task<string?> RestartAspireServiceAsync(ProjectSession current, AspireSelection selection, bool debugging, CancellationToken cancel = default)
+    private async Task<Words?> RestartAspireServiceAsync(ProjectSession current, AspireSelection selection, bool debugging, CancellationToken cancel = default)
     {
         using IDisposable held = BackgroundWork.Scope();
         try
         {
             if (session != current || current.IsEnded)
             {
-                return Refusals.SolutionClosed;
+                return Refusals.SolutionClosed.Shown;
             }
             if (current.Aspire.FindService(selection) is { } running && current.Aspire.FindApp(selection.AppHostPath) is { } app)
             {
@@ -509,9 +510,9 @@ public partial class MainWindow
         {
             if (session == current)
             {
-                Say(error.Message);
+                Say(RefusedException.Of(error));
             }
-            return error.Message;
+            return RefusedException.Of(error);
         }
     }
 
@@ -564,7 +565,7 @@ public partial class MainWindow
         }
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         foreach (AspireResourceRun start in starts.DistinctBy(start => (start.Project, start.Plan.Framework)))
         {
@@ -574,7 +575,7 @@ public partial class MainWindow
             if (await buildRun.BuildForAsync(new BuildStep(start.Project, start.Plan.Framework), cancel, () => app.Rebuilding(start.Project, current.Debug.Kept()), app.Workspace)
                 is { Succeeded: false } failed)
             {
-                throw new InvalidOperationException(failed.Message);
+                throw new RefusedException(failed.Message);
             }
         }
         IReadOnlyList<AspireResource> built = await ReadAspireResourcesAsync(app.Configuration.Project, cancel);
@@ -614,13 +615,13 @@ public partial class MainWindow
     /// <summary>What an Aspire start asks before its AppHost starts besides its certificate (which is every run's,
     /// <see cref="BuildRunController"/>'s): the container engine's state, said as a container run's is, and followed while
     /// the folder's AppHosts run. Null unless the folder was closed meanwhile.</summary>
-    private async Task<string?> ShowAspireEngineAsync(RunConfiguration configuration, CancellationToken cancel)
+    private async Task<Words?> ShowAspireEngineAsync(RunConfiguration configuration, CancellationToken cancel)
     {
         ProjectSession current = session;
         Containers.EngineState engine = await Engine.StateAsync(again: true, cancel: cancel);
         if (session != current || current.IsEnded)
         {
-            return Refusals.SolutionClosed;
+            return Refusals.SolutionClosed.Shown;
         }
         ShowAspireEngine(engine);
         FollowEngineForAspire(current);

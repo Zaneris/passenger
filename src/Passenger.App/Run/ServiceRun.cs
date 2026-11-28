@@ -202,7 +202,7 @@ public abstract class ServiceRun : Telemetry.ITelemetryRun
     public abstract string StartsIt { get; }
 
     /// <summary>How a service the run left unstarted is said where an action has nothing to reach in it, every kind's words.</summary>
-    public string WhyNotStarted(string name) => Refusals.NotStarted(ServiceNamed(name) is { } service ? NameOf(service) : $"{name} of {Name}", StartsIt);
+    public string WhyNotStarted(string name) => Refusals.NotStarted(ServiceNamed(name) is { } service ? NameOf(service) : $"{name} of {Name}", StartsIt).Shown;
 
     /// <summary>Why one of a service's actions (<see cref="AppActions.ServiceDebug"/> and the rest) cannot act on a service of
     /// the run, or null: Attach has nothing to reach in one the run left unstarted.</summary>

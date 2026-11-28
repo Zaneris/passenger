@@ -556,8 +556,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     {
         string sides = WriteSides();
         MainWindow window = Keeping();
-        window.Perform(AppActions.ToggleSolutionAnalysis);
-        Assert.True(window.Settings.SolutionWideAnalysis);
+        ProblemsTests.AnalyseSolution(window);
         window.OpenFile(Path.Combine(folder, "Lib", "Greeter.cs"));
         OpenDocument greeter = window.EditorArea.Active!;
         Ui.WaitFor(() => window.CSharpService?.IsReady == true && greeter.ProjectContexts.Count == 2,
@@ -578,7 +577,7 @@ public sealed partial class LanguageServerProjectsTests : IClassFixture<Restored
     {
         string sides = WriteSides();
         MainWindow window = Keeping();
-        window.Perform(AppActions.ToggleSolutionAnalysis);
+        ProblemsTests.AnalyseSolution(window);
         Ui.WaitFor(() => window.CSharpService?.IsReady == true, "the language server to load the projects", TimeSpan.FromMinutes(2));
         ListsOnly(window, sides, "NotInTen", "NotInEleven", $"{TestProjects.Framework}, chosen first");
 

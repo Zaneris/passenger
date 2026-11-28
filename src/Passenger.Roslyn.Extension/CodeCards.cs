@@ -45,11 +45,11 @@ internal static class CodeCards
             | SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
 
     /// <summary>A stretch of a classification's text; no type for a name the server could not bind, as its colours leave out.</summary>
-    public static CodePart Part(string classification, string text) =>
-        new(text, classification != ClassificationTypeNames.Identifier && Legend.TokenTypeMap.TryGetValue(classification, out string? type) ? type : null);
+    public static CodePart Part(string classification, string text, string? declaration = null) =>
+        new(text, classification != ClassificationTypeNames.Identifier && Legend.TokenTypeMap.TryGetValue(classification, out string? type) ? type : null, declaration);
 
     /// <summary>The blocks of code among tagged text, each the parts between a code block's start and its end; null for none.</summary>
-    public static List<CodePart[]>? Blocks(IEnumerable<TaggedText> tags)
+    public static List<CodePart[]>? Blocks(IEnumerable<TaggedText> tags, Func<TaggedText, string?>? declaration = null)
     {
         List<CodePart[]> blocks = [];
         List<CodePart>? block = null;
@@ -74,7 +74,7 @@ internal static class CodeCards
             }
             else if (tag.Text.Length > 0)
             {
-                block.Add(Part(tag.Tag.ToClassificationTypeName(), tag.Text));
+                block.Add(Part(tag.Tag.ToClassificationTypeName(), tag.Text, declaration?.Invoke(tag)));
             }
         }
         return blocks.Count > 0 ? blocks : null;
@@ -82,7 +82,8 @@ internal static class CodeCards
 }
 
 /// <summary><see cref="ExtensionMethods.Hover"/>: textDocument/hover as the server's own answers a client without Visual
-/// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code.</summary>
+/// Studio's extensions, its quick info's sections one after another, with the parts of its blocks of code, and in C# the
+/// words naming a symbol links to it (<see cref="HoverLinks"/>).</summary>
 [Method(ExtensionMethods.Hover)]
 internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServiceDocumentRequestHandler<TextDocumentPositionParams, CodedHover?>
 {
@@ -97,20 +98,31 @@ internal sealed class CodedHoverHandler(IGlobalOptionService options) : ILspServ
         Document document = await context.GetRequiredDocumentAsync(cancellationToken).ConfigureAwait(false);
         bool markdown = context.GetRequiredClientCapabilities().TextDocument?.Hover?.ContentFormat?.Contains(MarkupKind.Markdown) == true;
         int position = await document.GetPositionFromLinePositionAsync(ProtocolConversions.PositionToLinePosition(request.Position), cancellationToken).ConfigureAwait(false);
+        SymbolDescriptionOptions description = options.GetSymbolDescriptionOptions(document.Project.Language);
+        bool csharp = document.Project.Language == LanguageNames.CSharp;
+        if (csharp)
+        {
+            description = description with { QuickInfoOptions = description.QuickInfoOptions with { IncludeNavigationHintsInQuickInfo = true } };
+        }
         QuickInfoItem? info = await document.GetRequiredLanguageService<QuickInfoService>()
-            .GetQuickInfoAsync(document, position, options.GetSymbolDescriptionOptions(document.Project.Language), cancellationToken).ConfigureAwait(false);
+            .GetQuickInfoAsync(document, position, description, cancellationToken).ConfigureAwait(false);
         if (info is null)
         {
             return null;
         }
+        ImmutableArray<QuickInfoSection> sections = csharp
+            ? await HoverLinks.LinkAsync(document, info, await HoverAttributes.AnnotateAsync(document, info, cancellationToken).ConfigureAwait(false), cancellationToken)
+                .ConfigureAwait(false)
+            : info.Sections;
         // A line break after each section, as the server's own sets them apart.
-        ImmutableArray<TaggedText> tags = [.. info.Sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
+        ImmutableArray<TaggedText> tags = [.. sections.SelectMany(s => s.TaggedParts.Add(new TaggedText(TextTags.LineBreak, Environment.NewLine)))];
         SourceText text = await document.GetValueTextAsync(cancellationToken).ConfigureAwait(false);
         return new CodedHover
         {
             Range = ProtocolConversions.TextSpanToRange(info.Span, text),
             Contents = ProtocolConversions.GetDocumentationMarkupContent(tags, document.Project.Language, markdown),
-            Code = CodeCards.Blocks(tags),
+            // A C# signature's parts name what they stand for by the symbol's key, which only a click on one resolves.
+            Code = CodeCards.Blocks(tags, csharp ? tag => tag.NavigationTarget : null),
         };
     }
 }

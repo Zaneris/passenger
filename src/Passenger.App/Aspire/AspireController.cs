@@ -37,7 +37,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                     if (FindApp(made.AppHost) is { } app)
                     {
                         string said = $"{app.Configuration.Name}'s orchestrator made {Plural.Of(made.Containers, "container")} on an engine Passenger reaches "
-                            + "neither through docker nor through the runtime it was told or would find (docker, podman), so Passenger cannot list, "
+                            + $"neither through docker nor through the runtime it was told or would find ({string.Join(", ", AspireContainerOwnership.Runtimes)}), so Passenger cannot list, "
                             + $"follow or remove them: set {AspireVariables.ContainerRuntime} to the engine docker or podman reaches, or docker's context to DCP's";
                         app.Console.Append(said + "\n", error: true);
                         ContainersElsewhere?.Invoke(this, said);
@@ -98,12 +98,16 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     /// <summary>Attaches to a service held at its start as the start comes, once: the run of services' one attach
     /// (BuildRunController's), null once attached, else why not.</summary>
-    public Func<AspireAppRun, AspireResourceRun, RunStart, CancellationToken, Task<string?>>? AttachStart { get; set; }
+    public Func<AspireAppRun, AspireResourceRun, RunStart, CancellationToken, Task<Words?>>? AttachStart { get; set; }
 
     /// <summary>What a person chose for a service of a configuration's run as it ran (debugged, or not), which its first start
     /// in a run that brings the configuration up again keeps; null when nothing was chosen.</summary>
     public Func<string, string, bool?>? Chosen { get; set; }
     public Func<AspireAppRun, CancellationToken, Task<AspireInteractions?>>? ConnectInteractions { get; set; }
+
+    /// <summary>The aspire CLI an AppHost of another language runs through (<see cref="AspireAppHosts.RunsThroughCli"/>): the
+    /// window's (a test's stand-in), else the PATH's.</summary>
+    public string? Cli { get; set; }
 
     /// <summary>How long Profile of a configuration waits for the service it records to reach the profiler, counted from DCP's
     /// request to start that service (however long its AppHost takes to ask, which Stop ends): past it the start is given up,
@@ -143,7 +147,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
 
     /// <summary>The run of the AppHost at <paramref name="appHost"/>, which throws, saying so (<see cref="Refusals.AppHostNotOwned"/>),
     /// where the folder's session runs none.</summary>
-    public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new InvalidOperationException(Refusals.AppHostNotOwned);
+    public AspireAppRun OwnedApp(string appHost) => FindApp(appHost) ?? throw new RefusedException(Refusals.AppHostNotOwned);
 
     /// <summary>The process its AppHost says a resource's program runs as (executable.pid), the last it gives; null for none.</summary>
     public static int? ProgramOf(AspireResource resource)
@@ -213,7 +217,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         AspireAppRun app = OwnedApp(selection.AppHostPath);
         if (disposed || workspace.IsEnded || lifetime.IsCancellationRequested || app.Stopping || app.Lifetime.IsCancellationRequested)
         {
-            throw new InvalidOperationException(Refusals.AppHostChanged);
+            throw new RefusedException(Refusals.AppHostChanged);
         }
         if (FindService(selection) is { } service)
         {
@@ -269,7 +273,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     /// own, <see cref="ProjectSession.WorkspaceOfAsync"/>), and once each is connected to answers null, else why not. <paramref name="https"/> is
     /// how its HTTPS is served, as the start worked out before: over HTTP, the AppHosts' own addresses and the services they
     /// start serve HTTP for this run.</summary>
-    public async Task<string?> StartAsync(RunConfiguration configuration, RunStart mode,
+    public async Task<Words?> StartAsync(RunConfiguration configuration, RunStart mode,
         Func<BuildStep, Action?, WorkspaceModel?, Task<BuildOutcome>> build, CancellationToken cancellation = default, HttpsChoice? https = null)
     {
         UiThread.Check();
@@ -282,13 +286,13 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             string[] paths = [configuration.Project, .. configuration.LinkedAppHosts];
             if (paths.Distinct(PathNames.Comparer).Count() != paths.Length)
             {
-                return "An Aspire configuration cannot link an AppHost more than once";
+                return LaunchWords.AppHostLinkedTwice;
             }
             foreach (string path in paths)
             {
                 if (startingPaths.Contains(path) || apps.Any(app => PathNames.Same(app.Configuration.Project, path)))
                 {
-                    return $"{Path.GetFileNameWithoutExtension(path)} is already running in this workspace";
+                    return LaunchWords.AppHostAlreadyRunning(Path.GetFileNameWithoutExtension(path));
                 }
             }
             foreach (string path in paths)
@@ -299,7 +303,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             string group = Guid.NewGuid().ToString("N");
             RunConfiguration[] configurations = paths.Select(path => PathNames.Same(path, configuration.Project) ? configuration
                 : workspace.Configurations.All.FirstOrDefault(candidate => candidate.Aspire && PathNames.Same(candidate.Project, path))
-                    ?? throw new LaunchException($"The linked AppHost {Path.GetFileName(path)} is not available")).ToArray();
+                    ?? throw new LaunchException(LaunchWords.LinkedAppHostUnavailable(Path.GetFileName(path)))).ToArray();
             (string AppHost, string Name)[] candidates = configurations.SelectMany(chosen => chosen.ServiceActions
                 .Where(pair => pair.Value == ServiceStart.Debug && chosen.ServiceProjects.ContainsKey(pair.Key))
                 .OrderBy(pair => pair.Key == chosen.LaunchService ? 0 : 1)
@@ -343,14 +347,14 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 }
                 if (started.FirstOrDefault(app => ReferenceEquals(asked, app.ProfileAsked.Task)) is not { } profiled)
                 {
-                    throw new LaunchException("The AppHost ended before a service could be profiled");
+                    throw new LaunchException(LaunchWords.AppHostEndedBeforeProfiling);
                 }
                 string service = await profiled.ProfileAsked.Task;
                 // The start's landing or its limit falling due, whichever came first where it came (ClaimsProfile), however late this looks.
                 Task winner = await Task.WhenAny(profiled.ProfileStarted.Task, profiled.Runner.Ended).WaitAsync(starting.Token);
                 if (!ReferenceEquals(winner, profiled.ProfileStarted.Task))
                 {
-                    throw new LaunchException($"The AppHost ended before {service} could be profiled");
+                    throw new LaunchException(LaunchWords.AppHostEndedBeforeProfiled(service));
                 }
                 if (await profiled.ProfileStarted.Task is { } failed)
                 {
@@ -366,7 +370,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             {
                 await StopAppAsync(app);
             }
-            return error is OperationCanceledException ? BuildRunController.StoppedStarting(configuration.Name) : error.Message;
+            return error is OperationCanceledException ? BuildRunController.StoppedStarting(configuration.Name) : RefusedException.Of(error);
         }
         finally
         {
@@ -386,7 +390,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         AspireAppRun app;
         LaunchPlan plan;
         // What the AppHost and the services it starts build and run as, its configuration's own build configuration where it names one.
-        (WorkspaceModel? configured, string? unconfigured) = await workspace.WorkspaceOfAsync(configuration);
+        (WorkspaceModel? configured, Words? unconfigured) = await workspace.WorkspaceOfAsync(configuration);
         if (unconfigured is not null)
         {
             throw new LaunchException(unconfigured);
@@ -426,7 +430,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         if (https.OverHttp is { } note)
         {
-            app.Notes.Add(note);
+            app.Notes.Add(note.Shown);
         }
         foreach (string line in said)
         {
@@ -563,6 +567,18 @@ public sealed partial class AspireController(ProjectSession workspace, string st
             // Each health check's run is an update: the Containers window is regrouped only when the containers named change.
             bool moved = !ids.ToHashSet(StringComparer.Ordinal).SetEquals(app.KnownContainerIds);
             app.KnownContainerIds = ids;
+            (string, string, string)[] connections = [.. snapshot.Where(r => r.State == AspireStates.Running && connection.ConnectionStrings.ContainsKey(r.Name))
+                .Select(r => (r.Name, r.DisplayName, AspireJson.Properties(r.Data, "properties").FirstOrDefault(p => p.Name == "container.image").Value is
+                    { ValueKind: JsonValueKind.String } image ? image.GetString() ?? string.Empty : string.Empty))
+                .OrderBy(r => r.Name, StringComparer.Ordinal)];
+            string[] values = [.. connections.Select(c => connection.ConnectionStrings.GetValueOrDefault(c.Item1) ?? string.Empty)];
+            if (!connections.SequenceEqual(app.Connections) || !values.SequenceEqual(app.ConnectionValues, StringComparer.Ordinal))
+            {
+                app.Connections = connections;
+                app.ConnectionValues = values;
+                app.ConnectionsTold++;
+                ConnectionsChanged?.Invoke(this, app);
+            }
             app.Replicas(snapshot);
             BackgroundWork.Track(Reported(Containers.Observe(app.Configuration.Project, snapshot, app.ContainerRuntime)));
             if (moved)
@@ -578,6 +594,9 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         };
         app.Following = connection.Follow();
     }
+
+    /// <summary>The resources of a run that tell a connection string and run, or their strings, changed (<see cref="AspireAppRun.Connections"/>).</summary>
+    public event EventHandler<AspireAppRun>? ConnectionsChanged;
 
     /// <summary>The containers a run's resources name changed (<see cref="AspireAppRun.KnownContainerIds"/>).</summary>
     public event EventHandler<AspireAppRun>? ContainersChanged;
@@ -775,6 +794,10 @@ public sealed partial class AspireController(ProjectSession workspace, string st
     private async Task<LaunchPlan> ResolveAppHostAsync(RunConfiguration configuration, WorkspaceModel? configured, Func<BuildStep, Task<BuildOutcome>> build,
         CancellationToken cancellation)
     {
+        if (AspireAppHosts.RunsThroughCli(configuration.Project))
+        {
+            return await ThroughCliAsync(configuration, cancellation);
+        }
         if (!Path.GetExtension(configuration.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
         {
             if (configuration.Program.Length > 0)
@@ -840,6 +863,39 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         };
     }
 
+    /// <summary>An AppHost of another language, started as aspire run starts it, which builds it and the .NET projects it adds:
+    /// the CLI in its folder, told the AppHost, never to ask, and the configuration's arguments for the AppHost, with what the
+    /// CLI gives it to run with (<see cref="AspireAppHosts.CliProfile"/>) and the configuration's own over it, so the
+    /// addresses Passenger reaches its resource service and dashboard at are those it serves on.</summary>
+    private async Task<LaunchPlan> ThroughCliAsync(RunConfiguration configuration, CancellationToken cancellation)
+    {
+        if (configuration.Program.Length > 0 || configuration.Framework.Length > 0 || configuration.LaunchProfile.Length > 0)
+        {
+            throw new LaunchException($"{Path.GetFileName(configuration.Project)} runs through the aspire CLI, which reads its launch profile itself: clear Exe path, Target framework and Launch profile");
+        }
+        string? given = Cli;
+        (string? cli, Dictionary<string, string> environment) = await BackgroundWork.Run(() => (given ?? Programs.Command("aspire"), AspireAppHosts.CliProfile(configuration.Project)),
+            cancellation);
+        if (cli is null)
+        {
+            throw new LaunchException(Refusals.NoAspireCli(Path.GetFileName(configuration.Project)));
+        }
+        foreach ((string name, string value) in configuration.Environment)
+        {
+            environment[name] = value;
+        }
+        IReadOnlyList<string> arguments = CommandLine.Split(configuration.Arguments);
+        return new LaunchPlan
+        {
+            Name = configuration.Name,
+            Program = cli,
+            Arguments = ["run", "--apphost", configuration.Project, "--non-interactive", "--nologo", .. arguments.Count > 0 ? ["--", .. arguments] : (string[])[]],
+            WorkingDirectory = Path.GetDirectoryName(configuration.Project)!,
+            Environment = environment,
+            Project = configuration.Project,
+        };
+    }
+
     /// <summary>A single-file AppHost's configuration with its launch profile's values (the one it names, else the first) and
     /// the profile's name in <see cref="LaunchProfile.NameVariable"/>, as dotnet run gives them, what the configuration sets
     /// itself kept; as it is with no profile to read and none named.</summary>
@@ -882,7 +938,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         }
         catch (Exception error) when (profiling)
         {
-            app.ProfileStarted.TrySetResult(app.PastProfileLimit() ?? (error is OperationCanceledException ? BuildRunController.StoppedStarting(app.Name) : error.Message));
+            app.ProfileStarted.TrySetResult(app.PastProfileLimit() ?? (error is OperationCanceledException ? BuildRunController.StoppedStarting(app.Name) : RefusedException.Of(error)));
             throw;
         }
     }
@@ -1484,7 +1540,7 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>How a resource the run left unstarted is said, where DCP says the start it refused failed, and why.</summary>
     public const string NotStarted = "Not started";
 
-    public static readonly string NotStartedWhy = $"{Refusals.Sentence(Refusals.DontStart)}; {StartsService}";
+    public static readonly string NotStartedWhy = $"{Refusals.Sentence(Refusals.DontStart.English)}; {StartsService}";
 
     /// <summary>A service an AppHost's run left unstarted is started by its resource's Start, Debug Service or Run Service
     /// without Debugger, each of which has its AppHost start it.</summary>
@@ -1598,12 +1654,23 @@ public sealed class AspireAppRun : ServiceRun
         }
         rebuiltEdits.Clear();
     }
-    internal TaskCompletionSource<string?> ProfileStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource<Words?> ProfileStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>DCP's request to start the service Profile records, by its name; the profile's time limit counts from it.</summary>
     internal TaskCompletionSource<string> ProfileAsked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public IReadOnlyList<string> KnownContainerIds { get; internal set; } = [];
     internal AspireInteractions? Interactions { get; set; }
+
+    /// <summary>The resources running now that told a connection string (<see cref="AspireInteractions.ConnectionStrings"/>),
+    /// by name and the name shown, in order of name.</summary>
+    public IReadOnlyList<(string Name, string Shown, string Image)> Connections { get; internal set; } = [];
+
+    /// <summary>The connection strings of <see cref="Connections"/>, in their order, which a change of endpoint or login moves
+    /// though no name does.</summary>
+    internal IReadOnlyList<string> ConnectionValues { get; set; } = [];
+
+    /// <summary>How many times <see cref="Connections"/> or their strings changed.</summary>
+    internal int ConnectionsTold { get; set; }
 
     /// <summary>The container runtime its orchestrator was told (ASPIRE_CONTAINER_RUNTIME in its environment), else null.</summary>
     internal string? ContainerRuntime { get; set; }
@@ -1763,7 +1830,7 @@ public sealed class AspireAppRun : ServiceRun
             // The start given, whose program its ended session may have ended with it, else the newest of its name.
             if ((service as AspireResourceRun ?? ServiceNamed(service.Name)) is not AspireResourceRun running)
             {
-                return Refusals.NotRunning(service.Name, Name);
+                return Refusals.NotRunning(service.Name, Name).Shown;
             }
             starts.Add(running);
         }

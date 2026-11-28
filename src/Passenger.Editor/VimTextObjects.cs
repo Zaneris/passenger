@@ -317,13 +317,18 @@ public static class VimTextObjects
     }
 
     /// <summary>A sentence object's stretch as an operator takes it: an end in a later line's first column ends at the
-    /// end of the line before, and from a line's indent the stretch is whole lines, as Vim's exclusive end there is.</summary>
+    /// end of the line before, and from a line's indent the stretch is whole lines, as Vim's exclusive end there is; one
+    /// kept there (<see cref="VimSpan.EndKept"/>) takes that line too from an indent, else stays as it is.</summary>
     public static VimSpan EndingInFirstColumn(TextSnapshot text, VimSpan span)
     {
         LineSpan last = VimMotions.LineOf(text, span.End);
-        if (span.Linewise || span.EndKept || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
+        if (span.Linewise || span.End <= span.Start || span.End != last.Start || last.Line <= VimMotions.LineOf(text, span.Start).Line)
         {
             return span;
+        }
+        if (span.EndKept)
+        {
+            return VimMotions.InIndent(text, span.Start) ? new VimSpan(VimMotions.LineOf(text, span.Start).Start, last.Start, true) : span;
         }
         return VimMotions.InIndent(text, span.Start)
             ? new VimSpan(VimMotions.LineOf(text, span.Start).Start, text.GetLineStart(last.Line - 1), true)
@@ -331,81 +336,128 @@ public static class VimTextObjects
     }
 
     /// <summary>ip and ap, linewise: <paramref name="n"/> runs of lines with text or of blank ones (white alone counts as
-    /// blank here); the outer one takes the blank lines after each paragraph, or before the first where none come after.
-    /// A count running past the text fails.</summary>
-    private static VimSpan? Paragraph(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
+    /// blank here), a macro line (<see cref="VimMotions.MacroLine"/>) beginning a run of text; the outer one takes n runs of
+    /// text, each with the blank lines after it, or from blank lines those and n runs of text with those between, and where
+    /// none come after the last the blank lines before the first. A count running past the text fails.</summary>
+    private static VimSpan? Paragraph(TextSnapshot text, int caret, int n, bool inner, bool breakEnds) => Paragraph(text, caret, n, inner, breakEnds, linewise: false);
+
+    /// <summary>ip and ap in linewise visual mode over one line: where the line is a run of lines alone, held already, and its
+    /// paragraph takes no line above it, the line and the paragraph after it; else the paragraph around it. From the first
+    /// of blank lines ap takes the blank lines after its last paragraph too while it took fewer runs of them than
+    /// <paramref name="n"/>. Null where neither is.</summary>
+    public static VimSpan? HeldParagraph(TextSnapshot text, int line, int n, bool inner, bool breakEnds)
     {
         int last = VimMotions.LastLine(text, breakEnds);
-        int first = text.GetLineFromOffset(caret);
-        bool blank = BlankLine(text, first);
-        while (first > 0 && BlankLine(text, first - 1) == blank)
+        VimSpan? around = Paragraph(text, text.GetLineStart(line), n, inner, breakEnds);
+        bool held = RunOfOneLine(text, line, breakEnds) && line < last && (around is not { } own || text.GetLineFromOffset(own.Start) >= line);
+        VimSpan? span = held ? Paragraph(text, text.GetLineStart(line + 1), n, inner, breakEnds, linewise: true) : null;
+        if (span is null && BlankLine(text, line) && RunStartOf(text, line) == line)
         {
-            first--;
+            span = Paragraph(text, text.GetLineStart(line), n, inner, breakEnds, linewise: true);
         }
+        return (span ?? around) is { } found ? found with { Start = Math.Min(found.Start, text.GetLineStart(line)) } : null;
+    }
+
+    private static VimSpan? Paragraph(TextSnapshot text, int caret, int n, bool inner, bool breakEnds, bool linewise)
+    {
+        int last = VimMotions.LastLine(text, breakEnds);
+        int first = RunStartOf(text, text.GetLineFromOffset(caret));
+        bool blank = BlankLine(text, first);
         int end = RunEnd(text, first, last);
-        int runs = inner ? n : n * 2;
-        for (int i = 1; i < runs; i++)
+        if (inner)
         {
-            if (end >= last)
+            for (int i = 1; i < n; i++)
             {
-                if (inner || i < runs - 1 || blank)
+                if (end >= last)
                 {
                     return null;
                 }
-                // No blank lines after the last paragraph: the ones before the first go instead.
-                while (first > 0 && BlankLine(text, first - 1))
+                end = RunEnd(text, end + 1, last);
+            }
+            return new VimSpan(text.GetLineStart(first), text.GetLineStart(end), true);
+        }
+        int whites = blank ? 1 : 0;
+        for (int texts = blank ? 0 : 1; ; texts += BlankLine(text, end) ? 0 : 1, whites += BlankLine(text, end) ? 1 : 0)
+        {
+            if (texts == n)
+            {
+                if ((!blank || (linewise && whites < n)) && end < last && BlankLine(text, end + 1))
                 {
-                    first--;
+                    end = RunEnd(text, end + 1, last);
                 }
-                break;
+                else if (!blank)
+                {
+                    // No blank lines after the last paragraph: the ones before the first go instead.
+                    while (first > 0 && BlankLine(text, first - 1))
+                    {
+                        first--;
+                    }
+                }
+                return new VimSpan(text.GetLineStart(first), text.GetLineStart(end), true);
+            }
+            if (end >= last)
+            {
+                return null;
             }
             end = RunEnd(text, end + 1, last);
         }
-        return new VimSpan(text.GetLineStart(first), text.GetLineStart(end), true);
     }
 
-    /// <summary>The last line of the run of lines alike (blank or not) that begins at the line.</summary>
+    /// <summary>The last line of the run of lines that begins at the line (<see cref="Continues"/>).</summary>
     private static int RunEnd(TextSnapshot text, int line, int last)
     {
-        bool blank = BlankLine(text, line);
-        while (line < last && BlankLine(text, line + 1) == blank)
+        while (line < last && Continues(text, line + 1))
         {
             line++;
         }
         return line;
     }
 
-    /// <summary>ip and ap carrying a visual stretch on from its cursor's line: <paramref name="n"/> runs of lines with
-    /// text or of blank ones further (ap two runs for each), up to the first line of each run or down to its last; a run
-    /// the line is inside counts as one. They stop at the text's edge, never failing.</summary>
+    /// <summary>Whether a line goes on with the run of lines before it: alike, blank or not, and no macro line beginning a
+    /// run of text.</summary>
+    private static bool Continues(TextSnapshot text, int line) =>
+        BlankLine(text, line) == BlankLine(text, line - 1) && (BlankLine(text, line) || !VimMotions.MacroLine(text, line));
+
+    /// <summary>ip and ap carrying a visual stretch on from its cursor's line: <paramref name="n"/> runs of lines
+    /// (<see cref="Continues"/>) further, ap's each up to a run of text and, where that is the first it takes, the blank
+    /// lines beyond it; up to the first line of each run or down to its last. They stop at the text's edge, never failing.</summary>
     public static int ParagraphsOn(TextSnapshot text, int line, bool up, int n, bool inner, bool breakEnds)
     {
         int last = VimMotions.LastLine(text, breakEnds);
-        long runs = inner ? n : 2L * n;
-        for (long i = 0; i < runs; i++)
+        for (int i = 0; i < n; i++)
         {
-            int next = up ? line - 1 : line + 1;
-            if (next < 0 || next > last)
+            for (bool first = true; ; first = false)
             {
-                break;
+                if (Beyond(line) is not { } next)
+                {
+                    return line;
+                }
+                line = next;
+                if (inner)
+                {
+                    break;
+                }
+                if (!BlankLine(text, line))
+                {
+                    line = first && Beyond(line) is { } blank && BlankLine(text, blank) ? blank : line;
+                    break;
+                }
             }
-            line = up ? RunStartOf(text, next) : RunEnd(text, next, last);
         }
         return line;
+
+        // The far line of the run beyond a line's, or null at the text's edge.
+        int? Beyond(int at) => up ? (at > 0 ? RunStartOf(text, at - 1) : null) : (at < last ? RunEnd(text, at + 1, last) : null);
     }
 
-    /// <summary>Whether the line is a run of lines alike (blank or not) alone, its neighbours unlike it.</summary>
-    public static bool RunOfOneLine(TextSnapshot text, int line, bool breakEnds)
-    {
-        bool blank = BlankLine(text, line);
-        return (line == 0 || BlankLine(text, line - 1) != blank) && (line >= VimMotions.LastLine(text, breakEnds) || BlankLine(text, line + 1) != blank);
-    }
+    /// <summary>Whether the line is a run of lines alone (<see cref="Continues"/>), neither neighbour going on with it.</summary>
+    public static bool RunOfOneLine(TextSnapshot text, int line, bool breakEnds) =>
+        (line == 0 || !Continues(text, line)) && (line >= VimMotions.LastLine(text, breakEnds) || !Continues(text, line + 1));
 
-    /// <summary>The first line of the run of lines alike (blank or not) that the line is in.</summary>
+    /// <summary>The first line of the run of lines (<see cref="Continues"/>) that the line is in.</summary>
     private static int RunStartOf(TextSnapshot text, int line)
     {
-        bool blank = BlankLine(text, line);
-        while (line > 0 && BlankLine(text, line - 1) == blank)
+        while (line > 0 && Continues(text, line))
         {
             line--;
         }

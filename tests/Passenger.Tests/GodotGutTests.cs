@@ -264,7 +264,7 @@ public sealed class GodotGutTests : IDisposable
             int turns = Line("var turns := 2");
             editor.GoTo(new TextPosition(turns, 1));
             Ui.Run(window, AppActions.ToggleBreakpoint);
-            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, [spins], debug: true);
+            Task<Words?> debugged = window.Tests.RunAsync(window.Folder!, [spins], debug: true);
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.GDScript, State: DebugState.Paused }
                     && editor.LineMarks.Contains(new LineMark(turns, LineMarkKind.ExecutionPoint)),
                 () => $"the stop in the test ({window.Debugger.Session?.Engine} {window.Debugger.Session?.State}; {window.BottomPanel.Tests.Status}; {window.Debugger.Output()})",
@@ -425,7 +425,7 @@ public sealed class GodotGutTests : IDisposable
             int twice = Turner.Split('\n').ToList().FindIndex(l => l.Contains("int twice", StringComparison.Ordinal));
             editor.GoTo(new TextPosition(twice, 8));
             Ui.Run(window, AppActions.ToggleBreakpoint);
-            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, [turns], debug: true);
+            Task<Words?> debugged = window.Tests.RunAsync(window.Folder!, [turns], debug: true);
             Ui.WaitFor(() => window.Debugger.Session is { Engine: DebugEngine.Managed, State: DebugState.Paused } && editor.LineMarks.Contains(new LineMark(twice, LineMarkKind.ExecutionPoint)),
                 () => $"the stop in the C# the GUT test calls ({window.Debugger.Session?.Engine} {window.Debugger.Session?.State}; {window.BottomPanel.Tests.Status}; "
                     + $"{window.BottomPanel.Build.Document.Snapshot}; {window.Debugger.Output()})", TimeSpan.FromMinutes(5));

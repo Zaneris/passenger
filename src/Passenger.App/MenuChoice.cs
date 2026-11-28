@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -9,7 +11,15 @@ public static class MenuChoice
 {
     public static MenuItem Of(object header, bool current, Action choose)
     {
-        MenuItem item = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = current };
+        MenuItem item = new() { ToggleType = MenuItemToggleType.Radio, IsChecked = current };
+        if (header is Words words)
+        {
+            item[ShownWords.HeaderProperty] = words;
+        }
+        else
+        {
+            item.Header = header;
+        }
         item.Click += (_, _) =>
         {
             if (!current)
@@ -21,21 +31,27 @@ public static class MenuChoice
     }
 
     /// <summary>One whose own menu holds what can be done with it (a branch in the branch widget), so choosing it opens
-    /// that menu and nothing is done until one of its items is chosen. Its items are made as that menu first opens, so a
-    /// value whose menu stays shut costs it nothing.</summary>
-    public static MenuItem Holding(object header, bool current, Func<IReadOnlyList<Control>> items)
+    /// that menu and nothing is done until one of its items is chosen, made as it first opens
+    /// (<see cref="ToolWindows.ListMenus.MadeOnOpen"/>). Where given, <paramref name="detail"/> follows its name muted (a
+    /// local branch's upstream), giving way first where the menu is narrow; a screen reader names it by its name alone.</summary>
+    public static MenuItem Holding(Words name, bool current, Func<IReadOnlyList<Control>> items, Words? detail = null)
     {
-        // A stand-in until then, so the value shows that it opens a menu and a click or Enter opens it.
-        MenuItem item = new() { Header = header, ToggleType = MenuItemToggleType.Radio, IsChecked = current, ItemsSource = (Control[])[new Separator()] };
-        bool made = false;
-        item.SubmenuOpened += (_, e) =>
+        MenuItem item = new() { ToggleType = MenuItemToggleType.Radio, IsChecked = current };
+        if (detail is null)
         {
-            if (e.Source == item && !made)
-            {
-                made = true;
-                item.ItemsSource = items();
-            }
-        };
-        return item;
+            item[ShownWords.HeaderProperty] = name;
+        }
+        else
+        {
+            TextBlock after = new() { [ShownWords.TextProperty] = detail, Classes = { StyleClasses.Caption, StyleClasses.Muted }, Margin = new Avalonia.Thickness(Gaps.Normal, 0, 0, 0),
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center };
+            item.Header = new ShrinkingRow { Children = { new TextBlock { [ShownWords.TextProperty] = name }, after } };
+            item[ShownWords.NameProperty] = name;
+            item[ShownWords.HelpTextProperty] = detail;
+        }
+        return ToolWindows.ListMenus.MadeOnOpen(item, items);
     }
+
+    /// <summary>The name an item is shown and heard by: its words, or the name given it where its header says more.</summary>
+    public static string? NameOf(MenuItem item) => Avalonia.Automation.AutomationProperties.GetName(item) is { Length: > 0 } name ? name : item.Header as string;
 }

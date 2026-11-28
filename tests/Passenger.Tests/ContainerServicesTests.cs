@@ -206,7 +206,7 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             Assert.Equal([("internal-api", "Api.csproj"), ("web", "Web.csproj")],
                 window.Builds.Containers!.Plan.Dotnet.Select(d => (d.Service, Path.GetFileName(d.Project))).OrderBy(d => d.Service, StringComparer.Ordinal));
             Assert.StartsWith("worker is not a .NET service of docker-compose-api: no project of the solution is known to run it; choose its project in a copy of docker-compose-api",
-                window.Builds.WhyNotOnService(AppActions.ServiceDebug, "worker"), StringComparison.Ordinal);
+                window.Builds.WhyNotOnService(AppActions.ServiceDebug, "worker")?.English, StringComparison.Ordinal);
             ContainersView view = Shown(window);
 
             Act(window, view, project, "internal-api", AppActions.ServiceDebug);
@@ -386,9 +386,9 @@ public sealed class ContainerServicesTests(ContainerRunDebuggingTests.Tools tool
             }
             Assert.True(view.Choose(r => r.Project?.Name == project && r.Service == "web" && r.LeftUnstarted), "web's row could not be chosen");
             Ui.Settle();
-            Assert.Equal(Refusals.NotStarted("web of Later", ContainerRun.StartsService), window.Actions.WhyNot(AppActions.ServiceAttach, window.Actions.Context()));
-            Assert.Equal(Refusals.NotStarted($"{project}/web", ContainerRun.StartsService), window.Actions.WhyNot(AppActions.ContainerStop, window.Actions.Context()));
-            Assert.Null(window.Actions.WhyNot(AppActions.ServiceRun, window.Actions.Context()));
+            Assert.Equal(Refusals.NotStarted("web of Later", ContainerRun.StartsService).Shown, window.Actions.WhyNot(AppActions.ServiceAttach, window.Actions.Context())?.Shown);
+            Assert.Equal(Refusals.NotStarted($"{project}/web", ContainerRun.StartsService).Shown, window.Actions.WhyNot(AppActions.ContainerStop, window.Actions.Context())?.Shown);
+            Assert.Null(window.Actions.WhyNot(AppActions.ServiceRun, window.Actions.Context())?.Shown);
 
             Later(window, view, project, "web", AppActions.ServiceRun);
             Assert.Contains("web of Later started, without the debugger", window.Status, StringComparison.Ordinal);

@@ -6,7 +6,8 @@ namespace Passenger.Tests;
 
 /// <summary>A solution's multi-project launch profile (Visual Studio's <c>.slnLaunch</c>) as an agent works with it: workspace
 /// lists it with what it does with each project, and run with it as the configuration runs each project in the launch
-/// profile it names, answering once each has ended with how each ended and what each wrote.</summary>
+/// profile it names, answering once each has ended with how each ended and what each wrote; run with a part's name restarts
+/// that part alone, and output with it reads its console.</summary>
 public sealed class McpLaunchProfileTests : McpRig, IClassFixture<RestoredFolders>
 {
     private readonly RestoredFolders folders;
@@ -28,11 +29,19 @@ public sealed class McpLaunchProfileTests : McpRig, IClassFixture<RestoredFolder
         JsonElement ran = await Call(client, McpTools.Run, new() { ["configuration"] = "Both", ["waitSeconds"] = 120 });
         string status = ran.GetProperty("status").GetString()!;
         string output = ran.GetProperty("output").GetString()!;
-        Assert.True(status == "Running Both: Api: second and Worker, each in a tab of the Terminal window. Api: second ended with exit code 0; Worker ended with exit code 3",
+        Assert.True(status == "Running Both: Api: second and Worker, each in a tab of the Run window. Api: second ended with exit code 0; Worker ended with exit code 3",
             $"run of the profile did not say how each of its projects ended: {ran}");
         int[] places = [.. ((string[])["Api: second:\n", "Api says second", "Worker:\n", "Worker up"]).Select(said => output.IndexOf(said, StringComparison.Ordinal))];
         Assert.True(places[0] >= 0 && places.SequenceEqual(places.Order()),
             $"run of the profile did not answer with each project's own output under its name, Api's in the launch profile the file names: {ran}");
         Assert.False(ran.GetProperty("stillRunning").GetBoolean(), $"run said the profile still runs once both ended: {ran}");
+
+        JsonElement again = await Call(client, McpTools.Run, new() { ["resource"] = "Worker", ["waitSeconds"] = 120 });
+        Assert.True(again.GetProperty("status").GetString() == "Restarted Worker, its run's other parts running on. Worker ended with exit code 3"
+            && again.GetProperty("output").GetString()!.Contains("Worker up", StringComparison.Ordinal),
+            $"run with a part's name did not restart that part alone and answer with its end and output: {again}");
+        string api = (await Call(client, McpTools.Output, new() { ["resource"] = "Api: second" })).GetString()!;
+        Assert.True(api.StartsWith("Api: second (ended 0):", StringComparison.Ordinal) && api.Contains("Api says second", StringComparison.Ordinal),
+            $"output with a part's name did not read that part's console: {api}");
     }
 }

@@ -1,4 +1,5 @@
 using Passenger.App.Run;
+using Passenger.Core;
 
 namespace Passenger.App.Debugging;
 
@@ -24,7 +25,7 @@ public enum HotReloadResult
 /// <summary>What an Apply Changes came to, in words for the status bar and the Debug console, with the edits that could not
 /// be applied (each at its line, as Problems' Hot Reload tab lists them), the files and modules the update changed, and
 /// how long it took.</summary>
-public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
+public sealed record HotReloadOutcome(HotReloadResult Result, Words Said)
 {
     public IReadOnlyList<Problem> Problems { get; init; } = [];
 
@@ -39,6 +40,17 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
 
     /// <summary>How many methods the update replaced or added.</summary>
     public int Methods { get; init; }
+
+    /// <summary>Whether the program's update handlers were told of the update as it landed, before its XAML was said: a .NET
+    /// MAUI app's, whose handler patches its pages.</summary>
+    public bool HandlersTold { get; init; }
+
+    /// <summary>A .NET MAUI app's XAML files whose open pages MAUI's patch does not bring to the text, so each is made again.</summary>
+    public IReadOnlyList<string> Remade { get; init; } = [];
+
+    /// <summary>The code MAUI's source generator wrote of a .NET MAUI app's XAML files for the update, which the program
+    /// runs from now: each document of it, by its XAML file and the name the update's PDB gives it, with its text.</summary>
+    public IReadOnlyList<(string Markup, string Document, string Text)> Generated { get; init; } = [];
 
     public TimeSpan Took { get; init; }
 
@@ -62,8 +74,8 @@ public sealed record HotReloadOutcome(HotReloadResult Result, string Said)
         {
             return code ?? xaml;
         }
-        List<string> said = [.. new[] { code, xaml }.Where(o => o.Result != HotReloadResult.NothingToApply || o.Problems.Count > 0).Select(o => o.Said)];
-        return new HotReloadOutcome(Worse(code.Result, xaml.Result), said.Count == 0 ? code.Said : string.Join("; ", said))
+        List<Words> said = [.. new[] { code, xaml }.Where(o => o.Result != HotReloadResult.NothingToApply || o.Problems.Count > 0).Select(o => o.Said)];
+        return new HotReloadOutcome(Worse(code.Result, xaml.Result), said.Count == 0 ? code.Said : said.Aggregate(Clauses.Then))
         {
             Problems = [.. code.Problems, .. xaml.Problems],
             Files = [.. code.Files, .. xaml.Files],

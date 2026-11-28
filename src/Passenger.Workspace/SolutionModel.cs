@@ -346,6 +346,11 @@ public sealed record ProjectModel(
         || string.Equals(OutputType, "WinExe", StringComparison.OrdinalIgnoreCase)
         || IsAndroidApp) && !IsTestProject && !IsBrowserClient;
 
+    /// <summary>Whether its program runs as a Windows app package, as evaluated: a Windows App SDK project whose build lays
+    /// out its MSIX package (<see cref="MSBuildNames.EnableMsixTooling"/>) of a package type other than None.</summary>
+    public bool IsPackagedWindowsApp => string.Equals(Property(MSBuildNames.EnableMsixTooling), "true", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(Property(MSBuildNames.WindowsPackageType), MSBuildNames.Unpackaged, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Whether .NET for Android builds an app of it, as evaluated (<see cref="CarriedProperties.AndroidApplication"/>):
     /// its <see cref="OutputType"/> is then Library, turned from the Exe the project gives.</summary>
     public bool IsAndroidApp => string.Equals(Property(CarriedProperties.AndroidApplication), "true", StringComparison.OrdinalIgnoreCase);

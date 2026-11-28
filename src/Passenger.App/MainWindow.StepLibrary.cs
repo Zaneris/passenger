@@ -26,7 +26,7 @@ public partial class MainWindow
     private void AddStepLibrary()
     {
         // Built as it is first shown or asked for, over the session's bindings then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.StepLibrary, "Step Library", IconKeys.StepLibrary, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.StepLibrary, ToolWindowTitles.StepLibrary, IconKeys.StepLibrary, () =>
         {
             StepLibraryView view = new(RowMenuItem);
             stepLibrary = view;
@@ -55,7 +55,7 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 5)],
             Chosen = () => stepLibrary?.Chosen,
         });
-        actions!.Add(new IdeAction(AppActions.InsertStep, "Insert Step into Feature", "Step Library",
+        actions!.Add(new IdeAction(AppActions.InsertStep, ActionTitles.InsertStep, ActionGroups.StepLibrary,
             context => IdeErrors.Observe(InsertStepAsync(stepLibrary!.Chosen!, context)))
         {
             WhyNot = _ => stepLibrary?.Chosen is null ? Refusals.NoStepChosen : assist.Languages.Gherkin.WhyNotInsertStep(),

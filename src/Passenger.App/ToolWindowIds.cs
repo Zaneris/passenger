@@ -7,6 +7,7 @@ public static class ToolWindowIds
 {
     public const string Explorer = "explorer";
     public const string Structure = "structure";
+    public const string SyntaxTree = "syntaxTree";
     public const string Bookmarks = "bookmarks";
     public const string Commit = "commit";
     public const string Run = "run";
@@ -29,6 +30,13 @@ public static class ToolWindowIds
     public const string Aspire = "aspire";
     public const string Migrations = "migrations";
     public const string StepLibrary = "stepLibrary";
+    public const string Coverage = "coverage";
+    public const string Modules = "modules";
+    public const string IlViewer = "ilViewer";
+    public const string DependencyMap = "dependencyMap";
+    public const string Database = "database";
+    public const string Clones = "clones";
+    public const string Toolbox = "toolbox";
 
     /// <summary>Every id above, which a theme's layout names windows by.</summary>
     public static IReadOnlySet<string> All { get; } = typeof(ToolWindowIds).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)

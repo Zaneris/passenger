@@ -264,7 +264,7 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
         foreach (string id in (Docker.Said("ps", "-aq", "--filter", $"label={Docker.RunLabel}") ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Where(id => Docker.Said("inspect", "-f", "{{.Name}}", id) is { } name && (name.Contains(Session, StringComparison.Ordinal) || name.Contains(Kept, StringComparison.Ordinal))))
         {
-            Docker.Said("rm", "-f", id);
+            Docker.Remove(id);
         }
         foreach (string network in networks.Where(name => name.StartsWith("aspire-", StringComparison.Ordinal)))
         {
@@ -285,7 +285,7 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
         {
             if (await Docker.SaidAsync("inspect", "-f", "{{.Name}}", id) is { } name && (name.Contains(Session, StringComparison.Ordinal) || name.Contains(Kept, StringComparison.Ordinal)))
             {
-                await Docker.SaidAsync("rm", "-f", id);
+                await Docker.RemoveAsync(id);
             }
         }
         foreach (string network in networks.Distinct().Where(name => name.StartsWith("aspire-", StringComparison.Ordinal)))
@@ -361,7 +361,7 @@ public sealed class AspireContainersTests : IClassFixture<AspireApp>
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries)).Where(name => name.StartsWith("aspire-", StringComparison.Ordinal)).Distinct()];
             if (ids.Length > 0)
             {
-                Said(["rm", "-f", "-t", "0", .. ids]);
+                Said([.. ContainerLabels.Removing(ids), "-t", "0"]);
             }
             foreach (string network in networks)
             {

@@ -17,10 +17,10 @@ public sealed record DataBreakpointResult(int Id, bool Verified, string? Message
 
 /// <summary>Data breakpoints (Set Data Breakpoint on a member in Variables): the program stops at the line that changes
 /// a field of an object, an auto-property's backing field or an array element. The runtime watches memory for a
-/// debugger on Windows x64 alone (FEATURE_DATABREAKPOINT): the debugger puts the address in a debug register of every
-/// thread, and the runtime tells of a write in managed code (ICorDebugManagedCallback4.DataBreakpoint) at the first
-/// place after it where the thread can stop. The object is pinned while watched, as the runtime advises over
-/// re-arming.</summary>
+/// debugger on Windows x64 alone (FEATURE_DATABREAKPOINT), in 64-bit and 32-bit programs: the debugger puts the address
+/// in a debug register of every thread, and the runtime tells of a write in managed code
+/// (ICorDebugManagedCallback4.DataBreakpoint) at the first place after it where the thread can stop. The object is
+/// pinned while watched, as the runtime advises over re-arming.</summary>
 public partial class ManagedDebugger
 {
     private const int DataSlots = 4;
@@ -31,9 +31,10 @@ public partial class ManagedDebugger
     private const string NotAMember = DebuggerWords.NotAMember;
 
     /// <summary>Why no data breakpoint can be set where the debugger runs, or null where one can: Windows on x64, the
-    /// one system whose .NET runtime watches memory for a debugger.</summary>
+    /// one system whose .NET runtime watches memory for a debugger, for a 64-bit program or, in the 32-bit adapter, a
+    /// 32-bit one.</summary>
     public static string? DataBreakpointsUnavailable { get; } =
-        OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 && RuntimeInformation.ProcessArchitecture == Architecture.X64
+        OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.X64 && RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.X86
             ? null
             : $"Data breakpoints are only available on Windows x64, the one system whose .NET runtime supports them; this is {SystemName()} on {RuntimeInformation.OSArchitecture}";
 
@@ -483,7 +484,7 @@ public partial class ManagedDebugger
         EndStepForStop();
         ICorDebugFrame? top = TopFrame(thread);
         _writtenAt = top is null ? null : WritingStatement(thread, top);
-        SourceInfo? source = top is ICorDebugILFrame ? GetSourceInfoAtFrame(top, _justMyCode is false) : null;
+        SourceInfo? source = top is ICorDebugILFrame ? GetSourceInfoAtFrame(top, JustMyCodeNow is false) : null;
         string change = $"Previous Value: {before ?? "?"}, New Value: {target.Shown ?? "?"}";
         _logger?.Invoke($"Data {target.Id}: {target.Description} is changed ({change})");
         ReportStop(thread.Id, StopReasons.DataBreakpoint, source?.FilePath, source?.StartLine ?? 0, source?.StartColumn ?? 0, [watch.Id], change);
@@ -536,9 +537,9 @@ public partial class ManagedDebugger
         {
             return false;
         }
-        SourceInfo? shown = GetSourceInfoAtFrame(top, _justMyCode is false);
+        SourceInfo? shown = GetSourceInfoAtFrame(top, JustMyCodeNow is false);
         _writtenAt = null;
-        SourceInfo? actual = GetSourceInfoAtFrame(top, _justMyCode is false);
+        SourceInfo? actual = GetSourceInfoAtFrame(top, JustMyCodeNow is false);
         if (actual is not { } at || shown is { } same && same.StartLine == at.StartLine && same.StartColumn == at.StartColumn)
         {
             return false;

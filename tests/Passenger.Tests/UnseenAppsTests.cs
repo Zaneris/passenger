@@ -90,7 +90,7 @@ public sealed class UnseenAppsTests : IDisposable
         Assert.Null(watched.WhyNot("run"));
         if (!OperatingSystem.IsWindows())
         {
-            Assert.Contains("dotnet watch", watched.WhyNot("run", built: false), StringComparison.Ordinal);
+            Assert.Contains("dotnet watch", watched.WhyNot("run", built: false)?.English, StringComparison.Ordinal);
         }
     }
 
@@ -103,7 +103,7 @@ public sealed class UnseenAppsTests : IDisposable
             Assert.True(never.OnOwnDesktop, "A desktop app dotnet watch builds and starts went to the person's desktop");
             return;
         }
-        Assert.Contains("a GTK app", never.WhyNot("run", built: false), StringComparison.Ordinal);
+        Assert.Contains("a GTK app", never.WhyNot("run", built: false)?.English, StringComparison.Ordinal);
     }
 
     /// <summary>An iOS simulator a start runs on shows its window, in the background, where a person sees Passenger: through the
@@ -164,7 +164,7 @@ public sealed class UnseenAppsTests : IDisposable
             Assert.True(plan.OnOwnDesktop && plan.WhyNot("run") is null, $"{called} a Passenger nobody sees runs went to the person's desktop: {plan.WhyNot("run")}");
             return;
         }
-        Assert.True(plan.WhyNot("run") is { } why && why.Contains(called, StringComparison.Ordinal),
+        Assert.True(plan.WhyNot("run")?.English is { } why && why.Contains(called, StringComparison.Ordinal),
             $"{called} a Passenger nobody sees runs was let through to the person's screen: {plan.WhyNot("run")}");
     }
 }

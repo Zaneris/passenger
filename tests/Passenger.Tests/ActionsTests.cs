@@ -33,8 +33,9 @@ public sealed class ActionsTests : IDisposable
         Flow.StepApart<ActionsTests>("the quit is named as the system names it and found in Find Action by Quit and by Exit", t => t.The_quit_is_named_as_the_system_names_it_and_found_in_Find_Action_by_Quit_and_by_Exit());
     }
 
-    /// <summary>Also: no key is bound to an action Find Action leaves out, and what ran last is offered first next
-    /// time, what could not run taking no place from it.</summary>
+    /// <summary>Also: no key is bound to an action Find Action leaves out, every action is titled by words of its own (a
+    /// resource's, keyed by its name in AppActions or EditorActions, never another action's), and what ran last is offered
+    /// first next time, what could not run taking no place from it.</summary>
     private void Every_action_Find_Action_lists_runs_where_it_was_asked_for_or_says_why_it_cannot()
     {
         File.WriteAllText(Path.Combine(folder, "One.cs"), "class One\n{\n    int Two() => 2;\n}\n");
@@ -50,18 +51,25 @@ public sealed class ActionsTests : IDisposable
             Ui.Press(window, "ESCAPE");
             string[] unlisted = [.. window.Actions.Keymap.Actions.Where(id => listed.All(a => a.Id != id))];
             Assert.True(unlisted.Length == 0, $"Keys are bound to actions Find Action does not list, and run nothing: {string.Join(", ", unlisted)}");
+            Dictionary<string, string> named = typeof(AppActions).GetFields().Concat(typeof(EditorActions).GetFields())
+                .Where(f => f.IsLiteral && f.FieldType == typeof(string)).ToDictionary(f => f.Name, f => (string)f.GetRawConstantValue()!, StringComparer.Ordinal);
+            // A tool window's own action may be titled by the window's name, ToolWindowTitles' words.
+            string[] mistitled = [.. listed.Where(a => window.DockHost.Windows.All(w => w.Action != a.Id || w.Title != a.Title)
+                    && (a.Title.IsVerbatim || named.TryGetValue(a.Title.Key, out string? of) && of != a.Id))
+                .Select(a => a.Title.IsVerbatim ? $"{a.Id} ('{a.Title.English}', words written in the code)" : $"{a.Id} ('{a.Title.English}', {named[a.Title.Key]}'s title)")];
+            Assert.True(mistitled.Length == 0, $"Actions a translation never reaches, or titled by another action's words, which a translation of one changes in both: {string.Join(", ", mistitled)}");
 
             IdeAction first = listed[0];
             IdeAction? previous = null;
             foreach (IdeAction action in listed.Where(a => !LeftAlone.Contains(a.Id)))
             {
-                string? why = window.Actions.WhyNot(action.Id, window.Actions.Context());
+                string? why = window.Actions.WhyNot(action.Id, window.Actions.Context())?.Shown;
                 ActionPopup popup = FindAction(window);
                 Assert.True(popup.Rows[0].Id == first.Id, (previous is null || previous == first
                     ? $"{first.Title} ({first.Id}) ran from Find Action but is not offered first the next time"
                     : $"{previous.Title} ({previous.Id}) could not run, yet Find Action offers {popup.Rows[0].Title} first rather than {first.Title}, run last")
                     + $": it offers {popup.Rows[0].Title} ({popup.Rows[0].Id}) first; {Said(window)}");
-                popup.Query = action.Title;
+                popup.Query = action.Title.English;
                 Ui.Settle();
                 int row = popup.Rows.ToList().FindIndex(a => a.Id == action.Id);
                 Assert.True(row >= 0, $"Find Action lists {action.Id} by its title, '{action.Title}', with nothing typed, but not once it is typed");
@@ -184,7 +192,7 @@ public sealed class ActionsTests : IDisposable
         try
         {
             IdeAction quit = window.Actions[AppActions.Exit]!;
-            Assert.Equal(OperatingSystem.IsMacOS() ? "Quit Passenger" : "Exit", quit.Title);
+            Assert.Equal(OperatingSystem.IsMacOS() ? "Quit Passenger" : "Exit", quit.Title.English);
             foreach (string asked in (string[])["Quit", "Exit"])
             {
                 ActionPopup popup = FindAction(window);

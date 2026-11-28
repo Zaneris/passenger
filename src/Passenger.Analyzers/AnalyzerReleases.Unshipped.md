@@ -16,5 +16,10 @@ PSG0008 | Passenger | Warning | BareJsonReads
 PSG0009 | Passenger | Warning | FileMovesOver
 PSG0010 | Passenger | Warning | BareParallelLoops
 PSG0011 | Passenger | Warning | CultureNumbers
+PSG0012 | Passenger | Disabled | UnextractedWords
+PSG0013 | Passenger | Warning | WordsComparisons
+PSG0014 | Passenger | Disabled | AgentsWords
 PSG9001 | Passenger | Error | ResourceKeys
 PSG9002 | Passenger | Error | StyleClassNames
+PSG9003 | Passenger | Error | WordsResources
+PSG9004 | Passenger | Error | WordsResources

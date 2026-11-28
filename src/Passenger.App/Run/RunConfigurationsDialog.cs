@@ -15,9 +15,10 @@ namespace Passenger.App.Run;
 /// but for what makes it the one it is (its name, project and launch profile): each field changed from what its source gives
 /// is marked, and kept with the folder over that source, or written to its launch profile; Reset puts it back as its source
 /// makes it. One of the folder's own is saved as a new launch profile of its project (the window's Save as Launch Profile),
-/// and is generated from it from then on. The solution's multi-project launch profiles are listed between, each its
-/// projects' actions and launch profiles in a table, made, changed and removed here and written to the files beside the
-/// solution once applied (<see cref="WriteProfiles"/>). It edits copies, which Apply and OK hand back with the one chosen.</summary>
+/// and is generated from it from then on. The runs of several parts are listed between, each its parts in a table (a .NET
+/// project's action and launch profile, a script, an install, a command, each one's wait), made, changed and removed here
+/// and written where each is kept once applied (<see cref="WriteProfiles"/>). It edits copies, which Apply and OK hand back
+/// with the one chosen.</summary>
 public sealed class RunConfigurationsDialog : IdeWindow
 {
     private IReadOnlyList<Entry> generated;
@@ -39,7 +40,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private readonly Action<IReadOnlyList<RunConfiguration>, IReadOnlyList<RunConfiguration>, string?> apply;
     private readonly IReadOnlyList<string> singleFileAppHosts;
     private readonly ListBox list = new() { Classes = { StyleClasses.Tree } };
-    private readonly StackPanel variables = new() { Spacing = Gaps.Tight };
+    private readonly VariablesEditor variables = new();
     private readonly StackPanel linkedAppHosts = new() { Spacing = Gaps.Tight };
     private readonly Control linkedRow;
     private readonly Control aspireRow;
@@ -98,7 +99,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         launchedAs = launches.ToDictionary(e => e, e => e.Configuration);
         this.solution = solution;
         this.projects = projects;
-        singleFileAppHosts = [.. generated.Concat(own).Where(c => c.Aspire && Path.GetExtension(c.Project).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        singleFileAppHosts = [.. generated.Concat(own).Where(c => c.Aspire && !c.IsContainer && c.Project.Length > 0 && !WorkspaceModel.IsProject(c.Project))
             .Select(c => c.Project).Distinct(StringComparer.Ordinal)];
         this.apply = apply;
         Title = "Run/Debug Configurations";
@@ -164,10 +165,6 @@ public sealed class RunConfigurationsDialog : IdeWindow
         BrowserLineBox.Name = "BrowserLineBox";
         ToolTip.SetTip(BrowserLineBox, $"The browser the URL opens in, a program with any arguments to give it before the address, in place of {PageBrowsers.SettingPlace}; "
             + "Debug drives it to debug a Blazor app's WebAssembly components, which only a Chromium browser does");
-        AddVariableButton = new Button
-        {
-            Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { Glyph(IconKeys.Add), new TextBlock { Text = "Add variable" } } },
-        };
         NameBox.TextChanged += (_, _) => Edit(c => c with { Name = NameBox.Text?.Trim() ?? string.Empty });
         ProjectBox.SelectionChanged += (_, _) => Edit(c => ProjectBox.SelectedItem switch
         {
@@ -198,7 +195,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         BrowserBox.IsCheckedChanged += (_, _) => Edit(c => c with { LaunchBrowser = BrowserBox.IsChecked == true });
         BrowserUrlBox.TextChanged += (_, _) => Edit(c => c with { BrowserUrl = BrowserUrlBox.Text?.Trim() ?? string.Empty });
         BrowserLineBox.TextChanged += (_, _) => Edit(c => c with { Browser = BrowserLineBox.Text?.Trim() ?? string.Empty });
-        AddVariableButton.Click += (_, _) => AddVariable(string.Empty, string.Empty, focus: true);
+        variables.Changed += (_, _) => Edit(c => variables.Gives(c.Environment) ? c : c with { Environment = variables.Values });
 
         KindText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         ComposeFilesBox = Field("compose.yaml; compose.override.yaml");
@@ -235,10 +232,20 @@ public sealed class RunConfigurationsDialog : IdeWindow
         ModeBox.SelectionChanged += (_, _) => Edit(c => c with { Mode = ModeBox.SelectedIndex == 1 ? ContainerMode.Images : ContainerMode.Fast });
         KeepBackingBox.IsCheckedChanged += (_, _) => Edit(c => c with { KeepBackingServices = KeepBackingBox.IsChecked == true });
         TelemetryBox.IsCheckedChanged += (_, _) => Edit(c => c with { Telemetry = TelemetryBox.IsChecked == true });
-        TextBlock sharedWords = new() { Text = "Share profile" };
+        TextBlock sharedWords = new() { Text = "Share with the team" };
         SharedBox = new CheckBox { Content = sharedWords, Name = "SharedBox" };
         SharedBox.IsCheckedChanged += (_, _) => Edit(c => c with { Shared = SharedBox.IsChecked == true }, reshow: true);
-        StartsTable.Changed += (_, _) => Edit(c => c with { Starts = StartsTable.Starts() });
+        StartsTable.Changed += (_, _) =>
+        {
+            Edit(c => c with { Starts = StartsTable.Parts() });
+            // Where it is kept follows its parts as they are edited, the table kept as it stands.
+            if (Chosen is { IsMultiple: true } run)
+            {
+                ShowNote(run);
+            }
+        };
+        AddPartButton = new Button { Content = "Add Part", Name = "AddPartButton", HorizontalAlignment = HorizontalAlignment.Left };
+        AddPartButton.Click += (_, _) => ChoosePart();
         DockerfileBox.TextChanged += (_, _) => Edit(c => c with { Dockerfile = Full(DockerfileBox.Text) });
         ContextBox.TextChanged += (_, _) => Edit(c => c with { Context = Full(ContextBox.Text) });
         BuildArgumentsBox.TextChanged += (_, _) => Edit(c => c with { BuildArguments = BuildArgumentsBox.Text ?? string.Empty });
@@ -303,7 +310,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (Row("Mode", ModeBox, fields: ["mode"]), [RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row(string.Empty, KeepBackingBox, marked: keepWords, fields: ["keepBackingServices"]), [RunKind.Compose]),
             (telemetryRow = Row(string.Empty, TelemetryBox, marked: telemetryWords, fields: ["telemetry"]), [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
-            (launchRows[3] = Row("Environment variables", new StackPanel { Spacing = Gaps.Small, Children = { VariablesHeader(), variables, AddVariableButton } }, top: true, fields: ["environment"]),
+            (launchRows[3] = Row("Environment variables", variables, top: true, fields: ["environment"]),
                 [RunKind.Project, RunKind.Dockerfile, RunKind.SdkContainer, RunKind.Script]),
             (launchRows[4] = Row(string.Empty, ConsoleBox, marked: consoleWords, fields: ["console"]), [RunKind.Project, RunKind.Script]),
             (browserRows[0], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
@@ -311,7 +318,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             (browserRows[2], [RunKind.Project, RunKind.Compose, RunKind.Dockerfile, RunKind.SdkContainer]),
             (Row("Launched service", LaunchServiceBox, fields: ["launchService"]), [RunKind.Compose]),
             (builtRows[2] = Row("Before launch", BuildBox, fields: ["buildBeforeLaunch"]), [RunKind.Project]),
-            (Row("Projects", StartsTable, top: true), [RunKind.Projects]),
+            (Row("Parts", new StackPanel { Spacing = Gaps.Small, Children = { StartsTable, AddPartButton } }, top: true), [RunKind.Projects]),
             (Row(string.Empty, SharedBox), [RunKind.Projects]),
         ];
 
@@ -387,10 +394,19 @@ public sealed class RunConfigurationsDialog : IdeWindow
     /// <summary>The rows (their titles) marked as changed from the chosen generated configuration's source.</summary>
     public IReadOnlyList<string> Marked => [.. marks.Where(m => m.Label.Classes.Contains(StyleClasses.Changed) && m.Label.IsEffectivelyVisible).Select(m => m.Title)];
 
-    public Button AddVariableButton { get; }
+    public Button AddVariableButton => variables.AddButton;
 
     /// <summary>A multi-project configuration's projects: what each does, its launch profile, and their order.</summary>
-    public ProjectStartsTable StartsTable { get; } = new();
+    public RunPartsTable StartsTable { get; } = new();
+
+    /// <summary>A run of several parts' Add Part, under its table: a package's script, its dependencies' install, or a command.</summary>
+    public Button AddPartButton { get; }
+
+    /// <summary>Add Part's menu of what a part runs, under its button.</summary>
+    public ContextMenu? PartMenu { get; private set; }
+
+    /// <summary>The folder's Node packages, whose scripts and installs a run of several parts may start.</summary>
+    public IReadOnlyList<NodePackage> Packages { get; init; } = [];
 
     /// <summary>Whether a multi-project configuration is kept in the team's <c>.slnLaunch</c> rather than the person's own file.</summary>
     public CheckBox SharedBox { get; }
@@ -701,7 +717,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     private static string KindName(RunKind kind) => kind switch
     {
-        RunKind.Projects => MultipleProjects,
+        RunKind.Projects => SeveralParts,
         RunKind.Compose => "Docker Compose",
         RunKind.Dockerfile => "Dockerfile",
         RunKind.SdkContainer => "SDK Container",
@@ -709,25 +725,40 @@ public sealed class RunConfigurationsDialog : IdeWindow
         _ => ".NET Project",
     };
 
-    /// <summary>What a configuration of several projects together is called, as Add New Configuration offers it.</summary>
-    private const string MultipleProjects = "Multiple Projects";
+    /// <summary>What a run of several parts together is called, as Add New Configuration offers it.</summary>
+    public const string SeveralParts = "Several Parts";
 
-    /// <summary>The files beside the solution a multi-project configuration is kept in, by their names.</summary>
-    private (string Shared, string Own) LaunchFiles => solution is { } open
-        ? (Path.GetFileName(SolutionLaunch.SharedFile(open)), Path.GetFileName(SolutionLaunch.UserFile(open)))
-        : (SolutionLaunch.Extension, SolutionLaunch.UserExtension);
+    /// <summary>The file a run of several parts is kept in as it stands, by its name, or null for the person's own
+    /// configurations: Visual Studio's beside the solution where its format holds the run, else the folder's file.</summary>
+    private string? KeptIn(RunConfiguration run) => run.FitsSolutionLaunch(solution)
+        ? Path.GetFileName(run.Shared ? SolutionLaunch.SharedFile(solution!) : SolutionLaunch.UserFile(solution!))
+        : run.Shared ? RunsFile.FileName : null;
 
-    private string SharedTip() =>
-        $"Kept in {LaunchFiles.Shared} beside the solution, which the team shares, rather than in {LaunchFiles.Own}, which is yours alone";
+    /// <summary>A run of several parts' note and Share's tip, as the run stands.</summary>
+    private void ShowNote(RunConfiguration run)
+    {
+        note.Text = LaunchNote(run, run.WhyNotHere(projects));
+        note.IsVisible = true;
+        ToolTip.SetTip(SharedBox, SharedTip(run));
+    }
 
-    /// <summary>What the fields cannot say of a multi-project configuration: the file it is kept in, which Visual Studio reads
-    /// too, and why it cannot start here.</summary>
+    private string SharedTip(RunConfiguration run) => run.FitsSolutionLaunch(solution)
+        ? $"Kept in {Path.GetFileName(SolutionLaunch.SharedFile(solution!))} beside the solution, which the team shares, rather than in {Path.GetFileName(SolutionLaunch.UserFile(solution!))}, which is yours alone"
+        : $"Kept in {RunsFile.FileName} at the folder's top, which the team shares, rather than with your own configurations";
+
+    /// <summary>What the fields cannot say of a run of several parts: where it is kept (Visual Studio's file, which it reads
+    /// too, while that holds every part; else the folder's file, saying why), what Run and Debug do, and why it cannot start here.</summary>
     private string LaunchNote(RunConfiguration shown, string? whyNot)
     {
-        string file = shown.Shared ? LaunchFiles.Shared : LaunchFiles.Own;
-        string kept = shown.Launch is null ? $"Written to {file} beside the solution once applied" : $"Kept in {file} beside the solution";
-        string note = $"{kept}, where Visual Studio reads it too. Run runs each project set to start; Debug debugs those set to Start and runs the rest. "
-            + "Each starts as its own configuration does, in the launch profile chosen.";
+        string? file = KeptIn(shown);
+        // Read from the file it is kept in now, rather than one it moves out of.
+        bool read = shown.FitsSolutionLaunch(solution) ? shown.Launch is { } launch && launch.Shared == shown.Shared : shown.RunRead is not null;
+        string kept = file is null ? "Kept with your own configurations"
+            : shown.FitsSolutionLaunch(solution) ? $"{(read ? "Kept in" : "Written to")} {file} beside the solution{(read ? string.Empty : " once applied")}, where Visual Studio reads it too"
+            : $"{(read ? "Kept in" : "Written to")} {file} at the folder's top{(read ? string.Empty : " once applied")}"
+                + (solution is null ? string.Empty : $": {Path.GetFileName(SolutionLaunch.SharedFile(solution))} holds .NET projects alone, each with nothing but its action and launch profile");
+        string note = $"{kept}. Run runs each part set to start; Debug debugs the .NET projects set to Start and runs the rest. "
+            + "Each starts in order once the one before it is ready, a .NET project as its own configuration does, in the launch profile chosen.";
         return whyNot is { } why ? $"{note} It cannot start here: {why}." : note;
     }
 
@@ -772,8 +803,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     public string Note => note.Text ?? string.Empty;
 
     /// <summary>The environment table's rows as they stand: each variable's name and value boxes.</summary>
-    public IReadOnlyList<(TextBox Name, TextBox Value)> Variables =>
-        [.. variables.Children.OfType<Grid>().Select(g => ((TextBox)g.Children[0], (TextBox)g.Children[1]))];
+    public IReadOnlyList<(TextBox Name, TextBox Value)> Variables => variables.Rows;
 
     /// <summary>Chooses a configuration in the list by name; false when none has it.</summary>
     public bool Choose(string name)
@@ -917,7 +947,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     {
         if (actions?.Run(AppActions.SaveAsLaunchProfile) is { } why)
         {
-            problem.Text = why;
+            problem.Text = why.Shown;
         }
     }
 
@@ -959,7 +989,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             return;
         }
-        string? why = actions.WhyNot(AppActions.SaveAsLaunchProfile, actions.Context());
+        string? why = actions.WhyNot(AppActions.SaveAsLaunchProfile, actions.Context())?.Shown;
         ToolButtons.Grey(SaveAsProfileButton, why, SaveAsTip);
     }
 
@@ -988,7 +1018,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         {
             if (row.Configuration.Name.Length == 0)
             {
-                return (row, Refusals.ConfigurationUnnamed);
+                return (row, Refusals.ConfigurationUnnamed.Shown);
             }
             if (!names.Add(row.Configuration.Name))
             {
@@ -1000,7 +1030,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             RunConfiguration configuration = row.Configuration;
             if (configuration.Name.Length == 0)
             {
-                return (row, Refusals.ConfigurationUnnamed);
+                return (row, Refusals.ConfigurationUnnamed.Shown);
             }
             if (!names.Add(configuration.Name))
             {
@@ -1026,15 +1056,15 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private void ChooseKind()
     {
         ContextMenu menu = new();
-        foreach ((RunKind kind, string title) in (ReadOnlySpan<(RunKind, string)>)[(RunKind.Project, ".NET Project"), (RunKind.Projects, MultipleProjects),
+        foreach ((RunKind kind, string title) in (ReadOnlySpan<(RunKind, string)>)[(RunKind.Project, ".NET Project"), (RunKind.Projects, SeveralParts),
             (RunKind.Compose, "Docker Compose"), (RunKind.Dockerfile, "Dockerfile"), (RunKind.SdkContainer, "SDK Container")])
         {
-            // A projects' launch profile is kept beside a solution, where Visual Studio reads it too.
+            // A run of several parts is kept in the folder, or beside its solution.
             menu.Items.Add(ToolWindows.ListMenus.Item(title, () =>
             {
                 menu.Close();
                 Add(kind);
-            }, kind == RunKind.Projects && solution is null ? Refusals.NoSolutionForProfiles : null));
+            }, kind == RunKind.Projects && Folder is null ? Refusals.NoFolder : null));
         }
         menu.Closed += (_, _) =>
         {
@@ -1046,6 +1076,53 @@ public sealed class RunConfigurationsDialog : IdeWindow
         AddMenu = menu;
         menu.Open(AddButton);
     }
+
+    /// <summary>Add Part's menu: each package's scripts, each package's dependencies' install, a command, and the services of
+    /// each set of compose files, each added to the run as the last part it starts, its details open.</summary>
+    private void ChoosePart()
+    {
+        ContextMenu menu = new();
+        List<Control> scripts = [.. Packages.SelectMany(p => p.Runnable.Select(script => (Control)ToolWindows.ListMenus.Item($"{p.Name}: {script.Name}", () => Added(menu,
+            new RunPart(p.Manifest, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Script, Script = script.Name }))))];
+        List<Control> installs = [.. Packages.Select(p => (Control)ToolWindows.ListMenus.Item(p.Name, () => Added(menu,
+            new RunPart(p.Manifest, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Install, Ready = ReadyWhen.Exited })))];
+        menu.Items.Add(scripts.Count > 0 ? ToolWindows.ListMenus.Sub("package.json Script", scripts) : ToolWindows.ListMenus.Item("package.json Script", () => { }, NoPackage));
+        menu.Items.Add(installs.Count > 0 ? ToolWindows.ListMenus.Sub("Install a Package's Dependencies", installs)
+            : ToolWindows.ListMenus.Item("Install a Package's Dependencies", () => { }, NoPackage));
+        menu.Items.Add(ToolWindows.ListMenus.Item("Command", () => Added(menu, new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Command })));
+        // Each set of compose files the folder's Compose configurations bring up, as their run takes them.
+        List<RunConfiguration> sets = [];
+        foreach (RunConfiguration each in generated.Select(e => e.Configuration).Where(c => c.Kind == RunKind.Compose && c.ComposeFiles.Count > 0))
+        {
+            if (!sets.Any(s => RunConfiguration.SameFiles(s.ComposeFiles, each.ComposeFiles)))
+            {
+                sets.Add(each);
+            }
+        }
+        List<Control> composed = [.. sets
+            .Select(c => (Control)ToolWindows.ListMenus.Item(string.Join("; ", c.ComposeFiles.Select(Shown)), () => Added(menu,
+                new RunPart(string.Empty, ProjectLaunchAction.Start, string.Empty) { Kind = RunPartKind.Compose, ComposeFiles = [.. c.ComposeFiles], Ready = ReadyWhen.Healthy })))];
+        menu.Items.Add(composed.Count > 0 ? ToolWindows.ListMenus.Sub("Compose Services", composed) : ToolWindows.ListMenus.Item("Compose Services", () => { }, NoCompose));
+        menu.Closed += (_, _) =>
+        {
+            if (PartMenu == menu)
+            {
+                PartMenu = null;
+            }
+        };
+        PartMenu = menu;
+        menu.Open(AddPartButton);
+
+        void Added(ContextMenu from, RunPart part)
+        {
+            from.Close();
+            StartsTable.AddPart(part);
+        }
+    }
+
+    private const string NoPackage = "The folder has no package.json";
+
+    private const string NoCompose = "The folder has no compose file";
 
     /// <summary>Add New Configuration: a configuration of the kind chosen named Unnamed, of the first executable project (a
     /// Compose one of the folder's first compose file).</summary>
@@ -1281,10 +1358,10 @@ public sealed class RunConfigurationsDialog : IdeWindow
             KeepBackingBox.IsChecked = shown.KeepBackingServices;
             TelemetryBox.IsChecked = shown.Telemetry;
             SharedBox.IsChecked = shown.Shared;
-            ToolTip.SetTip(SharedBox, SharedTip());
             if (shown.IsMultiple)
             {
-                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.GodotFolder is null && LaunchProfile.Runs(p))], p => [.. LaunchProfile.Read(p).Select(l => l.Name)]);
+                StartsTable.Set(shown.Starts, [.. projects.Where(p => p.GodotFolder is null && LaunchProfile.Runs(p) && !p.IsAspireHost)], p => [.. LaunchProfile.Read(p).Select(l => l.Name)], Shown, Full,
+                    part => RunsFile.NameOf(part, manifest => Packages.FirstOrDefault(p => Core.PathNames.Same(p.Manifest, manifest))?.Name));
             }
             DockerfileBox.Text = Shown(shown.Dockerfile);
             ContextBox.Text = Shown(shown.Context);
@@ -1316,25 +1393,25 @@ public sealed class RunConfigurationsDialog : IdeWindow
             {
                 built.IsVisible = false;
             }
-            variables.Children.Clear();
-            foreach ((string name, string value) in shown.Environment)
+            variables.Set(shown.Environment);
+            if (shown.IsMultiple)
             {
-                AddVariable(name, value, focus: false);
+                ShowNote(shown);
             }
-            note.Text = shown.IsMultiple ? LaunchNote(shown, shown.WhyNotHere(projects)) : NoteOn(shown, project, shown.WhyNotHere(projects));
-            note.IsVisible = note.Text.Length > 0;
+            else
+            {
+                note.Text = NoteOn(shown, project, shown.WhyNotHere(projects));
+                note.IsVisible = note.Text.Length > 0;
+            }
             // What makes a generated one the one it is, its link to its source, changes only in a copy.
             string link = $"Its link to its {SourceName(shown)}, which a copy can change";
             foreach (Control identity in (Control[])[NameBox, ProjectBox, ProfileBox])
             {
-                identity.IsEnabled = !shown.Generated;
-                ToolTip.SetTip(identity, shown.Generated ? link : null);
+                ToolButtons.Grey(identity, shown.Generated ? link : null);
             }
             // Whether it opens Godot's editor is that link too; how a generated one's game starts is the person's.
-            GodotBox.IsEnabled = !(shown.Generated && shown.GodotEditor);
-            ToolTip.SetTip(GodotBox, GodotBox.IsEnabled ? null : link);
-            godotStartItems[1].IsEnabled = !shown.Generated;
-            ToolTip.SetTip(godotStartItems[1], shown.Generated ? link : null);
+            ToolButtons.Grey(GodotBox, shown.Generated && shown.GodotEditor ? link : null);
+            ToolButtons.Grey(godotStartItems[1], shown.Generated ? link : null);
         }
         finally
         {
@@ -1362,7 +1439,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }
         if (shown.GodotEditor && project?.GodotFolder is not null)
         {
-            origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads}.".Trim();
+            origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads.Shown}.".Trim();
         }
         if (shown is { Generated: true, Console: ConsoleKind.Terminal, DrawsWith: { } package })
         {
@@ -1406,8 +1483,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
             bool writable = Project(row!.Configuration) is { } project
                 && LaunchProfile.Read(project).FirstOrDefault(p => p.Name == row.Configuration.LaunchProfile) is { } profile
                 && LaunchSettingsEdits.For(project, profile, row.Source!, row.Configuration).Count > 0;
-            WriteButton.IsEnabled = writable;
-            ToolTip.SetTip(WriteButton, writable ? WriteTip : $"{LaunchProfile.SettingsName(row.Configuration.Project)} has no place for these changes, which stay kept with the folder");
+            ToolButtons.Grey(WriteButton, writable ? null : $"{LaunchProfile.SettingsName(row.Configuration.Project)} has no place for these changes, which stay kept with the folder", WriteTip);
         }
 
         ShowSaveAs();
@@ -1429,63 +1505,6 @@ public sealed class RunConfigurationsDialog : IdeWindow
 
     private ProjectModel? Project(RunConfiguration configuration) =>
         projects.FirstOrDefault(p => Core.PathNames.Same(p.Path, configuration.Project));
-
-    /// <summary>A row of the environment table: the variable's name and value, and the button that takes it out.</summary>
-    private void AddVariable(string name, string value, bool focus)
-    {
-        TextBox nameBox = Field("Name");
-        TextBox valueBox = Field("Value");
-        nameBox.Text = name;
-        valueBox.Text = value;
-        Button remove = ToolButtons.Glyph(IconKeys.Close, "Remove Variable");
-        Grid row = new() { ColumnDefinitions = VariableColumns(), ColumnSpacing = Gaps.Normal };
-        Grid.SetColumn(valueBox, 1);
-        Grid.SetColumn(remove, 2);
-        row.Children.Add(nameBox);
-        row.Children.Add(valueBox);
-        row.Children.Add(remove);
-        variables.Children.Add(row);
-        nameBox.TextChanged += (_, _) => Edit(WithVariables);
-        valueBox.TextChanged += (_, _) => Edit(WithVariables);
-        remove.Click += (_, _) =>
-        {
-            variables.Children.Remove(row);
-            Edit(WithVariables);
-        };
-        if (focus)
-        {
-            Dispatcher.UIThread.Post(() => nameBox.Focus(), DispatcherPriority.Loaded);
-        }
-
-        RunConfiguration WithVariables(RunConfiguration current)
-        {
-            Dictionary<string, string> environment = [];
-            foreach ((TextBox each, TextBox its) in Variables)
-            {
-                if (each.Text?.Trim() is { Length: > 0 } named)
-                {
-                    environment[named] = its.Text ?? string.Empty;
-                }
-            }
-            return current.Environment.Count == environment.Count && !current.Environment.Except(environment).Any() ? current : current with { Environment = environment };
-        }
-    }
-
-    /// <summary>A variable's name, its value taking more of what the row leaves, and its Remove: the name no wider than a
-    /// name needs, both narrowing together with the dialog.</summary>
-    private static ColumnDefinitions VariableColumns() =>
-        [new ColumnDefinition(2, GridUnitType.Star) { MaxWidth = 240 }, new ColumnDefinition(3, GridUnitType.Star), new ColumnDefinition(GridLength.Auto)];
-
-    private static Control VariablesHeader()
-    {
-        Grid header = new() { ColumnDefinitions = VariableColumns(), ColumnSpacing = Gaps.Normal };
-        TextBlock name = new() { Text = "Name", Classes = { StyleClasses.Muted } };
-        TextBlock value = new() { Text = "Value", Classes = { StyleClasses.Muted } };
-        Grid.SetColumn(value, 1);
-        header.Children.Add(name);
-        header.Children.Add(value);
-        return header;
-    }
 
     /// <summary>Whether a run of a configuration (by its name) is up, which its row says; given as the rows are made.</summary>
     private Func<string, bool> IsRunning { get; }
@@ -1511,7 +1530,13 @@ public sealed class RunConfigurationsDialog : IdeWindow
             name.Classes.Set(StyleClasses.Changed, changed);
             ToolTip.SetTip(line, whyNot is not null ? $"{row.Name} cannot run here: {whyNot}" : changed ? $"{row.Name} is changed here from what its {SourceName(row)} gives" : null);
             from.IsVisible = row.Generated || row.IsMultiple;
-            from.Text = row.IsMultiple ? (row.Shared ? SolutionLaunch.Extension : SolutionLaunch.UserExtension) : !row.Generated ? null : row.Kind switch
+            from.Text = row.IsMultiple ? KeptIn(row) switch
+            {
+                null => "yours",
+                { } file when file.EndsWith(SolutionLaunch.UserExtension, StringComparison.Ordinal) => SolutionLaunch.UserExtension,
+                { } file when file.EndsWith(SolutionLaunch.Extension, StringComparison.Ordinal) => SolutionLaunch.Extension,
+                { } file => file,
+            } : !row.Generated ? null : row.Kind switch
             {
                 RunKind.Project when row.Aspire => "Aspire",
                 RunKind.Compose when Containers.ContainerConfigurations.IsComposeProject(row.Project) => row.LaunchProfile.Length > 0 ? LaunchProfile.SettingsFile : ".dcproj",
@@ -1540,7 +1565,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
     private Control Row(string label, Control editor, bool top = false, TextBlock? marked = null, string[]? fields = null)
     {
         Grid row = FormRows.Of(label, editor, out TextBlock name, top);
-        editor.HorizontalAlignment = editor is TextBox or StackPanel or ComposeServicesTable or ProjectStartsTable ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        editor.HorizontalAlignment = editor is TextBox or StackPanel or ComposeServicesTable or RunPartsTable ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         if (fields is not null)
         {
             TextBlock shown = marked ?? name;

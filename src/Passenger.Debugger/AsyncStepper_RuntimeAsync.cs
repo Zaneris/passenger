@@ -111,13 +111,14 @@ internal sealed partial class AsyncStepper
         }
         ICorDebugHandleValue? chain = ChainOf(thread, frame);
         bool past = _debugger.StepRangeOf(awaiting, awaited.Call) is var (start, end) && (resume < start || resume >= end);
-        _runtimeStep = new RuntimeAsyncStep(thread, type, range, frame.Function, frameAwaits, Arm(function.ILCode, function.Module.BaseAddress, function.Token, (uint)resume),
+        _runtimeStep = new RuntimeAsyncStep(thread, type, range, frame.Function, frameAwaits, Arm(_debugger.CodeOf(awaiting), function.Module.BaseAddress, function.Token, (uint)resume),
             past, chain);
         if (leaving is not null && _debugger.RuntimeAsyncMethodGivingValue(leaving) is { } method && _debugger.FindModule(leaving.Function.Module) is { } module)
         {
             ICorDebugFunction left = leaving.Function;
-            _runtimeStep.Watch(method, [.. module.MetadataReader.ReturnsOfLocals(left.Token, ModuleMetadataReader.VersionOf(leaving))
-                .Select(each => (Arm(left.ILCode, left.Module.BaseAddress, left.Token, (uint)each.Offset), each.Local))]);
+            ICorDebugCode code = _debugger.CodeOf(leaving);
+            _runtimeStep.Watch(method, [.. module.MetadataReader.ReturnsOfLocals(left.Token, module.MetadataReader.VersionOf(leaving))
+                .Select(each => (Arm(code, left.Module.BaseAddress, left.Token, (uint)each.Offset), each.Local))]);
         }
         _debugger.Log($"{type} through the runtime-async await at IL_{awaited.Call:X4} of method 0x{(int)function.Token:X} on thread {thread.Id}: "
             + $"its run goes on at IL_{resume:X4}{(past ? ", past the await's statement" : "")}{(frameAwaits ? "" : ", its caller waiting in a continuation")}"
@@ -133,7 +134,7 @@ internal sealed partial class AsyncStepper
             return null;
         }
         int ip = frame.IP.pnOffset;
-        foreach (ModuleMetadataReader.RuntimeAwait awaited in module.MetadataReader.RuntimeAwaits(frame.Function.Token, ModuleMetadataReader.VersionOf(frame)))
+        foreach (ModuleMetadataReader.RuntimeAwait awaited in module.MetadataReader.RuntimeAwaits(frame.Function.Token, module.MetadataReader.VersionOf(frame)))
         {
             if (awaited.After > ip && awaited.Call < end)
             {
@@ -147,13 +148,13 @@ internal sealed partial class AsyncStepper
     /// does not await at once, made through the callee's task-returning thunk, which starts a chain of its own.</summary>
     private ModuleMetadataReader.RuntimeAwait? AwaitOfCall(ICorDebugILFrame frame) =>
         _debugger.FindModule(frame.Function.Module) is { } module
-            ? module.MetadataReader.AwaitOfCallAt(frame.Function.Token, ModuleMetadataReader.VersionOf(frame), frame.IP.pnOffset)
+            ? module.MetadataReader.AwaitOfCallAt(frame.Function.Token, module.MetadataReader.VersionOf(frame), frame.IP.pnOffset)
             : null;
 
     /// <summary>Whether a step from a frame's statement leaves its method: no line of it comes after the statement.</summary>
     private bool LeavesMethod(ICorDebugILFrame frame) =>
         _debugger.FindModule(frame.Function.Module) is { } module && _debugger.StepRangeOf(frame) is var (_, end)
-        && !module.MetadataReader.VisibleSequencePoints(frame.Function.Token, ModuleMetadataReader.VersionOf(frame)).Any(point => point.Offset >= end);
+        && !module.MetadataReader.VisibleSequencePoints(frame.Function.Token, module.MetadataReader.VersionOf(frame)).Any(point => point.Offset >= end);
 
     /// <summary>Whether a frame's method is compiled with runtime async.</summary>
     private bool IsRuntimeAsync(ICorDebugILFrame frame) =>
@@ -279,7 +280,7 @@ internal sealed partial class AsyncStepper
     /// what it awaited was done, else once the runtime calls it again there.</summary>
     private int? ResumeOf(ICorDebugILFrame frame, ModuleMetadataReader.RuntimeAwait awaited) =>
         _debugger.FindModule(frame.Function.Module) is { } module && MappedOffsets(frame) is { } mapped
-            ? module.MetadataReader.ResumeAfter(frame.Function.Token, ModuleMetadataReader.VersionOf(frame), awaited, mapped)
+            ? module.MetadataReader.ResumeAfter(frame.Function.Token, module.MetadataReader.VersionOf(frame), awaited, mapped)
             : null;
 
     /// <summary>The IL offsets a frame's compiled code maps, where a breakpoint binds; the prolog's, the epilog's and code of
@@ -360,7 +361,7 @@ internal sealed partial class AsyncStepper
                 _debugger.Log($"Another run of the method stepped out of returns on thread {thread.Id}: it runs on");
                 return;
             }
-            if (step.Leaving is not (string method, _) || thread.ActiveFrame is not ICorDebugILFrame frame || frame.TryGetLocalVariable((uint)local, out ICorDebugValue value) is not Cor.S_OK)
+            if (step.Leaving is not (string method, _) || thread.ActiveFrame is not ICorDebugILFrame frame || _debugger.TryLocalOf(frame, local) is not { } value)
             {
                 _debugger.Log($"What the method stepped out of returns on thread {thread.Id} could not be read from its local {local}");
                 return;

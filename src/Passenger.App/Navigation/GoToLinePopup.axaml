@@ -5,8 +5,8 @@
              Width="{x:Static app:PopupFrame.Narrow}">
     <Border Classes="popup" Padding="{x:Static app:PopupFrame.Inset}">
         <StackPanel Spacing="{x:Static app:Gaps.Normal}">
-            <TextBlock Classes="paneTitle" Text="Go to Line:Column" />
-            <TextBox Name="Query" AutomationProperties.Name="Go to Line:Column" />
+            <TextBlock Name="Heading" Classes="paneTitle" />
+            <TextBox Name="Query" />
             <TextBlock Name="Problem" Classes="muted caption" IsVisible="False" />
         </StackPanel>
     </Border>

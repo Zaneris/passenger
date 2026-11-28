@@ -139,9 +139,13 @@ public enum RefKind
 public sealed record GitRef(string FullName, string Name, RefKind Kind, string? GitName = null);
 
 /// <summary>A branch or tag as the Git log's branches panel lists it: the commit it names, whether it is checked out, and
-/// for a local branch the remote and the remote's branch it tracks (its upstream), if any.</summary>
-public sealed record BranchInfo(GitRef Ref, string Hash, bool IsCurrent, string? UpstreamRemote = null, string? UpstreamBranch = null)
+/// for a local branch the remote and the remote's branch it tracks (its upstream), if any, and the folder of the working
+/// tree it is checked out in, if any (this one's for the current branch).</summary>
+public sealed record BranchInfo(GitRef Ref, string Hash, bool IsCurrent, string? UpstreamRemote = null, string? UpstreamBranch = null, string? Worktree = null)
 {
+    /// <summary>The working tree another than this one has it checked out in, where git checks it out nowhere else.</summary>
+    public string? CheckedOutElsewhere => IsCurrent ? null : Worktree;
+
     public string Name => Ref.Name;
 
     public RefKind Kind => Ref.Kind;
@@ -182,6 +186,10 @@ public sealed record GitConflict(string Path, bool HasBase, bool HasOurs, bool H
 /// <summary>A stash: its place in the list (stash@{Index}) when the list was read, its commit, what it says, and when it
 /// was made.</summary>
 public sealed record StashInfo(int Index, string Commit, string Message, DateTimeOffset Time);
+
+/// <summary>Why git would refuse to carry the uncommitted changes to another commit: the changed and new files it would
+/// write over there (full paths), and its own words, which say why where it named none of them.</summary>
+public sealed record ChangesInTheWay(IReadOnlyList<string> Files, string Said);
 
 /// <summary>What looking for a folder's working tree found: the tree, or none; and why there is none where git cannot say:
 /// it refused the one it found (a repository another user owns, as on a FAT or network drive, until safe.directory names
@@ -626,6 +634,47 @@ public sealed partial class Git
         return null;
     }
 
+    /// <summary>Whether git would refuse to move the working tree from HEAD to <paramref name="target"/> with its uncommitted
+    /// changes, as a checkout does where the target changes a file they change too (or has one where a new file stands): git's
+    /// own trial of the move, in a copy of the index whose files' stats are read again first, so the real index stays as it
+    /// stands. Null where git would carry them along, or HEAD or the target names no commit.</summary>
+    public async Task<ChangesInTheWay?> InTheWayAsync(string target)
+    {
+        // What git answers is what the window shows next (a question's choice greyed): a screenshot waits for it.
+        using GitHold held = new();
+        if (await CommitOfAsync("HEAD") is not { } head || await CommitOfAsync(target) is not { } to || head == to)
+        {
+            return null;
+        }
+        GitResult named = await RunAsync(Root, ["rev-parse", "--git-path", "index"]);
+        byte[] index;
+        try
+        {
+            index = await File.ReadAllBytesAsync(System.IO.Path.Combine(Root, named.Output.Trim()));
+        }
+        catch (Exception unread) when (unread is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        using CommitFile trial = CommitFile.Index(GitDir, "trial", index);
+        Dictionary<string, string> environment = new() { [GitVariables.IndexFile] = trial.Path };
+        await RunAsync(Root, ["update-index", "-q", "--refresh"], environment: environment, answers: [1]);
+        GitResult tried = await RunAsync(Root, ["read-tree", "-m", "-u", "-n", "--exclude-per-directory=.gitignore", head, to], environment: environment, answers: [128]);
+        if (tried.Succeeded)
+        {
+            return null;
+        }
+        // The trial names only the first file git met: those in the way are the changed or new where the two commits differ.
+        GitResult changed = await RunAsync(Root, ["diff-index", "--name-only", "-z", "--no-renames", head, "--"], environment: environment);
+        GitResult untracked = await RunAsync(Root, ["ls-files", "-z", "--others", "--exclude-standard"]);
+        HashSet<string> differing = new(await DifferingAsync(head, to) ?? [], StringComparer.Ordinal);
+        DiskNames names = new(Root);
+        string[] files = [.. ((string[])[.. changed.Succeeded ? changed.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : [],
+            .. untracked.Succeeded ? untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries) : []])
+            .Where(differing.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(names.Full)];
+        return new ChangesInTheWay(files, OneLine(tried.Message));
+    }
+
     /// <summary>The files a checkout of a branch by its name writes out (<see cref="SwitchedAsync"/>): to the local branch,
     /// else to whichever remote's branch of that name it makes one from.</summary>
     private async Task<IReadOnlyList<string>?> CheckedOutAsync(string branch)
@@ -890,7 +939,8 @@ public sealed partial class Git
             string? applying = Read("REBASE_HEAD") ?? Read(System.IO.Path.Combine(folder, "stopped-sha"));
             // A pick stopped for conflicts leaves its message in MERGE_MSG, which an edit, a break or an exec never writes.
             RebaseStop? stop = message is null && folder == "rebase-merge" ? RebaseStop.Of(Read(System.IO.Path.Combine(folder, "done"))) : null;
-            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, GitHashes.Short(applying), null, stop);
+            (string? stopped, string? subject) = applying is null ? (null, null) : await PersonsCommitAsync(applying);
+            return new MergeState(MergeOperation.Rebase, onto is null ? ours : await NameAsync(onto), theirs, GitHashes.Short(stopped), null, stop, subject);
         }
         if (Read("CHERRY_PICK_HEAD") is { } picked)
         {
@@ -1140,9 +1190,20 @@ public sealed partial class Git
         return refs.Succeeded ? BranchesOf(refs.Output) : [];
     });
 
+    /// <summary>The local branches and the remotes' branches, the one committed to last first, each as
+    /// <see cref="BranchTreeAsync"/> reads it, with the remotes' names. Read and parsed off the caller's thread.</summary>
+    public Task<(IReadOnlyList<BranchInfo> Branches, IReadOnlyList<string> Remotes)> RecentBranchesAsync() =>
+        BackgroundWork.Run<(IReadOnlyList<BranchInfo>, IReadOnlyList<string>)>(async () =>
+        {
+            GitResult refs = await RunAsync(Root, ["for-each-ref", "--sort=-committerdate", BranchFormat, "refs/heads", "refs/remotes"]);
+            GitResult remotes = await RunAsync(Root, ["remote"]);
+            return (refs.Succeeded ? BranchesOf(refs.Output) : [],
+                remotes.Succeeded ? remotes.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : []);
+        });
+
     /// <summary>What a branch or tag is read as, in the fields <see cref="BranchesOf"/> takes.</summary>
     private const string BranchFormat =
-        "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)";
+        "--format=%(HEAD)%1f%(refname)%1f%(objectname)%1f%(*objectname)%1f%(upstream:remotename)%1f%(upstream:remoteref)%1f%(refname:short)%1f%(worktreepath)";
 
     /// <summary>The branches and tags for-each-ref wrote in <see cref="BranchFormat"/>, a line each, in its order.</summary>
     private static List<BranchInfo> BranchesOf(string output)
@@ -1167,7 +1228,7 @@ public sealed partial class Git
             if (named is not null)
             {
                 found.Add(new BranchInfo(named, field[3].Length > 0 ? field[3] : field[2], field[0] == "*",
-                    field[4].Length > 0 ? field[4] : null, field[5].Length > 0 ? field[5] : null));
+                    field[4].Length > 0 ? field[4] : null, field[5].Length > 0 ? field[5] : null, field.Length > 7 && field[7].Length > 0 ? field[7] : null));
             }
         }
         return found;
@@ -1555,8 +1616,7 @@ public sealed partial class Git
                 continue;
             }
             string[] words = line.Split(' ', 2);
-            // A SHA-1 repository's hashes are 40 hex digits, a SHA-256 one's 64.
-            if (words[0].Length is 40 or 64 && words[0].All(char.IsAsciiHexDigit))
+            if (GitHashes.IsWhole(words[0]))
             {
                 hash = words[0];
                 reading = (string.Empty, 0, string.Empty);
@@ -1692,6 +1752,55 @@ public sealed partial class Git
     /// file's are only counted (<see cref="StoredBytes"/>); null where it has none of them.</summary>
     public Task<StoredBytes?> StoredAtAsync(string revision, IReadOnlyList<string> paths) => BackgroundWork.Run(async () =>
         await StoredAsync(revision, paths, StoredRead.ReadAsync) is (true, { } read) ? read : null);
+
+    /// <summary>Whether a revision holds a symbolic link at a path (an entry of mode 120000, whose blob is the link's
+    /// target), read from the tree of the path's folder named on git's input; false where it holds none there.</summary>
+    public Task<bool> IsLinkAtAsync(string revision, string path) => BackgroundWork.Run(async () =>
+    {
+        if (!IsInside(path))
+        {
+            return false;
+        }
+        string relative = Relative(path);
+        if (relative.AsSpan().IndexOfAny('\n', '\r') >= 0)
+        {
+            // The batch takes a name a line: a name of several lines is never git's link.
+            return false;
+        }
+        string name = GitForm(relative, !Ascii.IsValid(relative) && await ComposesAsync());
+        int slash = name.LastIndexOf('/');
+        (_, byte[]? tree) = await RunAsync(Root, ["cat-file", "--batch"], WholeAsync, Encoding.UTF8.GetBytes($"{revision}:{(slash < 0 ? string.Empty : name[..slash])}\n"));
+        return ModeIn(tree ?? [], Encoding.UTF8.GetBytes(name[(slash + 1)..])) == "120000";
+    });
+
+    /// <summary>The mode of a tree's entry by its name, from the tree as git cat-file --batch gives it (its header line, then
+    /// each entry's mode, a space, its name, a NUL and its object's hash); null where the object is no tree or holds none.</summary>
+    internal static string? ModeIn(ReadOnlySpan<byte> batch, ReadOnlySpan<byte> name)
+    {
+        int header = batch.IndexOf((byte)'\n');
+        if (header < 0 || Encoding.ASCII.GetString(batch[..header]).Split(' ') is not [{ } id, "tree", { } size] || !int.TryParse(size, out int length))
+        {
+            return null;
+        }
+        // A tree holds each object's hash whole, in half as many bytes as the header's hexadecimal.
+        int hash = id.Length / 2;
+        ReadOnlySpan<byte> entries = batch.Slice(header + 1, Math.Min(length, batch.Length - header - 1));
+        while (entries.Length > 0)
+        {
+            int space = entries.IndexOf((byte)' ');
+            int end = entries.IndexOf((byte)0);
+            if (space < 0 || end < space || end + 1 + hash > entries.Length)
+            {
+                return null;
+            }
+            if (entries[(space + 1)..end].SequenceEqual(name))
+            {
+                return Encoding.ASCII.GetString(entries[..space]);
+            }
+            entries = entries[(end + 1 + hash)..];
+        }
+        return null;
+    }
 
     /// <summary>How the file at <paramref name="disk"/> differs from a revision's where either is binary, both read as they
     /// come and never held whole: the revision's at the first of <paramref name="paths"/> it has, as checking it out would
@@ -2533,16 +2642,9 @@ public sealed partial class Git
     public Task<GitResult> FetchIntoAsync(string remote, string remoteBranch, string local, CancellationToken cancel = default, GitAsker? asker = null) =>
         RunAsync(Root, ["fetch", "--end-of-options", remote, $"{remoteBranch}:refs/heads/{local}"], cancel: cancel, asker: asker);
 
-    /// <summary>A local branch pushed to the branch it tracks; or, when it tracks none, to <paramref name="remote"/> under its
-    /// own name, then tracked. Canceled, as <see cref="FetchUpstreamAsync"/>.</summary>
-    public Task<GitResult> PushBranchAsync(BranchInfo branch, string? remote = null, CancellationToken cancel = default, GitAsker? asker = null) => branch.UpstreamRemote is { } tracked && branch.UpstreamBranch is { } target
-        ? RunAsync(Root, ["push", "--end-of-options", tracked, $"refs/heads/{branch.Name}:{target}"], cancel: cancel, asker: asker)
-        : RunAsync(Root, ["push", "-u", "--end-of-options", remote ?? throw new ArgumentNullException(nameof(remote), $"{branch.Name} tracks no branch: the remote to push it to is named"),
-            $"refs/heads/{branch.Name}:refs/heads/{branch.Name}"], cancel: cancel, asker: asker);
-
     /// <summary>The files that differ between a revision and the working tree (Show Diff with Working Tree), renames
     /// found, each by its path now, in their paths' order: those git does not track too, ignored ones left out, each added,
-    /// or modified where the revision has it, which git's diff, reading only what git tracks, calls deleted.</summary>
+    /// or modified where the revision has it otherwise, which git's diff, reading only what git tracks, calls deleted.</summary>
     public async Task<IReadOnlyList<FileChange>> ChangesSinceAsync(string revision)
     {
         GitResult files = await RunAsync(Root, ["diff", "--name-status", "-z", "-M", "--end-of-options", revision, "--"]);
@@ -2561,29 +2663,39 @@ public sealed partial class Git
         HashSet<string> gone = new(changes.Select(c => c.Kind switch { ChangeKind.Deleted => c.Path, ChangeKind.Renamed => c.From, _ => null }).OfType<string>(), PathNames.Comparer);
         HashSet<string> untrackedFiles = new(untracked.Output.Split('\0', StringSplitOptions.RemoveEmptyEntries).Select(names.Full), PathNames.Comparer);
         changes.RemoveAll(c => c.Kind == ChangeKind.Deleted && untrackedFiles.Contains(c.Path));
-        changes.AddRange(untrackedFiles.Select(path => new FileChange(path, gone.Contains(path) ? ChangeKind.Modified : ChangeKind.Added)));
+        HashSet<string> same = await AsStoredAsync(revision, [.. untrackedFiles.Where(gone.Contains)]);
+        changes.AddRange(untrackedFiles.Where(path => !same.Contains(path)).Select(path => new FileChange(path, gone.Contains(path) ? ChangeKind.Modified : ChangeKind.Added)));
         changes.Sort((a, b) => PathNames.Comparer.Compare(a.Path, b.Path));
         return changes;
     }
 
-    /// <summary>The files a stash holds, in their paths' order: those it changed against the head it was made on, renames
-    /// found, each by its path in the stash, and the files git did not track that it put away, unversioned.</summary>
-    public async Task<IReadOnlyList<FileChange>> StashFilesAsync(StashInfo stash)
+    /// <summary>The files of <paramref name="paths"/> (untracked here) whose bytes, as git would store them, are those
+    /// <paramref name="revision"/> has at the same path; each given on git's input, a name holding a line break never same.</summary>
+    private async Task<HashSet<string>> AsStoredAsync(string revision, IReadOnlyList<string> paths)
     {
-        // A stash's commit holds the files as they were, its first parent the head it was made on, its third the new files.
-        GitResult files = await RunAsync(Root, ["diff", "--name-status", "-z", "-M", "--end-of-options", $"{stash.Commit}^1", stash.Commit, "--"]);
-        if (!files.Succeeded)
+        string[] asked = [.. paths.Where(p => p.AsSpan().IndexOfAny('\n', '\r') < 0)];
+        if (asked.Length == 0)
         {
             return [];
         }
-        List<FileChange> changes = NameStatus(files.Output);
-        if (await CommitOfAsync($"{stash.Commit}^3") is { } untracked && await FilesOfAsync(untracked) is { } kept)
+        string[] relative = [.. asked.Select(Relative)];
+        GitResult hashed = await RunAsync(Root, ["hash-object", "--stdin-paths"], string.Join('\n', relative) + "\n");
+        GitResult stored = await RunAsync(Root, ["cat-file", "--batch-check=%(objectname)"], string.Join('\n', relative.Select(r => $"{revision}:{r}")) + "\n");
+        if (!hashed.Succeeded || !stored.Succeeded)
         {
-            DiskNames names = new(Root);
-            changes.AddRange(kept.Select(path => new FileChange(names.Full(path), ChangeKind.Unversioned)));
+            return [];
         }
-        changes.Sort((a, b) => PathNames.Comparer.Compare(a.Path, b.Path));
-        return changes;
+        string[] mine = hashed.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] theirs = stored.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        HashSet<string> same = new(PathNames.Comparer);
+        for (int i = 0; i < asked.Length && i < mine.Length && i < theirs.Length; i++)
+        {
+            if (mine[i].Trim() == theirs[i].Trim())
+            {
+                same.Add(asked[i]);
+            }
+        }
+        return same;
     }
 
     /// <summary>The stashes, the newest first.</summary>
@@ -2607,16 +2719,18 @@ public sealed partial class Git
         return stashes;
     }
 
-    /// <summary>Puts the uncommitted changes, new files too, away in a stash; the files go back to the head's. With nothing
-    /// to put away, git makes no stash and exits 0 all the same: that is a failure here, in git's words.</summary>
-    public async Task<GitResult> StashAsync(string message)
+    /// <summary>Puts the uncommitted changes away in a stash, new files too unless <paramref name="untracked"/> is false;
+    /// the files go back to the head's. With nothing to put away, git makes no stash and exits 0 all the same: that is a
+    /// failure here, in git's words.</summary>
+    public async Task<GitResult> StashAsync(string message, bool untracked = true)
     {
         string? before = await StashTopAsync();
         if (await UnfilteredStashAsync() is { } unfiltered)
         {
             return unfiltered;
         }
-        GitResult stashed = await WritingOutAsync(StashedAsync, () => RunAsync(Root, ["stash", "push", "--include-untracked", .. message.Length > 0 ? new[] { "-m", message } : []]));
+        GitResult stashed = await WritingOutAsync(StashedAsync, () => RunAsync(Root, ["stash", "push", .. untracked ? new[] { "--include-untracked" } : [],
+            .. message.Length > 0 ? new[] { "-m", message } : []]));
         if (!stashed.Succeeded || await StashTopAsync() != before)
         {
             return stashed;
@@ -2934,7 +3048,7 @@ public sealed partial class Git
     {
         ["checkout"] = [], ["switch"] = [], ["restore"] = ["--staged"], ["reset"] = [], ["merge"] = [], ["rebase"] = [], ["pull"] = [],
         ["stash"] = ["list", "show"], ["cherry-pick"] = [], ["revert"] = [], ["am"] = [], ["apply"] = ["--cached", "--check", "--stat", "--numstat", "--summary"],
-        ["rm"] = ["--cached"], ["mv"] = [], ["clean"] = ["-n", "--dry-run"], ["read-tree"] = [], ["checkout-index"] = [],
+        ["rm"] = ["--cached"], ["mv"] = [], ["clean"] = ["-n", "--dry-run"], ["read-tree"] = ["-n", "--dry-run"], ["checkout-index"] = [],
     };
 
     /// <summary>How many of Passenger's git commands writing a work tree run now, and when the last one ended (a

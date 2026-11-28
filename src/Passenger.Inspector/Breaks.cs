@@ -6,7 +6,8 @@ namespace Passenger.Inspector;
 /// <summary>Where Passenger's debugger stops the app for the inspector, a function breakpoint on each method, by the same
 /// names in an Avalonia app and a WPF one: on <see cref="Changed"/> one per property breakpoint (<see cref="Wire.Changed"/>),
 /// its condition <c>breakpoint == id</c> and the person's own after it; on <see cref="BindingFailed"/> one while the
-/// framework's Binding Errors breakpoint is on (<see cref="Wire.Failed"/>). The person's conditions read the parameters,
+/// framework's Binding Errors breakpoint is on (<see cref="Wire.Failed"/>); on <see cref="Loaded"/> one per breakpoint in a
+/// WPF app's XAML (<see cref="Wire.Loaded"/>). The person's conditions read the parameters,
 /// typed as the framework's own (InspectedObject and InspectedProperty, each project's aliases). Non-user code, so Just My
 /// Code shows the code below that made the change or the binding fail as where the app stopped.</summary>
 public static class Breaks
@@ -26,6 +27,21 @@ public static class Breaks
         GC.KeepAlive(change);
         GC.KeepAlive(setAt);
         _ = breakpoint;
+    }
+
+    /// <summary>An element made from a page's XAML joined its window's tree, its attributes set: where its start tag is written
+    /// (<c>file</c>, its canonical path; <c>line</c> and <c>column</c>, from one, as the framework recorded them) and the
+    /// <c>element</c>. A breakpoint in a WPF XAML file is a function breakpoint here, its condition the place it is on;
+    /// called only while a debugger is attached, as WPF records where its XAML made each element only then.</summary>
+    [DebuggerNonUserCode]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void Loaded(string file, int line, int column, InspectedObject element)
+    {
+        // Held for the debugger, which reads them where the program stops.
+        GC.KeepAlive(file);
+        GC.KeepAlive(element);
+        _ = line;
+        _ = column;
     }
 
     /// <summary>A binding failed, called on the thread that evaluated it before the framework goes on, so the stack is the

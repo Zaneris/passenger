@@ -24,9 +24,12 @@ public static class UserSecrets
 
     /// <summary>The folder of an id's secrets, there or not; null for an id that names no one folder (empty, a separator in it,
     /// a dot or two alone).</summary>
-    public static string? FolderOf(string? id) =>
-        id is not { Length: > 0 } || id is "." or ".." || id.IndexOfAny([.. Path.GetInvalidFileNameChars(), '/', '\\']) >= 0
-            ? null : Path.Combine(Root, id);
+    public static string? FolderOf(string? id) => NamesFolder(id) ? Path.Combine(Root, id!) : null;
+
+    /// <summary>Whether an id names one folder of its own under a store of secrets kept by it: not empty, no separator in it,
+    /// not a dot or two alone.</summary>
+    public static bool NamesFolder(string? id) =>
+        id is { Length: > 0 } && id is not ("." or "..") && id.IndexOfAny([.. Path.GetInvalidFileNameChars(), '/', '\\']) < 0;
 
     /// <summary>An id's secrets.json, there or not; null for an id that names no one folder.</summary>
     public static string? FileOf(string? id) => FolderOf(id) is { } folder ? Path.Combine(folder, "secrets.json") : null;

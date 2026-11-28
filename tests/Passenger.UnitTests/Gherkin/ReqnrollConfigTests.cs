@@ -51,10 +51,18 @@ public sealed class ReqnrollConfigTests
         }),
         ("a folder with no file writes steps as its framework does", () =>
         {
-            ReqnrollConfig none = ReqnrollConfig.In(Directory.CreateTempSubdirectory("passenger-unit-").FullName);
+            string folder = Directory.CreateTempSubdirectory("passenger-unit-").FullName;
+            try
+            {
+                ReqnrollConfig none = ReqnrollConfig.In(folder);
 
-            Assert.Equal((SkeletonStyle.CucumberExpression, SkeletonStyle.Regex), (none.SkeletonFor(specFlow: false), none.SkeletonFor(specFlow: true)));
-            Assert.Equal(SkeletonStyle.AsyncRegex, ReqnrollConfig.Parse("""{ "trace": { "stepDefinitionSkeletonStyle": "AsyncRegexAttribute" } }""", false) with { Written = true } is var said ? said.SkeletonFor(specFlow: false) : default);
+                Assert.Equal((SkeletonStyle.CucumberExpression, SkeletonStyle.Regex), (none.SkeletonFor(specFlow: false), none.SkeletonFor(specFlow: true)));
+                Assert.Equal(SkeletonStyle.AsyncRegex, ReqnrollConfig.Parse("""{ "trace": { "stepDefinitionSkeletonStyle": "AsyncRegexAttribute" } }""", false) with { Written = true } is var said ? said.SkeletonFor(specFlow: false) : default);
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
         }),
         ("a file read as no feature says the language it is read in whence its feature words and how to name its own", () =>
         {

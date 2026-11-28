@@ -15,7 +15,7 @@ public partial class MainWindow
 
     private void AddTerminal()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Terminal, "Terminal", IconKeys.Terminal, MakeTerminal, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Terminal, ToolWindowTitles.Terminal, IconKeys.Terminal, MakeTerminal, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowTerminal,
@@ -24,7 +24,7 @@ public partial class MainWindow
             Activate = ToggleTerminal,
             TakesKeysAsShown = true,
         });
-        actions!.Add(new IdeAction(AppActions.NewTerminalSession, "New Terminal Session", "Terminal", _ => IdeErrors.Observe(NewTerminalSessionAsync())) { FromTerminal = true });
+        actions!.Add(new IdeAction(AppActions.NewTerminalSession, ActionTitles.NewTerminalSession, ActionGroups.Terminal, _ => IdeErrors.Observe(NewTerminalSessionAsync())) { FromTerminal = true });
     }
 
     /// <summary>A shell of its own in the open folder, its tab made before the window shows, so showing it starts no other.</summary>
@@ -125,14 +125,14 @@ public partial class MainWindow
         AppActions.Resume, AppActions.Pause, AppActions.StepOver, AppActions.StepInto, AppActions.StepOut,
     ];
 
-    /// <summary>Whether a key goes to the focused terminal rather than the IDE: everything but Cmd's keys on the Mac (save
-    /// Cmd+K, its Clear Buffer), the second key of a chord already begun, the shortcuts of the actions that run from the
-    /// terminal (<see cref="IdeAction.FromTerminal"/>: the tool windows', their frame's and Next and Previous Tab's, but
-    /// never a Ctrl+letter or Ctrl+arrow, the shell's), and, in a program's tab, Stop's and the debugger's
-    /// (<see cref="ProgramLeaves"/>).</summary>
+    /// <summary>Whether a key goes to the focused terminal alone rather than the IDE: everything but Cmd's keys on the Mac
+    /// (save Cmd+K, its Clear Buffer), the second key of a chord already begun, a modifier alone (which types nothing, so
+    /// the keymap hears it too, for a double tap's Run Anything), the shortcuts of the actions that run from the terminal
+    /// (<see cref="IdeAction.FromTerminal"/>: the tool windows', their frame's and Next and Previous Tab's, but never a
+    /// Ctrl+letter or Ctrl+arrow, the shell's), and, in a program's tab, Stop's and the debugger's (<see cref="ProgramLeaves"/>).</summary>
     private bool TerminalTakes(object? focused, KeyEventArgs e)
     {
-        if (focused is not Terminal.TerminalView || keys.IsPending)
+        if (focused is not Terminal.TerminalView || keys.IsPending || KeymapDispatcher.IsModifierOnly(e.Key))
         {
             return false;
         }

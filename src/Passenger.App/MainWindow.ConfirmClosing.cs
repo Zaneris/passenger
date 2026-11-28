@@ -4,7 +4,7 @@ using Passenger.Core;
 
 namespace Passenger.App;
 
-/// <summary>Confirm before closing (Settings, System Settings): as chosen, the person is asked before Passenger quits (Exit,
+/// <summary>Confirm before closing (Settings | General): as chosen, the person is asked before Passenger quits (Exit,
 /// the system's Quit, the last window's close), once however many windows the quit closes, or before any window closes;
 /// Cancel keeps it open, and Don't ask again sets the setting to Never. Nothing is asked where the close asks a question
 /// of its own that confirms it (programs Hot Reload changed, <see cref="CloseHeldAsync"/>), in a quit already under way,
@@ -14,10 +14,6 @@ public partial class MainWindow
 {
     /// <summary>What the person's quit is called here, the question's title and answer: Quit on macOS, Exit elsewhere.</summary>
     public static readonly string QuitWord = OperatingSystem.IsMacOS() ? "Quit" : "Exit";
-
-    /// <summary>The quit's action as named here: as the application menu names it on macOS (Quit Passenger), as File's
-    /// item elsewhere (Exit).</summary>
-    public static readonly string QuitTitle = OperatingSystem.IsMacOS() ? $"{QuitWord} Passenger" : QuitWord;
 
     /// <summary>The answer of the question before a window closes.</summary>
     public const string CloseWord = "Close";
@@ -42,8 +38,8 @@ public partial class MainWindow
     /// <summary>Whether a close of this window by an attached agent's input is refused (<see cref="RefusedToAgentsInput"/>):
     /// the person's last window, whose close quits Passenger, or any window Confirm before closing asks about.</summary>
     private bool CloseRefused() =>
-        !AgentsOwn && (IsLastWindow ? RefusedToAgentsInput(Refusals.QuitIsThePersons)
-            : Confirms(ConfirmClosing.EveryWindow) && RefusedToAgentsInput(Refusals.CloseIsThePersons));
+        !AgentsOwn && (IsLastWindow ? RefusedToAgentsInput(Refusals.QuitIsThePersons.Shown)
+            : Confirms(ConfirmClosing.EveryWindow) && RefusedToAgentsInput(Refusals.CloseIsThePersons.Shown));
 
     /// <summary>The question Confirm before closing asks before this close goes on, or null where it asks none: the system's
     /// Quit asks once for every window (<see cref="PassengerApp.QuitAskedAsync"/>), the last window's close as a quit, any
@@ -92,10 +88,10 @@ public partial class MainWindow
     {
         ConfirmDialog asked = quits
             ? new ConfirmDialog($"{QuitWord} Passenger", "Passenger's windows close, and the programs, builds and terminals they run end with them.",
-                QuitWord, offersNotAgain: true) { PersonsAlone = Refusals.QuitIsThePersons }
+                QuitWord, offersNotAgain: true) { PersonsAlone = Refusals.QuitIsThePersons.Shown }
             : new ConfirmDialog("Close Window", Folder is null ? "This window closes."
                 : $"The window on {SolutionTitle} closes, and the programs, builds and terminals it runs end with it.",
-                CloseWord, offersNotAgain: true) { PersonsAlone = Refusals.CloseIsThePersons };
+                CloseWord, offersNotAgain: true) { PersonsAlone = Refusals.CloseIsThePersons.Shown };
         bool agreed = await asked.ShowDialog<bool>(this);
         if (agreed && asked.NotAgain)
         {

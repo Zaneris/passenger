@@ -563,7 +563,7 @@ public partial class MainWindow
     /// <summary>Runs (or debugs, or profiles) what a run icon stands beside: a Compose configuration's one service (with what
     /// it depends on, the service alone debugged or profiled), or a Dockerfile configuration; what stopped it, if anything,
     /// is in the status bar.</summary>
-    public Task<string?> RunTarget(RunTarget target, RunStart how = RunStart.Run)
+    public Task<Words?> RunTarget(RunTarget target, RunStart how = RunStart.Run)
     {
         if (target.Configuration.Aspire)
         {
@@ -581,12 +581,12 @@ public partial class MainWindow
         return how == RunStart.Profile ? ProfileAsync(configuration) : buildRun.RunContainersAsync(configuration, how);
     }
 
-    private async Task<string?> RunAspireTargetAsync(RunTarget target, RunStart how)
+    private async Task<Words?> RunAspireTargetAsync(RunTarget target, RunStart how)
     {
         ProjectSession current = session;
         if (target.Service is not { } name)
         {
-            return "No Aspire project resource is selected";
+            return LaunchWords.NoAspireResourceChosen;
         }
         IReadOnlyList<AspireRunResource> declared = await ReadAspireConfigurationResourcesAsync(target.Configuration, CancellationToken.None);
         if (session != current || current.IsEnded || target.Declaration is not { } original
@@ -594,7 +594,7 @@ public partial class MainWindow
             || !Editors.Documents.Any(document => Core.PathNames.Same(document.Path, original.Source)
                 && TextHash.Of(document.Text.Snapshot.ToString()) == original.SourceHash))
         {
-            return "The AppHost source changed; open its gutter action again";
+            return LaunchWords.AppHostSourceChanged;
         }
         if (current.Aspire.FindApp(target.Configuration.Project) is { IsTest: false, IsStopped: false } app)
         {
@@ -604,7 +604,7 @@ public partial class MainWindow
         }
         if (session != current || current.IsEnded || declared.Count(resource => resource.Name == name) != 1)
         {
-            return "The selected AppHost resource changed";
+            return LaunchWords.AppHostResourceChanged;
         }
         RunConfiguration configuration = Targeting(target.Configuration, declared.Select(resource => (resource.Name, resource.Project)), name,
             debug: how is RunStart.Debug or RunStart.Profile);

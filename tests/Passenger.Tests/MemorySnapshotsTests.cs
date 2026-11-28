@@ -667,7 +667,7 @@ public sealed class MemorySnapshotsTests : IDisposable
         File.WriteAllText(Path.Combine(project, "Program.cs"), program);
         Restore.Run(project);
         MainWindow window = Ui.OpenFolder(project, width: 1400, height: 900, languageServer: false);
-        Task<string?> started = window.ProfileAsync();
+        Task<Words?> started = window.ProfileAsync();
         Ui.Launched(window, started, "the build and the start", TimeSpan.FromMinutes(3));
         if (sent is not null)
         {

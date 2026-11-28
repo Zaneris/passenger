@@ -70,5 +70,6 @@ public static class InlineValues
         _ => false,
     };
 
-    private static string Cut(string value) => value.Length <= Longest ? value : value[..(Longest - 1)] + "…";
+    /// <summary>A value as it is shown after a line, cut past <see cref="Longest"/>.</summary>
+    public static string Cut(string value) => value.Length <= Longest ? value : value[..(Longest - 1)] + "…";
 }

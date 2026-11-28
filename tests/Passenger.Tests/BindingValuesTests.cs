@@ -174,8 +174,7 @@ public sealed class BindingValuesTests : IClassFixture<RestoredFolders>, IDispos
         window.MouseMove(new Point(0, 0), RawInputModifiers.None);
         Ui.WaitFor(() => window.Assist.HoverText is null, "the last card to go");
         int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
-        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, $"the card on {text}");
         return window.Assist.HoverText!;
     }

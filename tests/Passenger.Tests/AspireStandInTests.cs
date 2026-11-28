@@ -46,11 +46,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a service an AppHost adds by path beside the open folder starts lent its trust and one above it is refused saying why", () => new AspireStandInTests(project), t => t.A_service_an_AppHost_adds_by_path_beside_the_open_folder_starts_lent_its_trust_and_one_above_it_is_refused_saying_why());
     }
 
-    /// <summary>The Aspire window as one flow, each step a test's check in an instance of its own: a service's output told to
-    /// DCP a line at a time, the console dropping overlapping lines and following a new generation, a log landing at the cost
-    /// of what it adds, a restart reading only its own console, a resource's row, details, commands and merged console, an
-    /// argument marked sensitive shown as dots, a service marked Don't start, the graph's edges, a resource waiting for
-    /// another, a JavaScript resource's folder and restart, and a request duration charted while shown.</summary>
+    /// <summary>The Aspire window as one flow: a service's output to DCP a line at a time, the console's overlapping lines
+    /// dropped and a new generation followed, a log landing at the cost of what it adds, a restart reading its own console,
+    /// a resource's row, details, commands and console, a sensitive argument as dots, a database a connection while it runs,
+    /// a service marked Don't start, the graph's edges, a resource waiting for another, a JavaScript resource's folder and
+    /// restart, a request duration charted while shown, an AppHost told WSL Containers followed through wslc.</summary>
     [AvaloniaFact]
     public void The_Aspire_window_shows_each_resources_row_console_telemetry_and_graph_its_secrets_as_dots()
     {
@@ -60,11 +60,13 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a resources restart reads only its own console again", () => new AspireStandInTests(project), t => t.A_resources_restart_reads_only_its_own_console_again());
         Flow.StepApart("the window shows a resources row details commands and merged console as Containers shows a services", () => new AspireStandInTests(project), t => t.The_window_shows_a_resources_row_details_commands_and_merged_console_as_Containers_shows_a_services());
         Flow.StepApart("an argument the AppHost marks sensitive shows as dots in the log the console and the list of programs", () => new AspireStandInTests(project), t => t.An_argument_the_AppHost_marks_sensitive_shows_as_dots_in_the_log_the_console_and_the_list_of_programs());
+        Flow.StepApart("a database an AppHost runs is a connection while it runs its string never shown", () => new AspireStandInTests(project), t => t.A_database_an_AppHost_runs_is_a_connection_while_it_runs_its_string_never_shown());
         Flow.StepApart("a service marked Dont start reads Not started in its row and Details", () => new AspireStandInTests(project), t => t.A_service_marked_Dont_start_reads_Not_started_in_its_row_and_Details());
         Flow.StepApart("the apphosts graph has an edge for each wait and a node chooses its row", () => new AspireStandInTests(project), t => t.The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row());
         Flow.StepApart("a resource waiting for another says what for in its details with links both ways", () => new AspireStandInTests(project), t => t.A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways());
         Flow.StepApart("a javascript app resource goes to its folder and restarts from its row", () => new AspireStandInTests(project), t => t.A_javascript_app_resource_goes_to_its_folder_and_restarts_from_its_row());
         Flow.StepApart("a web services request duration is charted on its Stats tab while the tab is shown", () => new AspireStandInTests(project), t => t.A_web_services_request_duration_is_charted_on_its_Stats_tab_while_the_tab_is_shown());
+        Flow.StepApart("an AppHost told WSL Containers has its session container found listed followed and taken down through wslc", () => new AspireStandInTests(project), t => t.An_AppHost_told_WSL_Containers_has_its_session_container_found_listed_followed_and_taken_down_through_wslc());
     }
 
     /// <summary>Aspire services as one flow, each step one test's check in an instance of its own: a service started
@@ -121,11 +123,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("a file input the AppHost replaces refuses the upload under way and takes the file chosen again", () => new AspireStandInTests(project), t => t.A_file_input_the_AppHost_replaces_refuses_the_upload_under_way_and_takes_the_file_chosen_again());
     }
 
-    /// <summary>What the stand-in shell scripts answer as one flow, every step off Windows alone (Windows runs no shell
-    /// script), each in an instance of its own: an AppHost serving HTTPS with no trusted certificate asking once, Debug
-    /// while Run brings it up taking its place, Discover taking a CLI of 13.6 or later, an AppHost read through the CLI
-    /// with no credentials in its addresses and its failure masked, an engine stopping or down said once, and the
-    /// Containers window's AppHost row merging its containers.</summary>
+    /// <summary>What the stand-in shell scripts answer as one flow, off Windows alone (it runs no shell script), each step in
+    /// an instance of its own: HTTPS with no trusted certificate asked once, Debug taking Run's place, Discover taking a CLI
+    /// of 13.6 or later, an AppHost run outside read with no credentials and its service attached to, a Go AppHost run
+    /// through the CLI, an engine stopping or down said once, and the Containers window's AppHost row merging its
+    /// containers.</summary>
     [AvaloniaFact]
     public void An_AppHosts_certificate_CLI_and_container_engine_are_asked_and_said_as_each_answers()
     {
@@ -133,6 +135,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         Flow.StepApart("debug while Run brings the AppHost up takes its place", () => new AspireStandInTests(project), t => t.Debug_while_Run_brings_the_AppHost_up_takes_its_place());
         Flow.StepApart("discover takes a CLI of 13 6 or later within 13 or of 17 and says why it will not take another", () => new AspireStandInTests(project), t => t.Discover_takes_a_CLI_of_13_6_or_later_within_13_or_of_17_and_says_why_it_will_not_take_another());
         Flow.StepApart("an AppHost read through the CLI shows its addresses without credentials and its failure masked", () => new AspireStandInTests(project), t => t.An_AppHost_read_through_the_CLI_shows_its_addresses_without_credentials_and_its_failure_masked());
+        Flow.StepApart("a NET service of an AppHost run outside Passenger is attached to as it runs and a Go program is refused saying why", () => new AspireStandInTests(project), t => t.A_NET_service_of_an_AppHost_run_outside_Passenger_is_attached_to_as_it_runs_and_a_Go_program_is_refused_saying_why());
+        Flow.StepApart("a Go AppHost runs through the aspire CLI and its NET service is debugged and takes Hot Reload", () => new AspireStandInTests(project), t => t.A_Go_AppHost_runs_through_the_aspire_CLI_and_its_NET_service_is_debugged_and_takes_Hot_Reload());
         Flow.StepApart("a container engine that stops while an AppHost runs is said in the status bar and Problems as for a container run", () => new AspireStandInTests(project), t => t.A_container_engine_that_stops_while_an_AppHost_runs_is_said_in_the_status_bar_and_Problems_as_for_a_container_run());
         Flow.StepApart("an engine down as an AppHost starts is said once and its events ending leave the runs own words", () => new AspireStandInTests(project), t => t.An_engine_down_as_an_AppHost_starts_is_said_once_and_its_events_ending_leave_the_runs_own_words());
         Flow.StepApart("the Containers windows AppHost row merges its containers logs and stats", () => new AspireStandInTests(project), t => t.The_Containers_windows_AppHost_row_merges_its_containers_logs_and_stats());
@@ -235,11 +239,11 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
 
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             CertificateQuestionDialog asked = Question(window, running);
             Assert.Equal("The HTTPS development certificate is not trusted", asked.Title);
             Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
-            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "the start to end once stopped"));
+            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "the start to end once stopped")?.English);
             Ui.WaitFor(() => window.CertificateQuestion is null && !asked.IsVisible, "Stop to close the question");
             Assert.Empty(window.AspireRuntime.Apps);
             Assert.False(File.Exists(project.KeyFile), "The AppHost started though its start was stopped as it asked");
@@ -297,13 +301,13 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         {
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
             Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
-            Task<string?> running = window.RunAsync();
-            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.RunProgram)?.Stage.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || running.IsCompleted,
+            Task<Words?> running = window.RunAsync();
+            Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.RunProgram)?.Stage.Shown.StartsWith("Checking the HTTPS", StringComparison.Ordinal) == true || running.IsCompleted,
                 "Run to check the development certificate", TimeSpan.FromMinutes(2));
             Assert.False(running.IsCompleted, $"Run ended before it checked the certificate: {(running.IsCompleted ? running.Result : null)}");
             File.Delete(Path.Combine(standIn, "slow"));
-            Task<string?> debugging = window.DebugAsync();
-            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "Run's start to end as Debug takes its place"));
+            Task<Words?> debugging = window.DebugAsync();
+            Assert.Equal($"{StandInAppHost.Configuration} was stopped as it started", Ui.Await(running, "Run's start to end as Debug takes its place")?.English);
             Ui.Launched(window, debugging, "the AppHost to come up debugged");
             Assert.Equal(RunStart.Debug, Assert.Single(window.AspireRuntime.Apps).Mode);
         }
@@ -430,7 +434,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
     }
 
     /// <summary>The question a start asked of its certificate, held to the dialogs' rules.</summary>
-    internal static CertificateQuestionDialog Question(MainWindow window, Task<string?> running)
+    internal static CertificateQuestionDialog Question(MainWindow window, Task<Words?> running)
     {
         Ui.PumpUntil(() => window.CertificateQuestion is not null || running.IsCompleted, "the start to ask about the certificate", TimeSpan.FromMinutes(2));
         Assert.True(window.CertificateQuestion is not null, $"The start asked nothing of its certificate: {(running.IsCompleted ? running.Result : null)}");
@@ -810,6 +814,53 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A database an AppHost runs is one of the Database window's connections while it runs, whatever uses it, found
+    /// as it starts with no Refresh: by the name shown, from the connection string the AppHost told and marks sensitive, its
+    /// secret marked and never said; taken again as the AppHost tells another string; gone once the resource has ended.</summary>
+    private void A_database_an_AppHost_runs_is_a_connection_while_it_runs_its_string_never_shown()
+    {
+        const string Secret = "resource-never-shown";
+        project.Reset();
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        MainWindow window = OpenRunning(backend);
+        try
+        {
+            Resource Database(string state, string database = "shopdb") => new()
+            {
+                Name = "shopdb-x1", DisplayName = "shopdb", Uid = "shopdb", ResourceType = "PostgresDatabaseResource", State = state,
+                Properties =
+                {
+                    new ResourceProperty
+                    {
+                        Name = "resource.connectionString", IsSensitive = true,
+                        Value = Google.Protobuf.WellKnownTypes.Value.ForString($"Host=localhost;Port=5999;Database={database};Username=postgres;Password={Secret}"),
+                    },
+                },
+            };
+            window.ShowToolWindow(ToolWindowIds.Database);
+            Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
+            backend.PushResource(Database("Running"));
+            Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true),
+                () => $"the AppHost's database among the connections: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Found}"))} ({window.Database.Said})");
+            Passenger.App.Database.DatabaseSource found = Assert.Single(window.Database.Sources, s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true);
+            Assert.Equal((Passenger.App.Database.DatabaseKind.Postgres, "shopdb", "shopdb"), (found.Kind, found.Name, found.Database));
+            Assert.DoesNotContain(Secret, window.Database.Said, StringComparison.Ordinal);
+            Assert.Equal(Passenger.App.Containers.ContainerSecrets.Masked, Passenger.App.Containers.ContainerSecrets.InSaid(Secret));
+            backend.PushResource(Database("Running", "orders"));
+            Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true && s.Database == "orders"),
+                () => $"the connection string the AppHost told again, of another database, taken in place of the first: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Database}"))}");
+            backend.PushResource(Database("Finished"));
+            Ui.WaitFor(() => !window.Database.Busy && !window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true),
+                () => $"the ended resource's database gone from the connections ({window.Database.Said})");
+        }
+        finally
+        {
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A service DCP starts with arguments starts at once where its AppHost has not shown it says its resources'
     /// arguments, as one older than Aspire 9.1 never does, never waiting for them.</summary>
     private void A_service_started_with_arguments_by_an_AppHost_that_says_no_resources_arguments_starts_without_waiting_for_them()
@@ -893,7 +944,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             (subscribed, System.Net.HttpStatusCode refused) = project.AskToStartApi("above", projectPath: above);
             Assert.False((int)refused is >= 200 and < 300, "The IDE started a service in a folder holding the open folder, which it lends no trust");
-            string why = Refusals.NotLent("Above.Api", PathNames.Canonical(project.Folder), Unlent.HoldsOpen);
+            string why = Refusals.NotLent("Above.Api", PathNames.Canonical(project.Folder), Unlent.HoldsOpen).Shown;
             Ui.WaitFor(() => window.Status == why, () => $"the status to say why the service above was refused; it says {window.Status}");
             Assert.Contains(why, window.AspireRuntime.LastAppConsole?.Document.Snapshot.ToString() ?? string.Empty, StringComparison.Ordinal);
 
@@ -1465,7 +1516,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             replicas.Arguments[instances[1]] = ["child"];
             File.AppendAllText(project.PathOf($"{StandInAppHost.Api}/Program.cs"), "// Changed for Rerun.\n");
             // The run's own Rerun, which the window's routes to Debug while a session is live.
-            string? reran = Ui.Await(window.Builds.RerunAsync(), "Rerun of the replicas, whose code changed", TimeSpan.FromMinutes(3));
+            string? reran = Ui.Await(window.Builds.RerunAsync(), "Rerun of the replicas, whose code changed", TimeSpan.FromMinutes(3))?.English;
             Assert.True(replicas.Of(instances[2]) is [{ ProcessId: int restarted, DebugTab.IsLive: true }] && restarted != first[instances[2]],
                 $"After the second replica's attach was refused, Rerun restarted the third without the debugger ({window.Status})");
             Assert.True(replicas.Of(instances[0]) is [{ ProcessId: int before, DebugTab.IsLive: true }] && before != first[instances[0]],
@@ -1792,7 +1843,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             {
                 window.AspireRuntime.HoldNextProfileLimit(late.Task);
             }
-            Task<string?> profiling = window.ProfileAsync();
+            Task<Words?> profiling = window.ProfileAsync();
             Ui.PumpUntil(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1 || profiling.IsCompleted,
                 "the AppHost to come up for Profile", TimeSpan.FromMinutes(2));
             Assert.False(profiling.IsCompleted, $"Profile ended before its AppHost asked for a service: {(profiling.IsCompleted ? profiling.Result : null)}");
@@ -1803,7 +1854,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             (System.Net.WebSockets.ClientWebSocket notified, System.Net.HttpStatusCode _) = project.AskToStartApi("apiservice");
             using System.Net.WebSockets.ClientWebSocket subscribed = notified;
-            string? why = Ui.Await(profiling, "Profile to give up on the API");
+            string? why = Ui.Await(profiling, "Profile to give up on the API")?.English;
             Assert.True(why is not null && System.Text.RegularExpressions.Regex.IsMatch(why, $"^apiservice did not start under the profiler within {SaidWhile.Pattern} of its AppHost asking for it$"),
                 $"Profile's time limit was said as '{why}': a service that reached the profiler past its time was recorded as one in time");
             Assert.Equal(why, window.Status);
@@ -1841,7 +1892,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             RunConfiguration other = api.Copied() with { Name = "The API again", Generated = false };
             window.SetConfigurations([other], other.Name);
-            Assert.Equal($"Already running: {api.Name} has the Run console; stop it first", Ui.Await(window.RunAsync(), "Run of another configuration"));
+            Assert.Equal($"Already running: {api.Name} has the Run console; stop it first", Ui.Await(window.RunAsync(), "Run of another configuration")?.English);
             Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
             Ui.WaitFor(() => !window.IsRunning, "Stop to end the API");
 
@@ -2083,7 +2134,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             List<Passenger.App.Debugging.HotReloadOutcome> told = [];
             window.Debugger.Applied += (_, outcome) => told.Add(outcome);
             // The action's apply under way, then the save, before anything has settled.
-            Assert.Null(window.Actions.Run(AppActions.ApplyHotReloadChanges));
+            Assert.Null(window.Actions.Run(AppActions.ApplyHotReloadChanges)?.Shown);
             Assert.True(window.EditorArea.SaveAll(), "The edited file was not saved");
             Ui.WaitFor(() => told.Count > 0 && window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, $"Apply Hot Reload Changes to end ({window.Status})",
                 TimeSpan.FromMinutes(2));
@@ -2228,7 +2279,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             FindAction(window, "Show Aspire Resources");
             Ui.WaitFor(() => window.Aspire.Rows.Count == 2, "the API's and the cache's rows");
             string[] services = ["Debug Service", "Attach to Service", "Run Service without Debugger", "Profile Service"];
-            Assert.Equal(services, window.AspireWindow.Tools.Keys.Skip(2).Take(4).Select(id => window.Actions[id]!.Title));
+            Assert.Equal(services, window.AspireWindow.Tools.Keys.Skip(2).Take(4).Select(id => window.Actions[id]!.Title.English));
 
             ContextMenu menu = RowMenu(window, "cache");
             MenuItem[] first = [.. menu.Items.OfType<Control>().TakeWhile(item => item is MenuItem).Cast<MenuItem>()];
@@ -2244,7 +2295,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             window.KeyTextInput("Service");
             Ui.Settle();
             Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-            Assert.All(services, title => Assert.Single(popup.Rows, row => row.Title == title));
+            Assert.All(services, title => Assert.Single(popup.Rows, row => row.Title.English == title));
             Ui.Press(window, "ESCAPE");
 
             Ui.Choose(RowMenu(window, "apiservice"), "Debug Service");
@@ -2264,11 +2315,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
-    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
-    /// AppHost's relationships say, and as the other resource's state stands.</summary>
     /// <summary>The AppHost's graph shows every resource at once, an edge for each wait and reference its relationships give,
-    /// each resource right of those it waits for; a click on a node chooses its row.</summary>
+    /// each resource right of those it waits for; a click on a node chooses its row; and it is copied as a Mermaid flowchart
+    /// of the same nodes and edges.</summary>
     private void The_apphosts_graph_has_an_edge_for_each_wait_and_a_node_chooses_its_row()
     {
         project.Reset();
@@ -2299,6 +2348,17 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
             Ui.Click(graph.Nodes["db"]);
             Ui.WaitFor(() => window.Aspire.SelectedResource?.Name == "db", "the db node to choose db's row");
+
+            // Copied as Mermaid, it is the graph as drawn: a node a resource, an arrow a wait, a dashed line a reference.
+            FindAction(window, "Copy Aspire Graph as Mermaid");
+            Ui.WaitFor(() => window.Copied.FirstOrDefault().Text?.StartsWith("flowchart RL\n", StringComparison.Ordinal) == true,
+                () => $"the graph copied as a Mermaid flowchart ({window.Status})");
+            string[] lines = [.. window.Copied[0].Text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(line => line.Trim())];
+            Dictionary<string, string> ids = lines.Select(line => System.Text.RegularExpressions.Regex.Match(line, "^(r[0-9]+)\\[\"([a-z]+)\"\\]$"))
+                .Where(node => node.Success).ToDictionary(node => node.Groups[2].Value, node => node.Groups[1].Value);
+            Assert.Equal(["api", "cache", "db", "web"], ids.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal([$"{ids["api"]} --> {ids["cache"]}", $"{ids["api"]} --> {ids["db"]}", $"{ids["web"]} --> {ids["api"]}", $"{ids["web"]} -.- {ids["cache"]}"],
+                lines.Where(line => line.Contains(' ', StringComparison.Ordinal)).Order(StringComparer.Ordinal));
             Assert.Empty(backend.Errors);
         }
         finally
@@ -2308,6 +2368,10 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A resource waiting for another says so in its Details, what it waits for and references each a link to that
+    /// resource, whose own Details name it back as waiting for it and referencing it, a link that leads back; as the
+    /// AppHost's relationships say, and as the other resource's state stands. A parameter missing its value says what gives
+    /// one, and one made optional and left unset that what uses it gets none.</summary>
     private void A_resource_waiting_for_another_says_what_for_in_its_details_with_links_both_ways()
     {
         project.Reset();
@@ -2343,6 +2407,23 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                 Relationships = { new ResourceRelationship { ResourceName = "cache", Type = "WaitFor" }, new ResourceRelationship { ResourceName = "cache", Type = "Reference" } },
             });
             Ui.WaitFor(() => !DetailsWords(details).Any(words => words.StartsWith("Waiting for", StringComparison.Ordinal)), "web's details to stop saying it waits once it runs");
+
+            // A parameter with no value its AppHost needs says what it waits for, and one made optional and left unset that it has none.
+            backend.PushResource(new Resource { Name = "password", DisplayName = "password", Uid = "password", ResourceType = "Parameter", State = AspireStates.ValueMissing });
+            backend.PushResource(new Resource { Name = "region", DisplayName = "region", Uid = "region", ResourceType = "Parameter", State = AspireStates.Running });
+            Resource valued = new() { Name = "mode", DisplayName = "mode", Uid = "mode", ResourceType = "Parameter", State = AspireStates.Running };
+            valued.Properties.Add(new ResourceProperty { Name = "Value", Value = Google.Protobuf.WellKnownTypes.Value.ForString("fast") });
+            backend.PushResource(valued);
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 5, "the parameters' rows");
+            foreach ((string name, string? said) in (ReadOnlySpan<(string, string?)>)[
+                ("password", AspireDetailsPane.ValueMissingWhy), ("region", AspireDetailsPane.UnsetWhy), ("mode", null)])
+            {
+                Ui.Click(Words(Row(window, name), name));
+                Ui.WaitFor(() => details.Resource?.Name == name, $"{name}'s details");
+                string[] words = DetailsWords(details);
+                Assert.True(said is null ? !words.Contains(AspireDetailsPane.ValueMissingWhy) && !words.Contains(AspireDetailsPane.UnsetWhy) : words.Contains(said),
+                    $"{name}'s details said [{string.Join(" | ", words)}], where a person must read {said ?? "nothing of a missing or unset value"}");
+            }
             Assert.Empty(backend.Errors);
         }
         finally
@@ -2535,10 +2616,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             AspireInteractionDialog form = Interaction(window, "API settings");
             TextBox input = Assert.IsType<TextBox>(form.InputControls["value"]);
             Ui.Click(input);
-            Ui.WaitFor(() => backend.Answers.Any(answer => answer.InteractionId == 2
-                && answer.KindCase == WatchInteractionsRequestUpdate.KindOneofCase.InputsDialog
-                && answer.ResponseUpdate && answer.InputsDialog.InputItems[0].Value == "before"),
-                "the form's first value");
+            // A form only shown sends nothing: a value goes to the AppHost as the person changes it.
+            Assert.DoesNotContain(backend.Answers, answer => answer.InteractionId == 2);
             int baseline = backend.Answers.Length;
             AspireInteractionHost.WireBarrier sending = backend.HoldNextAnswer();
             string firstValue = new string('x', 256 * 1024) + "typed while connected";
@@ -2888,6 +2967,157 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>A .NET service of an AppHost that runs outside Passenger (aspire start's, which the CLI lists) is attached to
+    /// as it runs, never restarted: Attach to Service attaches the debugger to the program its AppHost says it runs as, its
+    /// session named for the resource and its AppHost, where Debug, Run without Debugger and Profile say Passenger does not
+    /// run the AppHost; and a Go program it runs is refused all four, saying Passenger has no Go debugger.</summary>
+    private void A_NET_service_of_an_AppHost_run_outside_Passenger_is_attached_to_as_it_runs_and_a_Go_program_is_refused_saying_why()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
+        project.Reset();
+        project.BuildApi();
+        string cli = StandInCli();
+        string folder = Path.GetDirectoryName(cli)!;
+        string pidFile = Path.Combine(folder, "api.pid");
+        System.Diagnostics.ProcessStartInfo start = ChildProcesses.DotnetCommand([Path.Combine(project.PathOf(StandInAppHost.Api), "bin", "Debug", TestProjects.Framework, $"{StandInAppHost.Api}.dll")]);
+        start.Environment["STAND_IN_PID_FILE"] = pidFile;
+        using System.Diagnostics.Process api = ChildProcesses.Start(start);
+        MainWindow? window = null;
+        try
+        {
+            Ui.WaitFor(() => File.Exists(pidFile), "the service run outside Passenger to say it is up");
+            File.WriteAllText(Path.Combine(folder, "version"), "17.0.0\n");
+            File.WriteAllText(Path.Combine(folder, "ps.json"), JsonSerializer.Serialize(new[]
+            {
+                new { appHostPath = PathNames.Canonical(project.ProjectFile), appHostPid = Environment.ProcessId, status = "Running" },
+            }));
+            JsonObject Resource(string name, string type, string program, int processId, string? source) => new()
+            {
+                ["name"] = $"{name}-x1y2z3", ["displayName"] = name, ["resourceType"] = type, ["state"] = AspireStates.Running, ["source"] = source,
+                ["properties"] = new JsonObject { ["executable.path"] = program, ["executable.pid"] = processId },
+                ["environment"] = new JsonObject(), ["commands"] = new JsonObject(),
+            };
+            File.WriteAllText(Path.Combine(folder, "resources.json"), new JsonObject
+            {
+                ["resources"] = new JsonArray(Resource("api", "Project", "dotnet", api.Id, PathNames.Canonical(project.ApiProject)),
+                    Resource("goapi", "Executable", "/usr/local/go/bin/go", api.Id, null)),
+            }.ToJsonString());
+            window = OpenWithCli(cli);
+            FindAction(window, "Discover Aspire AppHosts");
+            Ui.WaitFor(() => window.AspireWindow.AppSelector.Items.Count == 1, $"the AppHost the CLI lists ({window.Aspire.Status})");
+            Ui.Click(window.AspireWindow.AppSelector);
+            Ui.Press(window, "HOME");
+            Ui.Press(window, "ENTER");
+            FindAction(window, "Show Aspire Resources");
+            Ui.WaitFor(() => window.Aspire.Rows.Count == 2, $"the service's and the Go program's rows ({window.Aspire.Status})");
+            string[] services = ["Debug Service", "Attach to Service", "Run Service without Debugger", "Profile Service"];
+            foreach ((string name, Func<string, string?> said) in (ReadOnlySpan<(string, Func<string, string?>)>)[
+                ("goapi", _ => Refusals.NoGoDebugger("goapi").Shown),
+                ("api", service => service == "Attach to Service" ? null
+                    : $"Passenger does not run {StandInAppHost.Name}: Run, Debug or Profile its configuration first, or Attach to Service debugs api as it runs")])
+            {
+                ContextMenu menu = RowMenu(window, name);
+                foreach (MenuItem item in menu.Items.OfType<MenuItem>().Where(item => services.Contains(item.Header as string)))
+                {
+                    string? why = said((string)item.Header!);
+                    Assert.True(item.IsEnabled == (why is null) && Equals(ToolTip.GetTip(item), why),
+                        $"{item.Header} on {name} was {(item.IsEnabled ? "enabled" : "greyed")} saying [{ToolTip.GetTip(item)}], where a person must read [{why ?? "nothing: it runs"}]");
+                }
+                menu.Close();
+                Ui.Settle();
+            }
+
+            Ui.Choose(RowMenu(window, "api"), "Attach to Service");
+            string session = $"api of {StandInAppHost.Name}";
+            Ui.WaitFor(() => window.Debugger.SessionNamed(session) is { State: Passenger.App.Debugging.DebugState.Running or Passenger.App.Debugging.DebugState.Paused }, $"the debugger attached to the service as it runs ({window.Status})",
+                TimeSpan.FromMinutes(1));
+            Assert.True(DotnetProcesses.Runs(api), "Attaching to the service ended it, where it must run on");
+            Assert.Null(Ui.Await(window.Debugger.DetachAsync(window.Debugger.SessionNamed(session)), "the debugger to let the service go"));
+            Assert.True(DotnetProcesses.Runs(api), "Letting the service go ended it, where it must run on");
+        }
+        finally
+        {
+            window?.Close();
+            ChildProcesses.Kill(api);
+        }
+    }
+
+    /// <summary>An AppHost of another language (a Go AppHost, as its aspire.config.json names it) has its configuration as its
+    /// file comes after the config, and Debug runs it as aspire run starts it, through the window's aspire CLI in its folder with the IDE's
+    /// debug session and the environment its config's https profile gives; the .NET service its orchestrator asks the IDE to
+    /// start runs debugged, and an edit made as it runs reaches it through Hot Reload, as a C# AppHost's service's does. The
+    /// stand-in CLI runs the stand-in AppHost, built here, as aspire run would run the AppHost.</summary>
+    private void A_Go_AppHost_runs_through_the_aspire_CLI_and_its_NET_service_is_debugged_and_takes_Hot_Reload()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The stand-in aspire CLI is a shell script, and Windows runs no shell script as a program");
+        project.Reset();
+        project.BuildApi();
+        ChildResult built = Ui.Await(ChildProcesses.RunAsync(ChildProcesses.DotnetCommand(["build", PathNames.Canonical(project.ProjectFile), "-nologo", "-v:q"]),
+            limit: TimeSpan.FromMinutes(3).Scaled()), "the stand-in AppHost's build");
+        Assert.True(built.Succeeded, $"The stand-in AppHost did not build: {built.Output}{built.Error}");
+        string appHost = Path.Combine(PathNames.Canonical(project.Folder), "GoHost", "apphost.go");
+        File.Delete(project.KeyFile);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        TestFolders.Write(project.Folder, "GoHost/aspire.config.json", JsonSerializer.Serialize(new
+        {
+            appHost = new { path = "apphost.go", language = "go" },
+            profiles = new Dictionary<string, object>
+            {
+                ["http"] = new { environmentVariables = new Dictionary<string, string> { ["PASSENGER_STAND_IN_KEY"] = "not this profile" } },
+                ["https"] = new
+                {
+                    environmentVariables = new Dictionary<string, string>
+                    {
+                        ["PASSENGER_STAND_IN_KEY"] = project.KeyFile,
+                        [AspireVariables.AllowUnsecuredTransport] = "true",
+                        [AspireVariables.ResourceServiceEndpoint] = backend.Endpoint.AbsoluteUri,
+                    },
+                },
+            },
+        }));
+        string cli = StandInCli();
+        string program = Path.Combine(project.PathOf(StandInAppHost.Name), "bin", "Debug", TestProjects.Framework, $"{StandInAppHost.Name}.dll");
+        File.WriteAllText(cli, $"#!/bin/sh\nprintf '%s\\n' \"$PWD\" \"$@\" > \"$(dirname \"$0\")/ran\"\nexec '{Dotnet.Host()}' '{program}'\n");
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, AspireCliFrom = cli };
+        System.Net.WebSockets.ClientWebSocket? started = null;
+        try
+        {
+            window.Show();
+            window.OpenFolder(project.Folder);
+            Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+            Ui.Await(window.Session.AspireFiles.Read, "the folder's first read for its AppHosts");
+            Ui.Settle();
+            Assert.False(window.Configurations.Any(configuration => PathNames.Same(configuration.Project, appHost)), "The Go AppHost was configured before its file was there");
+            TestFolders.Write(project.Folder, "GoHost/apphost.go", "package main\n\nfunc main() {}\n");
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire && PathNames.Same(configuration.Project, appHost)),
+                "the Go AppHost's Aspire configuration as its file comes after the aspire.config.json naming it");
+            Assert.True(window.SelectConfiguration(window.Configurations.First(configuration => PathNames.Same(configuration.Project, appHost)).Name));
+            window.ApplySettings(window.Settings with { HotReload = true });
+            Ui.Run(window, AppActions.Debug);
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the Go AppHost to come up through the aspire CLI ({window.Status}){project.StartSaid()}");
+            Assert.Equal([Path.GetDirectoryName(appHost)!, "run", "--apphost", appHost, "--non-interactive", "--nologo"],
+                File.ReadAllLines(Path.Combine(Path.GetDirectoryName(cli)!, "ran")).Select((line, index) => index == 0 ? PathNames.Canonical(line) : line));
+
+            (started, System.Net.HttpStatusCode answer) = project.AskToStartApi("apiservice", "Debug");
+            Assert.True((int)answer is >= 200 and < 300, $"The IDE refused the Go AppHost's .NET service: {answer} ({window.Status})");
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Single().Services.SingleOrDefault() is { ProcessId: > 0, DebugTab.IsLive: true },
+                $"the Go AppHost's .NET service debugged from its start ({window.Status})", TimeSpan.FromMinutes(1));
+            Assert.Null(window.OpenFile(project.PathOf($"{StandInAppHost.Api}/Program.cs")));
+            Typing.Replace(window, "\"The stand-in API is up\"", "\"The stand-in API is up, edited\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            Ui.WaitFor(() => window.Actions.Work.Of(AppActions.ApplyHotReloadChanges) is null, $"Apply Hot Reload Changes to end ({window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(window.Debugger.LastApplied?.Result == Passenger.App.Debugging.HotReloadResult.Applied,
+                $"The edit did not reach the Go AppHost's .NET service: {window.Debugger.LastApplied?.Said}");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            window.Close();
+            started?.Dispose();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A stand-in aspire CLI in a folder of the test's: its version, ps and describe answers files beside it, and a
     /// failure file, when there is one, its error and exit code 9.</summary>
     private static string StandInCli()
@@ -3011,7 +3241,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.BottomPanel.Problems.ContainerProblems.Any(problem => problem.Message.StartsWith(Down, StringComparison.Ordinal)),
                 "the stopped engine listed in Problems' Containers tab", TimeSpan.FromMinutes(1));
             Assert.StartsWith(Down, window.Status, StringComparison.Ordinal);
-            Assert.Equal(Passenger.App.Containers.EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", window.StatusPlace?.Name);
+            Assert.Equal(Passenger.App.Containers.EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", window.StatusPlace?.Name.English);
             Assert.Single(window.BottomPanel.Problems.ContainerProblems);
 
             File.WriteAllText(state, "up");
@@ -3155,6 +3385,85 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
+    /// <summary>An AppHost told WSL Containers (ASPIRE_CONTAINER_RUNTIME=wslc) on a machine whose docker finds no engine
+    /// has its orchestrator's session container found through wslc, recorded as that runtime's, listed under its AppHost in
+    /// the Containers window with its Details read there and its events followed, and Stop takes it and its session network
+    /// down through wslc. A stand-in wslc, written from WSL's own source, answers as its CLI does; only a real one says how
+    /// Aspire's orchestrator and WSL's session take it.</summary>
+    private void An_AppHost_told_WSL_Containers_has_its_session_container_found_listed_followed_and_taken_down_through_wslc()
+    {
+        project.Reset();
+        string folder = TestFolders.Create("aspire-wslc-");
+        const string Network = "aspire-session-network-5a5d0c0f-cache";
+        WslcStandIn wslc = WslcStandIn.Write(folder, "5a5d0c0ffee8" + new string('0', 52), "cache-wslc", Network);
+        string? path = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", folder + Path.PathSeparator + path);
+        AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
+        backend.PushResource(new Resource
+        {
+            Name = "cache-wslc", DisplayName = "cache", Uid = "cache-wslc", ResourceType = "Container", State = "Running",
+            Properties =
+            {
+                new ResourceProperty { Name = "container.id", Value = Google.Protobuf.WellKnownTypes.Value.ForString(wslc.Id) },
+                new ResourceProperty { Name = "container.lifetime", Value = Google.Protobuf.WellKnownTypes.Value.ForString("Session") },
+            },
+        });
+        project.Serve(backend, runtime: Passenger.App.Containers.ContainerEngine.Wslc);
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, Autosaves = false, WarmServer = project.Server, StartsLanguageServer = false,
+            Engine = new Passenger.App.Containers.ContainerEngine(search: false),
+        };
+        window.Show();
+        window.OpenFolder(project.Folder);
+        Ui.Settle();
+        try
+        {
+            Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Name == StandInAppHost.Configuration), "the stand-in AppHost's Aspire configuration");
+            Assert.True(window.SelectConfiguration(StandInAppHost.Configuration));
+            Ui.Run(window, AppActions.RunProgram);
+            Ui.WaitFor(() => backend.Connected.Task.IsCompleted && window.AspireRuntime.Apps.Count == 1, $"the stand-in AppHost's start ({window.Status})");
+            string record = Path.Combine(window.StateFolder, "aspire-containers", "ownership.json");
+            Ui.WaitFor(() => File.Exists(record) && Ui.Shared(record).Contains(wslc.Id, StringComparison.Ordinal),
+                $"the session container recorded on WSL Containers (wslc was asked: {string.Join("; ", wslc.Calls)})");
+            using (JsonDocument recorded = JsonDocument.Parse(Ui.Shared(record)))
+            {
+                JsonElement entry = Assert.Single(recorded.RootElement.GetProperty("entries").EnumerateArray(), entry => entry.GetProperty("id").GetString() == wslc.Id);
+                Assert.True(entry.TryGetProperty("runtime", out JsonElement runtime) && runtime.GetString() == Passenger.App.Containers.ContainerEngine.Wslc
+                    && entry.TryGetProperty("network", out JsonElement network) && network.GetString() == Network,
+                    $"The session container was not recorded as on WSL Containers with its session network: {entry}");
+            }
+
+            window.ShowToolWindow(ToolWindowIds.Containers);
+            Passenger.App.Containers.ContainersView view = window.ContainersWindow;
+            Ui.WaitFor(() => view.Rows.Any(row => row.Kind == Passenger.App.Containers.ContainerRowKind.AppHost && row.Containers.Count == 1),
+                $"the AppHost's row over its container on WSL Containers, not [{string.Join(", ", view.Rows.Select(row => $"{row.Kind} {row.Label}"))}]");
+            Passenger.App.Containers.ContainerInfo listed = view.Rows.Single(row => row.Kind == Passenger.App.Containers.ContainerRowKind.AppHost).Containers.Single();
+            Assert.True(listed.Engine is { } engine && engine.Cli == wslc.Cli && engine.Known is { IsWslc: true, EngineName: Passenger.App.Containers.ContainerEngine.WslContainers },
+                $"{listed.Name} is not read from WSL Containers ({listed.Engine?.Cli})");
+            Assert.True(view.Choose(row => row.Container is { } container && Passenger.App.Containers.ContainerRow.SameId(wslc.Id, container.Id)), "The session container's row");
+            Ui.Settle();
+            view.ShowTab("Details");
+            Ui.WaitFor(() => view.Details.Details?.Id == wslc.Id, "the session container's Details, read through wslc");
+            Ui.WaitFor(() => wslc.Calls.Contains("events --format json"), "the Containers window to follow wslc's events");
+
+            window.Perform(AppActions.Stop);
+            Ui.WaitFor(() => window.AspireRuntime.Apps.Count == 0, "Stop to end the AppHost", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => !wslc.Holds && !wslc.HoldsNetwork, $"Stop to take the session container and its network down through wslc (it was asked: {string.Join("; ", wslc.Calls)})");
+            Assert.Contains($"rm -f -v {wslc.Id}", wslc.Calls);
+            Assert.Contains($"network rm {Network}", wslc.Calls);
+            Ui.WaitFor(() => !Ui.Shared(record).Contains(wslc.Id, StringComparison.Ordinal), "the taken-down container let go of in the record");
+            Assert.Empty(backend.Errors);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", path);
+            wslc.Down();
+            window.Close();
+            Ui.Await(Complete(backend.DisposeAsync().AsTask()), "the stand-in resource service to stop");
+        }
+    }
+
     /// <summary>A window on the stand-in AppHost, run from its Aspire configuration as a person runs it, once the
     /// window has connected to the stand-in resource service its launch profile names; no C# language server, which
     /// nothing here asks.</summary>
@@ -3250,7 +3559,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         window.KeyTextInput(title);
         Ui.Settle();
         Passenger.App.Navigation.ActionPopup popup = Assert.IsType<Passenger.App.Navigation.ActionPopup>(window.Popup);
-        Assert.Equal(title, popup.Rows[0].Title);
+        Assert.Equal(title, popup.Rows[0].Title.English);
         Ui.Press(window, "ENTER");
     }
 
@@ -3924,8 +4233,10 @@ public sealed class StandInAppHost : SharedProject
         ? $"{what} at {File.GetLastWriteTime(file).ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture)}" : $"never {what}";
 
     /// <summary>The AppHost's launch profile, naming the stand-in resource service's address, as an AppHost's names its own;
-    /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport.</summary>
-    internal void Serve(AspireInteractionHost backend, string? https = null) => Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https));
+    /// with <paramref name="https"/>, its dashboard served there as an https profile serves it, with no unsecured transport;
+    /// with <paramref name="runtime"/>, its orchestrator told that container runtime.</summary>
+    internal void Serve(AspireInteractionHost backend, string? https = null, string? runtime = null) =>
+        Write($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, https, runtime: runtime));
 
     /// <inheritdoc cref="Serve(AspireInteractionHost, string?)"/>
     internal Task ServeAsync(AspireInteractionHost backend) => WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint));
@@ -3939,12 +4250,16 @@ public sealed class StandInAppHost : SharedProject
     internal Task ServeAsync(AspireInteractionHost backend, Uri dashboard) =>
         WriteAsync($"{Name}/Properties/launchSettings.json", Profile(backend.Endpoint, applicationUrl: dashboard.AbsoluteUri.TrimEnd('/')));
 
-    private string Profile(Uri? resourceService, string? https = null, string? applicationUrl = null)
+    private string Profile(Uri? resourceService, string? https = null, string? applicationUrl = null, string? runtime = null)
     {
         Dictionary<string, string> environment = new()
         {
             ["PASSENGER_STAND_IN_KEY"] = KeyFile,
         };
+        if (runtime is not null)
+        {
+            environment[AspireVariables.ContainerRuntime] = runtime;
+        }
         if (https is null)
         {
             environment[AspireVariables.AllowUnsecuredTransport] = "true";

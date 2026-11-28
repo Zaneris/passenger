@@ -16,7 +16,7 @@ namespace Passenger.Inspector;
 public static class Wire
 {
     /// <summary>Bumped by a change either end must know of: a hello of another version is refused, saying so.</summary>
-    public const int Version = 10;
+    public const int Version = 12;
 
     /// <summary>The app's environment: the socket's path, where it connects.</summary>
     [IdentifierHome]
@@ -29,7 +29,8 @@ public static class Wire
     public const char Listens = '@';
 
     /// <summary>The app's environment where it listens (<see cref="Listens"/>): the line Passenger first writes, which only the
-    /// launch that put it there knows.</summary>
+    /// launch that put it there knows, and the inspector writes back once it has taken the connection: one ended with nothing
+    /// written back (adb's forward ends each the app's socket does not take) never reached the inspector.</summary>
     [IdentifierHome]
     public const string TokenVariable = "PASSENGER_INSPECTOR_TOKEN";
 
@@ -75,8 +76,10 @@ public static class Wire
     public const string Values = "values";
     public const string Overlays = "overlays";
     public const string Reload = "reload";
+    public const string Designed = "designed";
     public const string Made = "made";
     public const string Placed = "placed";
+    public const string Updates = "updates";
 
     /// <summary>Avalonia's renderer debug overlays, by the names of its RendererDebugOverlays flags, in its order.</summary>
     public static readonly IReadOnlyList<string> OverlayNames = ["Fps", "DirtyRects", "LayoutTimeGraph", "RenderTimeGraph"];
@@ -93,6 +96,11 @@ public static class Wire
     /// <summary>The method each failed binding calls in a debugged app (Bindings.cs), where the debugger's function breakpoint
     /// for the XAML Binding Errors breakpoint is; the WPF inspector's has the same name, so the one breakpoint serves both.</summary>
     public const string Failed = "Passenger.Inspector.Breaks.BindingFailed";
+
+    /// <summary>The method a WPF app's inspector calls as each element made from its XAML joins the window's tree
+    /// (XamlStops.cs), where the debugger's function breakpoint for each breakpoint in a WPF XAML file is, its condition the
+    /// place the breakpoint is on.</summary>
+    public const string Loaded = "Passenger.Inspector.Breaks.Loaded";
 
     public const string Hello = "hello";
     public const string TreeChanged = "treeChanged";
@@ -148,15 +156,35 @@ public sealed record Request(int Id, string Method, long? Element = null, bool? 
 
     /// <summary>With Reload: the XAML file's text to apply to what the app made from it.</summary>
     public XamlChange? Change { get; init; }
+
+    /// <summary>With Designed: a Windows Forms form's designer code to run in the forms of its class the app has open.</summary>
+    public DesignedChange? Designed { get; init; }
 }
+
+/// <summary>A Windows Forms form's designer code as Hot Reload gives it to the app (its edit of InitializeComponent): its
+/// file, its class's full name, the usings its names are read in, the statements the edit changed (Passenger's
+/// DesignerStatement list as JSON, as its designer's peers write it), each one's line in the file, from one, the
+/// components the code no longer makes, and the hooks it no longer makes (statements as JSON, as the code before wrote them).</summary>
+public sealed record DesignedChange(string File, string Class, IReadOnlyList<string> Usings, string Statements, IReadOnlyList<int> Lines, IReadOnlyList<string> Gone,
+    string? Unhooked = null);
 
 /// <summary>A XAML file's text to apply to what the app made from it (XAML Hot Reload): the file's path as the disk names
 /// it, its text now and as the app has it (the build's, or the text last applied), the assembly its build compiled it
-/// into, the URI its build gave it (avares://Assembly/Folder/File.axaml, a pack URI in WPF), and whether a binding in it
-/// compiles unless it says otherwise (Avalonia's project setting).</summary>
+/// into, the URI its build gave it (avares://Assembly/Folder/File.axaml, a pack URI in WPF, a .NET MAUI app's path in its
+/// project, Folder/File.xaml), and whether a binding in it compiles unless it says otherwise (Avalonia's project setting).</summary>
 public sealed record XamlChange(string File, string Text, string? Before, string Assembly, string Uri)
 {
     public bool? CompiledBindings { get; init; }
+
+    /// <summary>A .NET MAUI app's, whose code went into the program's C# update: how many updates MAUI's XAML Incremental Hot
+    /// Reload had heard before it (<see cref="Wire.Updates"/>), whose next one says what the change came to.</summary>
+    public int? Heard { get; init; }
+
+    /// <summary>A .NET MAUI app's: the type its root's x:Class names, whose open pages MAUI patches.</summary>
+    public string? Class { get; init; }
+
+    /// <summary>A .NET MAUI app's whose open pages MAUI's patch does not bring to the text: each made again from it.</summary>
+    public bool? Whole { get; init; }
 }
 
 /// <summary>What a XAML file's text came to in the app: the objects that took it (Type#Name), each made again from it, or
@@ -334,6 +362,9 @@ public sealed record Reply
     /// <summary>What a XAML file's text came to, with Reload.</summary>
     public XamlReloaded? Reloaded { get; init; }
 
+    /// <summary>How many updates a .NET MAUI app's XAML Incremental Hot Reload has heard, with Updates.</summary>
+    public int? Updates { get; init; }
+
     /// <summary>Where the app shows each element of a XAML file it made, with Placed.</summary>
     public IReadOnlyList<PlacedBox>? Placed { get; init; }
 
@@ -471,7 +502,19 @@ public sealed record ElementDetails(
     string? TemplatedParent,
     LayoutInfo Layout,
     IReadOnlyList<PropertyValue> Properties,
-    IReadOnlyList<StyleReport> Styles);
+    IReadOnlyList<StyleReport> Styles)
+{
+    /// <summary>A Windows Forms control's or item's place in designer code, which Passenger reads its places from; null for
+    /// every other framework's element.</summary>
+    public DesignedIn? Designed { get; init; }
+}
+
+/// <summary>Where Windows Forms designer code makes a component: the class (its full name) whose InitializeComponent makes it,
+/// and its field there, empty for the class's own root; with the file holding that code once Passenger has found it.</summary>
+public sealed record DesignedIn(string Class, string Field)
+{
+    public string? File { get; init; }
+}
 
 /// <summary>Where a visual is laid out: its bounds in its parent and in its window, its desired size, margin, border and
 /// padding (none when it has no such property), and its alignment.</summary>

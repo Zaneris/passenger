@@ -68,6 +68,10 @@ public sealed partial class CodeEditor : Control
     private bool updatingBars;
     private bool editing;
     private int? pendingGoTo;
+
+    /// <summary>Where <see cref="GoTo"/> last put the caret on screen: in which text, the caret, the view's top since and
+    /// how far below it the caret's row stands.</summary>
+    private (TextSnapshot Text, int Caret, double Top, double Below)? placed;
     private bool pendingEnd;
     private bool ligatures;
     private Metrics metrics;
@@ -131,6 +135,9 @@ public sealed partial class CodeEditor : Control
 
     /// <summary>Raised when the view scrolls.</summary>
     public event EventHandler? ScrollChanged;
+
+    /// <summary>Text this editor put on the clipboard (a copy, a cut, Vim's yank), and whether it was whole lines.</summary>
+    public event EventHandler<CopiedText>? Copied;
 
     /// <summary>Raised when any caret or selection changes, by an edit or a move.</summary>
     public event EventHandler? SelectionChanged;
@@ -214,6 +221,9 @@ public sealed partial class CodeEditor : Control
 
     public void SetLineAnnotations(IReadOnlyList<LineAnnotation> annotations) => decorations.SetLineAnnotations(annotations);
 
+    /// <summary>The ranges drawn faded (<see cref="DocumentDecorations.Faded"/>).</summary>
+    public IReadOnlyList<TextRange> Faded => decorations.Faded;
+
     /// <summary>Reads decorations other than the ones shown, letting go of those if they were this editor's alone, and draws
     /// what they hold.</summary>
     private void Decorate(DocumentDecorations shown, bool owned)
@@ -235,11 +245,15 @@ public sealed partial class CodeEditor : Control
     }
 
     /// <summary>Draws what the decorations were set to: lines with hints drawn otherwise wrapped again, the rows of other
-    /// folds.</summary>
+    /// folds and rows above lines, which keep the view's place (<see cref="KeepPlace"/>).</summary>
     private void OnDecorationsChanged(object? sender, DecorationKind kind)
     {
         switch (kind)
         {
+            case DecorationKind.RowsAbove:
+                KeepPlace();
+                FollowInputMethod();
+                break;
             case DecorationKind.InlayHints:
                 HintList before = wrappedHints;
                 wrappedHints = decorations.InlayHints;
@@ -248,6 +262,10 @@ public sealed partial class CodeEditor : Control
                 break;
             case DecorationKind.Folds:
                 HideFoldPreview();
+                if (!foldingHere)
+                {
+                    KeepPlace();
+                }
                 UpdateScrollBars();
                 ScrollWithinRows();
                 FollowInputMethod();
@@ -455,6 +473,7 @@ public sealed partial class CodeEditor : Control
         document.ChangedFirst -= OnChangedFirst;
         document.Changed -= OnDocumentChanged;
         ForgetSplitBlocks();
+        ForgetTypedClosers();
         document = value;
         document.ChangedFirst += OnChangedFirst;
         document.Changed += OnDocumentChanged;
@@ -463,6 +482,7 @@ public sealed partial class CodeEditor : Control
         EndSnippet();
         CancelChoices();
         pendingGoTo = null;
+        placed = null;
         usages.Clear();
         UsagesKept = false;
         inlineChanges.Clear();
@@ -549,6 +569,43 @@ public sealed partial class CodeEditor : Control
     /// show that place too.</summary>
     public event EventHandler<int>? WentTo;
 
+    /// <summary>Puts the primary caret at a line and column as <see cref="GoTo"/> does, but leaves the view still where the
+    /// place's row already stands in it, clear of its top and foot by <see cref="StillMargin"/> rows (a debugger's stops,
+    /// stepping along what is shown); elsewhere it scrolls as GoTo does.</summary>
+    public void GoToKeepingView(TextPosition position)
+    {
+        int offset = document.Snapshot.GetOffset(position);
+        if (!StandsInView(offset))
+        {
+            GoTo(position);
+            return;
+        }
+        SetSelections(SelectionSet.Single(offset), reveal: false);
+        Reveal(offset);
+        placed = (document.Snapshot, offset, scroll.Y, PointOf(offset).Y);
+        WentTo?.Invoke(this, offset);
+    }
+
+    /// <summary>The rows a place <see cref="GoToKeepingView"/> leaves the view still for stands clear of the view's top and
+    /// foot, where there is text beyond them.</summary>
+    private const int StillMargin = 2;
+
+    /// <summary>Whether an offset's row stands in the view laid out, clear of its edges by <see cref="StillMargin"/> rows
+    /// (fewer in a view too short for them).</summary>
+    private bool StandsInView(int offset)
+    {
+        if (Bounds.Height <= 0 || pendingGoTo is not null || awaitedY is not null)
+        {
+            return false;
+        }
+        double top = RowOfOffset(document.Snapshot, offset, LeansBack(offset)).Row * metrics.LineHeight;
+        double usable = Viewport.Height - horizontal.DesiredSize.Height;
+        double margin = Math.Min(StillMargin * metrics.LineHeight, Math.Max(0, (usable - metrics.LineHeight) / 2));
+        double above = scroll.Y > 0 ? margin : 0;
+        double below = scroll.Y < MaxScrollY ? margin : 0;
+        return top >= scroll.Y + above && top + metrics.LineHeight <= scroll.Y + usable - below;
+    }
+
     /// <summary>Scrolls an offset a third of the way down the view, as <see cref="GoTo"/> does; not laid out yet, the
     /// first arrange does it, leaving the carets as they stand then (a selection made after the GoTo).</summary>
     private void ScrollToPlace(int offset)
@@ -564,6 +621,24 @@ public sealed partial class CodeEditor : Control
         double lastAtFoot = Math.Max(0, RowCount * metrics.LineHeight - Viewport.Height);
         ScrollTo(new Vector(scroll.X, fits ? 0 : Math.Min(y - Viewport.Height / 3, lastAtFoot)));
         Reveal(offset);
+        placed = (document.Snapshot, offset, scroll.Y, PointOf(offset).Y);
+    }
+
+    /// <summary>Rows come or gone (folds landing, rows above lines): the caret <see cref="GoTo"/> put on screen stays on its
+    /// row of the view while neither the view, the caret nor the text has moved since, else the view's top line stays.</summary>
+    private void KeepPlace()
+    {
+        if (placed is not { } at || !ReferenceEquals(at.Text, document.Snapshot) || at.Caret != selections.Primary.Caret || at.Top != scroll.Y || Bounds.Height <= 0)
+        {
+            KeepTopLine(() => { });
+            return;
+        }
+        double y = Math.Clamp((RowOfOffset(at.Text, at.Caret, LeansBack(at.Caret)).Row * metrics.LineHeight) - at.Below, 0, MaxScrollY);
+        placed = at with { Top = y };
+        scroll = new Vector(scroll.X, y);
+        UpdateScrollBars();
+        Redraw();
+        ScrollChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Shows a document with the carets and scroll it was left at, as switching back to a
@@ -806,6 +881,7 @@ public sealed partial class CodeEditor : Control
         selections = clamped;
         caretsText = document.Snapshot;
         FollowSplitBlocks();
+        FollowTypedClosers();
         CheckSnippet();
         if (reveal)
         {
@@ -839,7 +915,9 @@ public sealed partial class CodeEditor : Control
         double usable = viewport.Height - horizontal.DesiredSize.Height;
         if (top < y)
         {
-            y = top;
+            // Come up to a line's first row, the rows above it come into view with it.
+            int line = text.GetLineFromOffset(offset);
+            y = Rows.RowOf(line) == row ? Math.Max(0, top - (Rows.AboveOf(line) * metrics.LineHeight)) : top;
         }
         else if (top + metrics.LineHeight > y + usable)
         {
@@ -1029,6 +1107,7 @@ public sealed partial class CodeEditor : Control
         hintRun = null;
         runProperties.Clear();
         runLooks.Clear();
+        controlMarks = null;
         numberRuns = (
             RunWith(palette.LineNumberCurrent),
             RunWith(palette.LineNumber));

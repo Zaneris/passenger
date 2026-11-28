@@ -1,0 +1,29 @@
+{
+  "name": ".NET date and time format",
+  "scopeName": "source.datetime-format",
+  "comment": "Passenger's own: a .NET date and time format string as a C# string holds it, its specifiers apart from its literal text.",
+  "patterns": [
+    {
+      "comment": "A standard format: the string one letter alone.",
+      "match": "^[dDfFgGmMoOrRstTuUyY]$",
+      "name": "constant.other.placeholder.datetime-format"
+    },
+    {
+      "match": "\\\\.",
+      "name": "constant.character.escape.datetime-format"
+    },
+    {
+      "match": "'[^']*'?|\"[^\"]*\"?",
+      "name": "string.quoted.datetime-format"
+    },
+    {
+      "comment": "A custom specifier: a run of one letter, % before one standing alone.",
+      "match": "%?(?:y+|M+|d+|h+|H+|m+|s+|f+|F+|t+|z+|g+|K)",
+      "name": "constant.other.placeholder.datetime-format"
+    },
+    {
+      "match": "[^yMdhHmsfFtzgK'\"\\\\%]+|%",
+      "name": "string.unquoted.datetime-format"
+    }
+  ]
+}

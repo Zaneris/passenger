@@ -113,8 +113,7 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
         MainWindow window = app.Open("Components/Pages/Styled.razor", before: w => w.ApplySettings(w.Settings with { DownloadStylesheets = true }));
         CodeEditor editor = window.EditorArea.CodeEditor;
         int written = editor.Document.Snapshot.ToString().IndexOf("btn-primary", StringComparison.Ordinal) + 4;
-        Point point = editor.TranslatePoint(editor.PointOf(written) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, written);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains(".btn-primary {", StringComparison.Ordinal) == true, () => $"the class's rule on the card; it says {window.Assist.HoverText}");
         Assert.Contains("background-color: #0d6efd;", window.Assist.HoverText, StringComparison.Ordinal);
         Assert.Contains("bootstrap.min.css", window.Assist.HoverText, StringComparison.Ordinal);
@@ -153,15 +152,15 @@ public sealed class StylesheetClassesTests : IClassFixture<StyledShop>
             $"{sheet.Path} opened writable, so a key typed there would change every project's copy of Kit 1.0.0");
 
         // Every refusal of the open package file names the package, as a refusal of it closed does.
-        string refused = Refusals.OfPackage("kit.css", "Kit 1.0.0");
+        string refused = Refusals.OfPackage("kit.css", "Kit 1.0.0").Shown;
         window.KeyTextInput("x");
         Ui.Settle();
         Assert.False(sheet.IsModified, "A key typed into the package's stylesheet changed its text");
         Assert.Equal(written, sheet.Text.Snapshot.ToString());
         Assert.Equal(refused, window.Status);
-        Assert.True(window.EditorArea.ActiveGroup.BannerText?.Contains(Refusals.Sentence(Refusals.PackagesOwn("Kit 1.0.0")), StringComparison.Ordinal) == true,
+        Assert.True(window.EditorArea.ActiveGroup.BannerText?.Contains(Refusals.PackagesFileReadOnly("Kit 1.0.0").Shown, StringComparison.Ordinal) == true,
             $"The bar over the package's stylesheet says '{window.EditorArea.ActiveGroup.BannerText}', not which package it is part of");
-        Assert.Equal(refused, window.Actions.WhyNot(AppActions.Save, window.Actions.Context()));
+        Assert.Equal(refused, window.Actions.WhyNot(AppActions.Save, window.Actions.Context())?.Shown);
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
         Assert.Equal(refused, window.Status);
         Assert.Equal(written, File.ReadAllText(sheet.Path));

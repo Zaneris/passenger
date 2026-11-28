@@ -1,4 +1,7 @@
 <Project>
+  <!-- Passenger's own projects' words, never a sample's or a test app's (src/Words.targets). -->
+  <Import Project="$(MSBuildThisFileDirectory)src/Words.targets" Condition="'$(PassengerWords)' == 'true'" />
+
   <!-- Every project reference by its full path, made from the project's own folder as MSBuild names it: MSBuild's tasks
        complete a relative one from the process's folder, symbolic links resolved, so a solution opened through a link
        would give each referenced project two paths, built twice at once into the same artifacts. -->

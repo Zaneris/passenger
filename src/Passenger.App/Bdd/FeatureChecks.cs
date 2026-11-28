@@ -36,7 +36,7 @@ internal sealed class FeatureChecks : OpenFileChecks<FeatureChecks.Kept>
         Kept kept = new();
         if (document.Highlighter is { } grammar)
         {
-            kept.Layer = new ColourLayer(grammar, document.Text);
+            kept.Layer = new ColourLayer(grammar, document.Text, Passenger.Text.WordCharacters.KeepsWord);
             document.Highlighter = kept.Layer;
         }
         return (Checker, kept);

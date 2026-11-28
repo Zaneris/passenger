@@ -9,13 +9,14 @@ namespace Passenger.Languages.CSharp;
 /// <summary>Extend Selection: the ranges around a selection, smallest first, each holding the one before. In C# they
 /// come from the syntax tree: the word, a string's text inside its quotes, then every enclosing node, with a block's
 /// statements, a list's items and a type's members before the braces or brackets around them, and a member with its doc
-/// comment after the member alone. In any other text: the word, the line's text, the line, the whole.</summary>
+/// comment after the member alone. In markup, those its reader gives around a selection; in any other text: the word,
+/// the line's text, the line, the whole.</summary>
 public static class SelectionRanges
 {
     /// <summary>The next range out from a selection, or null when it already holds everything; from the file's syntax
-    /// when it is C#, else from its words and lines.</summary>
-    public static TextRange? Extend(TextSnapshot text, ParsedText? csharp, TextRange selection) =>
-        (csharp is not null ? InCSharp(csharp, selection) : InText(text, selection))
+    /// when it is C#, from the ranges <paramref name="markup"/> gives around it in markup, else from its words and lines.</summary>
+    public static TextRange? Extend(TextSnapshot text, ParsedText? csharp, TextRange selection, Func<TextRange, IEnumerable<TextRange>>? markup = null) =>
+        (csharp is not null ? InCSharp(csharp, selection) : markup is not null ? markup(selection) : InText(text, selection))
             .Where(r => r.Start <= selection.Start && r.End >= selection.End && r.Length > selection.Length)
             .OrderBy(r => r.Length)
             .Cast<TextRange?>()
@@ -87,20 +88,10 @@ public static class SelectionRanges
         int line = text.GetLineFromOffset(selection.Start);
         LineSpan span = text.GetLine(line);
         string content = text.GetText(span.Start, span.Length);
-        int at = selection.Start - span.Start;
-        int start = at;
-        int end = at;
-        while (start > 0 && IsWordChar(content[start - 1]))
+        // The word a double-click takes there, never its punctuation or spaces.
+        if (TextNavigation.WordAt(text, selection.Start) is { Length: > 0 } word && WordCharacters.IsWordAt(text, word.Start))
         {
-            start--;
-        }
-        while (end < content.Length && IsWordChar(content[end]))
-        {
-            end++;
-        }
-        if (end > start)
-        {
-            yield return TextRange.FromBounds(span.Start + start, span.Start + end);
+            yield return word;
         }
         int indent = content.Length - content.TrimStart().Length;
         yield return TextRange.FromBounds(span.Start + indent, span.Start + content.TrimEnd().Length);
@@ -110,6 +101,4 @@ public static class SelectionRanges
         }
         yield return new TextRange(0, text.Length);
     }
-
-    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 }

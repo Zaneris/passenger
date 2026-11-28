@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's hook in the test program of a run that maps which tests run which lines, over Passenger's own
+       instrumented copy of the code, never in the project as built: a startup hook (DOTNET_STARTUP_HOOKS) in a Testing
+       Platform application, an in-process data collector in a VSTest test host. Between two tests it hands Passenger what
+       the one before ran, as Coverlet's counting in each module holds it, and starts the counts again. Carried under
+       testhits/ beside Passenger, its own assembly alone. -->
+  <PropertyGroup>
+    <!-- The oldest .NET a test program Passenger maps runs on, so it loads into any of them. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Passenger.TestHits</RootNamespace>
+    <!-- The calls into libc that OwnEnvironment makes are generated as unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- VSTest's in-process data collectors' interface, which a VSTest test host carries itself. -->
+    <PackageReference Include="Microsoft.TestPlatform.ObjectModel" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts, out of the process's
+         own environment too), as Passenger names them. -->
+    <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
+    <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
+  </ItemGroup>
+</Project>

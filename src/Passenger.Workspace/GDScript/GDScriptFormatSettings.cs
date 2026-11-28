@@ -3,7 +3,7 @@ using Passenger.Text;
 namespace Passenger.Workspace.GDScript;
 
 /// <summary>How Reformat Code lays out a GDScript beyond its indentation (the file's .editorconfig's, else Godot's tabs):
-/// Settings › Code Style › GDScript, each at the style guide's own and said over by a file's .editorconfig
+/// Settings › Editor › Code Style › GDScript, each at the style guide's own and said over by a file's .editorconfig
 /// (<c>max_line_length</c>, <c>gdscript_blank_lines_around_functions</c>, <c>gdscript_trailing_comma</c>).</summary>
 public sealed record GDScriptFormatSettings
 {

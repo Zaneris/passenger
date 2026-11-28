@@ -87,7 +87,8 @@ public partial class MainWindow
     }
 
     /// <summary>Makes a file in a folder (folders in its name made too) and opens it; null when it worked, else why not. One
-    /// made in a shared project's folder goes into its items file too, the two one command Undo takes back whole.</summary>
+    /// made in a shared project's folder goes into its items file too, and one made in a folder its project keeps empty
+    /// takes the folder's item out (<see cref="KeepFolders"/>), each with the file one command Undo takes back whole.</summary>
     public string? CreateFile(string into, string name, string text)
     {
         if (Invalid(name) is { } problem)
@@ -99,7 +100,8 @@ public partial class MainWindow
         {
             return $"{name} is already there";
         }
-        using CommandHistory.Recording? recording = InShared([path]) ? Editors.Commands.Record($"New File {Path.GetFileName(path)}") : null;
+        using CommandHistory.Recording? recording = InShared([path]) || KeepsFolders([], [path], [])
+            ? Editors.Commands.Record($"New File {Path.GetFileName(path)}") : null;
         recording?.Made(path);
         string? unshared = null;
         try
@@ -107,7 +109,8 @@ public partial class MainWindow
             Following([path], () =>
             {
                 FileText.SaveNew(path, text);
-                unshared = recording is null ? null : IntoShared([PathNames.Canonical(path)], recording);
+                string made = PathNames.Canonical(path);
+                unshared = recording is null ? null : IntoShared([made], recording) ?? KeepFolders([], [made], [], recording);
             });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -124,7 +127,10 @@ public partial class MainWindow
         return null;
     }
 
-    public string? CreateFolder(string into, string name)
+    /// <summary>Makes a folder in a folder (folders in its name made too); null when it worked, else why not. One made in a
+    /// project is kept in its project file, and takes out the item of a folder it is made in that the project kept empty
+    /// (<see cref="KeepFolders"/>), the two one command Undo takes back whole, setting the folder aside.</summary>
+    public async Task<string?> CreateFolderAsync(string into, string name)
     {
         if (Invalid(name) is { } problem)
         {
@@ -135,13 +141,35 @@ public partial class MainWindow
         {
             return $"{name} is already there";
         }
+        // The first folder of its path not there yet, which Undo takes away with the folders made under it.
+        string first = path;
+        while (Path.GetDirectoryName(first) is { } above && !Directory.Exists(above))
+        {
+            first = above;
+        }
+        // Its stamps are read off the window's thread, so of the open files it takes only what it writes.
+        using CommandHistory.Recording? recording = KeepsFolders([path], [path], []) ? Editors.Commands.RecordWrites($"New Folder {name}") : null;
+        string? unkept = null;
         try
         {
-            Following([path], () => Directory.CreateDirectory(path));
+            Following([path], () =>
+            {
+                Directory.CreateDirectory(path);
+                string made = PathNames.Canonical(path);
+                unkept = recording is null ? null : KeepFolders([made], [made], [], recording);
+            });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             return NotMade(name, error);
+        }
+        if (recording is not null)
+        {
+            recording.Also(await MadeFolderAsync(PathNames.Canonical(first)));
+        }
+        if (unkept is not null)
+        {
+            status.Text = unkept;
         }
         Explorer.Reveal(PathNames.Canonical(path));
         return null;
@@ -157,23 +185,31 @@ public partial class MainWindow
     public string? CreateClass(string into, string name) => CreateType(into, name, "Class");
 
     /// <summary>Class/Interface: a file of its name holding a type of the kind chosen (<see cref="TypeKinds"/>), in the
-    /// namespace its folder gives. Folders before the name ("Shapes/Circle") are made and the type goes in
-    /// them.</summary>
-    public string? CreateType(string into, string name, string kind)
+    /// namespace its folder gives (<see cref="CreateOwn"/>).</summary>
+    public string? CreateType(string into, string name, string kind) =>
+        CreateOwn(into, name, Templates.OwnTemplates.All.First(t => t.Name == kind).Own!);
+
+    /// <summary>A file of one of Passenger's own templates (Class/Interface's types, Add's New): of the name given, its
+    /// extension added where it was not written, made from the template with the namespace its folder gives, a type's name
+    /// a C# name. Folders before the name ("Shapes/Circle") are made and the file goes in them.</summary>
+    public string? CreateOwn(string into, string name, Templates.OwnTemplate own)
     {
         string[] parts = name.Trim().Split('/', '\\');
-        string last = parts[^1];
-        string type = last.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? last[..^3] : last;
-        if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(type))
+        string bare = own.Bare(parts[^1]);
+        if (bare.Length == 0)
         {
-            return $"{type} is not a C# name";
+            return "A name is needed";
+        }
+        if (own.DeclaresType && !Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsValidIdentifier(bare))
+        {
+            return $"{bare} is not a C# name";
         }
         if (Invalid(name) is { } problem)
         {
             return problem;
         }
         into = Path.Combine([into, .. parts[..^1].Where(p => p.Length > 0)]);
-        return CreateFile(into, type + ".cs", Templates.OwnTemplates.TypeText(kind, type, NamespaceFor(into)));
+        return CreateFile(into, bare + own.Extension, own.Text(bare, NamespaceFor(into)));
     }
 
     /// <summary>The namespace a folder's code takes: its project's evaluated RootNamespace (until it is evaluated, its
@@ -301,7 +337,7 @@ public partial class MainWindow
             TypeRename.Named? named = null;
             TypeRename.Markup markup = new([], null);
             // Asked again once the server has read a file not open written a moment before (by Undo, another change).
-            (string? refused, System.Text.Json.JsonElement made) = await assist.PatientlyAsync(AppActions.Rename, async patience =>
+            (Words? refused, System.Text.Json.JsonElement made) = await assist.PatientlyAsync(AppActions.Rename, async patience =>
             {
                 Lsp.LspDocument? document = component is not null ? null
                     : opened ?? (shown = server.Open(type.Declaring, new TextDocument(FileText.Load(type.Declaring)?.Text ?? string.Empty)));
@@ -325,7 +361,7 @@ public partial class MainWindow
             }, answer => answer.Item1 is not null);
             if (refused is not null || asked is null)
             {
-                return refused;
+                return refused?.Shown;
             }
             if (markup.ClassFile is { } xaml && named?.FullName is { } fullName
                 && TypeRename.ClassEdit(xaml, WorkspaceEdits.Answered(Editors, asked)(xaml), fullName, renamed) is { } classEdit)
@@ -531,8 +567,8 @@ public partial class MainWindow
     /// <summary>Moves files and folders to the Trash, none inside another, said in the status bar; their open files are
     /// saved first, and again just before they go with what was typed while it waited, so the Trash and Local History have
     /// what the editor showed, and close once gone. The design-time builds of the projects in them are held off, those
-    /// running waited out. Each goes in the command given, else one of its own named after them (Undo takes each back out of
-    /// the Trash, a shared project's items file with it). Each that stayed, with why; null where an open file was not saved.</summary>
+    /// running waited out. Each goes in the command given, else one of its own (Undo takes each back out of the Trash, with
+    /// a shared project's items and a project's Folder items). Each that stayed, with why; null where a file was not saved.</summary>
     private async Task<IReadOnlyList<(string Path, string Why)>?> TrashAsync(IReadOnlyList<string> paths, CommandHistory.Recording? within)
     {
         List<string> names = [.. paths.Select(Path.GetFileName).OfType<string>()];
@@ -584,7 +620,7 @@ public partial class MainWindow
             CameOrWent(gone);
         }
         List<string> said = gone.Count == 0 ? [] : [$"Moved {Plural.Listed([.. gone.Select(Path.GetFileName).OfType<string>()])} to the Trash"];
-        if (gone.Count > 0 && OutOfShared(gone, recording) is { } unshared)
+        if (gone.Count > 0 && (OutOfShared(gone, recording) ?? KeepFolders([], [], gone, recording)) is { } unshared)
         {
             said.Add(unshared);
         }

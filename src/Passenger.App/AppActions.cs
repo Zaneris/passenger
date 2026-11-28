@@ -4,7 +4,7 @@ namespace Passenger.App;
 
 /// <summary>The ids of the IDE's own actions, beside the editor's (<see cref="EditorActions"/>), and the keymaps of each
 /// platform that bind both by id, keys and mouse gestures: Rider's Visual Studio keymaps for these too, its VS Code
-/// keymaps and IntelliJ IDEA's. Each action is declared by its feature (<see cref="IdeAction"/>, in the window's <see
+/// keymaps, IntelliJ IDEA's and its Emacs keymap. Each action is declared by its feature (<see cref="IdeAction"/>, in the window's <see
 /// cref="ActionRegistry"/>).</summary>
 [IdentifierHome]
 public static class AppActions
@@ -209,10 +209,67 @@ public static class AppActions
 
     // The Requests window over the running web app's live requests and their database commands: no key of Rider's.
     public const string ShowRequests = "app.showRequests";
+    public const string RequestsCommandConsole = "app.requests.commandConsole";
 
     // The Migrations window over the folder's EF Core contexts, its commands, and the fix of what keeps dotnet ef from
     // working that it shows first: no key of Rider's.
     public const string ShowMigrations = "app.showMigrations";
+    // The Database window: its connections, their explorer, a table's data and query consoles.
+    public const string ShowDatabase = "app.showDatabase";
+    public const string DatabaseRefresh = "app.database.refresh";
+    public const string DatabaseConnect = "app.database.connect";
+    public const string DatabaseAdd = "app.database.add";
+    public const string DatabaseConnectionEdit = "app.database.connectionEdit";
+    public const string DatabaseConnectionRename = "app.database.connectionRename";
+    public const string DatabaseConnectionRemove = "app.database.connectionRemove";
+    public const string DatabaseOpenTable = "app.database.openTable";
+    public const string DatabaseCancel = "app.database.cancel";
+    // An object's DDL: Show DDL on Go to Declaration's keys in the Database window, as Rider's Jdbc.OpenEditor.DDL takes them
+    // (KeysIn); its scripts into a console, no key of Rider's.
+    public const string DatabaseShowDdl = "app.database.showDdl";
+    public const string DatabaseScriptCreate = "app.database.scriptCreate";
+    public const string DatabaseScriptAlter = "app.database.scriptAlter";
+    public const string DatabaseScriptDrop = "app.database.scriptDrop";
+
+    // A console's Run Statement, Rider's Console.Execute.Multiline: Ctrl+Enter, the Mac's Cmd+Enter, which Visual Studio's,
+    // VS Code's and IntelliJ IDEA's keymaps give the editor's Start New Line Before, Start New Line and Split Line, so a SQL
+    // file takes theirs (KeysIn).
+    public const string DatabaseConsole = "app.database.console";
+    public const string DatabaseRun = "app.database.run";
+    // Stop Statement, Rider's Console.Jdbc.Cancel, on Stop's keys in a console running a statement (KeysIn).
+    public const string DatabaseRunStop = "app.database.runStop";
+    // A SQL file run whole: no key of Rider's. The console's connection's history: Rider's Console.History.Browse, Ctrl+Alt+E.
+    public const string DatabaseRunFile = "app.database.runFile";
+    public const string DatabaseHistory = "app.database.history";
+    // A console's statement explained as a plan's tree: Rider's Console.Jdbc.ExplainPlan, no key of its own.
+    public const string DatabaseExplain = "app.database.explain";
+    // A console's transaction in manual commit: Rider's Console.Transaction.Commit, $default's Ctrl+Alt+Shift+Enter.
+    public const string DatabaseCommit = "app.database.commit";
+    public const string DatabaseRollback = "app.database.rollback";
+    // A table's changes not yet written: Submit on Run Statement's keys, Add Row on Generate's, Delete Rows on Delete Line's
+    // and Revert on Rollback's, as Rider's data grid takes them (KeysIn).
+    public const string DatabaseSubmit = "app.database.submit";
+    public const string DatabaseRevert = "app.database.revert";
+    public const string DatabaseAddRow = "app.database.addRow";
+    public const string DatabaseDeleteRows = "app.database.deleteRows";
+    // A Redis key's time to live set or taken away: no key of Rider's.
+    public const string DatabaseExpire = "app.database.expire";
+    // A connection's AWS profile signed in through IAM Identity Center: no key of Rider's.
+    public const string DatabaseSignIn = "app.database.signIn";
+    // A connection marked read-only or production: no key of Rider's.
+    public const string DatabaseReadOnly = "app.database.readOnly";
+    public const string DatabaseProduction = "app.database.production";
+    // A table's or a result's rows written to a file, a file's read into a table, and a grid's chosen cells copied in a
+    // format: no key of Rider's for any.
+    public const string DatabaseExport = "app.database.export";
+    public const string DatabaseImport = "app.database.import";
+    // A schema's tables drawn as a diagram, and two schemas compared into a script: no key of Rider's for either.
+    public const string DatabaseDiagram = "app.database.diagram";
+    public const string DatabaseCompare = "app.database.compare";
+    public const string CopyAsCsv = "app.table.copyAsCsv";
+    public const string CopyAsTsv = "app.table.copyAsTsv";
+    public const string CopyAsJson = "app.table.copyAsJson";
+    public const string CopyAsInserts = "app.table.copyAsInserts";
     public const string MigrationsRefresh = "app.migrations.refresh";
     public const string AddMigration = "app.migrations.add";
     public const string RemoveLastMigration = "app.migrations.removeLast";
@@ -222,6 +279,7 @@ public static class AppActions
     public const string BundleMigrations = "app.migrations.bundle";
     public const string MigrationsFix = "app.migrations.fix";
     public const string MigrationsEnvironment = "app.migrations.environment";
+    public const string MigrationsDatabase = "app.migrations.database";
 
     // The Containers window over the person's container engine and its actions on the row chosen there: no keys of Rider's,
     // whose Services window has none in its Visual Studio keymaps.
@@ -339,7 +397,8 @@ public static class AppActions
     public const string OpenInTerminal = "app.explorer.openInTerminal";
 
     // An HTML file opened in the person's browser (Rider's WebOpenInAction): its plugin's Alt+F2 for $default, which every
-    // keymap takes from it, and Ctrl+Alt+F2 beside it in the Visual Studio keymap for Windows and Linux.
+    // keymap takes from it, and Ctrl+Alt+F2 beside it in the Visual Studio keymap for Windows and Linux. Every keymap but
+    // Visual Studio's gives Alt+F2 to Next Error in Solution too, which an HTML page takes it from (KeysIn).
     public const string OpenInBrowser = "app.explorer.openInBrowser";
 
     public const string Build = "app.build";
@@ -380,6 +439,13 @@ public static class AppActions
     public const string Rerun = "app.rerun";
     public const string EditConfigurations = "app.editConfigurations";
 
+    // Rider's RunAnything (Ctrl tapped twice in every keymap), ChooseRunConfiguration and ChooseDebugConfiguration, bound as
+    // its keymaps bind them (RiderKeys): a run configuration or a command line run from one popup, and a configuration
+    // chosen and run, or debugged, from another.
+    public const string RunAnything = "app.runAnything";
+    public const string ChooseRunConfiguration = "app.chooseRunConfiguration";
+    public const string ChooseDebugConfiguration = "app.chooseDebugConfiguration";
+
     // Where the chosen configuration's app runs (a device, an emulator or a simulator), the widget beside the configuration's.
     public const string ChooseRunTarget = "app.chooseRunTarget";
 
@@ -402,6 +468,7 @@ public static class AppActions
     public const string AspireTelemetry = "app.aspire.telemetry";
     public const string AspireStats = "app.aspire.stats";
     public const string AspireGraph = "app.aspire.graph";
+    public const string AspireGraphMermaid = "app.aspire.graphMermaid";
     public const string AspireLogs = "app.aspire.logs";
     public const string AspireTraces = "app.aspire.traces";
     public const string AspireAppHostConsole = "app.aspire.appHostConsole";
@@ -508,6 +575,19 @@ public static class AppActions
     public const string ContextHelp = "app.contextHelp";
     public const string NextError = "app.code.nextError";
     public const string PreviousError = "app.code.previousError";
+
+    // Rider's ReSharperGotoNextErrorInSolution and ReSharperGotoPrevErrorInSolution: Problems' solution errors stepped
+    // through in its Solution tab's order. Alt+F2 in $default's, which Open in Browser takes in an HTML file (KeysIn).
+    public const string NextErrorInSolution = "app.code.nextErrorInSolution";
+    public const string PreviousErrorInSolution = "app.code.previousErrorInSolution";
+
+    // Rider's InspectThis: what the caret's symbol's value comes from and goes to, its callers and callees, its base and
+    // derived types, offered at the caret and shown in the Hierarchy window.
+    public const string InspectThis = "app.hierarchy.inspectThis";
+
+    // Rider's RunInspection: one analyzer rule chosen by name and run over the solution, whatever its severity, its places
+    // listed in Problems.
+    public const string RunInspectionByName = "app.code.runInspectionByName";
     public const string FocusEditor = "app.focusEditor";
 
     // The keys to the window's next and previous region (the toolbar, each tool window shown, the editor, the status bar),
@@ -522,7 +602,23 @@ public static class AppActions
 
     // The debugger's, on the active editor and the session.
     public const string ToggleBreakpoint = "app.debug.toggleBreakpoint";
+
+    // Rider's ToggleTemporaryLineBreakpoint, which every keymap takes from $default's Ctrl+Alt+Shift+F8 or Mac OS X 10.5+'s
+    // Cmd+Alt+Shift+F8 and Cmd+Alt+Shift+\.
+    public const string ToggleTemporaryBreakpoint = "app.debug.toggleTemporaryBreakpoint";
+
+    // A method breakpoint on the method at the caret, which Rider's keymaps give no keys.
+    public const string ToggleMethodBreakpoint = "app.debug.toggleMethodBreakpoint";
+
+    // A snapshot point on the caret's line, capturing each hit as the program goes on, which Rider's keymaps give no keys.
+    public const string ToggleSnapshotPoint = "app.debug.toggleSnapshotPoint";
     public const string ToggleBreakpointEnabled = "app.debug.toggleBreakpointEnabled";
+
+    // Step back debugging, which Rider's keymaps give no keys: the programs debugged record their calls, and a stop steps
+    // back and forward through what they recorded.
+    public const string RecordCalls = "app.debug.recordCalls";
+    public const string StepBack = "app.debug.stepBack";
+    public const string StepForward = "app.debug.stepForward";
     public const string MuteBreakpoints = "app.debug.muteBreakpoints";
     public const string Resume = "app.debug.resume";
     public const string Pause = "app.debug.pause";
@@ -536,7 +632,64 @@ public static class AppActions
     public const string CallHierarchy = "app.hierarchy.calls";
     public const string TypeHierarchy = "app.hierarchy.types";
     public const string ShrinkSelection = "app.editor.shrinkSelection";
+
+    // Moves by the code's structure (MainWindow.Structure), bound as Rider's keymaps bind them (RiderKeys): its MethodUp
+    // and MethodDown, GotoNext/PrevElementUnderCaretUsage, ReSharperGoto/SelectContainingDeclaration, EditorCodeBlockStart
+    // and End with their WithSelection, and GotoCustomRegion.
+    public const string MethodUp = "app.editor.methodUp";
+    public const string MethodDown = "app.editor.methodDown";
+    public const string NextUsage = "app.editor.nextUsage";
+    public const string PreviousUsage = "app.editor.previousUsage";
+    public const string GoToContainingDeclaration = "app.editor.goToContainingDeclaration";
+    public const string SelectContainingDeclaration = "app.editor.selectContainingDeclaration";
+    public const string CodeBlockStart = "app.editor.codeBlockStart";
+    public const string CodeBlockEnd = "app.editor.codeBlockEnd";
+    public const string CodeBlockStartWithSelection = "app.editor.codeBlockStartWithSelection";
+    public const string CodeBlockEndWithSelection = "app.editor.codeBlockEndWithSelection";
+    public const string GoToRegion = "app.goToRegion";
+
+    // Peeks at the caret, bound as Rider's keymaps bind them (RiderKeys): its QuickImplementations, ShowErrorDescription,
+    // ExpressionTypeInfo and ShowFilePath.
+    public const string QuickImplementations = "app.code.quickImplementations";
+    public const string ErrorDescription = "app.code.errorDescription";
+    public const string ExpressionTypeInfo = "app.code.expressionTypeInfo";
+    public const string ShowFilePath = "app.showFilePath";
+
+    // Folds of the person's own (OpenDocument.FoldOwn), bound as Rider's keymaps bind them (RiderKeys): its
+    // CollapseSelection and CollapseBlock.
+    public const string CollapseSelection = "app.editor.collapseSelection";
+    public const string CollapseBlock = "app.editor.collapseBlock";
+
+    // Rider's PasteMultiple (Paste from History), CopyReference and SmartTypeCompletion, bound as its keymaps bind them
+    // (RiderKeys): a text copied before pasted, what the caret stands on named, and completion of what fits the type there.
+    public const string PasteFromHistory = "app.editor.pasteFromHistory";
+    public const string CopyReference = "app.copyReference";
+    public const string SmartTypeCompletion = "app.code.smartTypeCompletion";
+
+    // Rider's Git.CreateNewBranch, Git.Commit.And.Push.Executor and Vcs.QuickListPopupAction, bound as its keymaps bind them
+    // (RiderKeys): a branch made from the head, a commit pushed as it is made, and the Git menu's actions in a popup.
+    public const string NewBranch = "app.vcs.newBranch";
+    public const string CommitAndPush = "app.vcs.commitAndPush";
+    public const string VcsOperations = "app.vcs.operations";
+
+    // Rider's ForceStepInto, ForceStepOver and ForceRunToCursor (past Just My Code and every breakpoint on the way),
+    // RiderRemoveAllLineBreakpoints, OpenExceptionSettings and CancelBuildAction, bound as its keymaps bind them (RiderKeys).
+    public const string ForceStepInto = "app.debug.forceStepInto";
+    public const string ForceStepOver = "app.debug.forceStepOver";
+    public const string ForceRunToCursor = "app.debug.forceRunToCursor";
+    public const string RemoveAllBreakpoints = "app.debug.removeAllBreakpoints";
+    public const string ExceptionSettings = "app.debug.exceptionSettings";
+    public const string CancelBuild = "app.build.cancel";
     public const string ShowExecutionPoint = "app.debug.showExecutionPoint";
+
+    // Rider's MoveStatementUp and MoveStatementDown, MoveElementLeft and MoveElementRight, Unwrap and AutoIndentLines, bound
+    // as its keymaps bind them (RiderKeys): edits by the code's structure, each one step of Undo.
+    public const string MoveStatementUp = "app.editor.moveStatementUp";
+    public const string MoveStatementDown = "app.editor.moveStatementDown";
+    public const string MoveElementLeft = "app.editor.moveElementLeft";
+    public const string MoveElementRight = "app.editor.moveElementRight";
+    public const string Unwrap = "app.editor.unwrap";
+    public const string AutoIndentLines = "app.editor.autoIndentLines";
 
     // Rider's XDebugger.AttachToProcess and RiderReattach, on its Visual Studio keymaps' Ctrl+Alt+P (Cmd+Alt+P) and
     // Alt+Shift+P, and RiderDetachDebuggerAction, after Stop, which no keymap gives keys.
@@ -552,6 +705,9 @@ public static class AppActions
     // Rider's QuickEvaluateExpression: $default's Ctrl+Alt+F8 (Cmd+Alt+F8 on the Mac) and Alt-click, which its Visual Studio
     // keymaps take from it; VS Code's give the keys alone, their Alt-click adding a caret.
     public const string QuickEvaluate = "app.debug.quickEvaluate";
+
+    // The expression at the caret pinned after its line, its value read again at each stop, which Rider's keymaps give no keys.
+    public const string PinToLine = "app.debug.pinToLine";
     public const string ShowContextMenu = "app.contextMenu";
 
     // Unit tests, run where the caret or the Unit Tests window's selection is.
@@ -563,7 +719,51 @@ public static class AppActions
     public const string RerunFailedTests = "app.tests.rerunFailed";
     public const string StopTests = "app.tests.stop";
     public const string ShowTests = "app.showTests";
+
+    // Test sessions, the tests' quick list and Go to Test, as Rider's keymaps bind them (RiderKeys): its New Session, Append to
+    // Session and Run Current Session (Ctrl+U, N, A and Y in its Visual Studio keymaps, Ctrl+;'s in the others), Unit Test
+    // Explorer and Session (Ctrl+Alt+U and T in its Visual Studio keymaps), Unit Test Quick List (Alt+Shift+U), and Go to Test
+    // with Go to Linked Types (Ctrl+Shift+T in $default's, Ctrl+U, G in its Visual Studio keymaps).
+    public const string NewTestSession = "app.tests.newSession";
+    public const string AppendToTestSession = "app.tests.appendToSession";
+    public const string RunTestSession = "app.tests.runSession";
+    public const string ShowAllTests = "app.tests.showAll";
+    public const string ShowTestSession = "app.tests.showSession";
+    public const string TestsQuickList = "app.tests.quickList";
+    public const string GoToTest = "app.goToTest";
+
+    // Coverage, measured by a run of tests: Rider's Cover All Tests from Solution (its dotCover descriptor's keys, Ctrl+U, K in
+    // its Visual Studio keymaps and Ctrl+;, K in IntelliJ's, which VS Code's take from their parents); the rest have none.
+    public const string CoverTests = "app.tests.cover";
+    public const string CoverAllTests = "app.tests.coverAll";
+    public const string ClearCoverage = "app.tests.clearCoverage";
+    public const string ExportCoverage = "app.tests.exportCoverage";
+    public const string ShowCoverage = "app.showCoverage";
+
+    // The Modules window, which Rider's keymaps give no keys.
+    public const string ShowModules = "app.showModules";
+    public const string ShowDebugMemory = "app.showDebugMemory";
+    public const string ShowIlViewer = "app.showIlViewer";
+
+    // Code clones, which Rider's keymaps give no keys: found across the solution or for the selection, two compared side by
+    // side, and a group made to share one method.
+    public const string FindClones = "app.code.findClones";
+    public const string FindClonesOfSelection = "app.code.findClonesOfSelection";
+    public const string CompareClones = "app.clones.compare";
+    public const string ExtractClones = "app.clones.extractMethod";
+
+    // Test doubles, which Rider's keymaps give no keys: a fake of the type at the caret written into a test project, and a
+    // call's missing arguments filled with the doubles of the mocking library its project references.
+    public const string CreateFake = "app.code.createFake";
+    public const string FillArgumentsWithDoubles = "app.code.fillArgumentsWithDoubles";
+
+    // The Dependency Map window at the caret, the Explorer's row or the solution, which Rider's keymaps give no keys.
+    public const string ShowDependencyMap = "app.showDependencyMap";
     public const string ShowStructure = "app.showStructure";
+    public const string ShowSyntaxTree = "app.showSyntaxTree";
+
+    // Continuous testing, turned on and off for the folder's repository.
+    public const string ContinuousTesting = "app.tests.continuous";
 
     // Editor splits: Rider's, from the tab's menu (no keys in its Visual Studio keymaps).
     public const string SplitRight = "app.editor.splitRight";
@@ -605,6 +805,30 @@ public static class AppActions
     // their parents give IntelliJ's Editor and Preview layout (TextEditorWithPreview.Layout.EditorAndPreview) no keys; its
     // VSCode keymaps give it Ctrl+K, V (Cmd+K, V on macOS).
     public const string MarkdownPreview = "app.editor.markdownPreview";
+
+    // A Markdown file's layouts, on its tab strip: IntelliJ's TextEditorWithPreview.Layout actions. Only the VSCode keymaps
+    // give any keys, Preview Only's Ctrl+Shift+V (Cmd+Shift+V on macOS); Editor and Preview's are the toggle's above.
+    public const string MarkdownEditorOnly = "app.editor.markdownEditorOnly";
+    public const string MarkdownEditorAndPreview = "app.editor.markdownEditorAndPreview";
+    public const string MarkdownPreviewOnly = "app.editor.markdownPreviewOnly";
+
+    // A Windows Forms form's layouts, on its file's tab strip, View Designer under View too: Rider's OpenWinFormsCodeAction
+    // and OpenWinFormsDesignerAction, F7 and Shift+F7 in its Visual Studio and Visual Studio OSX keymaps, where Shift+F7 is
+    // Smart Step Into's too: a form's file shown takes it while the debugger has not stopped (KeysIn). Code and Design has
+    // no key.
+    public const string FormCodeOnly = "app.editor.formCodeOnly";
+    public const string FormCodeAndDesign = "app.editor.formCodeAndDesign";
+    public const string FormDesignOnly = "app.editor.formDesignOnly";
+
+    // A form's design: its chosen components deleted (the Delete key's while the design has the keys), brought to the front
+    // of what holds them or sent to its back, an item moved up or down its list, and the Toolbox of what can be added to it.
+    // No keymap of Rider's gives any but Delete keys.
+    public const string FormDelete = "app.design.delete";
+    public const string FormBringToFront = "app.design.bringToFront";
+    public const string FormSendToBack = "app.design.sendToBack";
+    public const string FormMoveUp = "app.design.moveUp";
+    public const string FormMoveDown = "app.design.moveDown";
+    public const string ShowToolbox = "app.showToolbox";
 
     // An SVG file's picture beside its editor, under View and on the editor's tab strip: no keymap gives it keys.
     public const string SvgPreview = "app.editor.svgPreview";
@@ -653,6 +877,7 @@ public static class AppActions
     // The Refresh of the windows that read what they show again on asking: no keys of Rider's.
     public const string EndpointsRefresh = "app.endpoints.refresh";
     public const string GitLogRefresh = "app.vcs.refreshLog";
+    public const string IlViewerRefresh = "app.ilViewer.refresh";
 
     // Commit Signing…, the Commit window's and the Git menu's: no keys of Rider's.
     public const string CommitSigning = "app.vcs.commitSigning";
@@ -660,13 +885,24 @@ public static class AppActions
 
     // Rider's ChangesView.GroupBy.Directory, the Commit window's Group By › Directory.
     public const string GroupByDirectory = "app.vcs.groupByDirectory";
+
+    // The Commit window's message history, Rider's Vcs.ShowMessageHistory: Ctrl+M in $default's and Mac OS X 10.5+'s, and
+    // so VS Code's; Ctrl+H in its Visual Studio keymaps, Replace's there, as Ctrl+M is Match Brace's in the Mac's IntelliJ
+    // IDEA, which it takes in the commit message (KeysIn); none in Emacs's.
+    public const string CommitMessageHistory = "app.vcs.commitMessageHistory";
     public const string NuGetRefresh = "app.nuget.refresh";
     public const string NuGetUpdateAll = "app.nuget.updateAll";
+    public const string NuGetUpdateEverywhere = "app.nuget.updateEverywhere";
+    public const string NuGetUpdateSelected = "app.nuget.updateSelected";
     public const string LiveTreeRefresh = "app.liveTree.refresh";
 
     // The breakpoints' windows, the window's to show.
     public const string EditBreakpoint = "app.breakpoints.edit";
     public const string ViewBreakpoints = "app.breakpoints.view";
+
+    // A folder's breakpoints written to a file, and a file's added, which Rider's keymaps give no keys.
+    public const string ExportBreakpoints = "app.breakpoints.export";
+    public const string ImportBreakpoints = "app.breakpoints.import";
 
     // Version control: Git over the open folder's working tree.
     public const string ShowCommit = "app.vcs.showCommit";
@@ -699,14 +935,27 @@ public static class AppActions
     // Rider's Git.Init, Create Git Repository: no keys in its Visual Studio keymaps or their parents.
     public const string CreateRepository = "app.vcs.createRepository";
 
-    // Rider's Git.ResolveConflicts, Git.Rebase.Continue, Git.Rebase.Abort, Git.Merge.Abort, Git.CherryPick.Abort and
-    // Git.Revert.Abort: no keys in its Visual Studio keymaps or their parents.
+    // Rider's Git.ResolveConflicts, Git.Rebase.Continue, Git.Rebase.Skip, Git.Rebase.Abort, Git.Merge.Abort,
+    // Git.CherryPick.Abort and Git.Revert.Abort: no keys in its Visual Studio keymaps or their parents.
     public const string ResolveConflicts = "app.vcs.resolveConflicts";
     public const string ContinueRebase = "app.vcs.continueRebase";
+    public const string SkipRebase = "app.vcs.skipRebase";
     public const string AbortRebase = "app.vcs.abortRebase";
     public const string AbortMerge = "app.vcs.abortMerge";
     public const string AbortCherryPick = "app.vcs.abortCherryPick";
     public const string AbortRevert = "app.vcs.abortRevert";
+
+    // Rider's Git.Interactive.Rebase, the log's Interactively Rebase from Here: no keys in any of its keymaps.
+    public const string InteractiveRebase = "app.vcs.interactiveRebase";
+
+    // Rider's Git.CreateNewTag, New Tag…, and Git.CreateNewWorkingTree, New Worktree…: no keys in any of its keymaps.
+    public const string NewTag = "app.vcs.newTag";
+    public const string NewWorktree = "app.vcs.newWorktree";
+
+    // Rider's Git.Configure.Remotes, Manage Remotes…, and Push to a remote other than the upstream (its Push dialog's
+    // target): no keys in any of its keymaps.
+    public const string ManageRemotes = "app.vcs.manageRemotes";
+    public const string PushTo = "app.vcs.pushTo";
 
     // Rider's Vcs.ShowTabbedFileHistory, Vcs.ShowHistoryForBlock, Git.CompareWithBranch and Compare.Selected: no keys in
     // its Visual Studio keymaps or their parents.
@@ -714,6 +963,9 @@ public static class AppActions
     public const string ShowHistoryForSelection = "app.vcs.showHistoryForSelection";
     public const string CompareWithBranch = "app.vcs.compareWithBranch";
     public const string CompareWithRevision = "app.vcs.compareWithRevision";
+
+    // Rider's Git.Get.From.Branch, its comparison's Get from Branch: no keys in any of its keymaps.
+    public const string GetFromBranch = "app.vcs.getFromBranch";
 
     // A file or folder added to the repository's .gitignore, and the ignore file's line deciding whether git ignores one:
     // no keys of Rider's.
@@ -749,27 +1001,52 @@ public static class AppActions
     /// change, since every tip and menu reads it; a caller reads it and never binds into it.</summary>
     public static Keymap Keymap() => inForce ??= Keymap(Preset, UserShortcuts);
 
-    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two actions by
-    /// place and the keymap gives it to the other: Show Diff and Compare Files take Duplicate's (none in VS Code's), the
-    /// evaluate box's Add to Watches Complete Statement's (Start New Line Before's in VS Code's), a tool window Escape for
-    /// Focus Editor; outside Visual Studio's, New Item Generate's and Edit Breakpoint View Breakpoints', and IntelliJ IDEA's
-    /// Rerun on the Mac Replace's Cmd+R. The action's own once the person gives it some.</summary>
+    /// <summary>The action whose keys a place takes for one of its own, where Rider's keymaps give a key two told apart by
+    /// place (the editor or a tool window, a console, a build running), each case one; an action the person gave keys of
+    /// its own keeps them.</summary>
     public static string KeysIn(string id) => UserShortcuts.ContainsKey(id) ? id : id switch
     {
-        ShowDiff or CompareFiles when Preset != KeymapPreset.VSCode => EditorActions.Duplicate,
+        ShowDiff or CompareFiles when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => EditorActions.Duplicate,
         AddToWatches => Preset == KeymapPreset.VSCode ? EditorActions.StartNewLineBefore : CompleteStatement,
         FocusEditor => EditorActions.Escape,
         NewItem when Preset != KeymapPreset.VisualStudio => Generate,
+        CommitMessageHistory when Preset == KeymapPreset.VisualStudio => Replace,
+        CommitMessageHistory when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => EditorActions.MatchBrace,
         EditBreakpoint when Preset != KeymapPreset.VisualStudio => ViewBreakpoints,
+        DatabaseRun when Preset == KeymapPreset.VisualStudio => EditorActions.StartNewLineBefore,
+        DatabaseRun when Preset == KeymapPreset.VSCode => EditorActions.StartNewLine,
+        DatabaseRun when Preset == KeymapPreset.IntelliJ => EditorActions.SplitLine,
+        DatabaseSubmit => KeysIn(DatabaseRun),
+        DatabaseAddRow => Generate,
+        DatabaseDeleteRows => EditorActions.DeleteLine,
+        DatabaseRevert => RollbackLines,
+        DatabaseShowDdl => GoToDeclaration,
+        DatabaseRunStop => Stop,
+        DatabaseHistory when HistoryKeyHolder(Preset) is { } holder => holder,
+        CancelBuild when Preset is KeymapPreset.IntelliJ or KeymapPreset.Emacs => Build,
+        OpenInBrowser when Preset != KeymapPreset.VisualStudio => NextErrorInSolution,
+        NewBranch when Preset != KeymapPreset.VisualStudio => Inline,
         Rerun when Preset == KeymapPreset.IntelliJ && OperatingSystem.IsMacOS() => Replace,
-        NextOverload when Preset != KeymapPreset.VSCode => OverloadKeys(down: true),
-        PreviousOverload when Preset != KeymapPreset.VSCode => OverloadKeys(down: false),
+        NextOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: true),
+        PreviousOverload when Preset is not (KeymapPreset.VSCode or KeymapPreset.Emacs) => OverloadKeys(down: false),
+        FormDesignOnly when Preset == KeymapPreset.VisualStudio => SmartStepInto,
         _ => id,
+    };
+
+    /// <summary>The action holding Query History's Ctrl+Alt+E (Cmd's in Visual Studio's on the Mac) where Rider's keymap gives
+    /// it another too, which a console takes it from (<see cref="KeysIn"/>): Exception Settings in Visual Studio's, Find in
+    /// Selection in IntelliJ IDEA's and VS Code's off the Mac and in Emacs's, whose Method Down keeps the key from both.</summary>
+    private static string? HistoryKeyHolder(KeymapPreset preset) => preset switch
+    {
+        KeymapPreset.VisualStudio => ExceptionSettings,
+        KeymapPreset.Emacs => FindInSelection,
+        KeymapPreset.IntelliJ or KeymapPreset.VSCode when !OperatingSystem.IsMacOS() => FindInSelection,
+        _ => null,
     };
 
     /// <summary>The action whose keys step through Parameter Info's overloads, as Rider's keymaps give them Ctrl+Up and Down,
     /// or Alt's on the Mac: the editor's scroll by a line, its line move on the Mac, or IntelliJ IDEA's selection steps
-    /// there.</summary>
+    /// there. Emacs's own lists give Ctrl+Up and Down to its paragraph moves, so the overloads have none there.</summary>
     private static string OverloadKeys(bool down) => (Preset, OperatingSystem.IsMacOS()) switch
     {
         (KeymapPreset.IntelliJ, true) => down ? ShrinkSelection : ExtendSelection,
@@ -792,23 +1069,53 @@ public static class AppActions
     public static Keymap Keymap(KeymapPreset preset, IReadOnlyDictionary<string, string[]> overrides)
     {
         // A chord no keymap here takes and a game is unlikely to want, as the game hears it while it has the keys.
-        Keymap keymap = Base(preset).Bind(GameKeys, "control F11")
+        Keymap keymap = Base(preset);
+        foreach ((string action, string key) in RiderKeys[RiderKeymapOf(preset)])
+        {
+            keymap.Bind(action, key);
+        }
+        if (preset == KeymapPreset.Emacs)
+        {
+            // Rider's Emacs keymap's own lists of these, over $default's, each key taken from any action that had it.
+            keymap.Own(MethodUp, "alt UP", "control alt A").Own(MethodDown, "alt DOWN", "control alt E")
+                .Own(CodeBlockStart, "control OPEN_BRACKET", "control alt OPEN_BRACKET").Own(CodeBlockEnd, "control CLOSE_BRACKET", "control alt CLOSE_BRACKET")
+                .Own(PasteFromHistory, "alt Y").Own(SmartTypeCompletion, "control shift SPACE", "control alt SLASH")
+                .Own(AutoIndentLines, "control alt I", "control alt Q").Own(MoveStatementUp).Own(MoveStatementDown);
+        }
+        keymap.Bind(GameKeys, "control F11")
             .Bind(NextRegion, OperatingSystem.IsMacOS() ? "control meta BACK_QUOTE" : "control alt BACK_QUOTE")
             .Bind(PreviousRegion, OperatingSystem.IsMacOS() ? "control meta shift BACK_QUOTE" : "control alt shift BACK_QUOTE")
-            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R")
-            // The Switcher's keys are the same in every keymap of Rider's (Switcher).
-            .Bind(Switcher, "control TAB")
-            .Bind(SwitcherBackward, "control shift TAB")
-            .Bind(CompletionProperties, "alt P")
-            .Bind(CompletionMethods, "alt M")
-            .Bind(CompletionExtensionMethods, "alt X")
-            .Bind(CompletionFields, "alt F")
-            .Bind(CompletionEvents, "alt E");
+            .Bind(ReadAsText, OperatingSystem.IsMacOS() ? "control meta R" : "control alt R");
+        // Rider's Console.History.Browse and Console.Transaction.Commit: $default's, the Mac's with Cmd for Ctrl, as KeysIn says.
+        bool commandKey = OperatingSystem.IsMacOS() && preset != KeymapPreset.Emacs;
+        keymap.Bind(DatabaseCommit, commandKey ? "meta alt shift ENTER" : "control alt shift ENTER");
+        if (HistoryKeyHolder(preset) is null)
+        {
+            keymap.Bind(DatabaseHistory, commandKey ? "meta alt E" : "control alt E");
+        }
+        // Rider's Vcs.ShowMessageHistory where its own key is free: VS Code's, and IntelliJ IDEA's off the Mac.
+        if (preset == KeymapPreset.VSCode || (preset == KeymapPreset.IntelliJ && !OperatingSystem.IsMacOS()))
+        {
+            keymap.Bind(CommitMessageHistory, "control M");
+        }
+        if (preset != KeymapPreset.Emacs)
+        {
+            // The Switcher's keys are the same in every keymap of Rider's but Emacs's, whose own list gives it Ctrl+X, B.
+            keymap.Bind(Switcher, "control TAB").Bind(SwitcherBackward, "control shift TAB");
+        }
+        foreach ((string filter, string key) in CompletionFilterKeys)
+        {
+            // Passenger's own, where the keymap leaves the key free: Emacs moves by Alt+F and Alt+M and finds actions by Alt+X.
+            if (keymap.ActionFor(Shortcut.Parse(key)) is null)
+            {
+                keymap.Bind(filter, key);
+            }
+        }
         for (int digit = 0; digit < NumberedBookmarks.Count; digit++)
         {
             keymap.Bind(NumberedBookmarks[digit].GoTo, $"control {digit}");
-            // Rider's VS Code keymaps give Toggle Bookmark 5 no keys.
-            if (preset != KeymapPreset.VSCode || digit != 5)
+            // Rider's VS Code keymaps give Toggle Bookmark 5 no keys, its Emacs keymap Toggle Bookmark 2.
+            if (!(preset == KeymapPreset.VSCode && digit == 5) && !(preset == KeymapPreset.Emacs && digit == 2))
             {
                 keymap.Bind(NumberedBookmarks[digit].Toggle, $"control shift {digit}");
             }
@@ -839,6 +1146,126 @@ public static class AppActions
         return keymap;
     }
 
+    /// <summary>The keymap of Rider's a preset follows on this system, by its name.</summary>
+    private static string RiderKeymapOf(KeymapPreset preset) => (preset, OperatingSystem.IsMacOS()) switch
+    {
+        (KeymapPreset.VSCode, true) => "VSCode OSX",
+        (KeymapPreset.VSCode, false) => "VSCode",
+        (KeymapPreset.IntelliJ, true) => "Mac OS X 10.5+",
+        (KeymapPreset.IntelliJ, false) or (KeymapPreset.Emacs, _) => "$default",
+        (_, true) => "Visual Studio OSX",
+        _ => "Visual Studio",
+    };
+
+    /// <summary>The structure moves, peeks, folds, Paste from History, Copy Reference, Smart Type Completion, New Branch, Commit
+    /// and Push, VCS Operations, Run Anything, the configuration choosers, test sessions, Unit Test Operations and Go to Test as
+    /// each of Rider's keymaps binds them, by its name. A key Rider gives one of them and an action here already stays that
+    /// one's: Visual Studio's Move Line Alt+Up and Down, the Mac's Clone Caret Ctrl+Shift+Up and Down and Redo Cmd+Y, VS Code's
+    /// Quick Fix Cmd+., Collapse Cmd+Alt+[ and Choose Run Configuration Ctrl+;, A; Select Containing Declaration takes Cmd+Alt+[.</summary>
+    private static readonly Dictionary<string, (string Action, string Key)[]> RiderKeys = new()
+    {
+        ["Visual Studio"] =
+        [
+            (MoveStatementUp, "control alt shift UP"), (MoveStatementDown, "control alt shift DOWN"), (MoveElementLeft, "control alt shift LEFT"), (MoveElementRight, "control alt shift RIGHT"), (Unwrap, "control shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control alt shift R"), (ChooseDebugConfiguration, "alt shift F9"),
+            (NextUsage, "control shift DOWN"), (PreviousUsage, "control shift UP"), (GoToContainingDeclaration, "control OPEN_BRACKET"),
+            (SelectContainingDeclaration, "control shift OPEN_BRACKET"), (CodeBlockStart, "alt shift OPEN_BRACKET"),
+            (CodeBlockStartWithSelection, "control alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control alt shift CLOSE_BRACKET"),
+            (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (CollapseSelection, "control M , H"), (CollapseSelection, "control M , control H"),
+            (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
+            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control alt SPACE"), (NewBranch, "control alt N"),
+            (CommitAndPush, "control alt shift K"), (VcsOperations, "control alt Q"), (ForceStepInto, "alt F11"), (ForceStepOver, "alt shift F8"),
+            (ForceRunToCursor, "control alt F9"), (RemoveAllBreakpoints, "control shift F9"), (ExceptionSettings, "control alt E"), (CancelBuild, "control CANCEL"),
+            (NewTestSession, "control U , N"), (NewTestSession, "control U , control N"), (AppendToTestSession, "control U , A"),
+            (AppendToTestSession, "control U , control A"), (RunTestSession, "control U , Y"), (RunTestSession, "control U , control Y"),
+            (ShowAllTests, "control alt U"), (ShowTestSession, "control alt T"), (TestsQuickList, "alt shift U"), (GoToTest, "control U , G"),
+            (GoToTest, "control U , control G"),
+        ],
+        ["Visual Studio OSX"] =
+        [
+            (MoveStatementUp, "control alt shift UP"), (MoveStatementDown, "control alt shift DOWN"), (MoveElementLeft, "meta alt shift LEFT"), (MoveElementRight, "meta alt shift RIGHT"), (Unwrap, "meta shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "meta alt shift R"), (ChooseDebugConfiguration, "control alt D"),
+            (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"), (GoToContainingDeclaration, "meta OPEN_BRACKET"),
+            (SelectContainingDeclaration, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
+            (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
+            (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (CollapseSelection, "meta PERIOD"), (CollapseBlock, "meta shift PERIOD"),
+            (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"), (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control alt SPACE"),
+            (NewBranch, "meta alt N"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"), (ForceStepInto, "alt F11"), (ForceStepOver, "alt shift F8"),
+            (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"), (ExceptionSettings, "meta alt E"),
+            (NewTestSession, "meta U , N"), (NewTestSession, "meta U , meta N"), (AppendToTestSession, "meta U , A"),
+            (AppendToTestSession, "meta U , meta A"), (RunTestSession, "meta U , Y"), (RunTestSession, "meta U , meta Y"),
+            (ShowAllTests, "meta alt U"), (ShowTestSession, "meta alt T"), (TestsQuickList, "alt shift U"), (GoToTest, "meta U , G"),
+            (GoToTest, "meta U , meta G"),
+        ],
+        ["VSCode"] =
+        [
+            (MoveElementLeft, "control alt shift LEFT"), (MoveElementRight, "control alt shift RIGHT"), (Unwrap, "control shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control SEMICOLON , A"), (ChooseDebugConfiguration, "alt shift F9"),
+            (GoToContainingDeclaration, "alt shift OPEN_BRACKET"), (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"),
+            (GoToRegion, "control alt PERIOD"), (QuickImplementations, "alt F12"), (ErrorDescription, "control F1"), (ShowFilePath, "control alt F12"),
+            (CollapseBlock, "control alt OPEN_BRACKET"), (CollapseBlock, "control K , control L"), (PasteFromHistory, "control shift INSERT"),
+            (CopyReference, "control alt shift C"), (CommitAndPush, "control alt K"), (VcsOperations, "alt BACK_QUOTE"), (ForceStepInto, "alt shift F7"),
+            (ForceRunToCursor, "control alt F9"), (RemoveAllBreakpoints, "control shift F9"), (CancelBuild, "control F9"),
+            (NewTestSession, "control SEMICOLON , N"), (NewTestSession, "control SEMICOLON , control N"), (AppendToTestSession, "control SEMICOLON , control A"),
+            (RunTestSession, "control SEMICOLON , Y"), (RunTestSession, "control SEMICOLON , control Y"), (TestsQuickList, "alt shift U"),
+        ],
+        ["VSCode OSX"] =
+        [
+            (MoveElementLeft, "meta alt shift LEFT"), (MoveElementRight, "meta alt shift RIGHT"), (Unwrap, "meta shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "meta SEMICOLON , A"), (ChooseDebugConfiguration, "control alt D"),
+            (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
+            (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
+            (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
+            (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "alt F12"), (ErrorDescription, "meta F1"),
+            (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseBlock, "meta K , meta L"),
+            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
+            (ForceStepInto, "alt shift F7"), (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"), (CancelBuild, "meta F9"),
+            (NewTestSession, "meta SEMICOLON , N"), (NewTestSession, "meta SEMICOLON , meta N"), (AppendToTestSession, "meta SEMICOLON , meta A"),
+            (RunTestSession, "meta SEMICOLON , Y"), (RunTestSession, "meta SEMICOLON , meta Y"), (TestsQuickList, "alt shift U"),
+        ],
+        ["$default"] =
+        [
+            (MoveStatementUp, "control shift UP"), (MoveStatementDown, "control shift DOWN"), (MoveElementLeft, "control alt shift LEFT"), (MoveElementRight, "control alt shift RIGHT"), (Unwrap, "control shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "alt shift F10"), (ChooseDebugConfiguration, "alt shift F9"),
+            (MethodUp, "alt UP"), (MethodDown, "alt DOWN"), (GoToContainingDeclaration, "alt shift OPEN_BRACKET"),
+            (SelectContainingDeclaration, "control alt shift OPEN_BRACKET"), (CodeBlockStart, "control OPEN_BRACKET"), (CodeBlockEnd, "control CLOSE_BRACKET"),
+            (CodeBlockStartWithSelection, "control shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "control shift CLOSE_BRACKET"),
+            (GoToRegion, "control alt PERIOD"), (QuickImplementations, "control shift I"), (ErrorDescription, "control F1"),
+            (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "control alt F12"), (CollapseSelection, "control PERIOD"),
+            (CollapseBlock, "control shift PERIOD"), (PasteFromHistory, "control shift V"), (PasteFromHistory, "control shift INSERT"),
+            (CopyReference, "control alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "control alt K"),
+            (VcsOperations, "alt BACK_QUOTE"), (ForceStepInto, "alt shift F7"), (ForceStepOver, "alt shift F8"), (ForceRunToCursor, "control alt F9"),
+            (RemoveAllBreakpoints, "control shift F9"),
+            (NewTestSession, "control SEMICOLON , N"), (NewTestSession, "control SEMICOLON , control N"), (AppendToTestSession, "control SEMICOLON , A"),
+            (AppendToTestSession, "control SEMICOLON , control A"), (RunTestSession, "control SEMICOLON , Y"), (RunTestSession, "control SEMICOLON , control Y"),
+            (TestsQuickList, "alt shift U"), (GoToTest, "control shift T"),
+        ],
+        ["Mac OS X 10.5+"] =
+        [
+            (MoveStatementUp, "meta shift UP"), (MoveStatementDown, "meta shift DOWN"), (MoveElementLeft, "meta alt shift LEFT"), (MoveElementRight, "meta alt shift RIGHT"), (Unwrap, "meta shift DELETE"), (AutoIndentLines, "control alt I"),
+            (RunAnything, "control , control"), (ChooseRunConfiguration, "control alt R"), (ChooseDebugConfiguration, "control alt D"),
+            (MethodUp, "control shift UP"), (MethodDown, "control shift DOWN"), (NextUsage, "control alt DOWN"), (PreviousUsage, "control alt UP"),
+            (GoToContainingDeclaration, "control OPEN_BRACKET"), (SelectContainingDeclaration, "control shift OPEN_BRACKET"),
+            (CodeBlockStart, "meta alt OPEN_BRACKET"), (CodeBlockEnd, "meta alt CLOSE_BRACKET"),
+            (CodeBlockStartWithSelection, "meta alt shift OPEN_BRACKET"), (CodeBlockEndWithSelection, "meta alt shift CLOSE_BRACKET"),
+            (GoToRegion, "meta alt PERIOD"), (QuickImplementations, "alt SPACE"), (QuickImplementations, "meta Y"), (ErrorDescription, "meta F1"),
+            (ExpressionTypeInfo, "control shift P"), (ShowFilePath, "meta alt F12"), (CollapseSelection, "meta PERIOD"),
+            (CollapseBlock, "meta shift PERIOD"), (PasteFromHistory, "meta shift V"), (PasteFromHistory, "meta shift INSERT"),
+            (CopyReference, "meta alt shift C"), (SmartTypeCompletion, "control shift SPACE"), (CommitAndPush, "meta alt K"), (VcsOperations, "control V"),
+            (ForceStepInto, "alt shift F7"), (ForceStepOver, "alt shift F8"), (ForceRunToCursor, "meta alt F9"), (RemoveAllBreakpoints, "meta shift F9"),
+            (NewTestSession, "meta SEMICOLON , N"), (NewTestSession, "meta SEMICOLON , meta N"), (AppendToTestSession, "meta SEMICOLON , A"),
+            (AppendToTestSession, "meta SEMICOLON , meta A"), (RunTestSession, "meta SEMICOLON , Y"), (RunTestSession, "meta SEMICOLON , meta Y"),
+            (TestsQuickList, "alt shift U"), (GoToTest, "meta shift T"),
+        ],
+    };
+
+    /// <summary>The completion list's filters by the kind of member, each on Alt and its badge's letter.</summary>
+    private static readonly (string Filter, string Key)[] CompletionFilterKeys =
+    [
+        (CompletionProperties, "alt P"), (CompletionMethods, "alt M"), (CompletionExtensionMethods, "alt X"), (CompletionFields, "alt F"),
+        (CompletionEvents, "alt E"),
+    ];
+
     private static Keymap Base(KeymapPreset preset)
     {
         if (preset == KeymapPreset.VSCode)
@@ -847,7 +1274,12 @@ public static class AppActions
         }
         if (preset == KeymapPreset.IntelliJ)
         {
-            return IntelliJ(DefaultKeymaps.For(preset));
+            return IntelliJ(DefaultKeymaps.For(preset), OperatingSystem.IsMacOS());
+        }
+        if (preset == KeymapPreset.Emacs)
+        {
+            // $default's whole, the editor's and the IDE's, then Emacs's own lists over both.
+            return Emacs(DefaultKeymaps.Emacs(IntelliJ(DefaultKeymaps.IntelliJ(DefaultKeymaps.NameOf(preset)), mac: false)));
         }
         Keymap keymap = DefaultKeymaps.ForPlatform();
         if (OperatingSystem.IsMacOS())
@@ -906,12 +1338,14 @@ public static class AppActions
                 .Bind(ShowDebug, "meta 5")
                 .Bind(ShowProblems, "meta 6")
                 .Bind(ToggleBreakpoint, "F9")
+                .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8")
                 .Bind(ToggleBreakpointEnabled, "meta F9")
                 .Bind(Resume, "F5")
                 .Bind(Pause, "meta PAUSE", "shift meta P")
                 .Bind(StepOver, "F10")
                 .Bind(StepInto, "F11", "meta F11")
                 .Bind(SmartStepInto, "shift F7")
+                .Bind(FormCodeOnly, "F7")
                 .Bind(StepOut, "shift F11")
                 .Bind(RunToCursor, "meta F10")
                 .Bind(SetNextStatement, "meta shift F10")
@@ -933,6 +1367,7 @@ public static class AppActions
                 .Bind(DebugTests, "meta U , D", "meta U , meta D")
                 .Bind(RerunTests, "meta U , U", "meta U , meta U")
                 .Bind(RerunFailedTests, "meta U , F", "meta U , meta F")
+                .Bind(CoverAllTests, "meta U , K", "meta U , meta K")
                 .Bind(RunAllTests, "meta U , L", "meta U , meta L")
                 .Bind(RunTestsUntilFailure, "meta U , W", "meta U , meta W")
                 .Bind(StopTests, "meta U , S", "meta U , meta S")
@@ -996,6 +1431,10 @@ public static class AppActions
                 .Bind(ContextHelp, "F1", "shift F1", "meta F1")
                 .Bind(NextError, "alt PAGE_DOWN")
                 .Bind(PreviousError, "alt PAGE_UP")
+                .Bind(NextErrorInSolution, "alt shift PAGE_DOWN")
+                .Bind(PreviousErrorInSolution, "alt shift PAGE_UP")
+                .Bind(InspectThis, "meta alt shift A")
+                .Bind(RunInspectionByName, "meta alt shift I")
                 .Bind(OpenInNewWindow, "shift F4")
                 .Bind(SoftWrap, "meta E , W", "meta E , meta W")
                 .Bind(ShowWhitespaces, "meta R , W", "meta R , meta W")
@@ -1058,12 +1497,14 @@ public static class AppActions
             .Bind(ShowDebug, "alt 5")
             .Bind(ShowProblems, "alt 6")
             .Bind(ToggleBreakpoint, "F9")
+            .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(ToggleBreakpointEnabled, "control F9")
             .Bind(Resume, "F5")
             .Bind(Pause, "control PAUSE", "shift control P", "control alt CANCEL")
             .Bind(StepOver, "F10")
             .Bind(StepInto, "F11")
             .Bind(SmartStepInto, "shift F7")
+            .Bind(FormCodeOnly, "F7")
             .Bind(StepOut, "shift F11")
             .Bind(RunToCursor, "control F10")
             .Bind(SetNextStatement, "control shift F10")
@@ -1085,6 +1526,7 @@ public static class AppActions
             .Bind(DebugTests, "control U , D", "control U , control D")
             .Bind(RerunTests, "control U , U", "control U , control U")
             .Bind(RerunFailedTests, "control U , F", "control U , control F")
+            .Bind(CoverAllTests, "control U , K", "control U , control K")
             .Bind(RunAllTests, "control U , L", "control U , control L")
             .Bind(RunTestsUntilFailure, "control U , W", "control U , control W")
             .Bind(StopTests, "control U , S", "control U , control S")
@@ -1143,6 +1585,10 @@ public static class AppActions
             .Bind(ContextHelp, "F1", "shift F1")
             .Bind(NextError, "alt PAGE_DOWN")
             .Bind(PreviousError, "alt PAGE_UP")
+            .Bind(NextErrorInSolution, "alt shift PAGE_DOWN")
+            .Bind(PreviousErrorInSolution, "alt shift PAGE_UP")
+            .Bind(InspectThis, "control alt shift A")
+            .Bind(RunInspectionByName, "control alt shift I")
             .Bind(OpenInNewWindow, "shift F4")
             .Bind(SoftWrap, "control E , W", "control E , control W")
             .Bind(ShowWhitespaces, "control R , W", "control R , control W")
@@ -1195,7 +1641,8 @@ public static class AppActions
                 .Bind(NewFile, "meta N")
                 .Bind(CopyPath, "meta alt C", "meta K , P")
                 .Bind(RevealInFileManager, "meta K , R", "meta alt R")
-                .Bind(OpenInBrowser, "alt F2")
+                .Bind(NextErrorInSolution, "alt F2")
+                .Bind(PreviousErrorInSolution, "alt shift F2")
                 .Bind(Build, "meta shift B")
                 .Bind(RunProgram, "control F5")
                 .Bind(Stop, "shift F5")
@@ -1235,7 +1682,10 @@ public static class AppActions
                 .Bind(ContextHelp, "meta shift F1", "shift F1")
                 .Bind(NextError, "alt F8")
                 .Bind(PreviousError, "shift F8", "alt shift F8")
+                .Bind(InspectThis, "meta alt shift A")
+                .Bind(RunInspectionByName, "meta alt shift I")
                 .Bind(ToggleBreakpoint, "F9")
+                .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8")
                 .Bind(Resume, "F5")
                 .Bind(Pause, "F6")
                 .Bind(StepOver, "F10")
@@ -1258,12 +1708,14 @@ public static class AppActions
                 .Bind(RerunTests, "meta SEMICOLON , T", "meta SEMICOLON , meta T")
                 .Bind(RerunFailedTests, "meta SEMICOLON , F", "meta SEMICOLON , meta F")
                 .Bind(StopTests, "meta SEMICOLON , S", "meta SEMICOLON , meta S")
+                .Bind(CoverAllTests, "meta SEMICOLON , K", "meta SEMICOLON , meta K")
                 .Bind(ShowTests, "meta alt 8")
                 .Bind(ShowStructure, "meta 7")
                 .Bind(SplitRight, "meta BACK_SLASH")
                 .Bind(MoveToOppositeGroup, "meta control RIGHT")
                 .Bind(OpenInNewWindow, "meta K , O")
                 .Bind(MarkdownPreview, "meta K , V")
+                .Bind(MarkdownPreviewOnly, "meta shift V")
                 .Bind(ReopenClosedTab, "meta shift T")
                 .Bind(PinTab, "meta K , shift ENTER")
                 .Bind(CloseOtherTabs, "meta alt T", "meta K , U")
@@ -1322,7 +1774,8 @@ public static class AppActions
             .Bind(SelectOpenedFile, "control K , E")
             .Bind(CopyPath, "shift alt C", "control K , P")
             .Bind(RevealInFileManager, "shift alt R", "control K , R")
-            .Bind(OpenInBrowser, "alt F2")
+            .Bind(NextErrorInSolution, "alt F2")
+            .Bind(PreviousErrorInSolution, "alt shift F2")
             .Bind(Build, "control shift B")
             .Bind(RunProgram, "control F5")
             .Bind(Stop, "shift F5")
@@ -1364,7 +1817,10 @@ public static class AppActions
             .Bind(ContextHelp, "shift F1")
             .Bind(NextError, "alt F8")
             .Bind(PreviousError, "alt shift F8", "shift F8")
+            .Bind(InspectThis, "control alt shift A")
+            .Bind(RunInspectionByName, "control alt shift I")
             .Bind(ToggleBreakpoint, "F9")
+            .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(Resume, "F5")
             .Bind(Pause, "F6")
             .Bind(StepOver, "F10")
@@ -1386,12 +1842,14 @@ public static class AppActions
             .Bind(RerunTests, "control SEMICOLON , T", "control SEMICOLON , control T")
             .Bind(RerunFailedTests, "control SEMICOLON , F", "control SEMICOLON , control F")
             .Bind(StopTests, "control SEMICOLON , S", "control SEMICOLON , control S")
+            .Bind(CoverAllTests, "control SEMICOLON , K", "control SEMICOLON , control K")
             .Bind(ShowTests, "alt shift 8")
             .Bind(ShowStructure, "alt 7")
             .Bind(SplitRight, "control BACK_SLASH")
             .Bind(MoveToOppositeGroup, "control alt RIGHT")
             .Bind(OpenInNewWindow, "control K , O")
             .Bind(MarkdownPreview, "control K , V")
+            .Bind(MarkdownPreviewOnly, "control shift V")
             .Bind(ReopenClosedTab, "control shift T")
             .Bind(PinTab, "control K , shift ENTER")
             .Bind(CloseOtherTabs, "control K , U")
@@ -1424,9 +1882,9 @@ public static class AppActions
     /// Shift. A key IntelliJ gives two actions by place goes to one: Ctrl+Shift+F10 (macOS's Ctrl+Shift+R and D) to the
     /// tests, not Run and Debug Here; Ctrl+Shift+F8 to View Breakpoints; Alt+Insert (Cmd+N) to Generate, not New Item; the
     /// Mac's Cmd+R to Replace, not Rerun, and Cmd+T to Update Project, not the terminal's New Session.</summary>
-    private static Keymap IntelliJ(Keymap keymap)
+    private static Keymap IntelliJ(Keymap keymap, bool mac)
     {
-        if (OperatingSystem.IsMacOS())
+        if (mac)
         {
             // Cmd+Q, Exit's here, is the application menu's Quit, as in the other keymaps.
             return keymap
@@ -1461,7 +1919,8 @@ public static class AppActions
                 .Bind(FindInSelection, "control alt E")
                 .Bind(FocusExplorer, "meta 1")
                 .Bind(CopyPath, "meta shift C")
-                .Bind(OpenInBrowser, "alt F2")
+                .Bind(NextErrorInSolution, "alt F2")
+                .Bind(PreviousErrorInSolution, "alt shift F2")
                 .Bind(Build, "meta F9")
                 .Bind(RunProgram, "control R")
                 .Bind(Debug, "control D")
@@ -1519,7 +1978,10 @@ public static class AppActions
                 .Bind(ContextHelp, "meta shift F1", "shift F1")
                 .Bind(NextError, "F2")
                 .Bind(PreviousError, "shift F2")
+                .Bind(InspectThis, "meta alt shift A")
+                .Bind(RunInspectionByName, "meta alt shift I")
                 .Bind(ToggleBreakpoint, "meta F8")
+                .Bind(ToggleTemporaryBreakpoint, "meta alt shift F8")
                 .Bind(Resume, "meta alt R", "F9")
                 .Bind(StepOver, "F8")
                 .Bind(StepInto, "F7")
@@ -1544,6 +2006,7 @@ public static class AppActions
                 .Bind(RerunTests, "meta SEMICOLON , T", "meta SEMICOLON , meta T")
                 .Bind(RerunFailedTests, "meta SEMICOLON , F", "meta SEMICOLON , meta F")
                 .Bind(StopTests, "meta SEMICOLON , S", "meta SEMICOLON , meta S")
+                .Bind(CoverAllTests, "meta SEMICOLON , K", "meta SEMICOLON , meta K")
                 .Bind(OpenInNewWindow, "shift F4")
                 .Bind(IncreaseFontSize, "control shift PERIOD")
                 .Bind(DecreaseFontSize, "control shift COMMA")
@@ -1592,7 +2055,8 @@ public static class AppActions
             .Bind(FindInSelection, "control alt E")
             .Bind(FocusExplorer, "alt 1")
             .Bind(CopyPath, "control shift C")
-            .Bind(OpenInBrowser, "alt F2")
+            .Bind(NextErrorInSolution, "alt F2")
+            .Bind(PreviousErrorInSolution, "alt shift F2")
             .Bind(Build, "control F9")
             .Bind(RunProgram, "shift F10")
             .Bind(Debug, "shift F9")
@@ -1648,7 +2112,10 @@ public static class AppActions
             .Bind(ContextHelp, "F1", "shift F1")
             .Bind(NextError, "F2")
             .Bind(PreviousError, "shift F2")
+            .Bind(InspectThis, "control alt shift A")
+            .Bind(RunInspectionByName, "control alt shift I")
             .Bind(ToggleBreakpoint, "control F8")
+            .Bind(ToggleTemporaryBreakpoint, "control alt shift F8")
             .Bind(Resume, "F9")
             .Bind(StepOver, "F8")
             .Bind(StepInto, "F7")
@@ -1674,6 +2141,7 @@ public static class AppActions
             .Bind(RerunTests, "control SEMICOLON , T", "control SEMICOLON , control T")
             .Bind(RerunFailedTests, "control SEMICOLON , F", "control SEMICOLON , control F")
             .Bind(StopTests, "control SEMICOLON , S", "control SEMICOLON , control S")
+            .Bind(CoverAllTests, "control SEMICOLON , K", "control SEMICOLON , control K")
             .Bind(OpenInNewWindow, "shift F4")
             .Bind(IncreaseFontSize, "alt shift PERIOD")
             .Bind(DecreaseFontSize, "alt shift COMMA")
@@ -1689,4 +2157,58 @@ public static class AppActions
             .Bind(DiffSettings, "control shift D")
             .Bind(RecentChanges, "alt shift C");
     }
+
+    /// <summary>Rider's Emacs keymap's own lists of the IDE's actions over $default's, each in place of what $default gives
+    /// it and taken from any action that had a key of it, as the keymap's own list goes before its parent's: Find's
+    /// Ctrl+Alt+S from Settings, Ctrl+K (Cut to Line End) from Commit. Its Ctrl+X and Escape chords (Ctrl+X, Ctrl+S to Save
+    /// All, Esc, X to Find Action) are chords as any; Reformat Code, Safe Delete, Introduce Field, Recent Files, Derived
+    /// Symbols, Previous Project Window and the font size in every editor have none.</summary>
+    private static Keymap Emacs(Keymap keymap)
+    {
+        Keymap emacs = EmacsOwn(keymap);
+        // The Mac's Cmd+S, W and , which Rider's Emacs leaves out (Cmd+Q is the application menu's Quit in every keymap).
+        return !OperatingSystem.IsMacOS() ? emacs : emacs
+            .Bind(Save, "meta S")
+            .Bind(CloseTab, "meta W")
+            .Bind(ShowSettings, "meta COMMA");
+    }
+
+    private static Keymap EmacsOwn(Keymap keymap) => keymap
+        // Split Line's Ctrl+Enter in $default, which Emacs gives Ctrl+O alone.
+        .Own(DatabaseRun, "control ENTER")
+        .Own(FindAction, "alt X", "ESCAPE , X")
+        .Own(Find, "control alt S", "alt F3", "control S")
+        .Own(FindNext, "F3", "alt S")
+        .Own(FindPrevious, "shift F3", "alt R", "control R")
+        .Own(Replace, "shift alt 5")
+        .Own(FindUsages, "alt F7", "shift alt S")
+        .Own(GoToDeclaration, "alt PERIOD", "control alt G", "ESCAPE , PERIOD", "control button1")
+        .Own(GoToSymbol, "shift alt G", "control alt shift N")
+        .Own(GoToFile, "control X , control F")
+        .Own(GoToLine, "alt G")
+        .Own(Switcher, "control X , B")
+        .Own(SwitcherBackward)
+        .Own(NextError, "F2", "control X , BACK_QUOTE")
+        .Own(PreviousError, "shift F2", "shift control X , BACK_QUOTE")
+        .Own(Complete, "alt SLASH")
+        .Own(ParameterInfo, "shift alt P")
+        .Own(ExtendSelection, "control alt W")
+        .Own(SaveAll, "control X , control S")
+        .Own(NextTab, "alt RIGHT", "control X , N")
+        .Own(PreviousTab, "alt LEFT", "control X , P")
+        .Own(CloseTab, "control F4", "control X , K", "control X , 0")
+        .Own(CloseAllTabs, "control X , control C")
+        .Own(SplitRight, "control X , 3")
+        .Own(SplitDown, "control X , 2")
+        .Own(UnsplitAll, "control X , 1")
+        .Own(NextSplit, "control X , O")
+        .Own(NextProjectWindow, "control X , control O")
+        .Own(PreviousProjectWindow)
+        .Own(Reformat)
+        .Own(SafeDelete)
+        .Own(IntroduceField)
+        .Own(RecentFiles)
+        .Own(DerivedSymbols)
+        .Own(IncreaseFontSize)
+        .Own(DecreaseFontSize);
 }

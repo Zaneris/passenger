@@ -442,7 +442,7 @@ public sealed class WebRoutesTests
     {
         Passenger.Editor.CodeEditor editor = window.EditorArea.CodeEditor;
         TextSnapshot text = editor.Document.Snapshot;
-        editor.ScrollTo(new Vector(0, Math.Max(0, line * editor.LineHeight - editor.Bounds.Height / 3)));
+        editor.ScrollTo(new Vector(0, Math.Max(0, editor.ScrollOffset.Y + editor.PointOf(text.GetLineStart(line)).Y - editor.Bounds.Height / 3)));
         Ui.Settle();
         double x = Enumerable.Range(0, 400).First(x => editor.IsOnGutterColumn(editor.Gutter!.Marks, new Point(x, 0))) + 3;
         Ui.Click(editor, new Point(x, editor.PointOf(text.GetLineStart(line)).Y + editor.LineHeight / 2));

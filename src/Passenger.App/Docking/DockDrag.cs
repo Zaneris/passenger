@@ -31,7 +31,8 @@ internal sealed class DockDrag
 
     /// <summary>The place a point drops a window on: a stripe's group under it, the bottom area over the frame's lower
     /// part, an open side area over that area, and over the editors their outer quarter on a side whose area is closed;
-    /// none over the rest of the editors, which takes it as an editor tab.</summary>
+    /// none over the rest of the editors, which takes it as an editor tab. In the wide layout the sides take their part
+    /// of the frame's whole height, halved at its middle, and the bottom area the lower part between them.</summary>
     private ToolAnchor? Target(Point at)
     {
         double width = host.Bounds.Width;
@@ -46,17 +47,20 @@ internal sealed class DockDrag
         {
             return right.IsVisible ? right.AnchorAt(host.TranslatePoint(at, right) ?? at) : rightEdge.AnchorAt(host.TranslatePoint(at, rightEdge) ?? at);
         }
-        if (at.Y > height * 0.7)
+        bool low = at.Y > height * 0.7;
+        bool wide = host.IsWide;
+        if (low && !wide)
         {
             return (at.X - start) / (end - start) < 0.5 ? ToolAnchor.BottomLeft : ToolAnchor.BottomRight;
         }
-        bool upper = at.Y < height * 0.35;
+        bool upper = at.Y < height * (wide ? 0.5 : 0.35);
         Rect editors = host.EditorBounds is { Width: > 0 } laid ? laid : new Rect(start, 0, end - start, height);
         bool leftOpen = editors.Left > start + 0.5;
         bool rightOpen = editors.Right < end - 0.5;
         double x = (at.X - editors.Left) / editors.Width;
         return x < (leftOpen ? 0 : 0.25) ? (upper ? ToolAnchor.LeftTop : ToolAnchor.LeftBottom)
             : x > (rightOpen ? 1 : 0.75) ? (upper ? ToolAnchor.RightTop : ToolAnchor.RightBottom)
+            : low ? (x < 0.5 ? ToolAnchor.BottomLeft : ToolAnchor.BottomRight)
             : null;
     }
 
@@ -77,7 +81,7 @@ internal sealed class DockDrag
     {
         if (OverEditors(at) && window.Mode != ToolMode.Editor)
         {
-            return new DropZone(host.EditorBounds.Deflate(4), $"{window.Title}: Editor Tab");
+            return new DropZone(host.EditorBounds.Deflate(4), DockingWords.DropInEditors(window.Title));
         }
         if (Target(at) is not { } place)
         {
@@ -91,16 +95,20 @@ internal sealed class DockDrag
         double rightSide = host.EditorBounds.Right < stripe + width - 0.5 ? host.RightAreaWidth : Math.Max(160, Math.Min(width * 0.25, host.RightAreaWidth));
         double bottom = Math.Max(120, Math.Min(height * 0.4, host.BottomAreaHeight));
         double upperHeight = height - bottom;
+        // Wide, a side lights its whole height and the bottom area the width between the open sides.
+        double sideHeight = host.IsWide ? height : upperHeight;
+        double from = host.IsWide && host.EditorBounds.Left > stripe + 0.5 ? host.EditorBounds.Left : stripe;
+        double across = (host.IsWide && host.EditorBounds.Right < stripe + width - 0.5 ? host.EditorBounds.Right : stripe + width) - from;
         Rect zone = place switch
         {
-            ToolAnchor.LeftTop => new Rect(stripe, 0, leftSide, upperHeight / 2),
-            ToolAnchor.LeftBottom => new Rect(stripe, upperHeight / 2, leftSide, upperHeight / 2),
-            ToolAnchor.RightTop => new Rect(stripe + width - rightSide, 0, rightSide, upperHeight / 2),
-            ToolAnchor.RightBottom => new Rect(stripe + width - rightSide, upperHeight / 2, rightSide, upperHeight / 2),
-            ToolAnchor.BottomLeft => new Rect(stripe, upperHeight, width / 2, bottom),
-            _ => new Rect(stripe + (width / 2), upperHeight, width / 2, bottom),
+            ToolAnchor.LeftTop => new Rect(stripe, 0, leftSide, sideHeight / 2),
+            ToolAnchor.LeftBottom => new Rect(stripe, sideHeight / 2, leftSide, sideHeight / 2),
+            ToolAnchor.RightTop => new Rect(stripe + width - rightSide, 0, rightSide, sideHeight / 2),
+            ToolAnchor.RightBottom => new Rect(stripe + width - rightSide, sideHeight / 2, rightSide, sideHeight / 2),
+            ToolAnchor.BottomLeft => new Rect(from, upperHeight, across / 2, bottom),
+            _ => new Rect(from + (across / 2), upperHeight, across / 2, bottom),
         };
-        return new DropZone(zone, $"{window.Title}: {ToolWindow.Name(place)}");
+        return new DropZone(zone, DockingWords.DropIn(window.Title, ToolWindow.Name(place)));
     }
 
     /// <summary>Docks a window where it was let go: in the place under the point, among its buttons on a stripe, or in an
@@ -116,10 +124,6 @@ internal sealed class DockDrag
         }
         if (Target(at) is { } anchor)
         {
-            if (window.Mode == ToolMode.Editor)
-            {
-                host.SetMode(window, ToolMode.Docked);
-            }
             host.Move(window, anchor, StripeIndex(window, anchor, at));
         }
     }

@@ -18,8 +18,8 @@ public static class ThemePalettes
     /// fourth to sixth brace colours are given where the colours for the code name them.</summary>
     public static readonly IReadOnlyList<string> SyntaxKinds =
     [
-        "Keyword", "ControlKeyword", "Comment", "DocComment", "String", "StringEscape", "Number", "Preprocessor", "Class", "Interface", "Struct",
-        "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
+        "Keyword", "ControlKeyword", "Comment", "DocComment", "DocCommentTag", "DocCommentAttributeName", "DocCommentAttributeValue", "String",
+        "StringEscape", "Number", "Preprocessor", "Class", "Interface", "Struct", "Enum", "Delegate", "TypeParameter", "Method", "Property", "Event", "Field", "Constant", "EnumMember", "ErrorOutput", "UserInput", "Link",
         "BuildError", "BuildWarning", "Brace1", "Brace2", "Brace3", "Tag", "AttributeName", "AttributeValue", "Entity", "JsonKey", "YamlKey",
         "Heading", "Code", "Quote", "LinkDestination", "Parameter", "Local", "Namespace", "Operator",
     ];
@@ -181,6 +181,7 @@ public static class ThemePalettes
         t["Test.Skipped"] = L("Test.Skipped", Mix(muted, panel, 0.15), [panel], Mark, dark);
         t["Test.Running"] = Legible(p.Blue, [panel], Mark, dark);
         t["Test.NotRun"] = t["CheckBorder"];
+        t["Memory.Changed"] = t["Error"];
 
         uint gutterGround = given.TryGetValue("Editor.Gutter", out uint ownGutter) && IsDark(ownGutter) == dark ? Over(ownGutter, editor) : editor;
         t["Vcs.Added"] = L("Vcs.Added", p.Green, [gutterGround], Mark, dark);
@@ -263,6 +264,7 @@ public static class ThemePalettes
         t["Editor.Error"] = Legible(L("Editor.Error", p.Red, [editor], Mark, dark), [badge], Text, IsDark(badge));
         t["Editor.Warning"] = Legible(L("Editor.Warning", dark ? p.Yellow : p.Orange, [editor], Mark, dark), [badge], Text, IsDark(badge));
         t["Editor.Info"] = L("Editor.Info", muted, [editor], Mark, dark);
+        t["Editor.Fine"] = L("Editor.Fine", p.Green, [editor], Mark, dark);
         t["Editor.Breakpoint"] = L("Editor.Breakpoint", p.Red, [gutterGround], Mark, dark);
         t["Editor.BreakpointLine"] = Mix(editor, p.Red, 0.12);
         t["Editor.BreakpointMuted"] = t["Icon"];
@@ -327,6 +329,9 @@ public static class ThemePalettes
             "Keyword" or "ControlKeyword" or "YamlKey" => p.Purple,
             "Comment" or "Quote" => p.Comment,
             "DocComment" => Mix(p.Comment, p.Yellow, 0.35),
+            "DocCommentTag" => p.Comment,
+            "DocCommentAttributeName" => Mix(p.Comment, p.Member, 0.7),
+            "DocCommentAttributeValue" => Mix(p.Comment, p.Green, 0.7),
             "String" or "AttributeValue" or "Code" or "UserInput" => p.Green,
             "StringEscape" or "Entity" => p.Pink,
             "Number" or "Constant" => p.Orange,

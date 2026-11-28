@@ -57,6 +57,9 @@ public sealed class GitView : DockPanel
     /// tab.</summary>
     public event EventHandler<(WorkingTreeComparison Compared, FileChange File)>? WorkingTreeDiffRequested;
 
+    /// <summary>A file of Show Diff with Working Tree to take the branch's version of, whole.</summary>
+    public event EventHandler<(WorkingTreeComparison Compared, FileChange File)>? GetFromRequested;
+
     /// <summary>A commit's file to open as it is now, from any tab.</summary>
     public event EventHandler<string>? OpenRequested;
 
@@ -69,7 +72,15 @@ public sealed class GitView : DockPanel
 
     public event EventHandler<CommitInfo>? NewBranchRequested;
 
+    /// <summary>A commit any tab's log checks out on its own.</summary>
+    public event EventHandler<CommitInfo>? CheckoutRequested;
+
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;
+
+    public event EventHandler<CommitInfo>? InteractiveRebaseRequested;
+
+    /// <summary>A tag to make at a commit of a log.</summary>
+    public event EventHandler<CommitInfo>? NewTagRequested;
 
     /// <summary>Show History's tab for a file, a folder or lines: the one open for it, else a new one after the others.</summary>
     public GitLogView ShowHistory(HistoryScope scope, string title)
@@ -120,6 +131,7 @@ public sealed class GitView : DockPanel
         }
         WorkingTreeDiffView files = new(vcs, compared);
         files.DiffRequested += (_, change) => WorkingTreeDiffRequested?.Invoke(this, (compared, change));
+        files.GetRequested += (_, change) => GetFromRequested?.Invoke(this, (compared, change));
         files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         Grid body = new() { RowDefinitions = new RowDefinitions("Auto,*") };
         body.Children.Add(Explanation(compared.Explanation, 0));
@@ -201,7 +213,10 @@ public sealed class GitView : DockPanel
         view.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         view.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
         view.NewBranchRequested += (_, commit) => NewBranchRequested?.Invoke(this, commit);
+        view.CheckoutRequested += (_, commit) => CheckoutRequested?.Invoke(this, commit);
         view.ResetRequested += (_, reset) => ResetRequested?.Invoke(this, reset);
+        view.InteractiveRebaseRequested += (_, commit) => InteractiveRebaseRequested?.Invoke(this, commit);
+        view.NewTagRequested += (_, commit) => NewTagRequested?.Invoke(this, commit);
         return view;
     }
 

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.2" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 xliff-core-1.2-transitional.xsd">
+  <file datatype="xml" source-language="en" target-language="fr" original="../TestWords.resx">
+    <body>
+      <trans-unit id="Greeting">
+        <source>Hello</source>
+        <target state="translated">Bonjour</target>
+        <note>A greeting the tests read in each language.</note>
+      </trans-unit>
+      <trans-unit id="FilesFound">
+        <source>{count, plural, =0 {No file found} one {# file found} other {# files found}}</source>
+        <target state="translated">{count, plural, =0 {Aucun fichier trouvé} one {# fichier trouvé} many {# de fichiers trouvés} other {# fichiers trouvés}}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="NotAProject">
+        <source>{name} is not a project</source>
+        <target state="translated">{name} n'est pas un projet</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Stopped">
+        <source>{what} stopped: {why}</source>
+        <target state="translated">{what} s'est arrêté : {why}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Moved">
+        <source>{kind, select, file {The file moved} folder {The folder moved} other {It moved}}</source>
+        <target state="translated" state-qualifier="leveraged-mt">{kind, select, file {Le fichier a été déplacé} folder {Le dossier a été déplacé} other {Déplacé}}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Measured">
+        <source>{amount, number} of {total, number, integer}</source>
+        <target state="translated">{amount, number} sur {total, number, integer}</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Quoted">
+        <source>The folder's '{'braces'}' and it''s quoted</source>
+        <target state="translated">Les '{'accolades'}' du dossier</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="EnglishOnly">
+        <source>Only in English</source>
+        <target state="new">Only in English</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="EnglishChanged">
+        <source>Words whose English changed since</source>
+        <target state="needs-review-translation">Mots dont l'anglais a changé</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="Renamed">
+        <source>{name} was renamed</source>
+        <target state="needs-review-translation">{nom} a été renommé</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="NotYetTranslated">
+        <source>Not yet translated</source>
+        <target state="new">Not yet translated</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="AsksMore">
+        <source>Rename…</source>
+        <target state="translated">Renommer…</target>
+        <note>An action's title ending in the dots that say it asks more.</note>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

@@ -28,6 +28,9 @@ public sealed class ServerWatches : IDisposable
     private readonly WatchedFiles watched;
     private readonly Lock gate = new();
     private readonly Lock refreshing = new();
+
+    /// <summary>The registrations over a watcher's folder as a refresh reads them, under <see cref="refreshing"/>.</summary>
+    private readonly List<FileWatch> concerning = [];
     private readonly Dictionary<(string Folder, bool Recursive), Watched> own = [];
 
     /// <summary>Passed-over folders come or gone since the last refresh, whose watchers are made anew: one deleted and made
@@ -372,8 +375,8 @@ public sealed class ServerWatches : IDisposable
     {
         lock (refreshing)
         {
-            HashSet<(string Folder, bool Recursive)> needed = Needed();
-            IReadOnlyList<FileWatch> watches = watched.Watches;
+            WatchIndex watches = watched.Index;
+            HashSet<(string Folder, bool Recursive)> needed = Needed(watches);
             List<(string Folder, bool Recursive)> starting;
             List<Watched> renewing = [];
             List<Watched> kept;
@@ -397,12 +400,12 @@ public sealed class ServerWatches : IDisposable
             renewing.ForEach(w => w.Dispose());
             foreach (Watched tree in kept)
             {
-                tree.Concern(Concerning(tree.Top, watches));
+                tree.Concern(watches, concerning);
             }
             List<Watched> started = [];
             foreach ((string at, bool recursive) in starting)
             {
-                Watched tree = new(this, at, recursive, Concerning(at, watches), apart: beside is null || !PathNames.Within(at, beside));
+                Watched tree = new(this, at, recursive, watches, apart: beside is null || !PathNames.Within(at, beside));
                 bool taken = false;
                 lock (gate)
                 {
@@ -468,14 +471,10 @@ public sealed class ServerWatches : IDisposable
         IdeErrors.Observe(replacing.Any(tree => tree.Apart) ? BackgroundWork.Unheld(StopAsync) : BackgroundWork.Run(StopAsync));
     }
 
-    /// <summary>The registrations that may match a path in a folder: those of a folder in it, over it, or of no folder.</summary>
-    private static IReadOnlyList<FileWatch> Concerning(string at, IReadOnlyList<FileWatch> watches) =>
-        [.. watches.Where(w => w.Folder is not { } over || PathNames.Within(over, at) || PathNames.IsUnder(at, over)).DistinctBy(w => (w.Folder, w.Pattern))];
-
     /// <summary>The folders the registrations need watched that the folder's watcher does not hear, none under another
     /// watched with its subfolders, and only those there now (a folder made later comes with a registration or
     /// <see cref="Heard"/>).</summary>
-    private HashSet<(string Folder, bool Recursive)> Needed()
+    private HashSet<(string Folder, bool Recursive)> Needed(WatchIndex watches)
     {
         string? beside;
         List<string> leaving;
@@ -487,7 +486,7 @@ public sealed class ServerWatches : IDisposable
         // Nothing under a folder about to go or move is looked at: Windows refuses the move while a file or folder there is open.
         bool Leaving(string at) => leaving.Any(g => PathNames.Within(at, g));
         List<(string Folder, bool Recursive)> wanted = [];
-        foreach (FileWatch watch in watched.Watches.DistinctBy(w => (w.Folder, w.Recursive)))
+        foreach (FileWatch watch in watches.All.DistinctBy(w => (w.Folder, w.Recursive)))
         {
             if (watch.Folder is not { } at)
             {
@@ -508,10 +507,36 @@ public sealed class ServerWatches : IDisposable
             }
         }
         HashSet<(string Folder, bool Recursive)> needed = [];
-        List<string> whole = [.. wanted.Where(w => w.Recursive).Select(w => w.Folder)];
+        // Looked up from each folder's own name and those above it: a refresh costs what its folders do, not their square.
+        Dictionary<string, List<string>> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string at, bool recursive) in wanted.Where(w => w.Recursive))
+        {
+            string key = at.AsSpan().TrimEnd(PathNames.Separators).ToString();
+            if (!byName.TryGetValue(key, out List<string>? alike))
+            {
+                byName[key] = alike = [];
+            }
+            alike.Add(at);
+        }
+        Dictionary<string, List<string>>.AlternateLookup<ReadOnlySpan<char>> whole = byName.GetAlternateLookup<ReadOnlySpan<char>>();
+        bool UnderWhole(string at, bool recursive)
+        {
+            if (!recursive && whole.TryGetValue(at.AsSpan().TrimEnd(PathNames.Separators), out List<string>? same) && same.Any(w => PathNames.Same(at, w)))
+            {
+                return true;
+            }
+            foreach (ReadOnlySpan<char> above in PathNames.Above(at))
+            {
+                if (whole.TryGetValue(above, out List<string>? over) && over.Any(w => PathNames.IsUnder(at, w)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
         foreach ((string at, bool recursive) in wanted)
         {
-            if (whole.Any(above => PathNames.IsUnder(at, above) || (!recursive && PathNames.Same(at, above))) || Leaving(at))
+            if (UnderWhole(at, recursive) || Leaving(at))
             {
                 continue;
             }
@@ -652,11 +677,15 @@ public sealed class ServerWatches : IDisposable
         private readonly HashSet<string> came = new(PathNames.Comparer);
         private IReadOnlyList<FileWatch> concerning;
 
-        public Watched(ServerWatches owner, string top, bool recursive, IReadOnlyList<FileWatch> concerning, bool apart)
+        /// <summary>The registrations <see cref="concerning"/> was read from.</summary>
+        private WatchIndex concernedBy;
+
+        public Watched(ServerWatches owner, string top, bool recursive, WatchIndex watches, bool apart)
             : base(top, FolderWatching.Platform, FolderWatching.Platform.EachFolder || !recursive)
         {
             this.owner = owner;
-            this.concerning = concerning;
+            concerning = watches.Concerning(top);
+            concernedBy = watches;
             Recursive = recursive;
             Apart = apart;
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -689,25 +718,27 @@ public sealed class ServerWatches : IDisposable
 
         protected override bool FoundFromStart => true;
 
-        /// <summary>The registrations over the folder now: when they differ, what they reach is walked and recorded again.</summary>
-        public void Concern(IReadOnlyList<FileWatch> now)
+        /// <summary>The registrations over the folder now, read again (into <paramref name="read"/>, the refresh's) only where
+        /// any came or went since: when they differ, what they reach is walked and recorded again. On the refresh's thread.</summary>
+        public void Concern(WatchIndex watches, List<FileWatch> read)
         {
-            IReadOnlyList<FileWatch> was = Volatile.Read(ref concerning);
-            if (was.Count == now.Count && was.Select(w => (w.Folder, w.Pattern)).ToHashSet().SetEquals(now.Select(w => (w.Folder, w.Pattern))))
+            if (ReferenceEquals(watches, concernedBy))
             {
                 return;
             }
-            Volatile.Write(ref concerning, now);
+            concernedBy = watches;
+            watches.Concerning(Top, read);
+            if (WatchIndex.Alike(Volatile.Read(ref concerning), read))
+            {
+                return;
+            }
+            Volatile.Write(ref concerning, [.. read]);
             Rewalk();
         }
 
         protected override bool Kept(string path) => PathNames.Same(path, Top) || Recursive && Volatile.Read(ref concerning).Any(w => w.Reaches(path));
 
-        protected override bool Records(string at, string name, bool folder)
-        {
-            string path = Path.Join(at, name);
-            return folder && Kept(path) || Matched(path);
-        }
+        protected override bool Records(string at, string name, string path, bool folder) => folder && Kept(path) || Matched(path);
 
         private bool Matched(string path) => Volatile.Read(ref concerning).Any(w => w.Matches(path));
 
@@ -733,15 +764,7 @@ public sealed class ServerWatches : IDisposable
         /// told without a string made (a build's churn).</summary>
         protected override Notice Noticed(string path, bool created)
         {
-            IReadOnlyList<FileWatch> watches = owner.watched.Watches;
-            for (int i = 0; i < watches.Count; i++)
-            {
-                if (watches[i].Matches(path))
-                {
-                    return new Notice(Takes: true, Counts: true, PathNames.Canonical(path));
-                }
-            }
-            return new Notice(Takes: false, Counts: true, Canonical: null);
+            return owner.watched.Index.Matches(path) ? new Notice(Takes: true, Counts: true, PathNames.Canonical(path)) : new Notice(Takes: false, Counts: true, Canonical: null);
         }
 
         protected override void Take(string path, bool created, Notice notice)

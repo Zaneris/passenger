@@ -202,7 +202,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         string name = Path.GetFileName(opening.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        ConfirmDialog dialog = new($"Open {name} here?", $"{agent} wants to open {opening} here, replacing {replacing}.", AgentAdmissionDialog.Allow, AgentAdmissionDialog.DontAllow)
+        ConfirmDialog dialog = new($"Open {name} here?", $"{agent} wants to open {opening} here, replacing {replacing}.", Mcp.McpWords.Allow.Shown, Mcp.McpWords.DontAllow.Shown)
         {
             EnterAgrees = false,
         };
@@ -316,7 +316,7 @@ public partial class MainWindow
             }
             if (at is WorkspaceTrustDialog)
             {
-                return Refusals.TrustAnsweredByThePerson;
+                return Refusals.TrustAnsweredByThePerson.Shown;
             }
             if (at is ConfirmDialog { PersonsAlone: { } persons })
             {

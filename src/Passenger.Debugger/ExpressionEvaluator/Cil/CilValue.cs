@@ -270,7 +270,7 @@ internal interface IDebuggeeLocation : ICilLocation
 /// snapshot, so a struct written through one copy would read back as it was ("sum = 10m" showing the old sum). A by-ref
 /// slot (a ref, out or in parameter, a ref local, a struct method's this) reads as the managed location it holds, which the
 /// code loading it goes through.</summary>
-internal sealed class FrameSlotLocation(ICorDebugILFrame frame, int index, bool argument, Func<ICorDebugILFrame> refind) : IDebuggeeLocation
+internal sealed class FrameSlotLocation(ICorDebugILFrame frame, int index, Func<ICorDebugILFrame, int, ICorDebugValue> slot, Func<ICorDebugILFrame> refind) : IDebuggeeLocation
 {
     public ICorDebugValue Value
     {
@@ -278,13 +278,13 @@ internal sealed class FrameSlotLocation(ICorDebugILFrame frame, int index, bool 
         {
             try
             {
-                return Slot(frame);
+                return slot(frame, index);
             }
             catch (System.Runtime.InteropServices.COMException error) when (error.HResult == Cor.CORDBG_E_OBJECT_NEUTERED)
             {
                 // A function evaluation ran the program and neutered the frame: the same frame, found again.
                 frame = refind();
-                return Slot(frame);
+                return slot(frame, index);
             }
         }
     }
@@ -293,8 +293,6 @@ internal sealed class FrameSlotLocation(ICorDebugILFrame frame, int index, bool 
         ? CilValue.FromLocation(new FrameSlotTarget(this))
         : new CorDebugLocation(Value).Read();
     public void Write(CilValue value) => new CorDebugLocation(Value).Write(value);
-
-    private ICorDebugValue Slot(ICorDebugILFrame at) => argument ? at.GetArgument(index) : at.GetLocalVariable(index);
 }
 
 /// <summary>Where a by-ref slot of the frame refers to, reached through the slot afresh each time: a function evaluation

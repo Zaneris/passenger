@@ -56,15 +56,15 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
         Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
         try
         {
-            Task<string?> running = window.RunAsync();
-            Ui.PumpUntil(() => running.IsCompleted || window.Actions.Work.Of(AppActions.RunProgram)?.Stage.StartsWith("Bringing", StringComparison.Ordinal) == true
+            Task<Words?> running = window.RunAsync();
+            Ui.PumpUntil(() => running.IsCompleted || window.Actions.Work.Of(AppActions.RunProgram)?.Stage.Shown.StartsWith("Bringing", StringComparison.Ordinal) == true
                 && Docker.Said("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}") is { Length: > 0 }, "Run to begin bringing the services up", TimeSpan.FromMinutes(5));
             Assert.False(running.IsCompleted, $"Run ended before its services came up: {(running.IsCompleted ? running.Result : null)}");
-            Task<string?> debugging = window.DebugAsync();
+            Task<Words?> debugging = window.DebugAsync();
             // Debug's start holds the window's work until the gate opens, so the wait runs the window's loop without waiting it out.
-            Assert.Equal("Compose: compose.yaml was stopped as it started", Ui.AwaitPumped(running, "Run's start to end as Debug takes its place", TimeSpan.FromMinutes(2)));
+            Assert.Equal("Compose: compose.yaml was stopped as it started", Ui.AwaitPumped(running, "Run's start to end as Debug takes its place", TimeSpan.FromMinutes(2))?.English);
             Open(folder);
-            string? refused = Ui.Await(debugging, "Debug's run to come up", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(debugging, "Debug's run to come up", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             DebugTab web = ContainerRunDebuggingTests.Tab(window, "web");
             DebugTab api = ContainerRunDebuggingTests.Tab(window, "api");
@@ -97,13 +97,13 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
         File.WriteAllText(Path.Combine(other, "notes.txt"), "the next folder\n");
         try
         {
-            Task<string?> debugging = window.DebugAsync();
-            Ui.PumpUntil(() => debugging.IsCompleted || window.Actions.Work.Of(AppActions.Debug)?.Stage.StartsWith("Attaching the debugger", StringComparison.Ordinal) == true
+            Task<Words?> debugging = window.DebugAsync();
+            Ui.PumpUntil(() => debugging.IsCompleted || window.Actions.Work.Of(AppActions.Debug)?.Stage.Shown.StartsWith("Attaching the debugger", StringComparison.Ordinal) == true
                 && Docker.Said("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}") is { Length: > 0 }, "Debug to bring the services up and attach", TimeSpan.FromMinutes(5));
             Assert.False(debugging.IsCompleted, $"Debug ended before its services came up: {(debugging.IsCompleted ? debugging.Result : null)}");
             Task opening = window.OpenFolder(other);
             Ui.WaitFor(() => opening.IsCompleted, "the next folder to open", TimeSpan.FromMinutes(1));
-            Assert.Equal(Refusals.SolutionClosed, Ui.Await(debugging, "Debug's start to end with its folder", TimeSpan.FromMinutes(2)));
+            Assert.Equal(Refusals.SolutionClosed.Shown, Ui.Await(debugging, "Debug's start to end with its folder", TimeSpan.FromMinutes(2))?.Shown);
             Docker.TakenDown(project, "the left folder's containers to be taken down");
             Ui.Hold(TimeSpan.FromSeconds(3), "a late session of the left folder's to show");
             Assert.Empty(window.Debugger.Tabs.Select(t => t.Name));
@@ -114,7 +114,7 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
         {
             foreach (string left in Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                Docker.Run("rm", "-f", left);
+                Docker.Remove(left);
             }
         }
         window.Close();
@@ -139,13 +139,13 @@ public sealed class ContainerRunStopsTests(ContainerRunDebuggingTests.Tools tool
     /// <summary>Debugs the configuration, presses Stop once Debug's stage says <paramref name="stage"/>, and checks what is left.</summary>
     private static void StoppedAt(MainWindow window, string project, string stage, string what)
     {
-        Task<string?> debugging = window.DebugAsync();
-        Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Debug)?.Stage.StartsWith(stage, StringComparison.Ordinal) == true || debugging.IsCompleted,
+        Task<Words?> debugging = window.DebugAsync();
+        Ui.PumpUntil(() => window.Actions.Work.Of(AppActions.Debug)?.Stage.Shown.StartsWith(stage, StringComparison.Ordinal) == true || debugging.IsCompleted,
             $"Debug to reach {what}", TimeSpan.FromMinutes(5));
         Assert.False(debugging.IsCompleted, $"Debug ended before {what}: {(debugging.IsCompleted ? debugging.Result : null)}");
         string[] containers = Docker.Run("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}").Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.True(window.Perform(AppActions.Stop), "Stop could not run");
-        string? said = Ui.Await(debugging, $"Debug to end once stopped during {what}", TimeSpan.FromMinutes(2));
+        string? said = Ui.Await(debugging, $"Debug to end once stopped during {what}", TimeSpan.FromMinutes(2))?.English;
         Assert.Equal("Compose: compose.yaml was stopped as it started", said);
         Docker.TakenDown(project, $"no container to be left after Stop during {what}");
         Ui.WaitFor(() => !window.Debugger.Tabs.Any(t => t.IsLive), $"no Debug tab to be left live after Stop during {what}");

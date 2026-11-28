@@ -44,9 +44,6 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     /// <summary>The folds of the files opened lately, each as it closed, the latest first.</summary>
     public List<KeptFolds> Folds { get; init; } = [];
 
-    /// <summary>Whether the banner's offer of Passenger as Godot's script editor was taken or dismissed, never to come again.</summary>
-    public bool GodotEditorOffered { get; init; }
-
     /// <summary>The project style whose C# script templates for Godot were last written or offered, which a style changed
     /// since offers to write again, once.</summary>
     public string? GodotTemplatesStyle { get; init; }
@@ -70,6 +67,7 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
         Folds = [.. (Folds ?? []).Where(f => f is { Path.Length: > 0 }).Take(FoldMemory.Kept).Select(f => f with
         {
             Folded = [.. (f.Folded ?? []).Where(r => r is [>= 0 and var start, var end] && end > start)],
+            Own = [.. (f.Own ?? []).Where(r => r is [>= 0 and var start, var end] && end > start)],
         })],
         Editors = Editors is { } editors ? Clamp(editors) : null,
         EditorWindows = [.. (EditorWindows ?? []).Where(w => w?.Editors is not null).Select(w => w with
@@ -100,12 +98,15 @@ public sealed record WorkspaceState : IStateDocument<WorkspaceState>
     };
 }
 
-/// <summary>A file's folds as it closed: the regions folded, each its start and end in the file's text.</summary>
+/// <summary>A file's folds as it closed: the regions folded, and the stretches the person folded themselves, each its
+/// start and end in the file's text.</summary>
 public sealed record KeptFolds
 {
     public string Path { get; init; } = string.Empty;
 
     public List<int[]> Folded { get; init; } = [];
+
+    public List<int[]> Own { get; init; } = [];
 }
 
 /// <summary>The folds of the files a folder's window opened: each file's as it last closed, the latest first, so one
@@ -129,6 +130,10 @@ public sealed class FoldMemory
         return region => folded.Contains((region.Start, region.End));
     }
 
+    /// <summary>The stretches a file closed with folded by the person themselves; none for a file it has none of.</summary>
+    public IReadOnlyList<(int Start, int End)> OwnOf(string path) =>
+        files.FirstOrDefault(f => f.Path == path) is { } kept ? [.. kept.Own.Select(f => (f[0], f[1]))] : [];
+
     /// <summary>Keeps a file's folds as they are, once its regions have been found.</summary>
     public void Remember(OpenDocument document)
     {
@@ -137,7 +142,12 @@ public sealed class FoldMemory
             return;
         }
         files.RemoveAll(f => f.Path == document.Path);
-        files.Insert(0, new KeptFolds { Path = document.Path, Folded = [.. document.FoldRegions.Where(r => r.Folded).Select(r => new[] { r.Start, r.End })] });
+        files.Insert(0, new KeptFolds
+        {
+            Path = document.Path,
+            Folded = [.. document.FoldRegions.Where(r => r.Folded && r.Kind != FoldKind.Own).Select(r => new[] { r.Start, r.End })],
+            Own = [.. document.OwnFolds.Select(f => new[] { f.Start, f.End })],
+        });
         if (files.Count > Kept)
         {
             files.RemoveRange(Kept, files.Count - Kept);

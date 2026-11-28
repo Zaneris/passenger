@@ -150,7 +150,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 MenuFlyout options = window.DockHost.OpenOptions ?? throw new Xunit.Sdk.XunitException("The Explorer's Options opened no menu");
                 MenuItem[] made = [.. options.Items.OfType<MenuItem>()];
                 Ui.GreyedSayWhy(made, "The Explorer's Options");
-                string place = Passenger.App.Docking.ToolWindow.Name(window.DockHost.Windows.Single(w => w.Id == ToolWindowIds.Explorer).Anchor);
+                string place = Passenger.App.Docking.ToolWindow.Name(window.DockHost.Windows.Single(w => w.Id == ToolWindowIds.Explorer).Anchor).English;
                 foreach ((string sub, string current) in (ReadOnlySpan<(string, string)>)[("View Mode", "Dock"), ("Move to", place)])
                 {
                     MenuItem parent = made.Single(i => Header(i) == sub);
@@ -245,6 +245,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Passenger.App.Docking.DockHost dock = window.DockHost;
             foreach (Passenger.App.Docking.ToolWindow tool in dock.Windows.ToList())
             {
+                // A window that starts among the editors has its header once docked.
+                dock.SetMode(tool, Passenger.App.Docking.ToolMode.Docked);
                 dock.Show(tool.Id);
                 Ui.Settle();
                 Button options = tool.Content.GetVisualAncestors().OfType<DockPanel>().First(p => p.Classes.Contains(StyleClasses.ToolPane))
@@ -711,7 +713,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 foreach (string service in services)
                 {
                     Button button = view.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains(StyleClasses.Tool) && ActionButtons.GetAction(b) == service);
-                    Assert.Equal(window.Actions[service]!.Title, ActionTips.Of(button) ?? ToolTip.GetTip(button) as string);
+                    Assert.Equal(window.Actions[service]!.Title.English, ActionTips.Of(button) ?? ToolTip.GetTip(button) as string);
                 }
             }
         }
@@ -1362,9 +1364,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     settings.Page = SettingsDialog.KeymapPage;
                     Ui.Settle();
                     Radii(settings, "Settings' Keymap page");
-                    settings.Page = SettingsDialog.McpPage;
+                    settings.Page = SettingsDialog.AgentsPage;
                     Ui.Settle();
-                    Radii(settings, "Settings' MCP Server page");
+                    Radii(settings, "Settings' Agents page");
                 }
                 finally
                 {
@@ -1618,7 +1620,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             {
                 window.DockHost.Show(tool.Id);
                 Ui.Settle();
-                Check(tool.Title, window);
+                Check(tool.Title.English, window);
             }
             settings = window.ShowSettings();
             Ui.Settle();
@@ -1670,7 +1672,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         {
                             hides++;
                             string? hide = KeysOf(AppActions.HideToolWindow);
-                            Assert.True(tip == ActionTips.Named("Hide", hide),
+                            Assert.True(tip == ActionTips.Named("Hide", hide).English,
                                 $"Under {preset}'s keymap, {tool.Title}'s Hide says \"{tip}\", where the keys that hide it are {hide ?? "none"}");
                         }
                         else if ((ActionButtons.GetAction(button) ?? ActionTips.ActionOf(button)) is { } action && KeysOf(action) is { } keys)
@@ -1771,8 +1773,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             ActionContext here = window.Actions.Context();
             foreach (IdeAction action in window.Actions.All)
             {
-                Check(action.Id, action.Title);
-                Check($"{action.Id} in the editor", action.TitleWhere(here));
+                Check(action.Id, action.Title.English);
+                Check($"{action.Id} in the editor", action.TitleWhere(here).English);
             }
             foreach (NativeMenuItem item in MainWindow.ApplicationMenu is { } application ? Native(application) : [])
             {
@@ -2229,7 +2231,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Ui.Settle();
             Button delete = dialog.Templates.DeleteButton;
             Assert.False(delete.IsEnabled, "Delete is not greyed for cw, a built-in template");
-            Rest(dialog, delete, "A built-in template is turned off by its check box, so it can be turned on again");
+            Rest(dialog, delete, "Delete Template: A built-in template is turned off by its check box, so it can be turned on again");
         }
         finally
         {
@@ -2315,7 +2317,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             Assert.True(untold.Count == 0, $"{untold.Count} controls of the diff say nothing of what they do: give each ToolButtons.Tip:\n{string.Join("\n", untold)}");
 
             // The arrow's tip names Rollback Lines' keys, which do its work to the change at the caret.
-            string rollBack = ActionTips.Named("Roll back change 1 to HEAD", ActionTips.Keys(AppActions.RollbackLines));
+            string rollBack = ActionTips.Named("Roll back change 1 to HEAD", ActionTips.Keys(AppActions.RollbackLines)).English;
             Button arrow = icons.Single(b => ToolTip.GetTip(b) as string == rollBack);
             CheckBox box = icons.OfType<CheckBox>().Single(b => ToolTip.GetTip(b) as string == "Include change 1 in commit");
             Assert.Equal("Roll back change 1 to HEAD", Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(arrow).GetName());
@@ -3408,7 +3410,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every theme key and icon the code names (TokenKeys and IconKeys, a literal still shaped like one in C#, a
     /// resource in XAML) is one the app's resources give, dark and light: a misspelt or missing one finds nothing, drawn as
     /// nothing (Transparent, no icon) with no error. A literal of that shape naming something else (a project's assembly, a
-    /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check.</summary>
+    /// diagnostic's source) is passed over; a key made at run time ($"Icon.{kind}") is its own code's to check. An icon is
+    /// named in XAML as a dynamic resource, which a theme's own icon of its key replaces.</summary>
     [Gate]
     [AvaloniaFact]
     public void Every_theme_key_and_icon_the_code_names_is_one_the_resources_give_dark_and_light()
@@ -3418,6 +3421,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Regex resource = new(@"\{(?:DynamicResource|StaticResource)\s+((?:Passenger|Icon)\.[\w.]+)\}");
         string root = Passenger.Tests.Debugging.Helpers.Debuggees.Root;
         List<string> missing = [];
+        List<string> held = [];
         int named = 0;
         foreach (System.Reflection.FieldInfo key in typeof(TokenKeys).GetFields().Concat(typeof(IconKeys).GetFields()))
         {
@@ -3451,12 +3455,18 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                     {
                         missing.Add($"{path}:{i + 1}: {key}");
                     }
+                    // A theme may give an icon of its own, which a control resolving its key once never takes.
+                    if (match.Value.StartsWith("{StaticResource Icon.", StringComparison.Ordinal))
+                    {
+                        held.Add($"{path}:{i + 1}: {key}");
+                    }
                 }
             }
         }
         Assert.True(named > 500, $"Only {named} keys were found named in the code: the search no longer reads it");
         Assert.True(missing.Count == 0, $"{missing.Count} keys the code names are no resource, dark or light, so what reads them draws nothing: give each in "
             + $"the theme (Tokens.axaml and every look, or Icons.axaml) or name the one that is there:\n{string.Join("\n", missing)}");
+        Assert.True(held.Count == 0, $"{held.Count} icons are named as static resources, so a theme's own icon for them never shows: name each as a DynamicResource:\n{string.Join("\n", held)}");
 
         bool Assembly(string name) => Enumerable.Range(2, name.Count(c => c == '.')).Any(parts =>
             Directory.Exists(Path.Combine(root, "src", string.Join('.', name.Split('.').Take(parts)))));
@@ -3586,8 +3596,9 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     }
 
     /// <summary>A message that sends a person to Settings names a page the dialog lists, as the dialog names it: through
-    /// SettingsDialog.PlaceOfPage, given one of the dialog's page constants. Words written after "Settings |" by hand, or
-    /// a page the dialog does not list, fail here, naming the line.</summary>
+    /// SettingsDialog.PlaceOfPage (or PlaceOfRow, for a row of it), given one of the dialog's page constants, so its path
+    /// is the tree's. Words written after "Settings |" by hand, or a page the dialog does not list, fail here, naming the
+    /// line.</summary>
     [AvaloniaFact]
     public void Every_message_that_sends_a_person_to_Settings_names_a_page_the_dialog_lists()
     {
@@ -3605,7 +3616,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             window.Close();
         }
         Regex byHand = new(@"\bSettings \|(?!\|)");
-        Regex placed = new(@"\bPlaceOfPage\(\s*(?:SettingsDialog\.)?([^()]*?)\s*\)");
+        Regex placed = new(@"\bPlaceOf(?:Page|Row)\(\s*(?:SettingsDialog\.)?([\w.]+?)\s*[,)]");
         List<string> found = [];
         int named = 0;
         foreach ((string path, string text) in UiFiles().Where(f => f.Path.EndsWith(".cs", StringComparison.Ordinal)))
@@ -3613,7 +3624,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
             string[] lines = text.Split('\n');
             for (int i = 0; i < lines.Length; i++)
             {
-                if (lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal) || lines[i].Contains("static string PlaceOfPage(string page)", StringComparison.Ordinal))
+                if (lines[i].TrimStart().StartsWith("//", StringComparison.Ordinal) || lines[i].Contains("static string PlaceOfPage(string page)", StringComparison.Ordinal)
+                    || lines[i].Contains("static string PlaceOfRow(string page, string label)", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -3624,8 +3636,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 foreach (Match place in placed.Matches(lines[i]))
                 {
                     named++;
-                    // A declared setting names the page its row is on, which the dialog lists as it makes the row.
-                    if (place.Groups[1].Value == "Row.Page" && path.EndsWith("Setting.cs", StringComparison.Ordinal))
+                    // A declared setting's row names the page it is on, which the dialog lists as it makes the row.
+                    if (place.Groups[1].Value is "Row.Page" or "row.Page" && (path.EndsWith("Setting.cs", StringComparison.Ordinal) || path.EndsWith("EditorConfigKnown.cs", StringComparison.Ordinal)))
                     {
                         continue;
                     }
@@ -4072,6 +4084,24 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         Assert.Matches(byHand, "        RowIcon chevron = RowIcon.Chevron();");
     }
 
+    /// <summary>The Explorer lists its names as NameOrder puts them, punctuation before digits before letters, alike on every
+    /// machine: a sort of the Explorer's or file nesting's by a string comparer or comparison of its own fails here, naming
+    /// its line, as OrdinalIgnoreCase puts a folder begun with an underscore after the letters (#2396).</summary>
+    [Fact]
+    public void Every_name_the_Explorer_lists_is_put_in_NameOrder()
+    {
+        Regex byHand = new(@"\.(?:Order|OrderBy|OrderByDescending|ThenBy|ThenByDescending|Sort)\(.*\bString(?:Comparer|Comparison)\.|\bSorted\w*<.*\bStringComparer\.");
+        string[] found = [.. UiFiles().Where(f => f.Path.StartsWith("src/Passenger.App/Explorer/", StringComparison.Ordinal) && f.Path.EndsWith(".cs", StringComparison.Ordinal))
+            .SelectMany(f => f.Text.Split('\n').Select((line, i) => (f.Path, Line: i + 1, Text: line)))
+            .Where(l => byHand.IsMatch(l.Text)).Select(l => $"{l.Path}:{l.Line}: {l.Text.Trim()}")];
+        Assert.True(found.Length == 0, $"{found.Length} of the Explorer's sorts compare names their own way, so a folder named to lead the list "
+            + $"lands after the letters, or the order differs from machine to machine: sort each by NameOrder.Instance:\n{string.Join("\n", found)}");
+        Assert.Matches(byHand, "            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)");
+        Assert.Matches(byHand, "            .Order(StringComparer.CurrentCultureIgnoreCase)];");
+        Assert.Matches(byHand, "        names.Sort((a, b) => string.Compare(a, b, StringComparison.OrdinalIgnoreCase));");
+        Assert.DoesNotMatch(byHand, "        .. beside.OrderBy(p => p.Name, NameOrder.Instance).Select(p => Project(p, node.Depth + 1))],");
+    }
+
     /// <summary>A RowIcon is one of two sizes, never one of its own: a row's or a tab's icon beside words (RowIcon.Size, its
     /// own) or a glyph (RowIcon.Glyph: a chevron, a tab's close), so like icons stand alike in every list. A RowIcon given a
     /// width or height outside RowIcon.cs fails here, naming its line.</summary>
@@ -4454,7 +4484,7 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
     /// <summary>Every icon button is made by ToolButtons (the title bar's and the find bar's declared in XAML and given their
     /// look there, a glyph's small one inside a chip, a field or a tab), so each is one size, one radius and named and greyed
     /// one way: the tool button's, a counted filter's, the small button's and the in-field button's classes named elsewhere
-    /// (a tab's × its tabs' own), and a control greyed with its tip of why written beside it by hand, fail here, naming the
+    /// (a tab's × its tabs' own), and a control of the App greyed by hand with its tip set beside it, fail here, naming the
     /// line.</summary>
     [Fact]
     public void Every_icon_button_is_made_and_greyed_with_why_by_ToolButtons()
@@ -4468,7 +4498,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         ];
         // A menu's item is greyed by its own piece, ListMenus.Grey.
         string[] greyers = ["/ToolButtons.cs", "/ToolWindows/ListMenus.cs"];
-        Regex greyed = new(@"\b([\w.]+)\.IsEnabled\s*=\s*[^;]*\bis\s+null\b");
+        // The App's alone: the libraries under it (the terminal's menu) reach no ToolButtons.
+        Regex greyed = new(@"\b([\w.\[\]]+)\.IsEnabled\s*=(?!=)");
         List<string> found = [];
         foreach ((string path, string text) in UiFiles())
         {
@@ -4482,15 +4513,20 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                         found.Add($"{path}:{i + 1}: {lines[i].Trim()}");
                     }
                 }
-                if (greyed.Match(lines[i]) is { Success: true } grey && !greyers.Any(o => path.EndsWith(o, StringComparison.Ordinal))
+                if (greyed.Match(lines[i]) is { Success: true } grey && path.StartsWith("src/Passenger.App/", StringComparison.Ordinal)
+                    && !greyers.Any(o => path.EndsWith(o, StringComparison.Ordinal))
                     && lines.Skip(Math.Max(0, i - 3)).Take(7).Any(l => l.Contains($"ToolTip.SetTip({grey.Groups[1].Value},", StringComparison.Ordinal)))
                 {
-                    found.Add($"{path}:{i + 1}: greyed with its tip of why by hand: {lines[i].Trim()}");
+                    found.Add($"{path}:{i + 1}: greyed by hand with its tip set beside it: {lines[i].Trim()}");
                 }
             }
         }
         Assert.True(found.Count == 0, $"{found.Count} icon buttons are made or greyed by hand, so their size, radius, keys and tips drift from every other's: "
             + $"make each with ToolButtons (Of, Glyph, Small, Toggle, Counted, or Give for one declared elsewhere) and grey it with ToolButtons.Grey:\n{string.Join("\n", found)}");
+        Assert.Matches(greyed, "        updateAll.IsEnabled = CanUpdateAll;");
+        Assert.Matches(greyed, "            WriteButton.IsEnabled = writable is null;");
+        Assert.DoesNotMatch(greyed, "        targetBox.IsEnabled &= idle;");
+        Assert.DoesNotMatch(greyed, "        if (button.IsEnabled == false)");
         Assert.Matches(owned[0].Named, "            Button = new Button { Classes = { StyleClasses.Tool }, Content = glyph };");
         Assert.Matches(owned[0].Named, "                    <Button Name=\"PreviousButton\" Classes=\"tool\" ToolTip.Tip=\"Previous occurrence\">");
         Assert.DoesNotMatch(owned[0].Named, "                    <Border Classes=\"toolbarRule\" />");
@@ -5071,6 +5107,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
         (_, "Color.FromArgb") when path.EndsWith("Godot/GodotValues.cs", StringComparison.Ordinal) => true,
         // A colour a running Godot game's node holds, shown as its swatch in the Live Visual Tree's properties.
         (_, "Color.FromArgb" or "new SolidColorBrush(Color.") when path.EndsWith("Godot/GodotValueCells.cs", StringComparison.Ordinal) => true,
+        // A colour a Windows Forms form's component is given, shown as its swatch in its design's properties.
+        (_, "Color.FromUInt32" or "new SolidColorBrush(Color.") when path.EndsWith("WinForms/FormProperties.cs", StringComparison.Ordinal) => true,
         // The ground of a web page setting none of its own: a browser's white, in every look.
         (_, "Brushes.White") when path.EndsWith("Editors/HtmlPreview.cs", StringComparison.Ordinal) => true,
         // A colour the program in the terminal names: xterm's 24-bit colours, its 256-colour cube and grey ramp.
@@ -5198,7 +5236,8 @@ public sealed class UiRulesTests : IClassFixture<UiRulesTests.Project>, IAsyncLi
                 }
             }
         }
-        foreach (string optional in ThemeFiles.Optional.Where(o => o.Value == ThemeTokenKind.Colour).Select(o => o.Key))
+        // The icons' tint is no colour drawn alone but a wash over each icon's own.
+        foreach (string optional in ThemeFiles.Optional.Where(o => o.Value == ThemeTokenKind.Colour && o.Key != IconLook.TintToken).Select(o => o.Key))
         {
             Assert.True(optional.StartsWith("Syntax.Brace", StringComparison.Ordinal), $"{optional} is a colour a theme may give that no rule says what it is read on");
             pairs.AddRange(pairs.Where(p => p.Fore == TokenKeys.Syntax_Brace1).ToArray().Select(p => p with { Fore = "Passenger." + optional }));

@@ -8,31 +8,46 @@ namespace Passenger.App.ToolWindows;
 public sealed partial class NuGetView
 {
     private readonly Button updateAll;
+    private readonly Button updateSelected;
     private bool showsUpdates;
     private bool checkingUpdates;
-    private bool updatingAll;
+    /// <summary>Whether a run of updates (<see cref="UpdateAsync"/>) is under way, whose changes' own ends say nothing.</summary>
+    private bool updatingMany;
     private IReadOnlyList<PackageRow> updateRows = [];
 
     public bool ShowsUpdates => showsUpdates;
 
-    public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingAll && !model.IsBusy && ToUpdate.Count > 0;
+    public bool CanUpdateAll => showsUpdates && !checkingUpdates && !updatingMany && !model.IsBusy && ToUpdate.Count > 0;
 
-    public string? UpdateAllWhyNot => CanUpdateAll ? null : model.IsBusy || updatingAll ? Refusals.PackageChangeUnderWay
-        : checkingUpdates ? "Checking for updates" : !showsUpdates ? "Open the Updates tab first"
-        : updateRows.Any(r => r.MovesTo is not null) ? "The filters leave no update" : "No updates available";
+    public string? UpdateAllWhyNot => (CanUpdateAll ? null
+        : UpdatesWhyNot ?? (updateRows.Any(r => r.MovesTo is not null) ? "The filters leave no update" : "No updates available"))?.Shown;
+
+    /// <summary>Why the Updates tab's rows can't be updated now: a package change under way, the tab not shown, or its
+    /// check still running; null where they can.</summary>
+    private Words? UpdatesWhyNot => model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
+        : checkingUpdates ? "Checking for updates" : !showsUpdates ? Refusals.UpdatesNotShown : null;
 
     /// <summary>The rows whose updates and fixes Update All makes: those the Sort and Filter leave, the search's words
     /// hiding none.</summary>
     private IReadOnlyList<PackageRow> ToUpdate => [.. Filtered(updateRows).Where(r => r.MovesTo is not null)];
 
-    /// <summary>Whether Update All moves a project's references: every project's, else the one Used By names alone.</summary>
+    /// <summary>Whether the Updates tab's runs move a project's references: every project's, else the one Used By names alone.</summary>
     private bool UpdatesIn(string project) => usedBy is null || PathNames.Same(usedBy, project);
+
+    /// <summary>The updates chosen in the Updates tab, in the list's order; none in another tab.</summary>
+    public IReadOnlyList<PackageRow> ChosenUpdates => showsUpdates && list.SelectedItems is { } chosen ? [.. rows.Where(chosen.Contains)] : [];
+
+    /// <summary>Why Update Selected can't run: as <see cref="UpdatesWhyNot"/> says, or no update chosen; null where it can.</summary>
+    public Words? UpdateSelectedWhyNot => UpdatesWhyNot ?? (ChosenUpdates.Count == 0 ? Refusals.NoUpdateChosen : null);
 
     public void ShowUpdates()
     {
         showsUpdates = true;
         picked = null;
         updateAll.IsVisible = true;
+        updateSelected.IsVisible = true;
+        // Several updates are chosen together here alone, to install as one.
+        list.SelectionMode = SelectionMode.Multiple;
         Show(packages);
         Hold(null);
         IdeErrors.Observe(RefreshAsync());
@@ -263,16 +278,99 @@ public sealed partial class NuGetView
             Hold(UpdateAllWhyNot);
             return;
         }
-        FolderPackages folder = model;
-        IReadOnlyList<PackageRow> shown = ToUpdate;
-        PackageUpdate[] targets = [.. shown.SelectMany(r => r.Moves.Where(m => UpdatesIn(m.Key)).GroupBy(m => m.Value, StringComparer.OrdinalIgnoreCase)
+        await UpdateAsync(Targets(ToUpdate), UpdateRun.All);
+    }
+
+    /// <summary>Update Selected: the updates chosen in the Updates tab, each in every project its row moves, and their
+    /// fixes, as one command of Undo; every update not chosen left as it is.</summary>
+    public async Task UpdateSelectedAsync()
+    {
+        if (UpdateSelectedWhyNot is { } why)
+        {
+            Hold(why.Shown);
+            return;
+        }
+        IReadOnlyList<PackageRow> chosen = ChosenUpdates;
+        string named = ChosenNamed(chosen);
+        await UpdateAsync(Targets(chosen), new UpdateRun($"Update {named}", $"Updating {named}…", AppActions.NuGetUpdateSelected));
+    }
+
+    /// <summary>The updates chosen, by their packages' ids where they are few, else counted.</summary>
+    private static string ChosenNamed(IReadOnlyList<PackageRow> chosen) =>
+        chosen.Count is > 0 and <= 3 ? Plural.Listed([.. chosen.Select(r => r.Id)]) : Plural.Of(chosen.Count, "NuGet package");
+
+    /// <summary>What Update Selected tells on hover while it can run: the packages it updates.</summary>
+    private string SelectedTip() => $"Update {ChosenNamed(ChosenUpdates)} across their projects, as one step of Undo";
+
+    /// <summary>The Updates tab's rows as a run's moves, in every project or the one Used By names: each row's update in the
+    /// projects it moves, each to the newest version its references take, and its fixes.</summary>
+    private PackageUpdate[] Targets(IReadOnlyList<PackageRow> rows) =>
+        [.. rows.SelectMany(r => r.Moves.Where(m => UpdatesIn(m.Key)).GroupBy(m => m.Value, StringComparer.OrdinalIgnoreCase)
                 .Select(g => new PackageUpdate(r.Id, g.Key, [.. g.Select(m => m.Key)]))),
-            .. shown.SelectMany(r => r.Fixes.Where(f => UpdatesIn(f.Key)).Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
-        updatingAll = true;
+            .. rows.SelectMany(r => r.Fixes.Where(f => UpdatesIn(f.Key)).Select(f => new PackageUpdate(r.Id, f.Value.Version, [f.Key]) { Frameworks = f.Value.Frameworks }))];
+
+    /// <summary>Why the chosen package can't be moved to the chosen version in every project referencing an older one
+    /// (<see cref="UpdateEverywhereAsync"/>); null where it can.</summary>
+    public Words? UpdateEverywhereWhyNot =>
+        model.IsBusy || updatingMany ? Refusals.PackageChangeUnderWay
+        : Selected is not { } row ? Refusals.NoPackageChosen
+        : !row.IsInstalled ? Refusals.ReferencedByNoProject(row.Id)
+        : ChosenVersion is not { Length: > 0 } version ? Refusals.NoVersionChosen(row.Id)
+        : Behind(row, version).Count == 0 ? Refusals.UpdatedEverywhere(row.Id, version)
+        : model.IsAuditing ? Refusals.VulnerabilitiesUnread
+        : null;
+
+    /// <summary>Update in All Projects: the chosen package moved to the chosen version in every project referencing an
+    /// older one, each as its own Update moves it (a pin kept a pin, a central version where the evaluation keeps it), as
+    /// one command of Undo; every other package left as it is. A project one of whose frameworks has a newer version is
+    /// left too, saying so, as an update never takes a framework down.</summary>
+    public async Task UpdateEverywhereAsync()
+    {
+        if (UpdateEverywhereWhyNot is { } why)
+        {
+            Hold(why.Shown);
+            return;
+        }
+        PackageRow row = Selected!;
+        string version = ChosenVersion!;
+        await UpdateAsync([new PackageUpdate(row.Id, version, Behind(row, version))],
+            new UpdateRun($"Update {row.Id} to {version} in All Projects", $"Updating {row.Id} to {version} in every project…", AppActions.NuGetUpdateEverywhere));
+    }
+
+    /// <summary>The projects referencing a package that a version would move up in some framework, those it would also move
+    /// down in among them (which the run passes over, saying so).</summary>
+    private static IReadOnlyList<string> Behind(PackageRow row, string version) =>
+        [.. row.Installed.Where(p => InstalledVersion.Move(version, p.Value) is PackageMove.Update or PackageMove.UpdateAndDowngrade).Select(p => p.Key)
+            .Order(PathNames.Comparer)];
+
+    /// <summary>What Update in All Projects tells on hover: the projects it moves, and those it leaves as they are.</summary>
+    private string? EverywhereTip(PackageRow row)
+    {
+        if (ChosenVersion is not { Length: > 0 } version)
+        {
+            return null;
+        }
+        IReadOnlyList<string> behind = Behind(row, version);
+        string[] moved = [.. behind.Select(NameOf).Order(StringComparer.OrdinalIgnoreCase)];
+        string[] kept = [.. row.Installed.Keys.Where(p => !behind.Contains(p, PathNames.Comparer)).Select(NameOf).Order(StringComparer.OrdinalIgnoreCase)];
+        return moved.Length == 0 ? null
+            : $"Moves {row.Id} to {version} in {Plural.Listed(moved)}, as one step of Undo"
+                + (kept.Length > 0 ? $"; {Plural.Listed(kept)} {Plural.Agreeing(kept.Length, "has", "have")} it or a newer version" : string.Empty);
+    }
+
+    /// <summary>A project's name by its path, as the window lists it.</summary>
+    private string NameOf(string project) => model.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project))?.Name ?? Path.GetFileNameWithoutExtension(project);
+
+    /// <summary>A run of updates as one command of Undo, the window's actions greyed until it ends, its words held in the
+    /// status after, and the list read again.</summary>
+    private async Task UpdateAsync(IReadOnlyList<PackageUpdate> targets, UpdateRun run)
+    {
+        FolderPackages folder = model;
+        updatingMany = true;
         EnableActions();
         try
         {
-            PackageUpdateResult result = await folder.UpdateAllAsync(targets, BeforeInstall);
+            PackageUpdateResult result = await folder.UpdateAsync(targets, BeforeInstall, run);
             if (model == folder)
             {
                 Hold(result.Message);
@@ -280,7 +378,7 @@ public sealed partial class NuGetView
         }
         finally
         {
-            updatingAll = false;
+            updatingMany = false;
             await RefreshAsync();
             EnableActions();
         }

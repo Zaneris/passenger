@@ -41,11 +41,31 @@ public abstract class Table
     /// <summary>What taking some of its rows out of the file is called, null where they cannot be.</summary>
     public virtual string? DeleteTitle(int rows) => null;
 
+    /// <summary>What a cell shows of a change not yet written: written over, in a row added or in one deleted.</summary>
+    public virtual CellMark MarkOf(int row, int column) => CellMark.None;
+
+    /// <summary>What a row's number shows of the changes not yet written in it.</summary>
+    public virtual CellMark RowMark(int row) => CellMark.None;
+
     /// <summary>A cell as a sort compares it: a number, a date, text, or nothing.</summary>
     public abstract CellValue ValueOf(int row, int column);
 
+    /// <summary>A cell's value as a copy writes it (<see cref="RowWriter"/>): a number, a date, bytes or text as read, null
+    /// for none; the text shown where the table holds nothing else.</summary>
+    public virtual object? ValueAt(int row, int column) => Cell(row, column);
+
+    /// <summary>A column's type as its database names it, by which a copy writes its values; empty where none does.</summary>
+    public virtual string TypeOf(int column) => string.Empty;
+
+    /// <summary>A writer of its rows as SQL inserts into the table they came from, in their database's SQL; null where they
+    /// are no database's.</summary>
+    public virtual RowWriter? Inserts(TextWriter into, string lineBreak) => null;
+
     /// <summary>The table as its file has it, whatever order it is shown in.</summary>
     public virtual Table Unsorted => this;
+
+    /// <summary>Whether a cell stands for a field its row lacks (a document's), drawn muted apart from any value, null too.</summary>
+    public virtual bool IsAbsent(int row, int column) => false;
 
     /// <summary>The column its rows are sorted by and which way; null in the file's own order.</summary>
     public virtual (int Column, bool Descending)? Sort => null;
@@ -61,6 +81,15 @@ public abstract class Table
         }
         return new string(name[at..]);
     }
+}
+
+/// <summary>What a cell or a row shows of a change not yet written.</summary>
+public enum CellMark
+{
+    None,
+    Changed,
+    Added,
+    Deleted,
 }
 
 /// <summary>What a cell holds, as a sort compares it.</summary>

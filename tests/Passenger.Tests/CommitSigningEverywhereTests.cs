@@ -15,12 +15,12 @@ namespace Passenger.Tests;
 public sealed class CommitSigningEverywhereTests : IDisposable
 {
     private readonly string folder = PathNames.Canonical(TestFolders.Create("signing-everywhere-"));
-    private readonly string? global = Environment.GetEnvironmentVariable("GIT_CONFIG_GLOBAL");
+    private readonly string? global = Environment.GetEnvironmentVariable(GitVariables.ConfigGlobal);
     private readonly string? configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
 
     public void Dispose()
     {
-        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", global);
+        Environment.SetEnvironmentVariable(GitVariables.ConfigGlobal, global);
         OwnEnvironment.Set("XDG_CONFIG_HOME", configHome);
         TestFolders.Delete(folder);
     }
@@ -34,7 +34,7 @@ public sealed class CommitSigningEverywhereTests : IDisposable
         string keys = Directory.CreateDirectory(Path.Combine(folder, "keys")).FullName;
         string config = Path.Combine(folder, "gitconfig");
         File.WriteAllText(config, string.Empty);
-        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", config);
+        Environment.SetEnvironmentVariable(GitVariables.ConfigGlobal, config);
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", Path.Combine(folder, "config"));
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         File.WriteAllText(Path.Combine(other, "Other.cs"), "class Other\n{\n}\n");

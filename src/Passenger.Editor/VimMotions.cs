@@ -18,15 +18,20 @@ public readonly record struct VimTarget(int Offset, VimMotionKind Kind);
 /// beep stops the command it was part of.</summary>
 public static class VimMotions
 {
-    /// <summary>The kind of the character at an offset for word motions: 0 blank or line break, 1 punctuation, 2 a
-    /// word's (<see cref="WordCharacters"/>), a mark or joiner taking the kind of the character it carries on; a WORD's
-    /// every non-blank is 2.</summary>
+    /// <summary>The kind of the character at an offset for word motions: 0 blank (<see cref="IsBlank"/>) or line break,
+    /// 1 punctuation, a control character among it, 2 a word's (<see cref="WordCharacters"/>), a mark or joiner taking the
+    /// kind of the character it carries on; a WORD's every non-blank is 2.</summary>
     public static int KindAt(TextSnapshot text, int offset, bool bigWord)
     {
         char c = text[offset];
         c = WordCharacters.Extends(c) ? text[WordCharacters.Base(text, offset)] : c;
-        return char.IsWhiteSpace(c) ? 0 : bigWord || WordCharacters.IsWord(c) ? 2 : 1;
+        bool lone = c == '\r' && (offset + 1 >= text.Length || text[offset + 1] != '\n');
+        return IsBlank(c) && !lone ? 0 : bigWord || WordCharacters.IsWord(c) ? 2 : 1;
     }
+
+    /// <summary>Whether a character is blank to words: white space but the control characters a line shows as marks (<see
+    /// cref="ControlCharacters"/>), with a tab and the line breaks.</summary>
+    public static bool IsBlank(char c) => c is '\t' or '\n' or '\r' || (char.IsWhiteSpace(c) && !char.IsControl(c));
 
     /// <summary>Where the character a run of one kind ends with begins: the start of its grapheme, so a word's end lands
     /// on the letter its marks carry on.</summary>
@@ -403,7 +408,7 @@ public static class VimMotions
         List<int> marks = [];
         for (int p = line.Start; p < line.End; p++)
         {
-            if (text[p] == '"' && (p == line.Start || text[p - 1] != '\\'))
+            if (IsQuote(text, line, p))
             {
                 marks.Add(p);
             }
@@ -460,43 +465,22 @@ public static class VimMotions
         return slashes % 2 == 1;
     }
 
-    /// <summary>The bracket matching the one at <paramref name="at"/>, or -1: brackets in strings between double quotes,
-    /// or in a character's quotes, count only from within such a string on its line, and escaped ones only from an
-    /// escaped one.</summary>
+    /// <summary>The bracket matching the one at <paramref name="at"/>, or -1, counting brackets as <see cref="BracketCounting"/>
+    /// counts them from it.</summary>
     public static int Partner(TextSnapshot text, int at, char open, char close)
     {
-        bool escaped = Escaped(text, at);
         bool forward = text[at] == open;
-        LineSpan span = LineOf(text, at);
+        BracketCounting counting = new(text, at);
         int depth = 0;
-        LineSpan quotesOf = span;
-        List<(int Start, int End)> quotes = Quoted(text, span);
-        bool inQuotes = quotes.Exists(q => q.Start < at && at < q.End);
         for (int p = at; forward ? p < text.Length : p >= 0; p += forward ? 1 : -1)
         {
             char c = text[p];
-            if (c != open && c != close)
+            if ((c != open && c != close) || (p != at && !counting.Counts(p)))
             {
                 continue;
             }
-            if (p < quotesOf.Start || p > quotesOf.End)
-            {
-                quotesOf = LineOf(text, p);
-                quotes = Quoted(text, quotesOf);
-            }
-            if (p != at && (quotes.Exists(q => q.Start < p && p < q.End) != (inQuotes && quotesOf.Line == span.Line) || InCharacterQuotes(text, p)
-                || Escaped(text, p) != escaped))
-            {
-                continue;
-            }
-            if (c == open)
-            {
-                depth += forward ? 1 : -1;
-            }
-            else if (c == close)
-            {
-                depth += forward ? -1 : 1;
-            }
+            // Forward an opening one goes deeper, backward a closing one.
+            depth += (c == open) == forward ? 1 : -1;
             if (depth == 0)
             {
                 return p;
@@ -505,9 +489,58 @@ public static class VimMotions
         return -1;
     }
 
-    /// <summary>} and {: past the next (or last) run of lines with text to the empty line after (before) it, or the text's
-    /// end (start), where a } stands on the last character, which an operator takes too; a count with paragraphs left over
-    /// at the text's edge fails.</summary>
+    /// <summary>Which brackets count from a place, as % and [( count them: an escaped one only from an escaped place, none
+    /// between a character's single quotes, and of those between double quotes on a line with an even number of them, on
+    /// the place's own line those with an even number of quotes between them and the place, on another those outside.</summary>
+    private sealed class BracketCounting(TextSnapshot text, int from)
+    {
+        private readonly bool escaped = Escaped(text, from);
+        private readonly LineSpan home = LineOf(text, from);
+        private LineSpan quotesOf = LineOf(text, from);
+        private List<(int Start, int End)> quotes = Quoted(text, LineOf(text, from));
+
+        /// <summary>How many quotes stand on the place's line before each column of it, counted once it is asked.</summary>
+        private int[]? quotesBefore;
+
+        public bool Counts(int p)
+        {
+            if (Escaped(text, p) != escaped || InCharacterQuotes(text, p))
+            {
+                return false;
+            }
+            if (p < quotesOf.Start || p > quotesOf.End)
+            {
+                quotesOf = LineOf(text, p);
+                quotes = Quoted(text, quotesOf);
+            }
+            if (quotesOf.Start != home.Start)
+            {
+                return !quotes.Exists(q => q.Start < p && p < q.End);
+            }
+            if (quotes.Count == 0)
+            {
+                return true;
+            }
+            if (quotesBefore is null)
+            {
+                quotesBefore = new int[home.Length + 1];
+                for (int q = home.Start; q < home.End; q++)
+                {
+                    quotesBefore[q - home.Start + 1] = quotesBefore[q - home.Start] + (IsQuote(text, home, q) ? 1 : 0);
+                }
+            }
+            int low = Math.Min(p, from) + 1 - home.Start;
+            int high = Math.Max(p, from) - home.Start;
+            return (high > low ? quotesBefore[high] - quotesBefore[low] : 0) % 2 == 0;
+        }
+    }
+
+    /// <summary>Whether a double quote stands at a place of a line, one after a backslash being none.</summary>
+    private static bool IsQuote(TextSnapshot text, LineSpan line, int p) => text[p] == '"' && (p == line.Start || text[p - 1] != '\\');
+
+    /// <summary>} and {: past the next (or last) run of lines with text to the empty line or macro line (<see cref="MacroLine"/>)
+    /// after (before) it, or the text's end (start), where a } stands on the last character, which an operator takes too; a
+    /// count with paragraphs left over at the text's edge fails.</summary>
     public static VimTarget? Paragraph(TextSnapshot text, int caret, int n, bool forward, bool breakEnds)
     {
         int line = text.GetLineFromOffset(caret);
@@ -519,7 +552,7 @@ public static class VimMotions
             for (bool first = true; ; first = false)
             {
                 passedText |= !Blank(text, line);
-                if (!first && passedText && Blank(text, line))
+                if (!first && passedText && Bound(text, line))
                 {
                     break;
                 }
@@ -542,8 +575,150 @@ public static class VimMotions
         return new VimTarget(text.GetLineStart(line), VimMotionKind.Exclusive);
     }
 
-    /// <summary>Whether a line is empty, a paragraph's bound; a line of blanks is not.</summary>
+    /// <summary>]] and [[ (][ and [], <paramref name="closing"/>): to the next (previous) line beginning with a { (a }), a form
+    /// feed or a section macro (<see cref="SectionMacros"/>), under an operator ]] also to below a } line. With none left,
+    /// the last (first) line's first non-blank; under an operator the text's start, ][ the last line's, ]] the last line
+    /// whole but where empty or a } not gone below, from which itself nowhere (a case operator, <paramref name="casing"/>,
+    /// takes the rest of it below the first line). A count with sections left over fails.</summary>
+    public static VimTarget? Section(TextSnapshot text, int caret, int n, bool forward, bool closing, bool operating, bool casing, bool breakEnds)
+    {
+        int line = text.GetLineFromOffset(caret);
+        int from = line;
+        int last = LastLine(text, breakEnds);
+        int step = forward ? 1 : -1;
+        char brace = closing ? '}' : '{';
+        bool stopsAtClose = operating && forward && !closing;
+        bool found = false;
+        for (int i = 0; i < n; i++)
+        {
+            found = false;
+            for (bool first = true; ; first = false)
+            {
+                if (!first && (Begins(line, brace) || SectionLine(text, line) || (stopsAtClose && Begins(line, '}'))))
+                {
+                    found = true;
+                    break;
+                }
+                if (line + step < 0 || line + step > last)
+                {
+                    if (i < n - 1)
+                    {
+                        return null;
+                    }
+                    break;
+                }
+                line += step;
+            }
+        }
+        bool below = found && stopsAtClose && Begins(line, '}') && line < last;
+        if (below)
+        {
+            line++;
+        }
+        if (forward && operating && line == last)
+        {
+            LineSpan end = text.GetLine(line);
+            bool closes = end.Length > 0 && text[end.Start] == '}';
+            if (closes && !closing && line == from)
+            {
+                return new VimTarget(casing && line > 0 ? end.End : caret, VimMotionKind.Exclusive);
+            }
+            return closing || (closes && !below) || end.Length == 0 ? new VimTarget(end.Start, VimMotionKind.Exclusive)
+                : new VimTarget(SettledOn(text, end, end.End), VimMotionKind.Inclusive);
+        }
+        if (found)
+        {
+            return new VimTarget(text.GetLineStart(line), VimMotionKind.Exclusive);
+        }
+        return new VimTarget(operating ? 0 : FirstNonBlank(text, line, breakEnds), VimMotionKind.Exclusive);
+
+        bool Begins(int at, char c) => at >= 0 && text.GetLine(at) is { Length: > 0 } span && text[span.Start] == c;
+    }
+
+    /// <summary>The nroff macros a section begins at, as Vim's 'sections' option names them by default: a line of a dot and
+    /// one of them, a one-letter one then ending or going on after a blank.</summary>
+    private static readonly string[] SectionMacros = ["SH", "NH", "H", "HU", "nh", "sh"];
+
+    /// <summary>The nroff macros a paragraph begins at, as Vim's 'paragraphs' option names them by default.</summary>
+    private static readonly string[] ParagraphMacros = ["IP", "LP", "PP", "QP", "P", "TP", "HP", "LI", "Pp", "Lp", "It", "pp", "lp", "ip", "bp"];
+
+    /// <summary>Whether a line begins a section whatever its braces: a form feed, or a section macro, first.</summary>
+    private static bool SectionLine(TextSnapshot text, int line) =>
+        text.GetLine(line) is { Length: > 0 } span && (text[span.Start] == '\f' || Macro(text, span, SectionMacros));
+
+    /// <summary>Whether a line begins a paragraph whatever is around it: a section's line (<see cref="SectionLine"/>), or one
+    /// beginning with a paragraph macro, which paragraphs and sections end before and take as their first.</summary>
+    public static bool MacroLine(TextSnapshot text, int line) =>
+        SectionLine(text, line) || text.GetLine(line) is { Length: > 0 } span && Macro(text, span, ParagraphMacros);
+
+    /// <summary>Whether a line begins with a dot and one of the macros, a one-letter one then ending or going on after a blank.</summary>
+    private static bool Macro(TextSnapshot text, LineSpan span, string[] macros)
+    {
+        if (text[span.Start] != '.' || span.Length < 2)
+        {
+            return false;
+        }
+        char first = text[span.Start + 1];
+        char? second = span.Length > 2 ? text[span.Start + 2] : null;
+        foreach (string macro in macros)
+        {
+            if (macro[0] == first && (macro.Length == 2 ? second == macro[1] : second is null or ' '))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>[{ [( and ]} ]): the [count]th unmatched open bracket before the caret, or close bracket after it, as far as
+    /// there are, exclusive; a pair between counted out, with brackets counted as % counts them (<see cref="BracketCounting"/>). Fails
+    /// where there is none.</summary>
+    public static VimTarget? Unmatched(TextSnapshot text, int caret, int n, char open, char close, bool forward)
+    {
+        BracketCounting counting = new(text, caret);
+        int at = caret;
+        for (int i = 0; i < n; i++)
+        {
+            int depth = 0;
+            int p = at + (forward ? 1 : -1);
+            for (; forward ? p < text.Length : p >= 0; p += forward ? 1 : -1)
+            {
+                char c = text[p];
+                if ((c != open && c != close) || !counting.Counts(p))
+                {
+                    continue;
+                }
+                if (c == (forward ? open : close))
+                {
+                    depth++;
+                }
+                else if (depth == 0)
+                {
+                    break;
+                }
+                else
+                {
+                    depth--;
+                }
+            }
+            if (forward ? p >= text.Length : p < 0)
+            {
+                break;
+            }
+            at = p;
+        }
+        return at == caret ? null : new VimTarget(at, VimMotionKind.Exclusive);
+    }
+
+    /// <summary>Whether a line is empty; a line of blanks is not.</summary>
     public static bool Blank(TextSnapshot text, int line) => text.GetLine(line).Length == 0;
+
+    /// <summary>Whether a line bounds paragraphs and sentences: an empty line, or a macro line (<see cref="MacroLine"/>).</summary>
+    public static bool Bound(TextSnapshot text, int line) => Blank(text, line) || MacroLine(text, line);
+
+    /// <summary>Whether a place is the start of a line that bounds sentences (<see cref="Bound"/>), the one place on it where
+    /// sentences break; past a macro line's first character its text reads as any other.</summary>
+    private static bool BoundAt(TextSnapshot text, int p) => LineOf(text, p) is var line && p == line.Start && Bound(text, line.Line);
 
     /// <summary>) and (: the start of the next sentence, or of this one or the one before; exclusive. Past the last
     /// sentence ) stands on the text's last character and takes it, from there too; ( stops at the text's very start,
@@ -558,6 +733,10 @@ public static class VimMotions
             for (int i = 0; i < n; i++)
             {
                 int next = SentenceForward(text, last, at);
+                if (next == Stuck)
+                {
+                    return null;
+                }
                 // From the text's end, where a sentence ending the text or a run of empty lines took it, ) goes nowhere.
                 if (next < 0 || next >= textEnd && at >= textEnd)
                 {
@@ -573,7 +752,7 @@ public static class VimMotions
             return at >= textEnd ? new VimTarget(end, LineOf(text, end).Length == 0 ? VimMotionKind.Exclusive : VimMotionKind.Inclusive)
                 : new VimTarget(at, VimMotionKind.Exclusive);
         }
-        bool topAgain = text.GetLine(0).Length == 0;
+        bool topAgain = Bound(text, 0);
         for (int i = 0; i < n; i++)
         {
             int back = SentenceBack(text, last, at);
@@ -596,23 +775,35 @@ public static class VimMotions
         return new VimTarget(at, VimMotionKind.Exclusive);
     }
 
-    /// <summary>Where one ) goes from a place: from an empty line past its run to the text after, else past the end of
-    /// the sentence the place belongs to; the text's end (its last line's end) where none is, -1 where a count can't go
-    /// on from there. A gap the place stands in counts only past <paramref name="beyond"/>.</summary>
+    /// <summary>Where one ) goes from a place: from a bounding line's start past it (<see cref="PastBound"/>), else past
+    /// the end of the sentence the place belongs to; the text's end (its last line's end) where none is, -1 where a count
+    /// can't go on from there, <see cref="Stuck"/> where ) fails. A gap the place stands in counts only past <paramref
+    /// name="beyond"/>.</summary>
     private static int SentenceForward(TextSnapshot text, int last, int caret, int beyond = -1)
     {
         int gap = -1;
-        int p = EmptyAt(text, caret) ? caret : SentenceTailBack(text, last, caret, out gap);
+        int p = BoundAt(text, caret) ? caret : SentenceTailBack(text, last, caret, out gap);
         if (gap > beyond)
         {
             return FromGap(text, last, gap);
         }
-        if (EmptyAt(text, p))
+        if (BoundAt(text, p))
         {
-            return PastEmptyLines(text, last, p);
+            return PastBound(text, last, p);
         }
         int start = SentenceStartOf(text, last, p, p, top: false);
-        return EmptyAt(text, start) && start > p ? start : StartAfter(text, last, start);
+        return BoundAt(text, start) && start > p ? start : StartAfter(text, last, start);
+    }
+
+    /// <summary>What <see cref="SentenceForward"/> answers where ) fails outright, from a macro line's start on the last line.</summary>
+    private const int Stuck = -2;
+
+    /// <summary>Where ) goes from a bounding line's start: from an empty line past its run (<see cref="PastEmptyLines"/>),
+    /// from a macro line to the next line's first text; <see cref="Stuck"/> on the last line.</summary>
+    private static int PastBound(TextSnapshot text, int last, int p)
+    {
+        LineSpan line = LineOf(text, p);
+        return line.Length == 0 ? PastEmptyLines(text, last, p) : line.Line < last ? FirstText(text, last, text.GetLine(line.Line + 1).Start) : Stuck;
     }
 
     /// <summary>The start of the sentence after the one starting at <paramref name="start"/>: past its first end, or the
@@ -621,7 +812,7 @@ public static class VimMotions
     {
         for (int q = start; q >= 0; q = Inc(text, last, q))
         {
-            if (q != start && EmptyAt(text, q))
+            if (q != start && BoundAt(text, q))
             {
                 return q;
             }
@@ -648,11 +839,23 @@ public static class VimMotions
 
     /// <summary>is and as: <paramref name="n"/> of the sentences and the runs of white between them, from the one the
     /// caret is in; the outer one takes each sentence with the white after it, or before where none is after.</summary>
-    public static VimSpan? SentenceObject(TextSnapshot text, int caret, int n, bool inner, bool breakEnds)
+    public static VimSpan? SentenceObject(TextSnapshot text, int caret, int n, bool inner, bool breakEnds) => SentenceObject(text, caret, n, inner, breakEnds, asText: false);
+
+    /// <summary><see cref="SentenceObject(TextSnapshot, int, int, bool, bool)"/>, a place past a macro line's first character
+    /// read as any other text where <paramref name="asText"/>.</summary>
+    private static VimSpan? SentenceObject(TextSnapshot text, int caret, int n, bool inner, bool breakEnds, bool asText)
     {
         int last = LastLine(text, breakEnds);
         int textEnd = text.GetLine(last).End;
         caret = Math.Min(caret, textEnd);
+        if (last > 0 && text.GetLine(last) is { Length: > 0 } closing && Bound(text, last) && caret < closing.Start
+            && text.GetLine(last - 1) is var penult && (!Bound(text, last - 1) || caret > penult.Start) && caret >= penult.Start)
+        {
+            // Read with a macro line ending the text emptied, as no sentence of its own, from the line above it.
+            TextSnapshot emptied = text.Replace(closing.Start, closing.Length, string.Empty);
+            return SentenceObject(emptied, caret, n, inner, breakEnds, asText) is { } found
+                ? found with { Start = Math.Min(found.Start, closing.Start), End = Math.Min(found.End, closing.Start) } : null;
+        }
         if (!EmptyAt(text, caret) && EndsSentenceAt(text, caret) && Dec(text, caret) is var above && above >= 0 && EmptyAt(text, above))
         {
             // An end mark opening a paragraph stands for the empty line before it.
@@ -664,11 +867,53 @@ public static class VimMotions
             LineSpan first = text.GetLine(0);
             return new VimSpan(0, first.Length > 1 ? 1 : first.EndIncludingBreak, false);
         }
+        if (LineOf(text, caret) is { Length: > 0 } ending && ending.Line == last && Bound(text, last))
+        {
+            int blanks = ending.End;
+            while (blanks > ending.Start + 1 && text[blanks - 1] is ' ' or '\t')
+            {
+                blanks--;
+            }
+            if (caret >= blanks && blanks < ending.End && blanks > ending.Start + 1)
+            {
+                // In the blanks ending it after its text, an odd count of is takes them, else nothing at their start.
+                return new VimSpan(blanks, inner && n % 2 == 1 ? ending.End : blanks, false);
+            }
+            // As on an empty last line, past the line's start for an odd count of is alone; a lone macro line, its first character.
+            return last == 0 ? new VimSpan(0, 1, false) : caret == ending.Start || (inner && n % 2 == 1) ? EmptyEnd(text, last, last, n, inner, breakEnds)
+                : new VimSpan(ending.Start, ending.Start, false);
+        }
         int start = -1;
         int end;
         int next;
         bool white = false;
-        if (EmptyAt(text, caret))
+        if (MacroAt(text, last, caret) is { } macro && !(asText && caret > macro.Start) && !BlanksAboveBound(text, last, macro)
+            && !WhiteAfterMark(text, macro))
+        {
+            if (text[caret] is ' ' or '\t' && EndIn(text, macro.Start, caret))
+            {
+                // In white past an end on a macro line, its text reads as any other.
+                return SentenceObject(text, caret, n, inner, breakEnds, asText: true);
+            }
+            if (!(caret > macro.Start && OwnSentence(text, macro)) && SentenceBack(text, last, Forward(text, last, caret)) is var found && !BoundAt(text, found))
+            {
+                // On a macro line the sentence is the one ( finds from where ) goes, past the line's first character read as any text.
+                return SentenceObject(text, found, n, inner, breakEnds, asText: true);
+            }
+            (start, end) = (macro.Start, text.GetLine(macro.Line + 1).Start);
+            if (inner && n == 1 && text[macro.End - 1] is ' ' or '\t' && !EndIn(text, macro.Start, caret))
+            {
+                // One is from a macro line that blanks end, short of the white after an end in it, takes its text alone.
+                int textTo = macro.End;
+                while (text[textTo - 1] is ' ' or '\t')
+                {
+                    textTo--;
+                }
+                return new VimSpan(start, textTo, false);
+            }
+            next = WhiteEnd(text, last, start, end);
+        }
+        else if (EmptyAt(text, caret))
         {
             LineSpan line = LineOf(text, caret);
             int runEnd = line.Line;
@@ -715,7 +960,7 @@ public static class VimMotions
             else
             {
                 start = Math.Max(0, SentenceBack(text, last, Inc(text, last, caret) is var after && after >= 0 ? after : caret));
-                if (EmptyAt(text, start) && start < caret && LineOf(text, start).Line != LineOf(text, caret).Line)
+                if (BoundAt(text, start) && start < caret && LineOf(text, start).Line != LineOf(text, caret).Line)
                 {
                     start = FirstText(text, last, text.GetLine(LineOf(text, start).Line + 1).Start);
                 }
@@ -749,6 +994,13 @@ public static class VimMotions
             for (int i = 0; i < n; i++)
             {
                 int sentence = next;
+                if (MacroStart(text, last, sentence) && LineOf(text, sentence) is var macroLine && text.GetLine(macroLine.Line + 1).Start is var below
+                    && WhiteEnd(text, last, sentence, below) is var linesWhite && WrittenIn(text, below, linesWhite) && text[below] is not (' ' or '\t'))
+                {
+                    // A macro line after the white is a sentence whose white, an unindented next line's sentence without the white after it, goes with it.
+                    (to, next, toEmpty) = (MacroWhiteText(text, below, linesWhite), linesWhite, false);
+                    continue;
+                }
                 LineSpan sentenceLine = LineOf(text, sentence);
                 if (i == 0 && sentenceLine.Length == 0 && EmptyRunEnd(text, last, sentenceLine.Line) is var runEnd && runEnd < last
                     && text.GetLine(runEnd + 1) is var textLine && TextNavigation.IndentEnd(text, textLine) == textLine.Start)
@@ -787,11 +1039,23 @@ public static class VimMotions
                     toEmpty = true;
                     continue;
                 }
-                bool closes = (textUntil == after && after >= textEnd) || (until.Length == 0 && until.Line > LineOf(text, sentence).Line)
+                bool closes = (textUntil == after && after >= textEnd)
+                    || ((until.Length == 0 || (i == n - 1 && textUntil == until.Start && MacroLine(text, until.Line))) && until.Line > LineOf(text, sentence).Line)
                     || (textUntil == until.End && until.Line < text.LineCount - 1 && text.GetLine(until.Line + 1).Length == 0);
                 if (!(closes && !marked) && (textUntil < after || after < textEnd && marked))
                 {
                     (to, next, toEmpty) = (textUntil, after, false);
+                    continue;
+                }
+                if (!closes && i < n - 1 && textUntil == until.Start && until.Line > sentenceLine.Line && MacroLine(text, until.Line)
+                    && (until.Line < last || MacroStart(text, last, sentence)))
+                {
+                    // Counted on to a macro line below, the sentence ends at its line's end, the macro line taken next with the break before it; one ending the text, after another, is none.
+                    if (until.Line == last)
+                    {
+                        return new VimSpan(from, MacroWhiteText(text, text.GetLineStart(until.Line - 1), text.GetLine(until.Line - 1).End), false);
+                    }
+                    (to, next, toEmpty) = (text.GetLine(until.Line - 1).End, textUntil, false);
                     continue;
                 }
                 if (!closes)
@@ -822,24 +1086,33 @@ public static class VimMotions
         // Each unit is a sentence or the white after it; is takes n of them, as n sentences with their white.
         bool onWhite = white;
         int sentenceTo = to;
+        bool macroWhite = false;
         for (int i = 0; i < (inner ? n : 2 * n); i++)
         {
-            if (i > 0 && !onWhite && start >= textEnd)
+            if (i > 0 && !onWhite && (start >= textEnd || (start == text.GetLine(last).Start && last > 0 && text.GetLine(last).Length > 0 && Bound(text, last))))
             {
-                // Past the text's end a count takes what there is, is ending by turns at its last sentence and white.
-                to = inner && (n - i) % 2 == 1 ? sentenceTo : to;
+                // Past the text's end a count takes what there is, is ending by turns at its last sentence and white, but for a macro line's.
+                to = inner && (n - i) % 2 == 1 && !macroWhite ? sentenceTo : to;
                 break;
             }
             sentenceTo = onWhite ? sentenceTo : end;
             to = onWhite ? next : end;
-            lastWhiteEmpty = onWhite && next == end;
+            // A macro line's white is the next line's sentence where that holds text, else blanks as any white.
+            macroWhite = onWhite && MacroStart(text, last, start) && WrittenIn(text, end, next);
+            // A macro line's sentence after it with no white of its own beyond it leaves as none too.
+            lastWhiteEmpty = onWhite && (next == end || (macroWhite && (next >= textEnd || next == LineOf(text, next).Start)));
             if (onWhite)
             {
                 start = next;
                 end = SentenceEnd(text, last, start);
-                next = Math.Max(end, Forward(text, last, start));
+                next = WhiteEnd(text, last, start, end);
             }
             onWhite = !onWhite;
+        }
+        if (!inner && lastWhiteEmpty && MacroStart(text, last, from) && WhiteBefore(text, from) < from && to > from && to < textEnd && to == LineOf(text, to).Start)
+        {
+            // Over a macro line, as taking the white before ends at the line's end where it would end at the next's start.
+            to = text.GetLine(LineOf(text, to).Line - 1).End;
         }
         if (!inner && lastWhiteEmpty)
         {
@@ -855,8 +1128,62 @@ public static class VimMotions
         return new VimSpan(from, Math.Max(from, to), false);
     }
 
-    /// <summary>The lines of blanks the place is on where they open a paragraph after an empty line with no text before
-    /// the next empty line or the text's end: from their start to there; null otherwise.</summary>
+    /// <summary>Where the sentence a macro line's white holds, from <paramref name="start"/> to before <paramref name="white"/>,
+    /// ends: before the blanks and breaks after it, and where it has no end mark, before a last word of one character after
+    /// blanks, which as leaves out.</summary>
+    private static int MacroWhiteText(TextSnapshot text, int start, int white)
+    {
+        int end = white;
+        while (end > start && text[end - 1] is ' ' or '\t' or '\n' or '\r')
+        {
+            end--;
+        }
+        if (!EndsWithMark(text, start, end) && end - 2 > start && text[end - 2] is ' ' or '\t')
+        {
+            end -= 2;
+            while (end > start && text[end - 1] is ' ' or '\t')
+            {
+                end--;
+            }
+        }
+        return end;
+    }
+
+    /// <summary>The macro line a place is on, short of the last line; null on any other.</summary>
+    private static LineSpan? MacroAt(TextSnapshot text, int last, int p) =>
+        LineOf(text, p) is { Length: > 0 } line && line.Line < last && Bound(text, line.Line) ? line : null;
+
+    /// <summary>The start of the macro line a place is on, short of the last line; null on any other line.</summary>
+    public static int? MacroLineStart(TextSnapshot text, int p, bool breakEnds) => MacroAt(text, LastLine(text, breakEnds), p)?.Start;
+
+    /// <summary>Whether a place is the start of a macro line short of the last line, a sentence of its own.</summary>
+    private static bool MacroStart(TextSnapshot text, int last, int p) => p >= 0 && BoundAt(text, p) && MacroAt(text, last, p) is not null;
+
+    /// <summary>Where the white after a macro line's own sentence ends (<see cref="WhiteEnd"/>), from the line's start short
+    /// of the last line.</summary>
+    public static int MacroWhiteEnd(TextSnapshot text, int start, bool breakEnds) =>
+        WhiteEnd(text, LastLine(text, breakEnds), start, text.GetLine(LineOf(text, start).Line + 1).Start);
+
+    /// <summary>Where the white after the sentence from <paramref name="start"/> to <paramref name="end"/> ends, where the
+    /// next sentence begins; after a macro line's own sentence, where the next line's sentence ends unless that line is a
+    /// bounding one (<see cref="Bound"/>), or the blanks after it where the macro line's text ends a sentence itself, as is
+    /// and as count what follows it.</summary>
+    private static int WhiteEnd(TextSnapshot text, int last, int start, int end)
+    {
+        if (BoundAt(text, start) && LineOf(text, start) is { Length: > 0 } macro)
+        {
+            if (macro.Line < last && OwnSentence(text, macro))
+            {
+                // A macro line ending its own sentence has the blanks after it as white, as any sentence's end.
+                return Math.Max(end, FirstText(text, last, text.GetLine(macro.Line + 1).Start));
+            }
+            return macro.Line < last && !Bound(text, macro.Line + 1) ? Math.Max(end, Forward(text, last, text.GetLine(macro.Line + 1).Start)) : end;
+        }
+        return Math.Max(end, Forward(text, last, start));
+    }
+
+    /// <summary>The lines of blanks the place is on where they open a paragraph after an empty or macro line with no text
+    /// before the next such line or the text's end: from their start to there; null otherwise.</summary>
     private static TextRange? BlankParagraph(TextSnapshot text, int last, int caret)
     {
         LineSpan line = LineOf(text, caret);
@@ -865,13 +1192,13 @@ public static class VimMotions
         {
             top--;
         }
-        if (top == 0 || text.GetLine(top - 1).Length > 0 || TextNavigation.IndentEnd(text, line) < line.End)
+        if (top == 0 || !Bound(text, top - 1) || TextNavigation.IndentEnd(text, line) < line.End)
         {
             return null;
         }
         int paragraph = text.GetLine(top).Start;
         int first = FirstText(text, last, paragraph);
-        return first >= text.GetLine(last).End || EmptyAt(text, first) ? TextRange.FromBounds(paragraph, first) : null;
+        return first >= text.GetLine(last).End || BoundAt(text, first) ? TextRange.FromBounds(paragraph, first) : null;
     }
 
     /// <summary>Whether the place is on the lines of blanks alone that open the text, with no text before an empty line
@@ -1091,6 +1418,11 @@ public static class VimMotions
     private static int SentenceEnd(TextSnapshot text, int last, int start)
     {
         LineSpan line = LineOf(text, start);
+        if (line.Length > 0 && line.Line == last && BoundAt(text, start))
+        {
+            // From a macro line ending the text ) goes nowhere: its sentence is none.
+            return start;
+        }
         if (line.Length > 0)
         {
             return TextEndBefore(text, last, start, Forward(text, last, start));
@@ -1128,7 +1460,7 @@ public static class VimMotions
     private static int FromGap(TextSnapshot text, int last, int gap)
     {
         int textEnd = text.GetLine(last).End;
-        return gap >= textEnd ? -1 : EmptyAt(text, gap) ? PastEmptyLines(text, last, gap) : SentenceForward(text, last, FirstText(text, last, gap), gap);
+        return gap >= textEnd ? -1 : BoundAt(text, gap) ? PastBound(text, last, gap) : SentenceForward(text, last, FirstText(text, last, gap), gap);
     }
 
     /// <summary>The first text after the run of empty lines the place is on, the last line's end where none is.</summary>
@@ -1203,15 +1535,16 @@ public static class VimMotions
     }
 
     /// <summary>The start of the sentence holding the place: after the nearest sentence's end behind it whose sentence
-    /// starts at or before <paramref name="limit"/>, the text after the nearest empty line, or the text's start; with
-    /// <paramref name="top"/> a text opening with a sentence's end starts its first sentence after it.</summary>
+    /// starts at or before <paramref name="limit"/>, the text after the nearest bounding line (<see cref="Bound"/>), that
+    /// line itself where the place is on it, or the text's start; with <paramref name="top"/> a text opening with a
+    /// sentence's end starts its first sentence after it.</summary>
     private static int SentenceStartOf(TextSnapshot text, int last, int p, int limit, bool top)
     {
         for (int q = p; ; )
         {
-            if (EmptyAt(text, q))
+            if (BoundAt(text, q))
             {
-                return q == p ? q : FirstText(text, last, text.GetLine(LineOf(text, q).Line + 1).Start);
+                return LineOf(text, q).Line == LineOf(text, p).Line ? q : FirstText(text, last, text.GetLine(LineOf(text, q).Line + 1).Start);
             }
             if (EndsSentenceAt(text, q) && StartAfterEnd(text, last, q) <= limit)
             {
@@ -1256,8 +1589,8 @@ public static class VimMotions
                 int after = AfterLineStart(text, last, line);
                 bool closes = after >= 0 && (CharAt(text, after) is ' ' or '\t' || IsCloser(CharAt(text, after)))
                     || MarksOnly(text, LineOf(text, y)) && JoinsLineBefore(text, last, LineOf(text, y));
-                // Alone on its line before text that is no end mark, a line's or the text's end, the place is in the gap.
-                if (!closes && (held >= 0 || line.Length != 1 || after >= 0 && IsSentenceEnd(CharAt(text, after))))
+                // Alone on its line before a macro line, text that is no end mark, a line's or the text's end, the place is in the gap.
+                if (!closes && (held >= 0 || line.Length != 1 || after >= 0 && IsSentenceEnd(CharAt(text, after)) && !BoundAt(text, after)))
                 {
                     break;
                 }
@@ -1378,6 +1711,82 @@ public static class VimMotions
     }
 
     private static bool IsSentenceEnd(char c) => c is '.' or '!' or '?';
+
+    /// <summary>Whether anything but blanks and line breaks stands between two places.</summary>
+    private static bool WrittenIn(TextSnapshot text, int from, int to)
+    {
+        for (int p = from; p < to; p++)
+        {
+            if (text[p] is not (' ' or '\t' or '\n' or '\r'))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether a macro line's text past its first character is one sentence its line's end ends: its one end mark,
+    /// closers after it alone, ending the line.</summary>
+    private static bool OwnSentence(TextSnapshot text, LineSpan macro)
+    {
+        int q = macro.End - 1;
+        while (q > macro.Start && IsCloser(text[q]))
+        {
+            q--;
+        }
+        if (q <= macro.Start || !IsSentenceEnd(text[q]))
+        {
+            return false;
+        }
+        for (int p = macro.Start + 1; p < q; p++)
+        {
+            if (EndsSentenceAt(text, p))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Whether a macro line ends in blanks above a bounding line, or with no sentence's end in it above a last line
+    /// of blanks alone, which is and as read as any other text.</summary>
+    private static bool BlanksAboveBound(TextSnapshot text, int last, LineSpan macro) => text[macro.End - 1] is ' ' or '\t'
+        && (Bound(text, macro.Line + 1) || macro.Line + 1 == last && text.GetLine(last) is var below && TextNavigation.IndentEnd(text, below) == below.End
+            && !EndIn(text, macro.Start, macro.End));
+
+    /// <summary>Whether a mark between two places on one line ends a sentence.</summary>
+    private static bool EndIn(TextSnapshot text, int from, int to)
+    {
+        for (int q = from; q < to; q++)
+        {
+            if (EndsSentenceAt(text, q))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Whether a macro line ends in blanks after a sentence's end mark and the closers after it, which is and as
+    /// read as any other text.</summary>
+    private static bool WhiteAfterMark(TextSnapshot text, LineSpan macro)
+    {
+        int q = macro.End;
+        while (q > macro.Start + 1 && text[q - 1] is ' ' or '\t')
+        {
+            q--;
+        }
+        if (q == macro.End)
+        {
+            return false;
+        }
+        q--;
+        while (q > macro.Start && IsCloser(text[q]))
+        {
+            q--;
+        }
+        return q > macro.Start && IsSentenceEnd(text[q]);
+    }
 
     private static bool IsCloser(char c) => c is ')' or ']' or '"' or '\'';
 

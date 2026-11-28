@@ -32,11 +32,13 @@ public partial class MainWindow
             testGutter.Forget(document);
             session.Tests.Finder.Closed(document.Path);
         };
-        // The grouping and outcomes chosen are the folder's.
+        // The grouping, outcomes and sessions chosen are the folder's.
         Bottom.TestTree.ViewChanged += (_, _) => session.State?.UnitTests.Set(new Testing.UnitTestsState
         {
             Grouping = [.. Bottom.TestTree.Grouping],
             Outcomes = [.. Bottom.TestTree.Outcomes.Order()],
+            Sessions = [.. Bottom.TestTree.Sessions.Select(s => new Testing.KeptTestSession { Name = s.Name, Tests = [.. s.Tests], Left = [.. s.Left] })],
+            Session = Bottom.TestTree.Shown?.Name,
         });
         Bottom.Tests.ActionRequested += (_, action) => Request(action);
         Bottom.Tests.RunRequested += (_, debugging) =>
@@ -65,7 +67,7 @@ public partial class MainWindow
             {
                 // Said in the Unit Tests window too, over the run's results, which is where to see more.
                 Say(message, StatusPlace.Window(Dock, ToolWindowIds.Tests));
-                Bottom.Tests.Status = message;
+                Bottom.Tests.Tell(message);
             }
         };
         // The Unit Tests window's Stop has something to end only while a run (or a look for the tests) goes on.
@@ -133,9 +135,10 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>The Unit Tests window's grouping and outcomes as the folder kept them, or the defaults.</summary>
+    /// <summary>The Unit Tests window's sessions, grouping and outcomes as the folder kept them, or the defaults.</summary>
     private void RestoreUnitTests(Testing.UnitTestsState kept)
     {
+        session.Tests.Tree.Restore(kept.Sessions.Select(s => new Testing.TestSession(s.Name, s.Tests, s.Left)), kept.Session);
         session.Tests.Tree.Group(kept.Grouping);
         session.Tests.Tree.ShowOutcomes(kept.Outcomes);
     }
@@ -169,19 +172,22 @@ public partial class MainWindow
     }
 
     /// <summary>A run of tests shown in the Unit Tests window; what stopped it, if anything, in the status bar.</summary>
-    private void RunTests(Func<Task<string?>> run)
+    private void RunTests(Func<Task<Words?>> run)
     {
         if (Folder is null)
         {
             return;
         }
         ShowToolWindow(ToolWindowIds.Tests);
+        AskContinuousTesting();
         ProjectSession running = session;
+        bool covering = coverageAsked;
+        coverageAsked = false;
         IdeErrors.Observe(Go());
 
         async Task Go()
         {
-            string? problem;
+            Words? problem;
             try
             {
                 problem = await run();
@@ -190,13 +196,14 @@ public partial class MainWindow
             {
                 // Nobody awaits the run: a failure no runner foresaw is an IDE error, said now rather than at a collection.
                 IdeErrors.Report(error);
-                problem = $"The tests could not run: {error.Message}";
+                problem = Testing.TestingWords.CouldNotRun(Words.Verbatim(error.Message));
             }
             if (session == running && !running.IsEnded && problem is not null)
             {
                 Say(problem, StatusPlace.Window(Dock, ToolWindowIds.Tests));
-                Bottom.Tests.Status = problem;
+                Bottom.Tests.Tell(problem);
             }
+            ShowMeasured(covering && problem is null, running);
         }
     }
 
@@ -209,8 +216,8 @@ public partial class MainWindow
             IReadOnlyList<Passenger.Workspace.Gherkin.ExampleRow> rows = testGutter.RowsOf(document);
             string shown = $"{outline.Method} [{row.Shown}]";
             MenuFlyout rowMenu = new();
-            rowMenu.Items.Add(ToolWindows.ListMenus.Item($"Run '{shown}'", () => RunRowAt(outline, row, rows, document.Path, debug: false)));
-            rowMenu.Items.Add(ToolWindows.ListMenus.Item($"Debug '{shown}'", () => RunRowAt(outline, row, rows, document.Path, debug: true)));
+            rowMenu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamed(shown), () => RunRowAt(outline, row, rows, document.Path, debug: false)));
+            rowMenu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.DebugNamed(shown), () => RunRowAt(outline, row, rows, document.Path, debug: true)));
             TestMarkMenu = rowMenu;
             rowMenu.Placement = Avalonia.Controls.PlacementMode.Pointer;
             rowMenu.ShowAt(editor, showAtPointer: true);
@@ -222,9 +229,10 @@ public partial class MainWindow
         }
         string name = chosen.Method ?? TypeNames.Short(chosen.Type);
         MenuFlyout menu = new();
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}'", () => RunTestsAt(chosen, document.Path, debug: false)));
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Debug '{name}'", () => RunTestsAt(chosen, document.Path, debug: true)));
-        menu.Items.Add(ToolWindows.ListMenus.Item($"Run '{name}' Until Failure", () => RunTestsAt(chosen, document.Path, debug: false, untilFailure: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamed(name), () => RunTestsAt(chosen, document.Path, debug: false)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.DebugNamed(name), () => RunTestsAt(chosen, document.Path, debug: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamedUntilFailure(name), () => RunTestsAt(chosen, document.Path, debug: false, untilFailure: true)));
+        menu.Items.Add(ToolWindows.ListMenus.Item(Testing.TestingWords.RunNamedWithCoverage(name), () => RunTestsAt(chosen, document.Path, debug: false, cover: true)));
         TestMarkMenu = menu;
         menu.Placement = Avalonia.Controls.PlacementMode.Pointer;
         menu.ShowAt(editor, showAtPointer: true);
@@ -236,11 +244,11 @@ public partial class MainWindow
     /// <summary>Run (or Debug) Unit Tests in context: the Unit Tests window's chosen rows when it has the keys, the
     /// projects chosen in the Explorer (a solution folder's, those under it) when it has them, else the test method or
     /// class at the editor's caret, an outline's example row alone where the caret is on it, as its mark's menu runs it.</summary>
-    private void RunTestsInContext(ActionContext context, bool debug, bool untilFailure = false)
+    private void RunTestsInContext(ActionContext context, bool debug, bool untilFailure = false, bool cover = false)
     {
         if (!untilFailure && ChosenProjects(context) is { } projects)
         {
-            RunProjectTests(projects, Explorer.Selected?.Name ?? "the projects chosen", debug);
+            RunProjectTests(projects, Explorer.Selected?.Name is { } named ? Words.Verbatim(named) : Testing.TestingWords.ProjectsChosen, debug, cover);
             return;
         }
         if (ChosenTests(context) is { } chosen)
@@ -250,17 +258,17 @@ public partial class MainWindow
                 RunUntilFailure(chosen);
                 return;
             }
-            RunTests(() => session.Tests.RunAsync(Folder!, chosen, debug));
+            RunTests(() => session.Tests.RunAsync(Folder!, chosen, debug, cover: cover));
             return;
         }
         if (!untilFailure && context.File is { } feature && testGutter.RowAt(feature, context.Caret.Line) is ({ } outline, { } row))
         {
-            RunRowAt(outline, row, testGutter.RowsOf(feature), feature.Path, debug);
+            RunRowAt(outline, row, testGutter.RowsOf(feature), feature.Path, debug, cover);
             return;
         }
         if (TestAtCaret(context) is { } test && context.File is { } file)
         {
-            RunTestsAt(test, file.Path, debug, untilFailure);
+            RunTestsAt(test, file.Path, debug, untilFailure, cover);
         }
     }
 
@@ -275,7 +283,7 @@ public partial class MainWindow
         string workspace = Folder;
         RunTests(async () =>
         {
-            string? problem = await running.Tests.RunUntilFailureAsync(workspace, chosen);
+            Words? problem = await running.Tests.RunUntilFailureAsync(workspace, chosen);
             if (session == running && !running.IsEnded && running.Tests.FirstFailed(chosen) is { } failed)
             {
                 Bottom.Tests.Choose(failed);
@@ -288,7 +296,7 @@ public partial class MainWindow
     /// them once the run's build has ended and its tests are found: a test only a runner finds (an attribute of the
     /// project's own) runs with them, and a base type's tests as every derived type's, which the runner says are on its
     /// lines of the file.</summary>
-    private void RunTestsAt(Testing.DeclaredPlace place, string path, bool debug, bool untilFailure = false)
+    private void RunTestsAt(Testing.DeclaredPlace place, string path, bool debug, bool untilFailure = false, bool cover = false)
     {
         (string type, string? method) = (place.Type, place.Method);
         if (Folder is null)
@@ -304,9 +312,9 @@ public partial class MainWindow
         {
             if (!untilFailure)
             {
-                return await running.Tests.RunMatchingAsync(workspace, Matches, None, debug);
+                return await running.Tests.RunMatchingAsync(workspace, Matches, None, debug, cover);
             }
-            string? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, None);
+            Words? stopped = await running.Tests.RunUntilFailureAsync(workspace, Matches, None);
             if (session == running && !running.IsEnded && running.Tests.FirstFailed(running.Tests.RunMethods) is { } failed)
             {
                 Bottom.Tests.Choose(failed);
@@ -319,13 +327,13 @@ public partial class MainWindow
                 && Testing.TestFinder.IsOf(test, projects ??= running.Tests.Finder.ProjectsOf(path)))
             || test.Places.Any(at => PathNames.Same(at.Path, path) && place.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line)));
 
-        string None(string? unfound) => Refusals.NoTestOf(method ?? type, unfound);
+        Words None(Words? unfound) => Refusals.NoTestOf(method ?? type, unfound);
     }
 
     /// <summary>Runs (or debugs) one example row of an outline: the row of the outline's test, as the tree has it once the
     /// run's build has ended and its tests are found, whose arguments are the row's.</summary>
     private void RunRowAt(Testing.DeclaredPlace outline, Passenger.Workspace.Gherkin.ExampleRow row, IReadOnlyList<Passenger.Workspace.Gherkin.ExampleRow> rows,
-        string path, bool debug)
+        string path, bool debug, bool cover = false)
     {
         if (Folder is null)
         {
@@ -337,7 +345,7 @@ public partial class MainWindow
         RunTests(() => running.Tests.RunPickedAsync(workspace, methods => [.. methods
             .Where(test => test.Places.Any(at => PathNames.Same(at.Path, path) && outline.Holds(compiled is null ? at.Line : Testing.TestGutter.EditorLine(compiled, at.Line))))
             .SelectMany(test => test.Children.Where(c => c.Item is not null && Testing.TestGutter.Ran(c, row, rows)))],
-            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug));
+            unfound => Refusals.NoTestOf($"{outline.Method} [{row.Shown}]", unfound), debug, cover));
     }
 
     /// <summary>A test host a runner would start, started under the debugger as a plan of its own (the runner built it, and
@@ -357,7 +365,7 @@ public partial class MainWindow
             RunsOn = start.Framework,
         };
         ShowToolWindow(ToolWindowIds.Debug);
-        Debugging.DebugLaunch launched = await running.Debug.StartAdditionalAsync(plan, cancel, tab => testHosts.Add(tab));
+        Debugging.DebugLaunch launched = await running.Debug.StartAdditionalAsync(plan, cancel, tab => testHosts.Add(tab), work.Of(AppActions.RunTests));
         try
         {
             CheckTestSession(running);
@@ -371,18 +379,30 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it; a 32-bit one, which
-    /// the debugger cannot follow, refused saying why.</summary>
+    /// <summary>A test host a runner started itself, attached to: true once the debugger has hold of it; a 32-bit one once
+    /// the debugger's 32-bit host is had, the run's work saying each stage of its download, refused saying why where it could
+    /// not be.</summary>
     private async Task<bool> AttachTestHost(ProjectSession running, int processId, Testing.TestHostReload? reload, HashSet<DebugTab> testHosts)
     {
         CheckTestSession(running);
-        if (DotnetProcesses.Runs32Bit(processId))
+        CancellationToken cancel = running.Tests.RunCancellation;
+        Words? unattached;
+        try
+        {
+            (_, unattached) = await running.Debug.X86HostAsync(DotnetProcesses.Runs32Bit(processId), work.Of(AppActions.RunTests), cancel);
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
         {
             reload?.Hook.Dispose();
-            Say(Refusals.X86Unattached("Tests"));
             return false;
         }
-        CancellationToken cancel = running.Tests.RunCancellation;
+        if (unattached is not null)
+        {
+            reload?.Hook.Dispose();
+            Say(Refusals.Unattached(Testing.TestingWords.TestsProgram, unattached));
+            return false;
+        }
+        CheckTestSession(running);
         ShowToolWindow(ToolWindowIds.Debug);
         Debugging.DebugLaunch? attached = null;
         try
@@ -476,7 +496,7 @@ public partial class MainWindow
             if (await running.Debug.LaunchScriptsAsync(listened, listening) is { } refused)
             {
                 listening.Dispose();
-                throw new InvalidOperationException(refused);
+                throw new RefusedException(refused);
             }
             debugged = running.Debug.SessionNamed(listened.Name);
             listening.Debugged = debugged;
@@ -518,7 +538,7 @@ public partial class MainWindow
     {
         if (session != running || running.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
     }
 }

@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.Core;
 using Xunit;
 
 namespace Passenger.Tests;
@@ -24,8 +25,9 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
     }
 
     /// <summary>Every toolbar button runs an action that shows its work, Run turns its ring and says its first stage at
-    /// once with a second click running nothing more, Stop as Run starts or during its build or Profile's ends it, and
-    /// Fetch says it is under way, as one flow, each step the check one test made in an instance of its own.</summary>
+    /// once with a second click running nothing more, Stop as Run starts or during its build or Profile's ends it, Fetch
+    /// says it is under way and Cancel Build stops a build, as one flow, each step the check one test made in an instance of
+    /// its own.</summary>
     [AvaloniaFact]
     public void An_action_that_takes_a_while_shows_its_work_at_once_and_Stop_ends_it()
     {
@@ -35,6 +37,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Flow.StepApart("Run stopped through its work during its build stops the build", () => new WorkingActionsTests(folders), t => t.Run_stopped_through_its_work_during_its_build_stops_the_build());
         Flow.StepApart("profile stopped through its work during its build stops the build", () => new WorkingActionsTests(folders), t => t.Profile_stopped_through_its_work_during_its_build_stops_the_build());
         Flow.StepApart("fetch says it is fetching at once and a second fetch says it is under way", () => new WorkingActionsTests(folders), t => t.Fetch_says_it_is_fetching_at_once_and_a_second_fetch_says_it_is_under_way());
+        Flow.StepApart("cancel build stops the build under way and with none is greyed saying so", () => new WorkingActionsTests(folders), t => t.Cancel_build_stops_the_build_under_way_and_with_none_is_greyed_saying_so());
     }
 
     private void Every_toolbar_button_runs_an_action_so_it_shows_that_actions_work()
@@ -76,7 +79,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
         Assert.True(said.Skip(before).Any(s => s.StartsWith("Already under way: ", StringComparison.Ordinal)),
             $"A second click on Run should be told it is under way, but the status bar said: {string.Join(" | ", said.Skip(before))}");
         held.Reached();
-        Assert.Equal("Already under way: Building Hello…", window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context()));
+        Assert.Equal("Already under way: Building Hello…", window.Actions.WhyNot(AppActions.RunProgram, window.Actions.Context())?.Shown);
         held.LetGo();
         Ui.WaitFor(() => Output(window).Contains("Process finished", StringComparison.Ordinal), "the program to run to its end", TimeSpan.FromMinutes(2));
         Assert.True(builds == 1, $"Two clicks on Run built {builds} times, where the second should have started nothing");
@@ -108,19 +111,38 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
 
     /// <summary>Starts the program, and once its build is under way stops the starts the way an agent that gives up on its
     /// call does, through their work alone: the build is stopped there, not left to run to its end, and nothing runs.</summary>
-    private void StoppedDuringBuild(Func<MainWindow, Task<string?>> start, string action)
+    private void StoppedDuringBuild(Func<MainWindow, Task<Words?>> start, string action)
     {
         MainWindow window = Open();
         List<bool> builds = [];
         window.Builder.Exited += (_, _) => builds.Add(window.Builder.WasStopped);
-        Task<string?> starting = start(window);
+        Task<Words?> starting = start(window);
         // The first build of a folder never built is under way long enough to be stopped.
         Ui.PumpUntil(() => window.Builder.IsRunning || starting.IsCompleted, $"{action}'s build to begin", TimeSpan.FromMinutes(1));
         Assert.False(starting.IsCompleted, $"{action} ended before its build began: {(starting.IsCompleted ? starting.Result : null)}");
         window.Actions.Work.Stop();
-        Assert.Equal("Hello was stopped as it started", Ui.Await(starting, $"{action}'s start to end once stopped during its build", TimeSpan.FromMinutes(2)));
+        Assert.Equal("Hello was stopped as it started", Ui.Await(starting, $"{action}'s start to end once stopped during its build", TimeSpan.FromMinutes(2))?.English);
         Assert.True(builds is [true], $"{action} stopped during its build should stop the build, but its builds ended {string.Join(", ", builds.Select(b => b ? "stopped" : "run to their end"))}");
         Assert.False(window.Runner.IsRunning || window.IsBuilding || window.Profiling is not null, $"Something ran or built once {action}'s start was stopped");
+        window.Close();
+    }
+
+    /// <summary>Cancel Build with no build says there is none; during a build held at its compile it stops that build, which
+    /// ends as stopped rather than run to its end.</summary>
+    private void Cancel_build_stops_the_build_under_way_and_with_none_is_greyed_saying_so()
+    {
+        MainWindow window = Open();
+        Assert.Equal(Refusals.NoBuildRunning.Shown, window.Actions.WhyNot(AppActions.CancelBuild, window.Actions.Context())?.Shown);
+        List<bool> builds = [];
+        window.Builder.Exited += (_, _) => builds.Add(window.Builder.WasStopped);
+        using (BuildHold held = HoldNextBuild())
+        {
+            Assert.True(window.Perform(AppActions.Build), window.Status);
+            held.Reached();
+            Assert.True(window.Perform(AppActions.CancelBuild), window.Actions.WhyNot(AppActions.CancelBuild, window.Actions.Context())?.Shown);
+            Ui.WaitFor(() => builds.Count == 1, "the build to end once Cancel Build stopped it");
+        }
+        Assert.True(builds is [true], "Cancel Build left the build to run to its end");
         window.Close();
     }
 
@@ -135,7 +157,7 @@ public sealed class WorkingActionsTests : WorkingActionsFolders, IClassFixture<R
             Assert.True(window.Perform(AppActions.Fetch));
             Assert.Equal("Fetching…", window.Status);
             Assert.False(window.Perform(AppActions.Fetch), "A second Fetch started while the first one worked");
-            Assert.Equal("Already under way: Fetching…", window.Actions.WhyNot(AppActions.Fetch, window.Actions.Context()));
+            Assert.Equal("Already under way: Fetching…", window.Actions.WhyNot(AppActions.Fetch, window.Actions.Context())?.Shown);
             Ui.WaitFor(() => window.Actions.Work.Of(AppActions.Fetch) is null, "the fetch to end");
             Assert.Equal("Fetched", window.Status);
         }
@@ -178,7 +200,7 @@ public sealed class WorkingActionsDebuggingTests : WorkingActionsFolders, IClass
         {
             if (!change.Ended)
             {
-                stages.Add(change.Work.Stage);
+                stages.Add(change.Work.Stage.Shown);
             }
         };
         IReadOnlyList<string> said = Said(window);

@@ -191,6 +191,9 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             Assert.Empty(dashboard.Requests);
             Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
             Assert.Empty(resources.Errors);
+            JsonElement connections = default;
+            Assert.True(await Waiting.UntilAsync(async () => !(connections = await Call(client, McpTools.Database)).GetProperty("connections").EnumerateArray()
+                .Any(c => c.GetProperty("name").GetString() == "orders"), TimeSpan.FromSeconds(30), Cancel), $"The stopped replicas' database is still a connection: {connections}");
         }
     }
 
@@ -343,6 +346,9 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             JsonElement[] listed = [];
             Assert.True(await Waiting.UntilAsync(async () => (listed = Replicas(await Call(client, McpTools.Workspace))).Length == 2, TimeSpan.FromSeconds(30), Cancel),
                 $"workspace never listed both replicas running: {string.Join(", ", listed)}{Said()}");
+            // The database the AppHost gives its replicas is a connection while they run, gone once they stop.
+            Assert.Contains((await Call(client, McpTools.Database)).GetProperty("connections").EnumerateArray(),
+                c => c.GetProperty("name").GetString() == "orders" && c.GetProperty("found").GetString()!.Contains("running service", StringComparison.Ordinal));
             await Call(client, McpTools.BreakpointSet, new() { ["path"] = $"{StandInAppHost.Api}/Program.cs", ["line"] = project.ApiLoop });
 
             JsonElement stop = await Call(client, McpTools.DebugStart, new() { ["resource"] = $"{host}::apiservice-{second}", ["waitSeconds"] = 60 });
@@ -358,7 +364,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             Assert.True(SessionOf(listed, first) is null, $"workspace named a session on the first replica, which nothing debugs: {string.Join(", ", listed)}");
             // Its runtime answers no session's start while the debugger holds it, so its metrics are refused rather than waited for.
             CallToolResult metrics = await Result(client, McpTools.Telemetry, new() { ["kind"] = "metrics", ["resource"] = $"{host}::apiservice-{second}" });
-            Assert.True(metrics.IsError == true && Text(metrics).Contains(Passenger.App.Refusals.PausedInDebugger("apiservice", "read its metrics"), StringComparison.Ordinal),
+            Assert.True(metrics.IsError == true && Text(metrics).Contains(Passenger.App.Refusals.PausedInDebugger("apiservice", "read its metrics").English, StringComparison.Ordinal),
                 $"telemetry's metrics of the replica paused in the debugger answered: {Text(metrics)}");
             Assert.Equal("Stopped", (await Call(client, McpTools.Stop)).GetString());
             Assert.Empty(resources.Errors);
@@ -389,6 +395,7 @@ public sealed class McpAspireStandInTests(StandInAppHost project) : McpRig, ICla
             {
                 [OtelVariables.ResourceAttributes] = $"service.instance.id={instance}",
                 ["STAND_IN_PID_FILE"] = told,
+                ["ConnectionStrings__orders"] = $"Data Source={Path.Combine(project.Folder, "orders.db")}",
             }, subscribe: subscribe);
             sockets.Add(notified);
             Assert.True((int)answer is >= 200 and < 300, $"The IDE refused replica {instance}'s run session: {answer}");

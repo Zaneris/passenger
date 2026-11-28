@@ -8,7 +8,7 @@ using Passenger.Workspace;
 
 namespace Passenger.App;
 
-/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C [--zero-based]] [--theme T] [--look L|SOURCE::NAME] [--scheme S|SOURCE::NAME]
+/// <summary>The command line: <c>passenger [PATH] [--file F]... [--caret L:C [--zero-based]] [--theme T] [--look L|SOURCE::NAME] [--scheme S|SOURCE::NAME] [--language TAG]
 /// [--run [NAME] | --debug [NAME]]</c>, PATH a folder, a file, or a solution or project opened as the workspace, whose run
 /// configuration NAME (as Edit Configurations names it; the one chosen without) Run or Debug starts once its projects are
 /// read, a name none has fatal; a screenshot with the steps before it, <c>--run</c> and <c>--debug</c> steps too; or the
@@ -72,6 +72,10 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
     /// scheme Passenger carried before, read from its themes repository, or any by <c>SOURCE::NAME</c>.</summary>
     public NamedTheme? Scheme { get; init; }
 
+    /// <summary>The language <c>--language</c> names over the one kept, or null for that one: English (<c>en</c>), a language
+    /// Passenger carries, or a pseudo-locale (<c>qps-ploc</c>, <c>qps-plocm</c>), which shows every word extracted.</summary>
+    public UiLanguage? Language { get; init; }
+
     /// <summary>The run configuration <c>--run</c> or <c>--debug</c> starts in the window once the folder opened has read
     /// its projects (<see cref="MainWindow.StartedRun"/>), or null; a screenshot's is one of its steps.</summary>
     public ConfigurationStart? Starts { get; init; }
@@ -100,6 +104,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         ThemeChoice? theme = null;
         NamedTheme? look = null;
         NamedTheme? scheme = null;
+        UiLanguage? language = null;
         string? shot = null;
         LogicalSize size = new(1600, 1000);
         double scale = 2;
@@ -192,6 +197,12 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                         : schemeText.Contains(SourceAndName, StringComparison.Ordinal) ? Sourced(flag, schemeText)
                         : throw new FormatException($"--scheme takes theme, {ThemeSource.FormerScheme.ToLowerInvariant()} or SOURCE::NAME, not '{schemeText}'");
                     break;
+                case "--language":
+                    string tag = Value(args, ref i, flag);
+                    language = UiLanguage.Of(tag, Settings.LanguageSetting.Carried) ?? throw new FormatException(
+                        $"--language takes {string.Join(", ", Settings.LanguageSetting.Values.OfType<string>().Append(UiLanguage.PseudoTag).Append(UiLanguage.MirroredTag))} "
+                        + $"or a region's tag of one of them, not '{tag}'");
+                    break;
                 case "--screenshot":
                     shot = Value(args, ref i, flag);
                     break;
@@ -278,7 +289,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
                     break;
                 case "--click-name":
                     string controlName = Value(args, ref i, flag);
-                    steps.Add(controlName.Length > 0 && controlName.All(c => char.IsLetterOrDigit(c) || c == '_')
+                    steps.Add(controlName.Length > 0 && controlName.All(CSharp.AssistContext.IsIdentifierChar)
                         ? new ScriptStep.ClickNamed(controlName)
                         : throw new FormatException($"--click-name takes a control's x:Name, not '{controlName}'"));
                     break;
@@ -321,7 +332,7 @@ public sealed record LaunchOptions(string? Folder, IReadOnlyList<string> Files, 
         ScreenshotOptions? screenshot = shot is null ? null : Checked(new ScreenshotOptions(shot, size, scale, steps, crop) { WindowButtons = windowButtons, Untrusted = untrusted }, cropText, points);
         return new LaunchOptions(folder, files, caret, theme, screenshot)
         {
-            Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme, NewWindow = newWindow,
+            Workspace = workspace, Mcp = mcp, AttachTo = attachTo, ListenForAgents = listen, Headless = headless, Look = look, Scheme = scheme, Language = language, NewWindow = newWindow,
             Starts = shot is null ? start : null,
         };
     }

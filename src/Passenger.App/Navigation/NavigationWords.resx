@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Actions" xml:space="preserve">
+    <value>Actions</value>
+    <comment>Find Action's popup title.</comment>
+  </data>
+  <data name="TypeAction" xml:space="preserve">
+    <value>Type an action's name</value>
+    <comment>Find Action's search field.</comment>
+  </data>
+  <data name="NoActionsMatch" xml:space="preserve">
+    <value>No actions match</value>
+    <comment>Find Action's list where nothing matches what was typed.</comment>
+  </data>
+  <data name="GoToFile" xml:space="preserve">
+    <value>Go to File</value>
+    <comment>Go to File's popup title.</comment>
+  </data>
+  <data name="FilePlaceholder" xml:space="preserve">
+    <value>File name, CamelHumps or a path with /</value>
+    <comment>Go to File's search field.</comment>
+  </data>
+  <data name="NoRecentFiles" xml:space="preserve">
+    <value>No recent files</value>
+    <comment>Go to File's list before anything was typed, where no file was opened yet.</comment>
+  </data>
+  <data name="GoToSymbol" xml:space="preserve">
+    <value>Go to Symbol</value>
+    <comment>Go to Symbol's popup title.</comment>
+  </data>
+  <data name="SymbolPlaceholder" xml:space="preserve">
+    <value>A type or member, by name or CamelHumps</value>
+    <comment>Go to Symbol's search field.</comment>
+  </data>
+  <data name="GoToEverything" xml:space="preserve">
+    <value>Go to Everything</value>
+    <comment>Search Everywhere's popup title.</comment>
+  </data>
+  <data name="EverythingPlaceholder" xml:space="preserve">
+    <value>A type, member or file</value>
+    <comment>Search Everywhere's search field.</comment>
+  </data>
+  <data name="FileStructure" xml:space="preserve">
+    <value>File Structure: {file}</value>
+    <comment>File Structure's popup title; {file} is the file's name.</comment>
+  </data>
+  <data name="OutlineFilter" xml:space="preserve">
+    <value>Filter by name or kind (ctor, prop), CamelHumps too</value>
+    <comment>An outline's search field (File Structure, the navigation bar's lists).</comment>
+  </data>
+  <data name="NotReadFromServer" xml:space="preserve">
+    <value>{name} could not be read from the C# language server</value>
+    <comment>A source generator's document the C# language server did not give; {name} is its name.</comment>
+  </data>
+  <data name="ServerNotReady" xml:space="preserve">
+    <value>the C# language server is not ready: {state}</value>
+    <comment>Why Go to Symbol finds nothing yet; {state} is what the server is doing.</comment>
+  </data>
+  <data name="RecentLocations" xml:space="preserve">
+    <value>Recent Locations</value>
+    <comment>Recent Locations' popup title.</comment>
+  </data>
+  <data name="RecentlyEdited" xml:space="preserve">
+    <value>Recently Edited Locations</value>
+    <comment>Recent Locations' popup title while it shows only the places edited.</comment>
+  </data>
+  <data name="RecentPlaceholder" xml:space="preserve">
+    <value>A file's name, a member or code</value>
+    <comment>Recent Locations' search field.</comment>
+  </data>
+  <data name="EditedOnly" xml:space="preserve">
+    <value>Show edited only</value>
+    <comment>Recent Locations' switch to the places edited alone.</comment>
+  </data>
+  <data name="NoRecentLocations" xml:space="preserve">
+    <value>No recent locations found</value>
+    <comment>Recent Locations' list with nothing to show.</comment>
+  </data>
+  <data name="Switcher" xml:space="preserve">
+    <value>Switcher</value>
+    <comment>The Switcher's popup title.</comment>
+  </data>
+  <data name="SwitcherPlaceholder" xml:space="preserve">
+    <value>A file's or tool window's name</value>
+    <comment>The Switcher's search field.</comment>
+  </data>
+  <data name="NothingOpenNamed" xml:space="preserve">
+    <value>Nothing open has that name</value>
+    <comment>The Switcher's list where nothing open matches what was typed.</comment>
+  </data>
+  <data name="ToolWindowSaid" xml:space="preserve">
+    <value>tool window</value>
+    <comment>What a screen reader is told a Switcher's row is, after a tool window's name.</comment>
+  </data>
+  <data name="Usages" xml:space="preserve">
+    <value>{title}  {count, plural, one {# usage} other {# usages}}</value>
+    <comment>Show Usages' popup title; {title} names the symbol.</comment>
+  </data>
+  <data name="UsagesGenerated" xml:space="preserve">
+    <value>{title}  {count, plural, one {# usage} other {# usages}}, {generated, number} in generated code</value>
+    <comment>Show Usages' popup title where some are in a source generator's code.</comment>
+  </data>
+  <data name="UsagesPlaceholder" xml:space="preserve">
+    <value>A file's name or code</value>
+    <comment>Show Usages' search field.</comment>
+  </data>
+  <data name="NoUsagesMatch" xml:space="preserve">
+    <value>No usages match</value>
+    <comment>Show Usages' list where nothing matches what was typed.</comment>
+  </data>
+  <data name="OpenInFindWindow" xml:space="preserve">
+    <value>Open in Find Window</value>
+    <comment>The link listing a popup's results in the Find window instead.</comment>
+  </data>
+  <data name="KindInGenerated" xml:space="preserve">
+    <value>{kind} in generated code</value>
+    <comment>What a usage does where it is, in a source generator's code; {kind} is as Read or Write.</comment>
+  </data>
+  <data name="InGenerated" xml:space="preserve">
+    <value>In generated code</value>
+    <comment>A usage in a source generator's code that does nothing more to say.</comment>
+  </data>
+  <data name="FindInFiles" xml:space="preserve">
+    <value>Find in Files</value>
+    <comment>Find in Files' popup title and its search field's name.</comment>
+  </data>
+  <data name="ReplaceInFiles" xml:space="preserve">
+    <value>Replace in Files</value>
+    <comment>Replace in Files' popup title and its search field's name.</comment>
+  </data>
+  <data name="TextToFind" xml:space="preserve">
+    <value>Text to find</value>
+    <comment>Find in Files' search field.</comment>
+  </data>
+  <data name="FileMaskOn" xml:space="preserve">
+    <value>File mask:</value>
+    <comment>Find in Files' switch narrowing the files by a mask.</comment>
+  </data>
+  <data name="FileMask" xml:space="preserve">
+    <value>File mask</value>
+    <comment>The tip of Find in Files' file mask switch, before its keys.</comment>
+  </data>
+  <data name="Replacement" xml:space="preserve">
+    <value>Replacement</value>
+    <comment>Replace in Files' field of the text put in.</comment>
+  </data>
+  <data name="ReplaceAll" xml:space="preserve">
+    <value>Replace All</value>
+    <comment>Replace in Files' button replacing every match.</comment>
+  </data>
+  <data name="ChooseDirectory" xml:space="preserve">
+    <value>Choose a directory</value>
+    <comment>The tip of Find in Files' button choosing the directory to search.</comment>
+  </data>
+  <data name="Directory" xml:space="preserve">
+    <value>Directory</value>
+    <comment>The title of the system's folder picker Find in Files opens.</comment>
+  </data>
+  <data name="InSolution" xml:space="preserve">
+    <value>Solution</value>
+    <comment>Find in Files' scope: the whole solution.</comment>
+  </data>
+  <data name="InProject" xml:space="preserve">
+    <value>Project</value>
+    <comment>Find in Files' scope: one project.</comment>
+  </data>
+  <data name="InDirectory" xml:space="preserve">
+    <value>Directory</value>
+    <comment>Find in Files' scope: one directory.</comment>
+  </data>
+  <data name="InScope" xml:space="preserve">
+    <value>Scope</value>
+    <comment>Find in Files' scope: a named scope.</comment>
+  </data>
+  <data name="GoTo" xml:space="preserve">
+    <value>Go to</value>
+    <comment>A match's row menu item going to it.</comment>
+  </data>
+  <data name="CopyLine" xml:space="preserve">
+    <value>Copy Line</value>
+    <comment>A match's row menu item copying its line.</comment>
+  </data>
+  <data name="MostMatches" xml:space="preserve">
+    <value>{most, number}+ matches</value>
+    <comment>Find in Files' count of matches past its limit.</comment>
+  </data>
+  <data name="Matches" xml:space="preserve">
+    <value>{count, plural, one {# match} other {# matches}}</value>
+    <comment>Find in Files' count of matches.</comment>
+  </data>
+  <data name="Searching" xml:space="preserve">
+    <value>Searching…</value>
+    <comment>Find in Files while it searches.</comment>
+  </data>
+  <data name="NothingFound" xml:space="preserve">
+    <value>Nothing found</value>
+    <comment>Find in Files where nothing matches.</comment>
+  </data>
+  <data name="FoundIn" xml:space="preserve">
+    <value>{matches} in {files, plural, one {# file} other {# files}}</value>
+    <comment>Find in Files' count of matches and files; {matches} is as 3 matches.</comment>
+  </data>
+  <data name="FoundStopped" xml:space="preserve">
+    <value>{found}: {stopped}</value>
+    <comment>Find in Files' count where the search stopped short; {stopped} says where.</comment>
+  </data>
+  <data name="GoToLine" xml:space="preserve">
+    <value>Go to Line:Column</value>
+    <comment>Go to Line's popup title and its field's name.</comment>
+  </data>
+  <data name="LineRange" xml:space="preserve">
+    <value>A line from 1 to {last}, and a column after a colon if wanted</value>
+    <comment>Go to Line's words for a place it cannot go to; {last} is the file's last line.</comment>
+  </data>
+</root>

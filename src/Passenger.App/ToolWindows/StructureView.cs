@@ -11,7 +11,7 @@ using Passenger.Text;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Structure window: the active file's outline (a C# file's types and members, a JSON file's keys, a Godot
-/// scene's nodes), indented, from where the file's outline comes (<see cref="FileOutline"/>), asked as it is shown and,
+/// scene's nodes, a form's components while its design is shown), indented, from where the file's outline comes (<see cref="FileOutline"/>), asked as it is shown and,
 /// while it is, following the editor (a moment after typing stops) and choosing the member the caret is in. A click or
 /// Enter goes to a member, and moving onto one with the keys goes there too unless it leads out of the file (a scene's
 /// script, its connection's handler). The rows are made off the window's thread, the list kept as it is where the outline
@@ -198,7 +198,7 @@ public sealed class StructureView : DockPanel
         (string Path, string Name, int CaretLine)? active = source?.Invoke();
         if (active is not { } now || outlineOf?.Invoke() is not { } file)
         {
-            Show(Outline<SymbolRow>.Empty, null, active is { } shownFile ? Refusals.NoOutline(shownFile.Name) : null);
+            Show(Outline<SymbolRow>.Empty, null, (active is { } shownFile ? Refusals.NoOutline(shownFile.Name) : null)?.Shown);
             return;
         }
         CancellationTokenSource mine = asking = new CancellationTokenSource();
@@ -247,6 +247,19 @@ public sealed class StructureView : DockPanel
         placeholder.IsVisible = path is null && why is null;
     }
 
+    /// <summary>Chooses the first row that is the one asked for, scrolled into view, going nowhere; none where none is.</summary>
+    public void ChooseRow(Func<SymbolRow, bool> which)
+    {
+        choosing = true;
+        int chosen = Rows.ToList().FindIndex(r => which(r));
+        list.SelectedIndex = chosen;
+        if (chosen >= 0)
+        {
+            list.ScrollIntoView(chosen);
+        }
+        choosing = false;
+    }
+
     private void Choose(int line)
     {
         choosing = true;
@@ -259,9 +272,9 @@ public sealed class StructureView : DockPanel
         choosing = false;
     }
 
-    /// <summary>The outline as rows, a member's type after its name as Roslyn names it ("Main() : void"), at the editor's
-    /// lines of the text the server's lines are of; a row the outline <paramref name="before"/> has in its place unchanged
-    /// is that one. Made off the window's thread.</summary>
+    /// <summary>The outline as rows, a member's type after its name as Roslyn names it ("Main() : void"), a constructor a
+    /// constructor, at the editor's lines of the text the server's lines are of; a row the outline <paramref name="before"/>
+    /// has in its place unchanged is that one. Made off the window's thread.</summary>
     public static Outline<SymbolRow> OutlineOf(IReadOnlyList<DocumentSymbol> symbols, string path, ServerLines lines, Outline<SymbolRow>? before = null,
         CancellationToken cancel = default) =>
         Outline<SymbolRow>.Of(symbols, symbol => symbol.Children, (symbol, depth) =>
@@ -280,7 +293,9 @@ public sealed class StructureView : DockPanel
             type = name[(typed + 3)..];
             name = name[..typed];
         }
-        return new SymbolRow(name, type is null ? null : $": {type}", null, symbol.Kind, path,
+        // Roslyn's server gives a constructor a method's kind, its name with no type after it as every method of its has.
+        SymbolKind kind = symbol.Kind == SymbolKind.Method && type is null && name.EndsWith(')') && !name.StartsWith('~') ? SymbolKind.Constructor : symbol.Kind;
+        return new SymbolRow(name, type is null ? null : $": {type}", null, kind, path,
             lines.Text.GetPosition(lines.OffsetOf(symbol.SelectionRange.Start)), depth, lines.Text.GetLineFromOffset(lines.OffsetOf(symbol.Range.End)));
     }
 }

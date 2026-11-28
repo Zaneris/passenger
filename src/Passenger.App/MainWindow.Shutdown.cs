@@ -33,9 +33,9 @@ public partial class MainWindow
             Editors.LetGoOfFiles();
         };
         // Only the person closes the solution: an agent's ide_action or input is refused, attached or in its own Passenger.
-        actions!.Add(new IdeAction(AppActions.CloseSolution, "Close Solution", "IDE", _ =>
+        actions!.Add(new IdeAction(AppActions.CloseSolution, ActionTitles.CloseSolution, ActionGroups.Ide, _ =>
         {
-            if (!RefusedToAgentsInput(Refusals.CloseSolutionIsThePersons))
+            if (!RefusedToAgentsInput(Refusals.CloseSolutionIsThePersons.Shown))
             {
                 CloseSolution();
             }
@@ -51,7 +51,7 @@ public partial class MainWindow
     /// cref="RefusedToAgentsInput"/>); an agent's own Passenger, which ends with its agent, quits as it asks.</summary>
     private void Exit()
     {
-        if (!AgentsOwn && RefusedToAgentsInput(Refusals.QuitIsThePersons))
+        if (!AgentsOwn && RefusedToAgentsInput(Refusals.QuitIsThePersons.Shown))
         {
             return;
         }
@@ -82,7 +82,7 @@ public partial class MainWindow
         UiThread.Check();
         if (Folder is null)
         {
-            return Refusals.NoFolder;
+            return Refusals.NoFolder.Shown;
         }
         if (HeldByLeaving() is { Count: > 0 } held)
         {
@@ -93,6 +93,11 @@ public partial class MainWindow
         {
             IdeErrors.Observe(CloseSolutionLetGoAsync());
             return "The solution closes once you answer whether to stop the containers of the runs Detach let go of";
+        }
+        if (AsksOfDatabase)
+        {
+            IdeErrors.Observe(CloseSolutionDatabaseAsync());
+            return "The solution closes once you answer whether to write or drop its database changes not yet written";
         }
         if (!Autosave())
         {

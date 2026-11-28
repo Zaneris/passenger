@@ -94,7 +94,7 @@ public sealed class KeymapTests : IDisposable
     /// <summary>A modifier tapped twice in the Keyboard Shortcut dialog is recorded as its double tap, shown as one, and runs
     /// its action from the editor once kept; the keymap's own double Shift opens Go to Everything, which its tip names, and
     /// two capitals typed, Shift held for each, open nothing.</summary>
-    internal void A_double_tap_recorded_runs_its_action_and_a_double_Shift_opens_Go_to_Everything_but_two_capitals_typed_do_not()
+    internal void A_double_tap_recorded_runs_its_action_a_double_Shift_or_Ctrl_opens_its_popup_but_two_capitals_or_a_Ctrl_held_for_a_shortcut_do_not()
     {
         MainWindow window = Open();
         try
@@ -121,8 +121,22 @@ public sealed class KeymapTests : IDisposable
                 $"Go to Everything's tip names {window.Actions.Shortcut(AppActions.GoToEverything)}, where the keymap's first key for it is {doubleShift}");
             window.EditorArea.CodeEditor.Focus();
             Ui.Press(window, "shift , shift");
-            Assert.True(window.Popup is SymbolPopup { Title: "Go to Everything" }, $"{doubleShift} in the Visual Studio keymap opened no Go to Everything");
+            Assert.True(window.Popup is SymbolPopup { Title.English: "Go to Everything" }, $"{doubleShift} in the Visual Studio keymap opened no Go to Everything");
             Ui.Press(window, "ESCAPE");
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, "control , control");
+            Assert.True(window.Popup is Passenger.App.Run.RunOffersPopup { Title.English: "Run Anything" },
+                $"{Shortcut.Parse("control , control").Display()} in the Visual Studio keymap opened {window.Popup?.GetType().Name ?? "nothing"}, where it opens Run Anything");
+            Ui.Press(window, "ESCAPE");
+            window.EditorArea.CodeEditor.Focus();
+            // Ctrl tapped, then held at once for a shortcut: a tap and a press, never two taps.
+            window.KeyPress(Key.LeftCtrl, RawInputModifiers.Control, PhysicalKey.None, null);
+            window.KeyRelease(Key.LeftCtrl, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyPress(Key.LeftCtrl, RawInputModifiers.Control, PhysicalKey.None, null);
+            Ui.Press(window, "control LEFT", settle: false);
+            window.KeyRelease(Key.LeftCtrl, RawInputModifiers.None, PhysicalKey.None, null);
+            Ui.Settle();
+            Assert.True(window.Popup is null, $"Ctrl tapped, then held for Ctrl+Left at once, opened {window.Popup?.GetType().Name}, where a modifier held for a shortcut taps nothing");
             window.EditorArea.CodeEditor.Focus();
             foreach ((Key letter, string text) in new[] { (Key.A, "A"), (Key.B, "B") })
             {
@@ -251,7 +265,7 @@ public sealed class KeymapTests : IDisposable
             Keystroke first = Keystroke.Parse($"{Cmd} K");
             string[] starting = [.. window.Actions.All
                 .Where(a => window.Actions.Keymap.ShortcutsFor(a.Id).Any(s => s.First == first))
-                .Select(a => a.Title).Order(StringComparer.Ordinal)];
+                .Select(a => a.Title.English).Order(StringComparer.Ordinal)];
             Assert.Contains("Comment", starting);
             Assert.Contains("Toggle Bookmark", starting);
             Assert.Equal(starting, dialog.Shown.Order(StringComparer.Ordinal));

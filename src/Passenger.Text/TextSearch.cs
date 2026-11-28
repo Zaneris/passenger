@@ -955,20 +955,30 @@ internal sealed class ReplacementText
 /// <summary>A look at a file's bytes, before it is read as text, for what every match of a query holds in a row: its
 /// text, or a regex's longest run of plain characters (<see cref="Literal"/>), cut at line breaks, which a text's reading
 /// changes. Bytes the editor reads as UTF-8 without it hold no match and need no decoding. Matching case, the run's own
-/// UTF-8 bytes are looked for; ignoring case, the bytes' characters are, as the query's regex reads them, so a character
-/// only that casing takes for a letter (the Kelvin sign for k) still counts. One search's own: it keeps a buffer.</summary>
+/// UTF-8 bytes are looked for, and ignoring case an ASCII run's bytes, each letter in either case, since a UTF-8 file's
+/// ASCII characters are its ASCII bytes; but the Kelvin sign, which the query's regex ignoring case takes for a k, and a
+/// run that is not ASCII, are looked for in the bytes' characters, as that regex reads them. One search's own: it keeps a
+/// buffer.</summary>
 public sealed class MatchFilter
 {
     private static ReadOnlySpan<byte> Utf8Bom => [0xEF, 0xBB, 0xBF];
 
+    /// <summary>The one character but ASCII's own that a regex ignoring case takes for an ASCII letter (k).</summary>
+    private static ReadOnlySpan<byte> KelvinSign => [0xE2, 0x84, 0xAA];
+
+    /// <summary>The run's UTF-8, but where it is not ASCII and case is ignored.</summary>
     private readonly byte[]? run;
     private readonly Regex? ignoringCase;
+
+    /// <summary>Whether the run, ASCII with case ignored, holds a k, which a Kelvin sign may stand for.</summary>
+    private readonly bool kelvin;
     private char[] chars = [];
 
     private MatchFilter(byte[]? run, Regex? ignoringCase)
     {
         this.run = run;
         this.ignoringCase = ignoringCase;
+        kelvin = run is not null && ignoringCase is not null && run.AsSpan().IndexOfAny((byte)'k', (byte)'K') >= 0;
     }
 
     /// <summary>The filter for a query; null when its matches hold no run of characters to look for.</summary>
@@ -982,7 +992,8 @@ public sealed class MatchFilter
         }
         if (!query.MatchCase)
         {
-            return new MatchFilter(null, new Regex(Regex.Escape(held), RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, Regex.InfiniteMatchTimeout));
+            return new MatchFilter(Ascii.IsValid(held) ? Encoding.ASCII.GetBytes(held) : null,
+                new Regex(Regex.Escape(held), RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, Regex.InfiniteMatchTimeout));
         }
         try
         {
@@ -1017,11 +1028,14 @@ public sealed class MatchFilter
     {
         if (run is not null)
         {
-            if (utf8.IndexOf(run) >= 0)
+            if ((ignoringCase is null ? utf8.IndexOf(run) : IndexIgnoringCase(utf8, run)) >= 0)
             {
                 return true;
             }
-            return !strict || Utf8.IsValid(utf8) ? false : null;
+            if (!kelvin || utf8.IndexOf(KelvinSign) < 0)
+            {
+                return !strict || Utf8.IsValid(utf8) ? false : null;
+            }
         }
         if (chars.Length < utf8.Length)
         {
@@ -1033,6 +1047,28 @@ public sealed class MatchFilter
             return null;
         }
         return ignoringCase!.IsMatch(chars.AsSpan(0, written));
+    }
+
+    /// <summary>Where bytes first hold an ASCII run, each of its letters in either case; -1 for nowhere.</summary>
+    private static int IndexIgnoringCase(ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> ascii)
+    {
+        byte first = ascii[0];
+        byte other = char.IsAsciiLetter((char)first) ? (byte)(first ^ 0x20) : first;
+        int last = bytes.Length - ascii.Length;
+        for (int at = 0; at <= last; at++)
+        {
+            int found = bytes[at..(last + 1)].IndexOfAny(first, other);
+            if (found < 0)
+            {
+                return -1;
+            }
+            at += found;
+            if (Ascii.EqualsIgnoreCase(bytes.Slice(at, ascii.Length), ascii))
+            {
+                return at;
+            }
+        }
+        return -1;
     }
 
     /// <summary>The longest part of a run between its line breaks, or null for none.</summary>

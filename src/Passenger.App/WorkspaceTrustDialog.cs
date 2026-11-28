@@ -66,7 +66,7 @@ public sealed class WorkspaceTrustDialog : IdeWindow
     /// stays for the person.</summary>
     private void Answer(TrustAnswer said)
     {
-        if (AgentAsks.PersonsAlone(Refusals.TrustAnsweredByThePerson))
+        if (AgentAsks.PersonsAlone(Refusals.TrustAnsweredByThePerson.Shown))
         {
             return;
         }

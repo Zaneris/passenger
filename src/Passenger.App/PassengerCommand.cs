@@ -44,11 +44,11 @@ public static class PassengerCommand
         }
         string? bundle = BundleStandIn ?? MacBundles.Of(Environment.ProcessPath);
         string? launcher = bundle is null ? null : PathNames.Canonical(Path.Combine(bundle, "Contents", "Resources", "bin", Name));
-        string? unlinkable = bundle is null ? Refusals.CommandOfNoBundle
+        string? unlinkable = (bundle is null ? Refusals.CommandOfNoBundle
             : bundle.Contains("/AppTranslocation/", StringComparison.Ordinal) ? Refusals.CommandOfTranslocated(bundle)
             : bundle.StartsWith("/Volumes/", StringComparison.Ordinal) && Libc.Access(Path.GetDirectoryName(bundle)!, Libc.MayWrite) != 0 ? Refusals.CommandOfDiskImage(bundle)
             : !File.Exists(launcher) ? Refusals.CommandNotCarried(launcher!)
-            : null;
+            : null)?.Shown;
         return new MacCommand(Link, launcher, unlinkable, Held(launcher), ShellPath.ForCommands(Folder, Name));
     }
 
@@ -86,7 +86,7 @@ public static class PassengerCommand
         }
         if (now.Held == CommandHeld.Others)
         {
-            throw new IOException(Refusals.CommandOthers(now.Link));
+            throw new IOException(Refusals.CommandOthers(now.Link).English);
         }
         if (now.Held != CommandHeld.This)
         {
@@ -100,7 +100,7 @@ public static class PassengerCommand
             }
             else if (!AtomicFile.MoveNew(made, Link))
             {
-                throw new IOException(Refusals.CommandOthers(now.Link));
+                throw new IOException(Refusals.CommandOthers(now.Link).English);
             }
         }
         now.OnPath?.Make();

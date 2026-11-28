@@ -129,7 +129,7 @@ public sealed class MachineDotnetTests : IDisposable
         try
         {
             window.OpenFolder(app);
-            Ui.WaitFor(() => window.DotnetSaid == Refusals.OnlyNativeSdk && window.Status == Refusals.OnlyNativeSdk,
+            Ui.WaitFor(() => window.DotnetSaid == Refusals.OnlyNativeSdk.Shown && window.Status == Refusals.OnlyNativeSdk.Shown,
                 () => $"the banner and the status bar to say an x64 SDK is needed; the banner says \"{window.DotnetSaid}\" and the status bar \"{window.Status}\"");
         }
         finally
@@ -158,21 +158,21 @@ public sealed class MachineDotnetTests : IDisposable
         try
         {
             window.OpenFolder(app);
-            Ui.WaitFor(() => window.DotnetSaid == Refusals.OnlyNativeSdk && window.Status == Refusals.OnlyNativeSdk,
+            Ui.WaitFor(() => window.DotnetSaid == Refusals.OnlyNativeSdk.Shown && window.Status == Refusals.OnlyNativeSdk.Shown,
                 () => $"the banner and the status bar to say an x64 SDK is needed; the banner says \"{window.DotnetSaid}\" and the status bar \"{window.Status}\"");
             Assert.True(window.DotnetWant is { Lack: DotnetLack.OtherProcessor, Install: null } want && want.SystemsOwn == systems,
                 $"The window took the want for {window.DotnetWant.Lack}, the system's own SDK in {window.DotnetWant.SystemsOwn}, with {window.DotnetWant.Install} to install");
             Assert.True(window.Session.Models.MissingSdk is { ForOtherProcessor: true } refused && refused.Said.Contains(x64, StringComparison.Ordinal),
                 $"The project host refused the folder saying: {window.Session.Models.MissingSdk?.Said}");
-            Assert.Equal(Refusals.OnlyNativeSdk, window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
-            Assert.Equal(Refusals.InstallsOnlyNative, window.Actions.WhyNot(AppActions.InstallDotnetSdk, window.Actions.Context()));
+            Assert.Equal(Refusals.OnlyNativeSdk.Shown, window.Actions.WhyNot(AppActions.Build, window.Actions.Context())?.Shown);
+            Assert.Equal(Refusals.InstallsOnlyNative.Shown, window.Actions.WhyNot(AppActions.InstallDotnetSdk, window.Actions.Context())?.Shown);
             string? told = Ui.Await(new App.Mcp.PassengerTools(window).GetWorkspace(), "an agent's workspace").SdkMissing;
-            Assert.True(told is not null && told.StartsWith(Refusals.OnlyNativeSdk, StringComparison.Ordinal) && told.Contains(Releases.ThisSystemsDownload.AbsoluteUri, StringComparison.Ordinal),
+            Assert.True(told is not null && told.StartsWith(Refusals.OnlyNativeSdk.Shown, StringComparison.Ordinal) && told.Contains(Releases.ThisSystemsDownload.AbsoluteUri, StringComparison.Ordinal),
                 $"An agent's workspace said of .NET: {told}");
 
             Ui.ClickButton(window, OperatingSystem.IsMacOS() ? "Download Passenger for Apple Silicon" : "Download Passenger for Arm64");
             Assert.Equal(Releases.ThisSystemsDownload, Assert.Single(window.Browsed));
-            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name);
+            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name.English);
             window.StatusPlace!.Go();
             Assert.Equal([Releases.ThisSystemsDownload, Releases.ThisSystemsDownload], window.Browsed);
         }
@@ -201,7 +201,7 @@ public sealed class MachineDotnetTests : IDisposable
         try
         {
             window.OpenFolder(app);
-            string said = Refusals.TranslatedWithoutSdk(null);
+            string said = Refusals.TranslatedWithoutSdk(null).Shown;
             Ui.WaitFor(() => window.DotnetSaid == said && window.Status == said,
                 () => $"the banner and the status bar to say Passenger for this computer suits it; the banner says \"{window.DotnetSaid}\" and the status bar \"{window.Status}\"");
             Assert.True(window.DotnetWant is { Lack: DotnetLack.OtherProcessor, Install: null, Root: null, SystemsOwn: null },
@@ -210,16 +210,16 @@ public sealed class MachineDotnetTests : IDisposable
             Assert.True(!links.Contains("Install .NET SDK…") && !links.Contains("Download Page") && links.Contains(SystemsOwnLink),
                 $"The banner offers [{string.Join(", ", links)}]");
             ActionContext here = window.Actions.Context();
-            Assert.Equal(said, window.Actions.WhyNot(AppActions.Build, here));
-            Assert.Equal(said, window.Actions.WhyNot(AppActions.NewSolution, here));
-            Assert.Equal(Refusals.InstallsOnlyNative, window.Actions.WhyNot(AppActions.InstallDotnetSdk, here));
+            Assert.Equal(said, window.Actions.WhyNot(AppActions.Build, here)?.Shown);
+            Assert.Equal(said, window.Actions.WhyNot(AppActions.NewSolution, here)?.Shown);
+            Assert.Equal(Refusals.InstallsOnlyNative.Shown, window.Actions.WhyNot(AppActions.InstallDotnetSdk, here)?.Shown);
 
             bool ran = window.Perform(AppActions.InstallDotnetSdk);
-            string? agents = window.Actions.RunForAgent(AppActions.InstallDotnetSdk);
+            string? agents = window.Actions.RunForAgent(AppActions.InstallDotnetSdk)?.English;
             Ui.Settle();
-            Assert.True(!ran && agents == Refusals.InstallsOnlyNative, $"Install .NET SDK {(ran ? "ran" : "was refused")} for the person, and for an agent said: {agents}");
+            Assert.True(!ran && agents == Refusals.InstallsOnlyNative.Shown, $"Install .NET SDK {(ran ? "ran" : "was refused")} for the person, and for an agent said: {agents}");
             Assert.True(!window.OwnedWindows.OfType<ConfirmDialog>().Any() && window.Actions.Work.Of(AppActions.InstallDotnetSdk) is null && feed.Connections == 0 && !Directory.Exists(installs),
-                $"Install .NET SDK went on: {window.OwnedWindows.Count} windows over the window, its work {window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage}, "
+                $"Install .NET SDK went on: {window.OwnedWindows.Count} windows over the window, its work {window.Actions.Work.Of(AppActions.InstallDotnetSdk)?.Stage.Shown}, "
                 + $"{feed.Connections} requests of the release metadata, {installs} {(Directory.Exists(installs) ? "made" : "not made")}");
             string? told = Ui.Await(new App.Mcp.PassengerTools(window).GetWorkspace(), "an agent's workspace").SdkMissing;
             Assert.True(told is not null && told.StartsWith(said, StringComparison.Ordinal) && told.Contains(Releases.ThisSystemsDownload.AbsoluteUri, StringComparison.Ordinal),
@@ -227,7 +227,7 @@ public sealed class MachineDotnetTests : IDisposable
 
             Ui.ClickButton(window, SystemsOwnLink);
             Assert.Equal(Releases.ThisSystemsDownload, Assert.Single(window.Browsed));
-            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name);
+            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name.English);
             window.StatusPlace!.Go();
             Assert.Equal([Releases.ThisSystemsDownload, Releases.ThisSystemsDownload], window.Browsed);
         }

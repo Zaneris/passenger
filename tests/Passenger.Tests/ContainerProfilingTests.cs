@@ -97,7 +97,7 @@ public sealed class ContainerProfilingTests(ContainerProfilingTests.Spins.Built 
                 string stamp = now.AddSeconds(ahead).ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
                 blocking.Add(Directory.CreateDirectory(Path.Combine(window.SnapshotFolder, $"Spins-{stamp}.nettrace")).FullName);
             }
-            string? refused = Ui.Await(window.AttachProfilerAsync(program), "Attach Profiler's answer");
+            string? refused = Ui.Await(window.AttachProfilerAsync(program), "Attach Profiler's answer")?.English;
             Assert.True(refused?.StartsWith("Could not profile Spins: no snapshot can be written in ", StringComparison.Ordinal) == true, $"Attach Profiler answered: {refused}");
             Assert.Null(window.Profiling);
             Assert.DoesNotContain($"{ContainerTools.Executable} trace", Spins.Top(container), StringComparison.Ordinal);

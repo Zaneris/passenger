@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Passenger.Core;
@@ -54,24 +55,42 @@ public sealed record EngineState(EngineStatus Status, string? Cli, string? Probl
     /// <summary>Whether it is Docker Desktop's own engine on this machine, whose settings are the person's here.</summary>
     public bool DockerDesktop { get; init; }
 
+    /// <summary>Whether the engine is WSL Containers, reached through its own <c>wslc</c> (<see cref="ContainerEngine.IsWslc"/>).</summary>
+    public bool IsWslc { get; init; }
+
     /// <summary>The engine's name as messages give it.</summary>
-    public string EngineName => IsPodman ? "Podman" : "Docker";
+    public string EngineName => IsWslc ? ContainerEngine.WslContainers : IsPodman ? "Podman" : "Docker";
 
     /// <summary>The SDK's name for loading an image through this CLI (<see cref="MSBuildNames.LocalRegistry"/>): Podman's own
     /// command's, else Docker's, which reaches Podman's socket as it reaches Docker's.</summary>
     public string LocalRegistry => PodmanCli ? "Podman" : "Docker";
 
     /// <summary>What the engine cannot do that Passenger would otherwise, said where its problems are: Podman has no
-    /// BuildKit, whose checks a Dockerfile's are (buildx would start a BuildKit container on it, which Passenger never does).</summary>
-    public string? Limit => IsPodman
+    /// BuildKit, whose checks a Dockerfile's are (buildx would start a BuildKit container on it, which Passenger never does),
+    /// and WSL Containers' wslc no Buildx.</summary>
+    public string? Limit => (IsWslc ? Refusals.WslcNoBuildKit : IsPodman
         ? "Dockerfiles are not checked with BuildKit: Podman has none (it builds with Buildah), and Passenger starts no BuildKit container for its checks"
-        : null;
+        : null)?.Shown;
 
     /// <summary>Whether Docker Desktop is installed where a click can start it (macOS's app, Windows' executable).</summary>
     public static string? DesktopApp => OperatingSystem.IsMacOS() && Directory.Exists("/Applications/Docker.app") ? "/Applications/Docker.app"
         : OperatingSystem.IsWindows() && File.Exists(WindowsDesktop) ? WindowsDesktop : null;
 
     private static string WindowsDesktop => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docker", "Docker", "Docker Desktop.exe");
+}
+
+/// <summary>Which CLI reaches the person's container engine, as Settings chooses it.</summary>
+public enum EngineCli
+{
+    /// <summary>Docker's <c>docker</c> where one is found (Docker Desktop, Podman's, a context's engine), else on Windows WSL
+    /// Containers' <c>wslc</c>.</summary>
+    Automatic,
+
+    /// <summary>Docker's <c>docker</c> alone.</summary>
+    Docker,
+
+    /// <summary>WSL Containers' <c>wslc</c> alone.</summary>
+    Wslc,
 }
 
 /// <summary>A line of <c>docker events --format json</c>: what kind of object (container, network, volume, image), what
@@ -95,6 +114,7 @@ public sealed class ContainerEngine
     private readonly object gate = new();
     private readonly string? given;
     private readonly bool search;
+    private EngineCli chosen;
     private string? found;
     private bool looked;
     private (EngineState State, long At)? last;
@@ -112,6 +132,17 @@ public sealed class ContainerEngine
 
     /// <summary>The process's engine: the person's <c>docker</c>.</summary>
     public static ContainerEngine Shared { get; } = new();
+
+    /// <summary>WSL Containers' name, as messages give it.</summary>
+    public const string WslContainers = "WSL Containers";
+
+    /// <summary>WSL Containers' own command, which is also the runtime's name Aspire's orchestrator is told.</summary>
+    public const string Wslc = "wslc";
+
+    /// <summary>Whether a CLI is WSL Containers' own <c>wslc</c>, by its program's name: its commands are close to docker's,
+    /// but its <c>--format</c> takes only table or json, and it has no contexts, Compose, Buildx or scout.</summary>
+    public static bool IsWslc(string? cli) =>
+        cli is not null && string.Equals(Path.GetFileNameWithoutExtension(cli), Wslc, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The CLI, found once: the PATH as the login shell has it, then Docker Desktop's, OrbStack's and Rancher
     /// Desktop's own folders; null with none. It may wait for the login shell's environment, so never on the UI thread.</summary>
@@ -131,7 +162,49 @@ public sealed class ContainerEngine
         }
     }
 
-    private static string? Find()
+    /// <summary>An engine held to the CLI this one has found, which a later choice of another (<see cref="Choose"/>) leaves as
+    /// it is: what a run brought up is reached and taken down through the CLI that brought it up. Itself where it was given
+    /// its CLI, or has yet to find one.</summary>
+    public ContainerEngine Pinned()
+    {
+        lock (gate)
+        {
+            return given is null && search && looked && found is not null ? new ContainerEngine(found) : this;
+        }
+    }
+
+    /// <summary>Which CLI it looks for from now on (<see cref="EngineCli"/>), its CLI and state found again at the next ask
+    /// and its events started again through it; nothing for an engine given its CLI. Any thread.</summary>
+    public void Choose(EngineCli cli)
+    {
+        Process? ending;
+        lock (gate)
+        {
+            if (given is not null || !search || chosen == cli)
+            {
+                return;
+            }
+            (chosen, looked, found, last, asking) = (cli, false, null, null, null);
+            (ending, events) = (events, null);
+        }
+        if (ending is not null)
+        {
+            ChildProcesses.Kill(ending);
+        }
+    }
+
+    private string? Find() => chosen switch
+    {
+        EngineCli.Wslc => WslcCommand(),
+        EngineCli.Docker => DockerCommand(),
+        _ => DockerCommand() ?? (OperatingSystem.IsWindows() ? WslcCommand() : null),
+    };
+
+    /// <summary>WSL Containers' <c>wslc</c>: the PATH's, else WSL's own folder, which its installer puts on the system PATH.</summary>
+    private static string? WslcCommand() => Programs.Command(Wslc)
+        ?? (OperatingSystem.IsWindows() ? Programs.CommandIn([Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WSL")], Wslc) : null);
+
+    private static string? DockerCommand()
     {
         if (Programs.Command("docker") is { } onPath)
         {
@@ -323,13 +396,21 @@ public sealed class ContainerEngine
     {
         try
         {
-            ChildResult named = await RunAsync(["inspect", "-f", "{{.Name}}", container], AskLimit, cancel);
-            return named.Succeeded && named.Output.Trim().TrimStart('/') is { Length: > 0 } name ? name : container;
+            return JsonMembers.Scalar(await InspectedAsync(container, cancel), "Name")?.TrimStart('/') is { Length: > 0 } name ? name : container;
         }
-        catch (Exception failed) when (ChildFailures.Of(failed))
+        catch (Exception failed) when (ChildFailures.Of(failed) || failed is ContainerCommandException or JsonException)
         {
             return container;
         }
+    }
+
+    /// <summary>What the engine says of a container (<c>inspect</c>'s JSON, which every engine's CLI writes, where a template
+    /// is docker's and Podman's alone); null where it says nothing of it.</summary>
+    public async Task<JsonElement?> InspectedAsync(string container, CancellationToken cancel = default)
+    {
+        JsonElement said = await JsonAsync(["inspect", "--type", "container", container], cancel, AskLimit);
+        JsonElement one = said.ValueKind == JsonValueKind.Array ? said.EnumerateArray().FirstOrDefault() : said;
+        return one.ValueKind == JsonValueKind.Object ? one : null;
     }
 
     /// <summary>The last state known, without asking.</summary>
@@ -349,14 +430,25 @@ public sealed class ContainerEngine
 
     private const string NoCliProblem = "No docker command was found: install Docker Desktop, OrbStack, Colima, Rancher Desktop or Podman";
 
+    private const string NoWslcProblem = $"No wslc command was found: {WslContainers} comes with WSL (wsl --install, or wsl --update)";
+
     private async Task<EngineState> AskStateAsync()
     {
+        EngineCli asked;
+        lock (gate)
+        {
+            asked = chosen;
+        }
         EngineState state = await ReadStateAsync();
         EngineState? before;
         lock (gate)
         {
             before = last?.State;
-            last = (state, Stopwatch.GetTimestamp());
+            // An answer of the CLI chosen before is never kept as the one chosen now's.
+            if (asked == chosen)
+            {
+                last = (state, Stopwatch.GetTimestamp());
+            }
         }
         if (before?.Status != state.Status)
         {
@@ -369,7 +461,16 @@ public sealed class ContainerEngine
     {
         if (Cli is not { } cli)
         {
-            return new EngineState(EngineStatus.NoCli, null, NoCliProblem, null, null, null, null, null, null);
+            return new EngineState(EngineStatus.NoCli, null, chosen switch
+            {
+                EngineCli.Wslc => NoWslcProblem,
+                EngineCli.Automatic when search && OperatingSystem.IsWindows() => $"{NoCliProblem}, or WSL, whose wslc runs {WslContainers}",
+                _ => NoCliProblem,
+            }, null, null, null, null, null, null) { IsWslc = chosen == EngineCli.Wslc };
+        }
+        if (IsWslc(cli))
+        {
+            return await ReadWslcStateAsync(cli);
         }
         ChildResult version;
         try
@@ -561,6 +662,46 @@ public sealed class ContainerEngine
 
     /// <summary>The processor of Podman's "linux/arm64".</summary>
     private static string? ArchOf(string? osArch) => osArch?.Split('/') is [_, var arch, ..] ? arch : null;
+
+    /// <summary>WSL Containers' state, from <c>wslc info --format json</c>: WSL's version and its session manager's, which
+    /// answers without starting a session (its <c>version</c> gives the client's alone). Its sessions run Linux on this
+    /// machine's processor; it has no Compose, so it serves what needs none.</summary>
+    private async Task<EngineState> ReadWslcStateAsync(string cli)
+    {
+        ChildResult info;
+        try
+        {
+            info = await RunAsync(["info", "--format", "json"], AskLimit);
+        }
+        catch (Exception failed) when (ChildFailures.Of(failed))
+        {
+            return new EngineState(EngineStatus.NotRunning, cli, $"{WslContainers} did not answer: {failed.Message}", null, null, null, null, null, null) { IsWslc = true };
+        }
+        (string? version, string? manager) = (null, null);
+        if (info.Succeeded)
+        {
+            foreach (JsonElement read in JsonLines(info.Output))
+            {
+                version = JsonMembers.Scalar(JsonMembers.Object(read, "Client"), "Version");
+                manager = JsonMembers.Scalar(JsonMembers.Object(read, "Server"), "SessionManagerVersion");
+            }
+        }
+        if (manager is null)
+        {
+            return new EngineState(EngineStatus.NotRunning, cli, $"{WslContainers} isn't answering: {Said(info)}", null, null, null, null, null, null) { IsWslc = true };
+        }
+        string? arch = RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.X64 => "amd64",
+            Architecture.Arm64 => "arm64",
+            _ => null,
+        };
+        return new EngineState(EngineStatus.NoCompose, cli, Refusals.WslcNoCompose.Shown, version ?? manager, "linux", null, null, null, null)
+        {
+            IsWslc = true, ServerArch = arch, Amd64 = EngineEmulation.Of(arch, null, null),
+        };
+    }
+
 
     /// <summary>What a follower is told when the engine's events stop (it stopped, Docker Desktop quit) and when they come
     /// again once it is ready: an event of the engine's own, <c>stopped</c> or <c>started</c>.</summary>

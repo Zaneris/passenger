@@ -244,7 +244,7 @@ public enum Admission
     /// <summary>Allowed, and for a tool for every call of it until the agent goes or the window leaves the folder.</summary>
     Allowed,
 
-    /// <summary>A tool allowed for the one call whose arguments its question showed (<see cref="AgentToolDialog.AllowOnce"/>).</summary>
+    /// <summary>A tool allowed for the one call whose arguments its question showed (<see cref="McpWords.AllowOnce"/>).</summary>
     AllowedOnce,
 
     NotAllowed,
@@ -349,7 +349,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         return said switch
         {
             Admission.NotAllowed => $"The person at {Where(window)} did not let {Agent} work there. Ask them, or do without it; a later call asks them again.",
-            Admission.FolderChanged => Refusals.FolderChanged(asked.Folder),
+            Admission.FolderChanged => Refusals.FolderChanged(asked.Folder).English,
             _ => $"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may work there. A later call asks again.",
         };
     }
@@ -409,7 +409,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
         {
             Admission.Allowed or Admission.AllowedOnce => null,
             Admission.NotAllowed => $"The person at {Where(window)} did not allow {named}. Ask them, or do without it; a later call asks them again.",
-            Admission.FolderChanged => Refusals.FolderChanged(folder),
+            Admission.FolderChanged => Refusals.FolderChanged(folder).English,
             _ => $"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may use {named}. A later call asks again.",
         };
     }
@@ -453,7 +453,7 @@ public sealed class AgentConnection(CancellationToken gone, bool attached)
                 everyToolDenied = true;
                 return ($"The person at {Where(window)} denied every tool at once: each tool still asks them at its call, and a later request is refused unasked {lasts}.", true);
             case Admission.FolderChanged:
-                return (Refusals.FolderChanged(folder), true);
+                return (Refusals.FolderChanged(folder).English, true);
             default:
                 return ($"Nobody at {Where(window)} answered within {Limit(window)} whether {Agent} may use every tool. A later request asks again.", true);
         }

@@ -30,6 +30,10 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// <summary>How long a test host done with its request has to tell its last results and exit before it is ended.</summary>
     private static readonly TimeSpan ExitLimit = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long Coverlet's console has, once its test host is done, to write its report and put the assemblies it
+    /// measured back as built, before it is ended.</summary>
+    private static readonly TimeSpan ReportLimit = TimeSpan.FromMinutes(2);
+
     /// <summary>The test nodes discovered, by the id of the test each was told as.</summary>
     private readonly TestCatalog<Found> found = new();
 
@@ -116,7 +120,7 @@ public sealed class TestingPlatformRunner : ITestRunner
     /// launcher is given) with the environment given; their outcomes told a notification at a time as they come. Canceled,
     /// the test host is asked to stop and given a moment, then ended, keeping the outcomes of what had run.</summary>
     public async Task<RunSummary> RunAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Action<string>? log = null,
-        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CancellationToken cancel = default)
+        ITestDebugLauncher? debugger = null, IReadOnlyDictionary<string, string>? environment = null, GodotStart? godot = null, CoverageRun? coverage = null, CancellationToken cancel = default)
     {
         RunSummary summary = new(TimeSpan.Zero, false, false, null);
         foreach (TestAssembly assembly in AssembliesOf(tests))
@@ -127,7 +131,7 @@ public sealed class TestingPlatformRunner : ITestRunner
                 break;
             }
             (Dictionary<string, TestItem> byUid, List<Found> chosen) = Asked(tests, assembly.Path);
-            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, HoldsConnectionsUntilEnded, Devices, cancel);
+            RunSummary part = await RunIn(assembly, byUid, chosen, outcomes, log, debugger, environment, HoldsConnectionsUntilEnded, Devices, coverage, cancel);
             summary = summary.And(part);
             if (part.Canceled)
             {
@@ -137,6 +141,86 @@ public sealed class TestingPlatformRunner : ITestRunner
         IdeLog.Write(IdeLog.Tests, $"Run {(summary.Canceled ? "stopped" : summary.Aborted ? "aborted" : "complete")}: {Plural.Of(summary.Outcomes.Count, "result")} in {Durations.Said(summary.Elapsed)}"
             + (summary.Error is { } failed ? $": {failed}" : string.Empty));
         return summary;
+    }
+
+    /// <summary>Runs tests it discovered one at a time, each alone in a request of its own to one test host per assembly
+    /// started with the environment given, <paramref name="started"/> awaited once each host answers and before its first
+    /// test, and <paramref name="ran"/> told each test once its request has ended (its outcomes told before) and awaited
+    /// before the next is asked: what a hook in the host counted between two is the one test's. Canceled, the test under way
+    /// is asked to stop and the host ended, keeping the outcomes of what had run.</summary>
+    public async Task<RunSummary> RunEachAsync(IReadOnlyList<TestItem> tests, Action<IReadOnlyList<TestOutcome>> outcomes, Func<Task> started, Func<TestItem, Task> ran,
+        IReadOnlyDictionary<string, string>? environment, Action<string>? log, CancellationToken cancel)
+    {
+        RunSummary summary = new(TimeSpan.Zero, false, false, null);
+        foreach (TestAssembly assembly in AssembliesOf(tests))
+        {
+            (Dictionary<string, TestItem> byUid, List<Found> chosen) = Asked(tests, assembly.Path);
+            List<TestOutcome> all = new(chosen.Count);
+            long began = Stopwatch.GetTimestamp();
+            RunSummary part;
+            try
+            {
+                IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
+                await using Host host = await Host.StartAsync(assembly, given, null, byUid, log, HoldsConnectionsUntilEnded, Devices, cancel);
+                await started();
+                bool stopped = false;
+                foreach (Found test in chosen)
+                {
+                    if (!await host.RequestAsync("testing/runTests", [test], changed => Told(changed, byUid, all, outcomes), cancel))
+                    {
+                        stopped = true;
+                        break;
+                    }
+                    await ran(byUid[test.Uid]);
+                }
+                part = Ended(stopped, null);
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+            {
+                part = Ended(true, null);
+            }
+            catch (TestHostFailed failed)
+            {
+                log?.Invoke(failed.Message);
+                part = Ended(cancel.IsCancellationRequested, failed.Message);
+            }
+            summary = summary.And(part);
+            if (part.Canceled || part.Aborted)
+            {
+                break;
+            }
+
+            RunSummary Ended(bool canceled, string? error)
+            {
+                lock (all)
+                {
+                    return new RunSummary(Stopwatch.GetElapsedTime(began), canceled, error is not null, error) { Outcomes = [.. all] };
+                }
+            }
+        }
+        return summary;
+    }
+
+    /// <summary>A host's update of the tests asked for told as their outcomes, those of no test asked passed over.</summary>
+    private static void Told(IReadOnlyList<PlatformNode> changed, Dictionary<string, TestItem> byUid, List<TestOutcome> all, Action<IReadOnlyList<TestOutcome>> outcomes)
+    {
+        List<TestOutcome> batch = new(changed.Count);
+        foreach (PlatformNode node in changed)
+        {
+            if (byUid.TryGetValue(node.Uid, out TestItem? test) && Outcome(test, node) is { } outcome)
+            {
+                batch.Add(outcome);
+            }
+        }
+        if (batch.Count == 0)
+        {
+            return;
+        }
+        lock (all)
+        {
+            all.AddRange(batch);
+        }
+        outcomes(batch);
     }
 
     /// <summary>The assemblies the tests were found in, each once, in the order their tests come.</summary>
@@ -180,34 +264,16 @@ public sealed class TestingPlatformRunner : ITestRunner
 
     /// <summary>Runs an assembly's tests, the host's updates read by the tests asked for (<see cref="TestUpdate.ReaderOf"/>).</summary>
     private static async Task<RunSummary> RunIn(TestAssembly assembly, Dictionary<string, TestItem> byUid, List<Found> chosen, Action<IReadOnlyList<TestOutcome>> outcomes,
-        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, bool held, DeviceTestHosts? devices, CancellationToken cancel)
+        Action<string>? log, ITestDebugLauncher? debugger, IReadOnlyDictionary<string, string>? environment, bool held, DeviceTestHosts? devices, CoverageRun? coverage,
+        CancellationToken cancel)
     {
         List<TestOutcome> all = new(chosen.Count);
         long began = Stopwatch.GetTimestamp();
         try
         {
             IReadOnlyDictionary<string, string>? given = await BackgroundWork.Run(() => HostEnvironment(assembly, looking: false, environment, log), cancel);
-            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, held, devices, cancel);
-            bool ran = await host.RequestAsync("testing/runTests", chosen, changed =>
-            {
-                List<TestOutcome> batch = new(changed.Count);
-                foreach (PlatformNode node in changed)
-                {
-                    if (byUid.TryGetValue(node.Uid, out TestItem? test) && Outcome(test, node) is { } outcome)
-                    {
-                        batch.Add(outcome);
-                    }
-                }
-                if (batch.Count == 0)
-                {
-                    return;
-                }
-                lock (all)
-                {
-                    all.AddRange(batch);
-                }
-                outcomes(batch);
-            }, cancel);
+            await using Host host = await Host.StartAsync(assembly, given, debugger, byUid, log, held, devices, cancel, coverage);
+            bool ran = await host.RequestAsync("testing/runTests", chosen, changed => Told(changed, byUid, all, outcomes), cancel);
             return Summary(!ran, null);
         }
         catch (OperationCanceledException) when (cancel.IsCancellationRequested)
@@ -341,6 +407,9 @@ public sealed class TestingPlatformRunner : ITestRunner
         private readonly Task? apart;
         private bool stopped;
 
+        /// <summary>The run whose coverage the host's program is measured for, and the report it writes, where it is.</summary>
+        private (CoverageRun Run, string Report)? measured;
+
         private Host(string name, Process? process, int processId, Task? apart, TcpClient client, JsonRpcPeer peer, Notifications target, StringBuilder said, Task heard)
         {
             this.name = name;
@@ -354,13 +423,13 @@ public sealed class TestingPlatformRunner : ITestRunner
             this.heard = heard;
         }
 
-        /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it; its
-        /// updates read by the tests a run asks for, by uid, if any; its connection held until it ends where
-        /// <paramref name="held"/> (<see cref="HoldsConnectionsUntilEnded"/>). A device test project's app is started where
-        /// its project runs (<paramref name="devices"/>), and ended there as its start ends, killed or not; debugged, the
-        /// debugger starts it there as Debug starts an app, through Passenger's relay in it.</summary>
+        /// <summary>Starts an assembly's program as a server that connects to a port of the IDE's own, and initializes it, its
+        /// updates read by the tests asked for, its connection held until it ends where <paramref name="held"/>: a device test
+        /// project's app where its project runs (<paramref name="devices"/>), ended there as its start ends, debugged through
+        /// Passenger's relay in it as Debug starts an app; any other under Coverlet's console where a run's coverage is
+        /// measured, which a debugged host's never is.</summary>
         public static async Task<Host> StartAsync(TestAssembly assembly, IReadOnlyDictionary<string, string>? environment, ITestDebugLauncher? debugger,
-            Dictionary<string, TestItem>? asked, Action<string>? log, bool held, DeviceTestHosts? devices, CancellationToken cancel)
+            Dictionary<string, TestItem>? asked, Action<string>? log, bool held, DeviceTestHosts? devices, CancellationToken cancel, CoverageRun? coverage = null)
         {
             string name = $"{Path.GetFileNameWithoutExtension(assembly.Path)} ({assembly.Framework})";
             DeviceTestApp? onDevice = null;
@@ -386,13 +455,27 @@ public sealed class TestingPlatformRunner : ITestRunner
             Task heard = Task.CompletedTask;
             Task? apart = null;
             int id = 0;
+            (CoverageRun, string)? measured = null;
+            if (coverage is not null && debugger is not null)
+            {
+                coverage.Missed("A debugged run's coverage is not measured");
+            }
+            else if (coverage is not null && onDevice is not null)
+            {
+                coverage.Missed(Refusals.CoverageOnDevice.Shown);
+            }
             if (debugger is null)
             {
                 Func<Task, Task>? follow = null;
                 ProcessStartInfo start;
                 try
                 {
-                    if (onDevice is null)
+                    if (onDevice is null && coverage is not null)
+                    {
+                        start = coverage.Wrapped(assembly.Path, assembly.Framework ?? "default", Dotnet.Host(folder), arguments, folder, environment, out string report);
+                        measured = (coverage, report);
+                    }
+                    else if (onDevice is null)
                     {
                         start = ChildProcesses.Command(Dotnet.Host(folder), arguments, folder, environment);
                     }
@@ -452,7 +535,7 @@ public sealed class TestingPlatformRunner : ITestRunner
             peer.On<TracedJson>("telemetry/update", update => Trace("<--", "telemetry/update", update?.Json));
             peer.On<TracedJson>("testing/testUpdates/attachments", update => Trace("<--", "testing/testUpdates/attachments", update?.Json));
             peer.Start();
-            Host host = new(name, process, id, apart, client, peer, target, said, heard);
+            Host host = new(name, process, id, apart, client, peer, target, said, heard) { measured = measured };
             try
             {
                 JsonObject initialize = new()
@@ -514,11 +597,15 @@ public sealed class TestingPlatformRunner : ITestRunner
             {
                 // Gone already.
             }
-            TimeSpan limit = stopped ? StopLimit : ExitLimit;
+            TimeSpan limit = stopped ? StopLimit : measured is null ? ExitLimit : ReportLimit;
             if (!await Exited(limit) && (process is not null || stopped))
             {
                 IdeLog.Write(IdeLog.Tests, $"{name} (process {processId}) had not exited {Durations.Said(limit)} after it was told to, and is ended");
                 End(process, processId, apart);
+            }
+            else if (measured is ({ } run, { } report))
+            {
+                run.Wrote(report);
             }
             peer.Dispose();
             client.Dispose();

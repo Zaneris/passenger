@@ -79,7 +79,7 @@ public sealed class JsonSchemas(Func<bool> download)
         }
         if (!download())
         {
-            throw new InvalidOperationException($"{uri} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.SchemasPage)} does not allow it");
+            throw new InvalidOperationException($"{uri} is not downloaded: {SettingsDialog.PlaceOfPage(SettingsDialog.WebPage)} does not allow it");
         }
         Task<string> fetching = downloaded.Take(uri, () => DownloadAsync(From(asked)));
         try

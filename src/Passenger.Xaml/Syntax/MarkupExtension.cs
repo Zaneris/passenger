@@ -38,6 +38,10 @@ public sealed class MarkupExtension
 
     public IReadOnlyList<MarkupArgument> Arguments => arguments;
 
+    /// <summary>Whether it takes a resource by its key: <c>{StaticResource}</c>, <c>{DynamicResource}</c>, WinUI's
+    /// <c>{ThemeResource}</c>.</summary>
+    public bool TakesResource => LocalName is "StaticResource" or "DynamicResource" or "ThemeResource";
+
     /// <summary>The argument named so (<c>Mode</c>), or the first positional one for null.</summary>
     public MarkupArgument? Argument(string? key) => key is null
         ? arguments.FirstOrDefault(a => a.Key is null)
@@ -169,7 +173,10 @@ public sealed class MarkupExtension
         }
         argument.ValueStart = first;
         System.Text.StringBuilder value = new();
-        while (at < end && text[at] is not (',' or '}'))
+        // A value's brackets hold its commas and braces (an x:Bind call's arguments, Format(First, ', ')), quoted ones too.
+        int brackets = 0;
+        char quoted = '\0';
+        while (at < end && (brackets > 0 || text[at] is not (',' or '}')))
         {
             if (text[at] == '\\' && at + 1 < end)
             {
@@ -177,7 +184,20 @@ public sealed class MarkupExtension
                 at += 2;
                 continue;
             }
-            value.Append(text[at]);
+            char c = text[at];
+            if (quoted != '\0')
+            {
+                quoted = c == quoted ? '\0' : quoted;
+            }
+            else if (brackets > 0 && c is '\'' or '"')
+            {
+                quoted = c;
+            }
+            else
+            {
+                brackets += c == '(' ? 1 : c == ')' && brackets > 0 ? -1 : 0;
+            }
+            value.Append(c);
             at++;
         }
         int valueEnd = at;

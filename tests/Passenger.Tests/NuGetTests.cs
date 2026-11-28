@@ -96,6 +96,11 @@ public sealed class NuGetTests : IDisposable
             t.The_package_list_sorts_and_filters_and_lists_transitive_packages_with_what_brings_them_in();
             OpenWindows.CloseAll();
         });
+        Flow.StepApart<NuGetTests>("a package under the explorer's dependencies opens to the packages it brings as its restore resolved them", t =>
+        {
+            t.A_package_under_the_explorers_dependencies_opens_to_the_packages_it_brings_as_its_restore_resolved_them();
+            OpenWindows.CloseAll();
+        });
         Flow.StepApart<NuGetTests>("another folder opened with the NuGet window shown lists that folder's packages", t =>
         {
             t.Another_folder_opened_with_the_nuget_window_shown_lists_that_folders_packages();
@@ -104,6 +109,16 @@ public sealed class NuGetTests : IDisposable
         Flow.StepApart<NuGetTests>("update all updates every project even when search hides results and one undo restores them", t =>
         {
             t.Update_all_updates_every_project_even_when_search_hides_results_and_one_undo_restores_them();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update in all projects moves one package in every project referencing an older version and one undo restores them", t =>
+        {
+            t.Update_in_all_projects_moves_one_package_in_every_project_referencing_an_older_version_and_one_undo_restores_them();
+            OpenWindows.CloseAll();
+        });
+        Flow.StepApart<NuGetTests>("update selected moves the updates chosen alone in every project and one undo restores them", t =>
+        {
+            t.Update_selected_moves_the_updates_chosen_alone_in_every_project_and_one_undo_restores_them();
             OpenWindows.CloseAll();
         });
         Flow.StepApart<NuGetTests>("updates reports partial feed failure instead of claiming every package is current", t =>
@@ -481,6 +496,54 @@ public sealed class NuGetTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The Explorer's Dependencies of a project, read from its restore with no restore of their own: a package opens
+    /// to the packages it brings, by the versions resolved, those in turn, one reached twice shown each time, one resolved
+    /// newer than its package asks saying what was asked; and a restore written later, by whatever ran it, shows anew in
+    /// the rows open, which stay open.</summary>
+    private void A_package_under_the_explorers_dependencies_opens_to_the_packages_it_brings_as_its_restore_resolved_them()
+    {
+        const string Charts = "Passenger.Charts";
+        const string Drawing = "Passenger.Drawing";
+        feed.Add(Drawing, "1.0.0", (Id, "1.0.0"));
+        feed.Add(Charts, "1.0.0", (Drawing, "1.0.0"), (Id, "1.0.0"));
+        string references = $"<ItemGroup><PackageReference Include=\"{Charts}\" Version=\"1.0.0\" /><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>";
+        string project = Project("Lib", Restorable, references);
+        Restore.Run(Passenger.Core.PathNames.Canonical(project));
+        File.WriteAllText(Path.Combine(folder, "Shop.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n  <Project Path=\"Lib/Lib.csproj\" />\n</Solution>\n");
+        int restoring = feed.Requests.Count;
+        MainWindow window = Ui.OpenFolder(Path.Combine(folder, "Shop.slnx"), languageServer: false);
+        string owner = Named(window, "Lib").Path;
+        ExplorerNode dependencies = window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Kind == NodeKind.Dependencies && r.Owner == owner)
+            ?? OpenedRow(window, window.ExplorerView.Tree.Rows.Single(r => r.Kind == NodeKind.Project && r.Name == "Lib")).Single(r => r.Kind == NodeKind.Dependencies);
+        List<ExplorerNode> referenced = OpenedRow(window, dependencies);
+        ExplorerNode charts = referenced.Single(r => r.Name == Charts);
+        Assert.True(referenced.Single(r => r.Name == Id) is { Detail.English: "1.1.0", HasChildren: false } && charts.HasChildren,
+            $"Lib's packages are [{string.Join(", ", referenced.Select(r => $"{r.Name} {r.Detail}{(r.HasChildren ? " >" : "")}"))}], where {Charts} opens to what it brings");
+        List<ExplorerNode> brought = OpenedRow(window, charts);
+        Assert.Equal([(Drawing, "1.0.0", true), (Id, "1.1.0 · asked ≥ 1.0.0", false)], brought.Select(r => (r.Name, r.Detail?.English, r.HasChildren)));
+        Assert.Equal($"{Charts} asks for 1.0.0 or later; the restore resolved 1.1.0", brought[1].Tip?.English);
+        ExplorerNode again = Assert.Single(OpenedRow(window, brought[0]));
+        Assert.True(again is { Name: Id, Detail.English: "1.1.0 · asked ≥ 1.0.0" }, $"{Drawing} brings {again.Name} {again.Detail}, where it brings {Id} as {Charts} does");
+        Assert.Equal(restoring, feed.Requests.Count);
+
+        File.WriteAllText(project, File.ReadAllText(project).Replace("1.1.0", "1.0.1", StringComparison.Ordinal));
+        Restore.Run(Passenger.Core.PathNames.Canonical(project));
+        Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Count(r => r.Name == Id && r.Detail?.English == "1.0.1 · asked ≥ 1.0.0") == 2,
+            () => $"the open rows to show the restore written since: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => $"{r.Name} {r.Detail}"))}]");
+        Assert.True(window.ExplorerView.Tree.Rows.Where(r => r.Name is Charts or Drawing).All(r => r.IsExpanded),
+            $"Reading the restore again closed {Charts} or {Drawing}");
+        window.Close();
+    }
+
+    /// <summary>An Explorer row opened as a person opens it, chosen then Right, and the rows under it.</summary>
+    private static List<ExplorerNode> OpenedRow(MainWindow window, ExplorerNode row)
+    {
+        Ui.ClickRow(window, row);
+        Ui.Press(window, "RIGHT");
+        Assert.True(row.IsExpanded, $"Right on {row.Name} left it closed");
+        return row.Children ?? [];
+    }
+
     /// <summary>A package of the list chosen as a person clicks its row, its versions and projects shown.</summary>
     private static void ChoosePackage(NuGetView nuget, PackageRow row)
     {
@@ -517,6 +580,84 @@ public sealed class NuGetTests : IDisposable
         MigrationsTests.UndoFromExplorer(window, lib);
         Assert.Equal(beforeLib, File.ReadAllText(lib));
         Assert.Equal(beforeApp, File.ReadAllText(app));
+        window.Close();
+    }
+
+    /// <summary>Update in All Projects, from a package's row menu in the Packages tab: the version picked put in Lib and
+    /// App, which reference older ones, Tools, which has it, and Lib's other package left as they were, one Undo taking
+    /// both back; its button then greyed, saying every project has it.</summary>
+    private void Update_in_all_projects_moves_one_package_in_every_project_referencing_an_older_version_and_one_undo_restores_them()
+    {
+        const string Other = "Passenger.Other";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.2.0");
+        Project("Lib", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.0\" /><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /></ItemGroup>");
+        string tools = Project("Tools", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.1.0\" /></ItemGroup>");
+        (string Lib, string App, string Tools) before = (File.ReadAllText(lib), File.ReadAllText(app), File.ReadAllText(tools));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        ChoosePackage(nuget, Id);
+        Choose(nuget, "1.1.0");
+        Button everywhere = nuget.GetLogicalDescendants().OfType<Button>().SingleOrDefault(b => Equals(b.Content, "Update in All Projects"))
+            ?? throw new Xunit.Sdk.XunitException($"{Id}'s details have no Update in All Projects");
+        Assert.True(everywhere.IsEnabled && Equals(ToolTip.GetTip(everywhere), $"Moves {Id} to 1.1.0 in App and Lib, as one step of Undo; Tools has it or a newer version"),
+            $"Update in All Projects is {(everywhere.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(everywhere)}");
+        Ui.RightClick(Ui.Row(nuget.PackageList, nuget.Selected!));
+        ContextMenu menu = nuget.PackageList.ContextMenu ?? throw new Xunit.Sdk.XunitException($"{Id}'s row has no menu");
+        Ui.WaitFor(() => menu.IsOpen, $"{Id}'s row menu to open");
+        Ui.Choose(menu, "Update in All Projects");
+        Ui.Landed(() => !nuget.IsBusy && nuget.Status.StartsWith("Updated", StringComparison.Ordinal), $"the update in every project: {nuget.Status}\n{nuget.Log}");
+        Assert.True(nuget.Status == "Updated 2 package references" && File.ReadAllText(lib).Contains($"\"{Id}\" Version=\"1.1.0\"", StringComparison.Ordinal)
+            && File.ReadAllText(app).Contains($"\"{Id}\" Version=\"1.1.0\"", StringComparison.Ordinal),
+            $"Update in All Projects left Lib and App as\n{File.ReadAllText(lib)}\n{File.ReadAllText(app)}\nsaying {nuget.Status}\n{nuget.Log}");
+        Assert.True(File.ReadAllText(lib).Contains($"\"{Other}\" Version=\"1.0.0\"", StringComparison.Ordinal) && File.ReadAllText(tools) == before.Tools,
+            $"Update in All Projects moved more than {Id} where it was older:\n{File.ReadAllText(lib)}\n{File.ReadAllText(tools)}");
+        ChoosePackage(nuget, Id);
+        Choose(nuget, "1.1.0");
+        everywhere = nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update in All Projects"));
+        Assert.True(!everywhere.IsEnabled && Equals(ToolTip.GetTip(everywhere), Refusals.UpdatedEverywhere(Id, "1.1.0").Shown),
+            $"Update in All Projects with every project at 1.1.0 is {(everywhere.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(everywhere)}");
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.Equal((before.Lib, before.App, before.Tools), (File.ReadAllText(lib), File.ReadAllText(app), File.ReadAllText(tools)));
+        window.Close();
+    }
+
+    /// <summary>Update Selected in the Updates tab: two of its three updates chosen by a click and a Shift-click, each moved
+    /// in every project referencing it, the third left in both, one Undo taking both projects back.</summary>
+    private void Update_selected_moves_the_updates_chosen_alone_in_every_project_and_one_undo_restores_them()
+    {
+        const string Other = "Passenger.Other";
+        const string Third = "Passenger.Third";
+        feed.Add(Other, "1.0.0");
+        feed.Add(Other, "1.2.0");
+        feed.Add(Third, "1.0.0");
+        feed.Add(Third, "1.5.0");
+        Project("Lib", TestProjects.Framework,
+            $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /><PackageReference Include=\"{Third}\" Version=\"1.0.0\" /></ItemGroup>");
+        string app = Project("App", TestProjects.Framework, $"<ItemGroup><PackageReference Include=\"{Id}\" Version=\"1.0.1\" /><PackageReference Include=\"{Other}\" Version=\"1.0.0\" /></ItemGroup>");
+        (string Lib, string App) before = (File.ReadAllText(lib), File.ReadAllText(app));
+        MainWindow window = Open();
+        NuGetView nuget = window.NuGet;
+        Ui.Click(nuget.Tabs.GetLogicalDescendants().OfType<ToggleButton>().Single(b => Equals(b.Content, "Updates")));
+        Assert.Equal([Other, Third, Id], nuget.Rows.Select(r => r.Id));
+        Ui.Click(Ui.Row(nuget.PackageList, nuget.Rows[0]));
+        Ui.Click(Ui.Row(nuget.PackageList, nuget.Rows[1]), modifiers: Avalonia.Input.RawInputModifiers.Shift);
+        Assert.Equal([Other, Third], nuget.ChosenUpdates.Select(r => r.Id));
+        Button selected = nuget.GetLogicalDescendants().OfType<Button>().Single(b => Equals(b.Content, "Update Selected"));
+        Assert.True(selected.IsEnabled && Equals(ToolTip.GetTip(selected), $"Update {Other} and {Third} across their projects, as one step of Undo"),
+            $"Update Selected is {(selected.IsEnabled ? "enabled" : "greyed")}, saying {ToolTip.GetTip(selected)}");
+        Ui.Click(selected);
+        Ui.Landed(() => !nuget.IsBusy && nuget.Rows.Select(r => r.Id).SequenceEqual([Id]), $"the updates chosen made: {nuget.Status}\n{nuget.Log}");
+        string libNow = File.ReadAllText(lib);
+        string appNow = File.ReadAllText(app);
+        Assert.True(nuget.Status == "Updated 3 package references" && libNow.Contains($"\"{Other}\" Version=\"1.2.0\"", StringComparison.Ordinal)
+            && libNow.Contains($"\"{Third}\" Version=\"1.5.0\"", StringComparison.Ordinal) && appNow.Contains($"\"{Other}\" Version=\"1.2.0\"", StringComparison.Ordinal),
+            $"Update Selected left Lib and App as\n{libNow}\n{appNow}\nsaying {nuget.Status}\n{nuget.Log}");
+        Assert.True(libNow.Contains($"\"{Id}\" Version=\"1.0.1\"", StringComparison.Ordinal) && appNow.Contains($"\"{Id}\" Version=\"1.0.1\"", StringComparison.Ordinal),
+            $"Update Selected moved {Id}, which was not chosen:\n{libNow}\n{appNow}");
+        MigrationsTests.UndoFromExplorer(window, lib);
+        Assert.Equal((before.Lib, before.App), (File.ReadAllText(lib), File.ReadAllText(app)));
         window.Close();
     }
 
@@ -989,8 +1130,8 @@ public sealed class NuGetTests : IDisposable
 
         string install = $"Install {Id} 1.1.0 in Lib";
         Passenger.App.History.HistoryTab history = window.ShowLocalHistory(folder) ?? throw new Xunit.Sdk.XunitException($"No history of the folder: {window.Status}");
-        Ui.WaitFor(() => history.Rows.Any(r => r.Title == install), () => $"the install in the folder's history, which keeps:\n{Kept(window, installed)}");
-        Assert.True(history.Rows.Select(r => r.Title).SequenceEqual([install]),
+        Ui.WaitFor(() => history.Rows.Any(r => r.Title.English == install), () => $"the install in the folder's history, which keeps:\n{Kept(window, installed)}");
+        Assert.True(history.Rows.Select(r => r.Title.English).SequenceEqual([install]),
             $"The folder's history lists [{string.Join(", ", history.Rows.Select(r => r.Title))}], not the install as one change set; it keeps:\n{Kept(window, installed)}");
         history.Select(history.Rows[0]);
         Ui.Settle();
@@ -1043,10 +1184,10 @@ public sealed class NuGetTests : IDisposable
 
         Passenger.App.History.HistoryTab project = window.ShowLocalHistory(lib) ?? throw new Xunit.Sdk.XunitException($"No history of Lib.csproj: {window.Status}");
         Ui.Landed(() => project.Rows.Count > 0, "the install in Lib.csproj's history");
-        Assert.True(project.Rows[0].Title == $"Install {Id} 1.1.0 in Lib", $"dotnet's write of Lib.csproj is kept as \"{project.Rows[0].Title}\", not as the install");
+        Assert.True(project.Rows[0].Title.English == $"Install {Id} 1.1.0 in Lib", $"dotnet's write of Lib.csproj is kept as \"{project.Rows[0].Title}\", not as the install");
         Passenger.App.History.HistoryTab saved = window.ShowLocalHistory(notes) ?? throw new Xunit.Sdk.XunitException($"No history of Notes.txt: {window.Status}");
         Ui.Landed(() => saved.Rows.Count > 0, "the save of Notes.txt");
-        Assert.True(saved.Rows[0].Title == "Change", $"The save of Notes.txt made as the install ran is kept as \"{saved.Rows[0].Title}\", not as the person's own change");
+        Assert.True(saved.Rows[0].Title.English == "Change", $"The save of Notes.txt made as the install ran is kept as \"{saved.Rows[0].Title}\", not as the person's own change");
         window.Close();
     }
 
@@ -1302,16 +1443,16 @@ public sealed class NuGetTests : IDisposable
                 $"{Id} listed, chosen and its projects shown while the feed holds its advisories: {nuget.Status}");
             Button install = Action(nuget, "App", "Install")!;
             Button? update = Action(nuget, "Lib", "Update");
-            Assert.True(!install.IsEnabled && ToolTip.GetTip(install) as string == Refusals.VulnerabilitiesUnread,
+            Assert.True(!install.IsEnabled && ToolTip.GetTip(install) as string == Refusals.VulnerabilitiesUnread.Shown,
                 $"With the audit unanswered, App's Install is {(install.IsEnabled ? "enabled" : "greyed")}, telling \"{ToolTip.GetTip(install)}\"");
-            Assert.True(update is { IsEnabled: false } && ToolTip.GetTip(update) as string == Refusals.VulnerabilitiesUnread,
+            Assert.True(update is { IsEnabled: false } && ToolTip.GetTip(update) as string == Refusals.VulnerabilitiesUnread.Shown,
                 $"With the audit unanswered, Lib's line offers [{string.Join(", ", Labels(nuget, "Lib"))}], its Update {(update?.IsEnabled == true ? "enabled" : "greyed")}");
             Assert.True(Action(nuget, "Lib", "Remove") is { IsEnabled: true }, "Lib's Remove, which puts no version in, is greyed while the audit is unanswered");
             TextBlock? asking = nuget.GetLogicalDescendants().OfType<TextBlock>().FirstOrDefault(t => t.Name == "Auditing");
             Assert.True(asking is { IsEffectivelyVisible: true, Text: "Asking stand-in which versions have known vulnerabilities…" },
                 $"With the audit unanswered, {Id}'s details say \"{asking?.Text}\", not that the feed is being asked");
             Assert.False(Ui.AwaitPumped(nuget.InstallAsync(Named(window, "App")), "the window's install asked meanwhile"), "The window's install ran with the audit unanswered");
-            Assert.True(nuget.Status == Refusals.VulnerabilitiesUnread && File.ReadAllText(Path.Combine(folder, "App", "App.csproj")) == app,
+            Assert.True(nuget.Status == Refusals.VulnerabilitiesUnread.Shown && File.ReadAllText(Path.Combine(folder, "App", "App.csproj")) == app,
                 $"The window's install refused with the audit unanswered says \"{nuget.Status}\"");
         }
         finally

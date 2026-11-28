@@ -43,7 +43,7 @@ public partial class MainWindow
         string said = string.Join("; ", paths.Select(HeldInGodot).OfType<string>());
         if (Mcp.AgentCall.Current is not null || AgentAsks.Beside || AgentsOwn)
         {
-            return Refusals.HeldInGodot(said);
+            return Refusals.HeldInGodot(said).Shown;
         }
         bool one = paths.Count == 1;
         return await ConfirmAsync("Write Over What Godot Holds?",

@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Passenger.App.ToolWindows;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -18,7 +20,7 @@ public static class SearchBox
 
     /// <summary>A search field named <paramref name="name"/> ("Search packages", "Filter properties"), which its
     /// placeholder says too unless it is given words of its own.</summary>
-    public static TextBox Of(string name, string? placeholder = null)
+    public static TextBox Of(Words name, Words? placeholder = null)
     {
         // Where a field's words start, so what lines up with a field's words lines up with a search's magnifier.
         PathIcon magnifier = new() { Width = 14, Height = 14, Margin = new Thickness(FieldInsets.Padding.Left, 0, 0, 0) };
@@ -31,19 +33,19 @@ public static class SearchBox
 
     /// <summary>A tool window's filter, which Find's keys give the keys to while its window has them: its placeholder names
     /// those keys as the keymap in force gives them ("⌘F to filter"), or its name while no key runs Find.</summary>
-    public static TextBox Finding(string name)
+    public static TextBox Finding(Words name)
     {
         TextBox box = Of(name);
-        ActionTips.SetWords(box, AppActions.Find, keys => keys is null ? name : $"{keys} to filter");
+        ActionTips.SetWords(box, AppActions.Find, keys => keys is null ? name : SharedWords.KeysToFilter(keys));
         return box;
     }
 
     /// <summary>The field of a popup that is a search, named <paramref name="name"/> (its title), its placeholder saying
     /// what it finds.</summary>
-    public static TextBox InPopup(string name, string placeholder)
+    public static TextBox InPopup(Words name, Words placeholder)
     {
-        TextBox box = new() { Classes = { StyleClasses.Search }, PlaceholderText = placeholder };
-        AutomationProperties.SetName(box, name);
+        TextBox box = new() { Classes = { StyleClasses.Search }, [ShownWords.PlaceholderTextProperty] = placeholder };
+        box[ShownWords.NameProperty] = name;
         return box;
     }
 }

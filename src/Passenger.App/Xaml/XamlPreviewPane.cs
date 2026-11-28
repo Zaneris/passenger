@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Xaml;
@@ -60,9 +61,9 @@ public sealed class XamlPreviewPane : DockPanel
     private Rect? outlined;
 
     /// <summary>The title of an action the pane's words offer (<see cref="XamlPreview.Offers"/>), by its id.</summary>
-    private readonly Func<string, string> titleOf;
+    private readonly Func<string, Words> titleOf;
 
-    public XamlPreviewPane(XamlPreview preview, Func<string, string> titleOf)
+    public XamlPreviewPane(XamlPreview preview, Func<string, Words> titleOf)
     {
         this.preview = preview;
         this.titleOf = titleOf;
@@ -204,9 +205,6 @@ public sealed class XamlPreviewPane : DockPanel
 
     /// <summary>The chooser's first item: the root at the size its XAML designs it at.</summary>
     public const string DesignSize = "Design size";
-
-    /// <summary>Build for XAML Preview's title, which the pane's link shows.</summary>
-    public const string BuildForPreviewTitle = "Build for XAML Preview";
 
     /// <summary>How far the outline stands outside the box it outlines.</summary>
     public const double OutlineWidth = 2;

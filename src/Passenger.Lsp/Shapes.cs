@@ -49,7 +49,7 @@ public static class Shapes
                 JsonMembers.Number(item, "kind") is { } kind ? (InlayHintKind)kind : null,
                 JsonMembers.Bool(item, "paddingLeft") == true,
                 JsonMembers.Bool(item, "paddingRight") == true,
-                JsonMembers.Value(item, "data")?.Clone()));
+                JsonMembers.Value(item, "data") is { } data ? RawJson.Of(data) : null));
         }
         return hints;
     }

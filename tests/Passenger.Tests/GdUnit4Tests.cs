@@ -108,7 +108,7 @@ public sealed class GdUnit4Tests : IDisposable
             int turns = Line("int turns = 2;");
             editor.GoTo(new TextPosition(turns, 8));
             Ui.Run(window, AppActions.ToggleBreakpoint);
-            Task<string?> debugged = window.Tests.RunAsync(window.Folder!, [spins], debug: true);
+            Task<Words?> debugged = window.Tests.RunAsync(window.Folder!, [spins], debug: true);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && window.BottomPanel.Debug.Frames.Count > 0,
                 () => $"the stop in the test Godot runs ({window.BottomPanel.Tests.Status}; {window.Debugger.Output()})", TimeSpan.FromMinutes(5));
             Assert.Contains(new LineMark(turns, LineMarkKind.ExecutionPoint), editor.LineMarks);

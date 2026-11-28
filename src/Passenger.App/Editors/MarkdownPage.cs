@@ -10,14 +10,19 @@ namespace Passenger.App.Editors;
 
 /// <summary>What a page of rendered Markdown opens and draws: release notes (What's New) a web link alone and no image; a
 /// file's preview also its relative links and <c>#heading</c>s, and the images of files inside the open folder, which it
-/// loads itself (<see cref="Load"/>), a <c>picture</c>'s for the look the page is shown in. Every link a page draws is
-/// handed to <see cref="Follow"/>.</summary>
+/// loads itself (<see cref="Load"/>), a <c>picture</c>'s for the look the page is shown in; a card's documentation its
+/// links to symbols while it opens them (<see cref="SymbolLinks"/>). Every link a page draws is handed to
+/// <see cref="Follow"/>.</summary>
 internal sealed class MarkdownPage(Action<Uri> follow)
 {
     public Action<Uri> Follow { get; } = follow;
 
     /// <summary>Whether a link to a file beside the page's (or a heading of it) is one: a file's preview only.</summary>
     public bool LocalLinks { get; init; }
+
+    /// <summary>Whether a link to a symbol (<see cref="Roslyn.Extension.SymbolLinks"/>) is one now: a C# card's, while it
+    /// opens declarations.</summary>
+    public Func<bool>? SymbolLinks { get; init; }
 
     /// <summary>The file an image's target names when the page may draw it, else null (a web image, one outside the open
     /// folder, a file of no image type or none there); null on a page that draws no image.</summary>
@@ -26,13 +31,17 @@ internal sealed class MarkdownPage(Action<Uri> follow)
     /// <summary>A picture's decode, off the window's thread, null when it could not be read.</summary>
     public Func<string, Task<Bitmap?>>? Load { get; init; }
 
-    /// <summary>What a link's target opens: a web address, or on a page of local links a relative one (a file beside it or
-    /// a heading); null for anything else, which is drawn as its words.</summary>
+    /// <summary>What a link's target opens: a web address, a symbol on a page of symbol links, or on a page of local links a
+    /// relative one (a file beside it or a heading); null for anything else, which is drawn as its words.</summary>
     public Uri? LinkOf(string target)
     {
         if (Markdown.Web(target) is { } web)
         {
             return web;
+        }
+        if (SymbolLinks?.Invoke() == true && Roslyn.Extension.SymbolLinks.Read(target) is not null && Uri.TryCreate(target, UriKind.Absolute, out Uri? symbol))
+        {
+            return symbol;
         }
         return LocalLinks && Local(target) is { } written && Uri.TryCreate(written, UriKind.Relative, out Uri? local) ? local : null;
     }

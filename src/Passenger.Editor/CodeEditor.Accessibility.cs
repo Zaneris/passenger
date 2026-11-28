@@ -28,6 +28,7 @@ public sealed partial class CodeEditor
 
         /// <summary>The rows on screen as last asked where a range is drawn.</summary>
         private readonly List<RowSpan> rowsAsked = [];
+        private readonly List<int> rowsAskedAt = [];
 
         public EditorText(CodeEditor editor)
         {
@@ -82,7 +83,7 @@ public sealed partial class CodeEditor
             (int firstRow, int lastRow) = editor.RowsInView;
             double height = editor.metrics.LineHeight;
             Rect shown = new(editor.Bounds.Size);
-            List<RowSpan> onScreen = editor.RowsOnScreen(text, firstRow, lastRow, rowsAsked);
+            List<RowSpan> onScreen = editor.RowsOnScreen(text, firstRow, lastRow, rowsAsked, rowsAskedAt);
             List<Rect> rows = [];
             for (int i = 0; i < onScreen.Count; i++)
             {
@@ -101,7 +102,7 @@ public sealed partial class CodeEditor
                 }
                 double left = editor.Place(text, Math.Max(from, span.Start), beforeWrap: false).X;
                 double right = editor.Place(text, Math.Min(to, span.End), beforeWrap: true).X;
-                Rect row = new(editor.TextLeft - editor.scroll.X + left, ((firstRow + i) * height) - editor.scroll.Y, Math.Max(0, right - left), height);
+                Rect row = new(editor.TextLeft - editor.scroll.X + left, (rowsAskedAt[i] * height) - editor.scroll.Y, Math.Max(0, right - left), height);
                 if (row.Intersects(shown) || (row.Width == 0 && shown.Contains(row.TopLeft)))
                 {
                     rows.Add(row);

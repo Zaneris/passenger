@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App;
+using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -20,16 +21,16 @@ public sealed class GodotScriptEditorTests
         GodotEditorSettings.UseExternalEditor, GodotEditorSettings.ExecPath, GodotEditorSettings.ExecFlags,
     ];
 
-    /// <summary>Passenger writes itself into Godot's own settings as its script editor when asked, and offers it
-    /// once.</summary>
+    /// <summary>Passenger writes itself into Godot's own settings as its script editor when asked, and asks it once a
+    /// state.</summary>
     [AvaloniaFact]
     public void Passenger_is_offered_as_godots_script_editor()
     {
         Flow.Step(nameof(Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set),
             Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set);
         OpenWindows.CloseAll();
-        Flow.Step(nameof(A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed),
-            A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed);
+        Flow.Step(nameof(A_Godot_projects_first_opening_asks_once_a_state_whether_passenger_is_its_script_editor_and_writes_it_on_yes),
+            A_Godot_projects_first_opening_asks_once_a_state_whether_passenger_is_its_script_editor_and_writes_it_on_yes);
     }
 
     private void Asked_for_it_Passenger_writes_itself_into_the_Godot_s_own_version_s_settings_keeping_the_rest_and_says_what_it_set()
@@ -52,7 +53,7 @@ public sealed class GodotScriptEditorTests
             return Task.FromResult(true);
         };
 
-        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor));
+        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor)?.Shown);
         Ui.WaitFor(() => window.Status?.Contains("now opens its scripts in Passenger", StringComparison.Ordinal) == true,
             () => $"the status to say Godot's editor now opens its scripts in Passenger; it says {window.Status}");
 
@@ -68,43 +69,59 @@ public sealed class GodotScriptEditorTests
             && text.Contains("interface/editor/localization/editor_language = \"fr\"", StringComparison.Ordinal),
             $"Godot 4.7's settings were to make Passenger its script editor and keep the 4.6 file's other settings:\n{text}");
 
-        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor));
+        Assert.Null(window.Actions.Run(AppActions.GodotScriptEditor)?.Shown);
         Ui.WaitFor(() => window.Status?.Contains("already opens its scripts in this Passenger", StringComparison.Ordinal) == true,
             () => $"the status to say Godot's editor already opens its scripts in Passenger; it says {window.Status}");
         Assert.True(asked.Count == 1, $"Asked again with nothing to change, Passenger asked: {string.Join(" | ", asked)}");
     }
 
-    /// <summary>A Godot project's first opening in a window that keeps its folders' state offers Passenger as Godot's script
-    /// editor in the banner over the editor; dismissed, the banner goes, and the folder opened again in another window on
-    /// the same state offers it no more, while another Godot project is offered it still.</summary>
-    private void A_Godot_projects_first_opening_offers_the_script_editor_in_a_banner_once_and_never_again_once_dismissed()
+    /// <summary>A Godot project's first opening in a window the person sees asks once a state, without taking the keys,
+    /// whether Passenger is to be Godot's script editor, naming the file it writes: Not Now leaves Godot's settings as they
+    /// were and another Godot project opened on that state asks nothing, while on a state of its own Write Settings writes
+    /// Passenger into the Godot's settings and says so.</summary>
+    private void A_Godot_projects_first_opening_asks_once_a_state_whether_passenger_is_its_script_editor_and_writes_it_on_yes()
     {
-        string godot = StandInGodot(out _);
+        string godot = StandInGodot(out string data);
         string state = TestFolders.Create("godot-offer-state-");
-        string folder = NewGodotProject();
-        MainWindow first = Kept(state, godot, folder);
-        Ui.WaitFor(() => first.GodotSaid?.Contains("editor can open this project's scripts in Passenger", StringComparison.Ordinal) == true,
-            () => $"the banner to offer Passenger as Godot's script editor (it says {first.GodotSaid ?? "nothing"}; {first.Status})");
-        Assert.True(first.GetVisualDescendants().OfType<Button>().Any(b => b.IsEffectivelyVisible && Equals(b.Content, "Make Passenger Godot's Script Editor…")),
-            "The banner does not offer Make Passenger Godot's Script Editor…");
-        Ui.ClickButton(first, "Dismiss");
-        Ui.WaitFor(() => first.GodotSaid is null, () => $"the banner to go once dismissed (it says {first.GodotSaid})");
+        MainWindow first = Kept(state, godot, NewGodotProject());
+        ConfirmDialog asked = Asked(first);
+        string written = Path.Combine(data, "editor_settings-4.7.tres");
+        string words = string.Join(" ", asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+        Assert.True(words.Contains(PathNames.Shown(written, null), StringComparison.Ordinal), $"The question did not name the file it writes: {words}");
+        Ui.ClickButton(asked, "Not Now");
+        Assert.False(File.Exists(written), "Not Now wrote Godot's settings");
         first.Close();
 
-        MainWindow again = Kept(state, godot, folder);
-        Assert.True(again.GodotSaid is null, $"The folder opened again offered it once more: {again.GodotSaid}");
-        again.Close();
-
         MainWindow other = Kept(state, godot, NewGodotProject());
-        Ui.WaitFor(() => other.GodotSaid is not null, () => $"another Godot project to be offered it ({other.Status})");
+        Assert.True(other.Questions.Showing(Declared.GodotScriptEditor) is null && !other.Questions.WouldAsk(Declared.GodotScriptEditor),
+            "Another Godot project opened on the same state asked again");
         other.Close();
+
+        MainWindow fresh = Kept(TestFolders.Create("godot-offer-state-"), godot, NewGodotProject());
+        Ui.ClickButton(Asked(fresh), "Write Settings");
+        Ui.WaitFor(() => fresh.Status?.Contains("now opens its scripts in Passenger", StringComparison.Ordinal) == true,
+            () => $"the status to say Godot's editor now opens its scripts in Passenger; it says {fresh.Status}");
+        Assert.True(File.Exists(written) && Equals(GodotEditorSettings.Read(File.ReadAllText(written), Keys)[GodotEditorSettings.UseExternalEditor], true),
+            $"Write Settings did not make Passenger Godot's script editor in {written}");
+        fresh.Close();
     }
 
-    /// <summary>A window that keeps its folders' state in <paramref name="state"/>, Settings naming the stand-in Godot, on a
-    /// folder, once it is quiet.</summary>
+    /// <summary>The window's question whether Passenger is Godot's script editor, once it shows: unfocused, with no default button.</summary>
+    private static ConfirmDialog Asked(MainWindow window)
+    {
+        Ui.WaitFor(() => window.Questions.Showing(Declared.GodotScriptEditor) is not null,
+            () => $"the question whether Passenger is Godot's script editor, as the Godot project opens ({window.Status})");
+        ConfirmDialog asked = window.Questions.Showing(Declared.GodotScriptEditor)!;
+        Assert.False(asked.IsActive, "The question took the keys from what the person was doing");
+        Assert.DoesNotContain(asked.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
+        return asked;
+    }
+
+    /// <summary>A window the person sees that keeps its folders' state in <paramref name="state"/>, Settings naming the
+    /// stand-in Godot, on a folder, once it is quiet.</summary>
     private static MainWindow Kept(string state, string godot, string folder)
     {
-        MainWindow window = new() { Width = 1000, Height = 700, StateFolder = state, StartsLanguageServer = false, Autosaves = false };
+        MainWindow window = new() { Width = 1000, Height = 700, StateFolder = state, StartsLanguageServer = false, Autosaves = false, Unseen = false };
         window.Show();
         window.ApplySettings(window.Settings with { GodotExecutable = godot });
         window.KeepLayout();

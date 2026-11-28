@@ -35,6 +35,10 @@ public static class DropDownSearch
         });
     }
 
+    /// <summary>What a search says at its top (a drop-down's, a menu's, <see cref="MenuSearch"/>): how many items hold what is
+    /// typed.</summary>
+    public static string Said(string typed, int left) => left == 0 ? $"Nothing holds “{typed}”" : $"“{typed}”: {Plural.Of(left, "match", "matches")}";
+
     /// <summary>What a drop-down's search holds now; empty while none is typed.</summary>
     public static string Query(ComboBox box) => Searches.TryGetValue(box, out Search? search) ? search.Typed : string.Empty;
 
@@ -129,7 +133,7 @@ public static class DropDownSearch
                 }
             }
             Said.IsVisible = typed.Length > 0;
-            Said.Text = left == 0 ? $"Nothing holds “{typed}”" : $"“{typed}”: {Plural.Of(left, "match", "matches")}";
+            Said.Text = DropDownSearch.Said(typed, left);
             if (typed.Length > 0 && first >= 0)
             {
                 // From the top, so the rows hidden before the first left are laid out at no height, not left as a gap.

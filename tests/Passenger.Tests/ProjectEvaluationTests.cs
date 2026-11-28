@@ -98,12 +98,12 @@ public sealed class ProjectEvaluationTests : IDisposable
     private void A_project_shows_its_files_and_packages_as_MSBuild_evaluates_its_conditions_imports_wildcards_and_central_versions()
     {
         MainWindow window = Open();
-        Assert.Equal(TestProjects.Framework, Row(window, NodeKind.Project, "App").Detail);
+        Assert.Equal(TestProjects.Framework, Row(window, NodeKind.Project, "App").Detail?.English);
         Assert.Equal(["Dependencies", "Shared", "Program.cs"], Children(window, "App"));
         Assert.Equal(["Text", "Helper.cs"], Children(window, "Shared"));
         Assert.Equal(["Words.cs"], Children(window, "Text"));
         Assert.Equal([(TestProjects.Framework, null), ("Humanizer.Core", "2.14.1"), ("Serilog", Serilog)],
-            Children(window, "Dependencies").Select(name => (name, Row(window, null, name).Detail)));
+            Children(window, "Dependencies").Select(name => (name, Row(window, null, name).Detail?.English)));
         Assert.Equal(PathNames.Canonical(Path.Combine(folder, "Shared", "Text", "Words.cs")), Row(window, NodeKind.File, "Words.cs").Path);
         window.Close();
     }
@@ -201,7 +201,7 @@ public sealed class ProjectEvaluationTests : IDisposable
         // Above the project's folder, where only MSBuild's look upward for the file reaches.
         Write("Directory.Build.targets", "<Project>\n  <ItemGroup>\n    <PackageReference Include=\"Newtonsoft.Json\" />\n  </ItemGroup>\n</Project>\n");
         Ui.WaitFor(() => window.ExplorerView.Tree.Rows.Any(r => r.Name == "Newtonsoft.Json"), "the Dependencies to show the package the new Directory.Build.targets adds");
-        Assert.Equal("13.0.3", Row(window, null, "Newtonsoft.Json").Detail);
+        Assert.Equal("13.0.3", Row(window, null, "Newtonsoft.Json").Detail?.English);
         window.Close();
     }
 

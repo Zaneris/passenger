@@ -18,6 +18,7 @@ internal sealed class QuickInfo
     private readonly Func<bool> completing;
     private readonly InfoCard hoverCard;
     private CancellationTokenSource? hovering;
+    private (Workspace.OpenDocument File, TextSnapshot Text, int Offset)? declarationOrigin;
 
     /// <summary>The pause after the pointer leaves a card (its word, or the card itself) before the card goes: time to reach
     /// the card from the word, on which it stays while the pointer or the keys are on it.</summary>
@@ -83,6 +84,9 @@ internal sealed class QuickInfo
     /// state); null where it says nothing.</summary>
     public Func<int, IReadOnlyList<string>?>? GutterWords { get; set; }
 
+    /// <summary>What a word of a row above a line says more of (a commit's), null where it says nothing.</summary>
+    public Func<RowAboveWord, string?>? AboveWords { get; set; }
+
     /// <summary>Whether the card shown is in use (<see cref="InfoCard.InUse"/>): its keys, a menu of its, a value typed in it.</summary>
     public bool InUse => hoverCard.IsVisible && hoverCard.InUse;
 
@@ -91,6 +95,44 @@ internal sealed class QuickInfo
 
     /// <summary>The pointer left the word the card is of: the card goes after a pause, unless the pointer reaches it.</summary>
     public void PointerLeft() => Leave();
+
+    /// <summary>A peek at the caret (Quick Implementations, Error Description, Expression Type Info): the card filled by
+    /// <paramref name="fill"/>, placed and told as Quick Documentation's is; <paramref name="none"/> said where it fills
+    /// nothing, and a server's failure said for <paramref name="what"/>.</summary>
+    public async Task PeekAsync(Words what, Words none, Func<InfoCard, CancellationToken, Task> fill)
+    {
+        hovering?.Cancel();
+        CancellationTokenSource cancel = new();
+        hovering = cancel;
+        ForgetValues();
+        hoverCard.Clear();
+        hoverCard.IsVisible = false;
+        int offset = context.Caret;
+        try
+        {
+            await fill(hoverCard, cancel.Token);
+        }
+        catch (LanguageServerFailed failed)
+        {
+            context.Failed(what.Shown, failed);
+            return;
+        }
+        catch (OperationCanceledException) when (cancel.IsCancellationRequested)
+        {
+            return;
+        }
+        if (cancel.IsCancellationRequested)
+        {
+            return;
+        }
+        if (hoverCard.IsEmpty)
+        {
+            context.Say(none);
+            return;
+        }
+        Place(offset, Editor.PointOf(offset), null, null, null);
+        Said();
+    }
 
     /// <summary>Quick Documentation: the card for what is at the caret (its problems, a paused program's value, the symbol's
     /// description); pressed again while a value's card shows, the card takes the keys, its rows to open with the arrows.</summary>
@@ -206,6 +248,11 @@ internal sealed class QuickInfo
             {
                 if ((over?.File ?? context.Editors.Active) is { } shown)
                 {
+                    if (over is null && shown.Language == Languages.Language.CSharp)
+                    {
+                        declarationOrigin = (shown, shown.Text.Snapshot, offset);
+                        hoverCard.OpenDeclaration = OpenDeclaration;
+                    }
                     await context.Languages.HoverAsync(hoverCard, shown, offset, cancel.Token);
                 }
             }
@@ -228,6 +275,16 @@ internal sealed class QuickInfo
 
     /// <summary>The card shown, its words told to a screen reader.</summary>
     private void Said() => popups.Tell(hoverCard.Text, Urgency.Polite, hoverCard);
+
+    private void OpenDeclaration(string name, string key)
+    {
+        if (hoverCard.IsVisible && declarationOrigin is { } origin
+            && context.Editors.Active == origin.File && origin.File.Text.Snapshot == origin.Text)
+        {
+            Hide();
+            IdeErrors.Observe(context.Languages.CSharp.OpenHoverDeclarationAsync(origin.File, origin.Text, origin.Offset, name, key));
+        }
+    }
 
     /// <summary>Quick Evaluate Expression's card: a value read for an offset, shown as a hovered one is under its line, its
     /// row taking the keys at once, as Quick Documentation pressed again gives them.</summary>
@@ -376,6 +433,8 @@ internal sealed class QuickInfo
     /// it showed over.</summary>
     private void ForgetValues()
     {
+        declarationOrigin = null;
+        hoverCard.OpenDeclaration = null;
         side = null;
         leaving.Stop();
         hoverGone.Dispose();
@@ -445,6 +504,23 @@ internal sealed class QuickInfo
         }
         hoverCard.IsVisible = true;
         popups.Place(hoverCard, new Point(point.X, Editor.PointOf(text.GetLineStart(annotation.Line)).Y), above: false);
+    }
+
+    /// <summary>The card for a word of a row above a line the pointer rests on (<see cref="AboveWords"/>), hung under the
+    /// row; none where it says nothing.</summary>
+    public void ShowAbove(RowAboveWord word, Point point)
+    {
+        hovering?.Cancel();
+        ForgetValues();
+        hoverCard.Clear();
+        if (AboveWords?.Invoke(word) is not { Length: > 0 } words || completing())
+        {
+            hoverCard.IsVisible = false;
+            return;
+        }
+        hoverCard.AddText(words);
+        hoverCard.IsVisible = true;
+        popups.Place(hoverCard, new Point(point.X, point.Y - (Editor.LineHeight / 2)), above: false);
     }
 
     /// <summary>The card for what the gutter shows beside a line the pointer rests on (<see cref="GutterWords"/>), hung under

@@ -6,7 +6,7 @@ namespace Passenger.Core;
 /// <summary>A previewer's requests (<see cref="PreviewWire"/>), read on a thread of their own until Passenger closes the
 /// previewer's input, the newest waiting for the drawing to take it: one read while another is drawn replaces any still
 /// waiting, so only the newest text is drawn.</summary>
-public sealed class PreviewRequests<T> where T : PreviewRequest
+public sealed class PreviewRequests<T> where T : class
 {
     private readonly object gate = new();
     private T? waiting;

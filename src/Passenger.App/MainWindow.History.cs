@@ -17,11 +17,12 @@ public partial class MainWindow
 {
     private void AddHistoryActions()
     {
-        Add(AppActions.CompareWithRevision, "Compare with Revision…", context => IdeErrors.Observe(ShowCompareWithRevisionAsync(Target(context, fileOnly: true)!)), 3, fileOnly: true);
-        Add(AppActions.CompareWithBranch, "Compare with Branch or Tag…", context => IdeErrors.Observe(ShowCompareWithBranchAsync(Target(context, fileOnly: true)!)), 4, fileOnly: true);
-        Add(AppActions.ShowHistory, "Show History", context => IdeErrors.Observe(ShowHistoryAsync(Target(context, fileOnly: false)!)), 5, fileOnly: false);
+        Add(AppActions.CompareWithRevision, ActionTitles.CompareWithRevision, context => IdeErrors.Observe(ShowCompareWithRevisionAsync(Target(context, fileOnly: true)!)), 3, fileOnly: true);
+        Add(AppActions.CompareWithBranch, ActionTitles.CompareWithBranch, context => IdeErrors.Observe(ShowCompareWithBranchAsync(Target(context, fileOnly: true)!)), 4, fileOnly: true);
+        Add(AppActions.GetFromBranch, ActionTitles.GetFromBranch, context => IdeErrors.Observe(ShowGetFromBranchAsync(Target(context, fileOnly: true)!)), 4, fileOnly: true);
+        Add(AppActions.ShowHistory, ActionTitles.ShowHistory, context => IdeErrors.Observe(ShowHistoryAsync(Target(context, fileOnly: false)!)), 5, fileOnly: false);
         AddGitIgnoreActions();
-        actions!.Add(new IdeAction(AppActions.ShowHistoryForSelection, "Show History for Selection…", "Git", context =>
+        actions!.Add(new IdeAction(AppActions.ShowHistoryForSelection, ActionTitles.ShowHistoryForSelection, ActionGroups.Git, context =>
         {
             (int first, int last) = SelectedLines(context.Editor);
             IdeErrors.Observe(ShowSelectionHistoryAsync(context.File!.Path, first, last));
@@ -31,8 +32,8 @@ public partial class MainWindow
             Menus = [new MenuPlace("Git", 2, 6)],
         });
 
-        void Add(string id, string title, Action<ActionContext> run, int order, bool fileOnly) =>
-            actions!.Add(new IdeAction(id, title, "Git", run)
+        void Add(string id, Words title, Action<ActionContext> run, int order, bool fileOnly) =>
+            actions!.Add(new IdeAction(id, title, ActionGroups.Git, run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : WhyNoTarget(context, fileOnly)),
                 Menus = [new MenuPlace("Git", 2, order)],
@@ -63,9 +64,9 @@ public partial class MainWindow
     };
 
     private static string? WhyNoTarget(ActionContext context, bool fileOnly) =>
-        Target(context, fileOnly) is not null ? null
+        (Target(context, fileOnly) is not null ? null
         : context.ToolWindow?.Id != ToolWindowIds.Explorer ? Refusals.NoFile
-        : fileOnly ? "Choose a file in the Explorer" : "Choose a file or folder in the Explorer";
+        : fileOnly ? "Choose a file in the Explorer" : "Choose a file or folder in the Explorer")?.Shown;
 
     /// <summary>The lines a selection covers (the caret's alone with none), less the line it ends at the start of.</summary>
     private static (int First, int Last) SelectedLines(CodeEditor editor)
@@ -193,6 +194,40 @@ public partial class MainWindow
         return popup;
     }
 
+    /// <summary>Get from Branch or Tag: the branches and tags to choose from, as Compare with Branch or Tag lists them; the
+    /// file takes the one chosen's version (<see cref="GetFromAsync"/>).</summary>
+    public async Task<ChoicePopup?> ShowGetFromBranchAsync(string path)
+    {
+        if (session.Vcs.Repository is not { } repository)
+        {
+            status.Text = session.Vcs.NoRepository;
+            return null;
+        }
+        using Working? reading = BeginWork(AppActions.GetFromBranch, "Reading the branches and tags…");
+        if (reading is null)
+        {
+            return null;
+        }
+        IReadOnlyList<GitRef> refs = await repository.RefNamesAsync();
+        string? current = session.Vcs.Branch;
+        ChoicePopup popup = new($"Get {Path.GetFileName(path)} from Branch or Tag", "Search for branches and tags",
+            [.. refs.Where(r => r.Name != current).Select(r => new Choice(r.Name, r.Kind switch
+            {
+                RefKind.Local => "local branch",
+                RefKind.Remote => "remote branch",
+                _ => "tag",
+            }, r))],
+            "No branch or tag matches");
+        popups.Show(popup, chosen =>
+        {
+            if (chosen?.Value is GitRef named)
+            {
+                IdeErrors.Observe(GetFromAsync(named.FullName, named.Name, [(path, path, session.Vcs.Origin(PathNames.Canonical(path)))]));
+            }
+        });
+        return popup;
+    }
+
     /// <summary>Compare with Revision: the file's commits (its history, renames followed) to choose from; the one chosen
     /// opens its text of the file, under the name it had then, beside the file's.</summary>
     public async Task<ChoicePopup?> ShowCompareWithRevisionAsync(string path)
@@ -238,7 +273,10 @@ public partial class MainWindow
             status.Text = was is null ? $"{Path.GetFileName(then)} is not in {version}" : $"{Path.GetFileName(then)} is binary in {version}, so it has no lines to compare";
             return null;
         }
-        OpenDocument? open = Editors.Find(path) is { HoldsText: true } held ? held : null;
+        // A file not open is borrowed for the diff, so what is taken from the version or typed there is the file's own edit.
+        (OpenDocument Document, IDisposable Hold)? lent = Editors.Find(path) is null && File.Exists(path) ? Editors.Borrow(path) : null;
+        using IDisposable? lending = lent?.Hold;
+        OpenDocument? open = lent?.Document ?? (Editors.Find(path) is { HoldsText: true } held ? held : null);
         TextDocument mine = open?.Text ?? new TextDocument(EditorArea.ReadText(path) ?? string.Empty);
         TextSnapshot text = mine.Snapshot;
         Task<bool> breaksAlike = was is null ? Task.FromResult(false) : session.Vcs.BreaksStoredAlikeAsync(revision, then, was, path);

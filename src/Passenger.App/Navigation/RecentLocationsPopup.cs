@@ -34,7 +34,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
     private IReadOnlyList<RecentLocation> all = [];
 
     public RecentLocationsPopup(Func<bool, IReadOnlyList<RecentLocation>> places, bool editedOnly)
-        : base(string.Empty, "A file's name, a member or code", PopupFrame.Wide, option: ("Show edited only", editedOnly), listHeight: PlacesHeight)
+        : base(string.Empty, NavigationWords.RecentPlaceholder, PopupFrame.Wide, option: (NavigationWords.EditedOnly, editedOnly), listHeight: PlacesHeight)
     {
         this.places = places;
         Reload();
@@ -66,7 +66,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
     /// <summary>The places asked for again, as the switch between all of them and those edited turns.</summary>
     private void Reload()
     {
-        Title = EditedOnly ? "Recently Edited Locations" : "Recent Locations";
+        Title = EditedOnly ? NavigationWords.RecentlyEdited : NavigationWords.RecentLocations;
         all = places(EditedOnly);
         Filter();
     }
@@ -74,7 +74,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
     private void Filter()
     {
         string typed = Query.Trim();
-        Show([.. all.Where(p => p.Matches(typed))], "No recent locations found");
+        Show([.. all.Where(p => p.Matches(typed))], NavigationWords.NoRecentLocations);
     }
 
     private void Forget(RecentLocation chosen)
@@ -113,7 +113,7 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         CodeEditor code = new()
         {
             IsReadOnly = true,
-            ReadOnlyWhy = Refusals.PreviewReadOnly,
+            ReadOnlyWhy = Refusals.PreviewReadOnly.Shown,
             ShowErrorStripe = false,
             ShowLineNumbers = false,
             ShowScrollBars = false,
@@ -142,8 +142,8 @@ public sealed class RecentLocationsPopup : SearchPopup<RecentLocation>
         StackPanel row = new() { Margin = new Thickness(0, Gaps.Hair, 0, Gaps.Small), Children = { header, frame } };
         return row.Showing<RecentLocation>(place =>
         {
-            icon.Data = Explorer.FileIcons.ForFile(place.Place.Path);
-            icon.ForegroundKey = Explorer.FileIcons.TintForFile(place.Place.Path);
+            icon.DataKey = Explorer.FileIcons.FileKey(place.Place.Path);
+            icon.ForegroundKey = Explorer.FileIcons.FileBrushKey(place.Place.Path);
             name.Text = place.Name;
             member.Text = place.Member ?? string.Empty;
             ToolTip.SetTip(header, place.Place.Path);

@@ -24,7 +24,7 @@ public partial class ManagedDebugger
             foreach (ICorDebugILFrame frame in EvaluationFrames(thread))
             {
                 if (frame.TryGetIP(out uint offset, out _) is Cor.S_OK && FindModule(frame.Function.Module) is { } module
-                    && module.MetadataReader.InHandler(frame.Function.Token, (int)offset, ModuleMetadataReader.VersionOf(frame)))
+                    && module.MetadataReader.InHandler(frame.Function.Token, (int)offset, module.MetadataReader.VersionOf(frame)))
                 {
                     return "it runs a catch or finally block";
                 }

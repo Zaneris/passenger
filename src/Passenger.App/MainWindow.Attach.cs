@@ -31,11 +31,15 @@ public partial class MainWindow
     /// build's artifacts and the state's cache, downloaded from <see cref="Releases"/>' release of this version.</summary>
     public ContainerToolsSource? ContainerToolsFrom { get; init; }
 
+    /// <summary>Where this window's debugger's 32-bit host comes from, which its sessions hold: by default beside the app (a
+    /// build of one's own) and the state's cache, downloaded from <see cref="Releases"/>' release of this version.</summary>
+    public X86DebuggerSource? X86DebuggerFrom { get; init; }
+
     /// <summary>Attach to Process and Reattach to Process, in the Run menu before Edit Configurations.</summary>
     private void AddAttaching()
     {
-        Add(A.AttachToProcess, "Attach to Process…", "Debug", _ => ShowAttachToProcess(), menu: ("Run", 0, 3));
-        Add(A.ReattachToProcess, "Reattach to Process…", "Debug", context => IdeErrors.Observe(Reattach()),
+        Add(A.AttachToProcess, ActionTitles.AttachToProcess, ActionGroups.Debug, _ => ShowAttachToProcess(), menu: ("Run", 0, 3));
+        Add(A.ReattachToProcess, ActionTitles.ReattachToProcess, ActionGroups.Debug, context => IdeErrors.Observe(Reattach()),
             _ => attachedTo.Count == 0 ? "Nothing has been attached to in this window: Attach to Process chooses a program" : null, ("Run", 0, 4));
     }
 
@@ -86,34 +90,35 @@ public partial class MainWindow
         {
             if (await dialog.ShowDialog<DotnetProcess?>(this) is { } chosen && await AttachAsync(chosen) is { } problem)
             {
-                status.Text = problem;
+                status.Text = problem.Shown;
             }
         }
     }
 
-    /// <summary>Attaches the debugger to a .NET program, the Debug window open on its frames, beside any other program
-    /// debugged: null once the session is open, else why it could not, as the status bar says. The program's last session,
-    /// still attached (Reattach), is let go of first, the program running on. A container's program is attached to from
-    /// inside its container, Passenger's tools copied in first when they are not there.</summary>
-    public async Task<string?> AttachAsync(DotnetProcess process)
+    /// <summary>Attaches the debugger to a .NET program, its session named <paramref name="named"/> (else for the program),
+    /// the Debug window open on its frames, beside any other program debugged: null once open, else why not, as the status
+    /// bar says. Its last session, still attached (Reattach), is let go of first. A container's program is attached to inside
+    /// its container, Passenger's tools copied in first where they are not; a 32-bit program by the debugger's 32-bit host,
+    /// downloaded first where this build has none (<see cref="DebugController.X86HostAsync"/>).</summary>
+    public async Task<Words?> AttachAsync(DotnetProcess process, string? named = null)
     {
         UiThread.Check();
         if (process.WhyNot is { } why)
         {
-            return $"Cannot attach to {process.Program}: {why}";
+            return Refusals.Unattached(process.Program, why).Shown;
         }
         if (work.Begin(AppActions.AttachToProcess, $"Attaching to {process.Program}…") is not { } attaching)
         {
-            return ActionWork.Busy(work.Of(AppActions.AttachToProcess)!);
+            return ActionWork.Busy(work.Of(AppActions.AttachToProcess)!).Shown;
         }
         using Working held = attaching;
         using IDisposable background = BackgroundWork.Scope();
         DotnetProcess target = process;
         AdapterPlace? place = null;
-        string name = process.Program;
+        string name = named ?? process.Program;
         if (process.Container is { } container)
         {
-            name = $"{process.Program} in {container}";
+            name = $"{named ?? process.Program} in {container}";
             try
             {
                 (target, place) = await InContainerAsync(process, container, held);
@@ -125,18 +130,18 @@ public partial class MainWindow
             }
             if (target.WhyNot is { } blocked)
             {
-                return $"Cannot attach to {name}: {blocked}";
+                return Refusals.Unattached(name, blocked).Shown;
             }
         }
         attachedTo.RemoveAll(p => Same(p, target));
         attachedTo.Add(target);
         ShowToolWindow(ToolWindowIds.Debug);
         Bottom.Debug.ShowTab(console: false);
-        string? refused = await session.Debug.AttachAsync(target.Id, name, hotReload: place is not null && target.HotReload, place: place);
+        Words? refused = await session.Debug.AttachAsync(target.Id, name, hotReload: place is not null && target.HotReload, place: place, work: held);
         attachSession = session.Debug.SessionNamed(name);
         if (refused is not null && target.Note is { } note && place is not null)
         {
-            return $"{refused} ({note})";
+            return Run.LaunchWords.WithCaveat(refused, note);
         }
         if (refused is null && target.Note is { } known)
         {
@@ -152,7 +157,7 @@ public partial class MainWindow
     private async Task<(DotnetProcess Target, AdapterPlace Place)> InContainerAsync(DotnetProcess process, string container, Working held)
     {
         (string? folder, string? indexed, IReadOnlyList<string> files) = (session.Folder, session.Index.Root, session.Index.Files);
-        (DotnetProcess target, ContainerReach reach) = await ProgramInContainerAsync(process, container, UiThread.Marshal<string>(held.Say), held.Stopping);
+        (DotnetProcess target, ContainerReach reach) = await ProgramInContainerAsync(process, container, UiThread.Marshal<string>(said => held.Say(said)), held.Stopping);
         (ContainerPaths paths, WorkspaceSources? sources) = await BackgroundWork.Run(async () =>
             (folder is null ? ContainerPaths.None : await reach.PathsAsync(folder, held.Stopping), indexed is null ? null : new WorkspaceSources(indexed, files)), held.Stopping);
         return (target, reach.Adapter(process.Program, paths) with { Sources = sources });
@@ -238,12 +243,12 @@ public partial class MainWindow
             : [.. running.Where(p => p.Program == last.Program && p.Container == last.Container)];
         if (candidates is [{ } only])
         {
-            string? problem = await AttachAsync(only);
+            Words? problem = await AttachAsync(only);
             if (problem is not null)
             {
-                status.Text = problem;
+                status.Text = problem.Shown;
             }
-            looking.Tell(problem is null, problem ?? $"Attached to {only.Program}");
+            looking.Tell(problem is null, problem ?? DebuggingWords.AttachedTo(only.Program));
             return;
         }
         status.Text = candidates.Count == 0

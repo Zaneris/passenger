@@ -21,7 +21,8 @@
     <AvaloniaResource Include="Assets/Passenger.ico" />
     <!-- The mark About, the Welcome page, the first start and What's New show, drawn from Assets/passenger.svg. -->
     <AvaloniaResource Include="Assets/passenger.png" />
-    <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them. -->
+    <!-- The window's typeface (Theme/WindowFonts.cs): Inter 4.1's hinted faces as rsms/inter's release gives them, and
+         Noto Sans Devanagari's and Gurmukhi's hinted faces for Hindi's and Punjabi's words, as notofonts' releases give them. -->
     <AvaloniaResource Include="Fonts/*.ttf" />
     <!-- The themes Passenger carries beside its own, a source in theme format 1 (Theme/BuiltInThemes.cs, docs/themes.md). -->
     <AvaloniaResource Include="Theme/BuiltIn/**/*.json;Theme/BuiltIn/**/*.png;Theme/BuiltIn/**/*.jpg;Theme/BuiltIn/**/*.jpeg;Theme/BuiltIn/**/*.webp" />
@@ -55,6 +56,33 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="DuckDB.NET.Data.Full" />
+    <PackageReference Include="ClickHouse.Driver" />
+    <PackageReference Include="Snowflake.Data" />
+    <PackageReference Include="MongoDB.Driver" />
+    <PackageReference Include="Microsoft.Azure.Cosmos" />
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" />
+    <!-- AWS's sign-ins to databases: RDS's IAM tokens, Redshift's credentials, Secrets Manager's secrets, and a profile's
+         assumed role and IAM Identity Center sign-in. -->
+    <PackageReference Include="AWSSDK.RDS" />
+    <!-- Microsoft Entra ID's sign-in to Azure's databases, MSAL's own, which ClrMD's Azure.Identity carries an older one of. -->
+    <PackageReference Include="Microsoft.Identity.Client" />
+    <PackageReference Include="AWSSDK.Redshift" />
+    <PackageReference Include="AWSSDK.RedshiftServerless" />
+    <PackageReference Include="AWSSDK.SecretsManager" />
+    <PackageReference Include="AWSSDK.SecurityToken" />
+    <PackageReference Include="AWSSDK.SSO" />
+    <PackageReference Include="AWSSDK.SSOOIDC" />
+    <PackageReference Include="CassandraCSharpDriver" />
+    <!-- The Cassandra driver's LZ4, taken at the version Directory.Packages.props gives, which would otherwise stay at the
+         older one the driver names. -->
+    <PackageReference Include="K4os.Compression.LZ4" />
+    <PackageReference Include="SSH.NET" />
     <PackageReference Include="Avalonia.Desktop" />
     <!-- Avalonia.Headless names this package, though nothing of it is read: the window draws in Passenger's own Inter
          (Fonts/), so its assets stay out of the app. -->
@@ -139,11 +167,30 @@
          it is built for its own framework rather than this one's. -->
     <ProjectReference Include="../Passenger.Inspector.Wpf/Passenger.Inspector.Wpf.csproj" ReferenceOutputAssembly="false" Private="false"
                       SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
+    <!-- Built first on every system and carried under inspector/winforms/ by a Windows build alone, never linked: a Windows
+         Forms app Passenger runs or debugs loads it (LiveTree/LiveApp.cs). It is built for its own framework, as the WPF
+         one is. -->
+    <ProjectReference Include="../Passenger.Inspector.WinForms/Passenger.Inspector.WinForms.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
+    <!-- Built first on every system and carried under inspector/winui/ by a Windows build alone, never linked: a WinUI app
+         Passenger runs or debugs loads it (LiveTree/LiveApp.cs). It is built for its own framework and processor, its COM
+         host being one processor's. -->
+    <ProjectReference Include="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- Built first and carried under testframes/, never linked: a test run of an Avalonia headless project loads it
          (Testing/TestFrames.cs). It is built once for every platform. -->
     <ProjectReference Include="../Passenger.TestFrames/Passenger.TestFrames.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <Compile Include="../Passenger.TestFrames/Variables.cs" Link="Testing/TestFramesVariables.cs" />
+    <!-- Built first and carried under testhits/, never linked: a run mapping which tests run which lines loads it into its
+         test program (Testing/TestHitsRun.cs). It is built once for every platform. -->
+    <ProjectReference Include="../Passenger.TestHits/Passenger.TestHits.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
+    <Compile Include="../Passenger.TestHits/Variables.cs" Link="Testing/TestHitsVariables.cs" />
+    <!-- Built first and carried under coverage/console/ beside the Coverlet it drives, never linked: the map of which tests
+         run which lines instruments a run's own copy through it (Testing/TestHitsRun.cs), on Passenger's own runtime. -->
+    <ProjectReference Include="../Passenger.CoverageMap/Passenger.CoverageMap.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun" />
     <!-- Built first and carried under updatehandlers/, never linked: a program debugged with Hot Reload loads it
          (Debugging/UpdateHandlerHook.cs). It is built once for every platform. -->
     <ProjectReference Include="../Passenger.UpdateHandlers/Passenger.UpdateHandlers.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -161,6 +208,11 @@
                       SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- The previewer's messages, one definition for both ends. -->
     <Compile Include="../Passenger.WpfPreview/Protocol.cs" Link="Xaml/WpfPreviewProtocol.cs" />
+    <!-- Built first and carried under winformsdesigner/ on Windows, never linked: Windows Forms' designer runs in its own
+         process on a Windows Forms project's own runtime (WinForms/FormDesignHost.cs). Built everywhere, as Windows Forms
+         compiles anywhere (EnableWindowsTargeting), and for none of the systems the app is published for. -->
+    <ProjectReference Include="../Passenger.WinFormsDesigner/Passenger.WinFormsDesigner.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" />
     <!-- Built first and carried under mauipreview/, never linked: MAUI's previewer runs in its own process on Passenger's
          runtime (Xaml/MauiPreviewHost.cs), built for the publish's system or this machine's. -->
     <ProjectReference Include="../Passenger.MauiPreview/Passenger.MauiPreview.csproj" ReferenceOutputAssembly="false" Private="false"
@@ -178,6 +230,18 @@
     </ItemGroup>
   </Target>
 
+  <!-- Cosmos DB's client gives a Windows build its x64 query planner (ServiceInterop, CRTCompat) and the Visual C++ runtime
+       it needs, under that runtime's licence rather than an open-source one. The client plans a query through its gateway
+       where the planner is missing, as on macOS and Linux, so no build carries them. -->
+  <Target Name="LeaveOutCosmosNatives" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(NuGetPackageId)' == 'Microsoft.Azure.Cosmos'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(NuGetPackageId)' == 'Microsoft.Azure.Cosmos' And '%(AssetType)' == 'native'" />
+      <ContentWithTargetPath Remove="@(ContentWithTargetPath)"
+                             Condition="$([System.String]::Copy('%(FullPath)').Replace('\', '/').ToLowerInvariant().Contains('/microsoft.azure.cosmos/'))" />
+    </ItemGroup>
+  </Target>
+
   <!-- LICENSE.txt and THIRD-PARTY-NOTICES.txt beside the app in every build and publish (and in every referencing
        project's output), the notices written by tools/Passenger.Notices from the packages the app carries, so they cannot
        fall behind it. -->
@@ -192,7 +256,7 @@
     <None Include="../../docs/release-notes/*.md" Link="release-notes/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 
-  <Target Name="NoticeInputs" DependsOnTargets="ResolvePackageAssets;ResolveRuntimePackAssets;IncludeDebugAdapter;IncludeProjectHost;IncludeMauiPreview">
+  <Target Name="NoticeInputs" DependsOnTargets="ResolvePackageAssets;ResolveRuntimePackAssets;IncludeDebugAdapter;IncludeProjectHost;IncludeMauiPreview;FindCoverlet">
     <MSBuild Projects="../../tools/Passenger.Notices/Passenger.Notices.csproj" Targets="GetTargetPath"
              RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
       <Output TaskParameter="TargetOutputs" ItemName="NoticesTool" />
@@ -217,10 +281,11 @@
       <NoticeDebuggerDeps Include="$(DebugAdapterFolder)*.deps.json" />
       <NoticeHostDeps Include="$(ProjectHostFolder)*.deps.json" />
       <NoticeMauiPreviewDeps Include="$(MauiPreviewFolder)*.deps.json" />
+      <NoticeCoverageDeps Include="$(CoverletCollector)*.deps.json;$(CoverletConsole)*.deps.json" />
       <NoticesServerPackage Include="@(NoticesServer->WithMetadataValue('Kind', 'package'))" />
       <NoticeServerDeps Include="%(NoticesServerPackage.Folder)**/*.deps.json" />
       <NoticeWebStamp Include="@(NoticesWeb->'%(Stamp)')" />
-      <NoticeText Include="$(NoticesRepository)THIRD_PARTY_NOTICES.md;$(NoticesRepository)LICENSE;$(NoticesRepository)tools/Passenger.Notices/Licenses/*.txt;$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt" />
+      <NoticeText Include="$(NoticesRepository)THIRD_PARTY_NOTICES.md;$(NoticesRepository)LICENSE;$(NoticesRepository)tools/Passenger.Notices/Licenses/*.txt;$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt;$(NoticesRepository)src/Passenger.App/Fonts/NotoSans*-OFL.txt" />
     </ItemGroup>
     <RemoveDuplicates Inputs="@(NoticePackage)">
       <Output TaskParameter="Filtered" ItemName="NoticePackageOnce" />
@@ -235,18 +300,22 @@
       <NoticeLine Include="@(NoticeDebuggerDeps->'debugger=%(FullPath)')" />
       <NoticeLine Include="@(NoticeHostDeps->'host=%(FullPath)')" />
       <NoticeLine Include="@(NoticeMauiPreviewDeps->'mauipreview=%(FullPath)')" />
+      <NoticeLine Include="coveragePackage=coverlet.collector/$(CoverletVersion);coveragePackage=coverlet.console/$(CoverletVersion)" />
+      <NoticeLine Include="@(NoticeCoverageDeps->'coverage=%(FullPath)')" />
       <NoticeLine Include="@(NoticesServerPackage->'server=%(Identity)')" />
       <NoticeLine Include="@(NoticesServerPackage->'serverFolder=%(Folder)')" />
       <NoticeLine Include="@(NoticesServer->WithMetadataValue('Kind', 'leftOut')->'serverLeftOut=%(Identity)')" />
       <NoticeLine Include="@(NoticesWeb->'node=%(Identity)node_modules')" />
       <NoticeLine Include="text=JetBrains Mono, the editor's typeface, is under the SIL Open Font License 1.1, as JetBrains Mono gives it|$(NoticesRepository)src/Passenger.Editor/Fonts/OFL.txt" />
       <NoticeLine Include="text=Inter, the window's typeface, is under the SIL Open Font License 1.1, as Inter gives it|$(NoticesRepository)src/Passenger.App/Fonts/OFL.txt" />
+      <NoticeLine Include="text=Noto Sans Devanagari, Hindi's typeface, is under the SIL Open Font License 1.1, as Noto gives it|$(NoticesRepository)src/Passenger.App/Fonts/NotoSansDevanagari-OFL.txt" />
+      <NoticeLine Include="text=Noto Sans Gurmukhi, Punjabi's typeface, is under the SIL Open Font License 1.1, as Noto gives it|$(NoticesRepository)src/Passenger.App/Fonts/NotoSansGurmukhi-OFL.txt" />
     </ItemGroup>
     <WriteLinesToFile File="$(NoticesArguments)" Lines="@(NoticeLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 
   <Target Name="WriteNotices" DependsOnTargets="NoticeInputs"
-          Inputs="$(NoticesArguments);@(NoticesTool);@(NoticeText);@(NoticeDebuggerDeps);@(NoticeHostDeps);@(NoticeMauiPreviewDeps);@(NoticeServerDeps);@(NoticeWebStamp)" Outputs="$(NoticesFile)">
+          Inputs="$(NoticesArguments);@(NoticesTool);@(NoticeText);@(NoticeDebuggerDeps);@(NoticeHostDeps);@(NoticeMauiPreviewDeps);@(NoticeCoverageDeps);@(NoticeServerDeps);@(NoticeWebStamp)" Outputs="$(NoticesFile)">
     <Exec Command="&quot;$(NoticesHost)&quot; &quot;@(NoticesTool)&quot; &quot;$(NoticesArguments)&quot;" />
   </Target>
 
@@ -305,6 +374,80 @@
     </ItemGroup>
   </Target>
 
+  <!-- The Windows Forms inspector becomes this project's output under inspector/winforms/ where Passenger runs on Windows, as
+       the WPF one does: its own assembly alone, since the app it loads into brings the Windows Forms it uses. -->
+  <Target Name="IncludeWinFormsInspector" BeforeTargets="AssignTargetPaths"
+          Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win'))">
+    <MSBuild Projects="../Passenger.Inspector.WinForms/Passenger.Inspector.WinForms.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinFormsInspectorAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <WinFormsInspectorFile Include="@(WinFormsInspectorAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(WinFormsInspectorAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(WinFormsInspectorFile)" Link="inspector/winforms/%(WinFormsInspectorFile.Filename)%(WinFormsInspectorFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The WinUI inspector becomes this project's output under inspector/winui/x64/, arm64/ and x86/ where Passenger runs on
+       Windows, as the WPF one does: for each processor a WinUI app runs on, its assembly, the COM host WinUI's diagnostics
+       load it through and the runtime configuration that host reads. -->
+  <Target Name="IncludeWinUIInspector" BeforeTargets="AssignTargetPaths"
+          Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win'))">
+    <!-- x64's is the project's own build, which the reference above makes: the same instance, so the two never race. -->
+    <MSBuild Projects="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" Targets="Build;GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorX64" />
+    </MSBuild>
+    <MSBuild Projects="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" Targets="Build;GetTargetPath" Properties="RuntimeIdentifier=win-arm64"
+             RemoveProperties="SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorArm64" />
+    </MSBuild>
+    <MSBuild Projects="../Passenger.Inspector.WinUI/Passenger.Inspector.WinUI.csproj" Targets="Build;GetTargetPath" Properties="RuntimeIdentifier=win-x86"
+             RemoveProperties="SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinUIInspectorX86" />
+    </MSBuild>
+    <ItemGroup>
+      <WinUIInspectorFile Include="@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorX64->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
+                          Processor="x64" />
+      <WinUIInspectorFile Include="@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorArm64->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
+                          Processor="arm64" />
+      <WinUIInspectorFile Include="@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename)%(Extension)');@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename).pdb');@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename).comhost.dll');@(WinUIInspectorX86->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')"
+                          Processor="x86" />
+      <None Include="@(WinUIInspectorFile)" Link="inspector/winui/%(WinUIInspectorFile.Processor)/%(WinUIInspectorFile.Filename)%(WinUIInspectorFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Coverlet becomes this project's output under coverage/: its VSTest data collector (collector/, the .NET 8 build, which
+       loads into a test host of .NET 8 on) and its console (console/, the .NET 10 build, run on Passenger's own runtime),
+       which a run with coverage gives the tests (Testing/CoverageRun.cs), never their projects. Its documentation and the
+       tool's own settings are left out, and its Windows-only assemblies outside a Windows build, whose folder is dotted
+       (runtimes/win/lib/net8.0), which codesign takes for a bundle among a Mac app's code. -->
+  <ItemGroup>
+    <PackageDownload Include="coverlet.collector;coverlet.console" Version="[$(CoverletVersion)]" />
+  </ItemGroup>
+
+  <Target Name="FindCoverlet">
+    <PropertyGroup>
+      <CoverletCollector>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))coverlet.collector/$(CoverletVersion)/build/net8.0/</CoverletCollector>
+      <CoverletConsole>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))coverlet.console/$(CoverletVersion)/tools/net10.0/any/</CoverletConsole>
+      <CoverletWindows Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">true</CoverletWindows>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(CoverletCollector)coverlet.collector.dll') Or !Exists('$(CoverletConsole)coverlet.console.dll')"
+           Text="Coverlet $(CoverletVersion) is not at $(CoverletCollector) and $(CoverletConsole), or its packages' layout has changed; restore first." />
+  </Target>
+
+  <Target Name="IncludeCoverlet" BeforeTargets="AssignTargetPaths" DependsOnTargets="FindCoverlet">
+    <ItemGroup>
+      <CoverletFile Include="$(CoverletCollector)**/*" Exclude="$(CoverletCollector)**/*.xml;$(CoverletCollector)**/*.targets" Carried="collector/" />
+      <CoverletFile Include="$(CoverletConsole)**/*" Exclude="$(CoverletConsole)**/*.xml" Carried="console/" />
+      <CoverletFile Remove="@(CoverletFile)" Condition="'$(CoverletWindows)' != 'true' And $([System.String]::Copy('%(RecursiveDir)').StartsWith('runtimes'))" />
+      <None Include="@(CoverletFile)" Link="coverage/%(CoverletFile.Carried)%(CoverletFile.RecursiveDir)%(CoverletFile.Filename)%(CoverletFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
   <!-- The test frames hook becomes this project's output under testframes/: its own assembly alone, since the test
        program it loads into brings the Avalonia and xunit it uses. -->
   <Target Name="IncludeTestFrames" BeforeTargets="AssignTargetPaths">
@@ -315,6 +458,34 @@
     <ItemGroup>
       <TestFramesFile Include="@(TestFramesAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(TestFramesAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
       <None Include="@(TestFramesFile)" Link="testframes/%(TestFramesFile.Filename)%(TestFramesFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The test hits' hook becomes this project's output under testhits/: its own assembly alone. -->
+  <Target Name="IncludeTestHits" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.TestHits/Passenger.TestHits.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="TestHitsAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <TestHitsFile Include="@(TestHitsAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(TestHitsAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <None Include="@(TestHitsFile)" Link="testhits/%(TestHitsFile.Filename)%(TestHitsFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The coverage map's instrumenting becomes this project's output under coverage/console/, beside the Coverlet it loads:
+       its assembly, .deps.json and runtimeconfig.json, which passenger-helper runs it by. -->
+  <Target Name="IncludeCoverageMap" BeforeTargets="AssignTargetPaths">
+    <MSBuild Projects="../Passenger.CoverageMap/Passenger.CoverageMap.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="CoverageMapAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <CoverageMapFile Include="@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).dll');@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).pdb')" />
+      <CoverageMapFile Include="@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).deps.json');@(CoverageMapAssembly->'%(RootDir)%(Directory)%(Filename).runtimeconfig.json')" />
+      <None Include="@(CoverageMapFile)" Link="coverage/console/%(CoverageMapFile.Filename)%(CoverageMapFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>
@@ -346,6 +517,24 @@
     <ItemGroup>
       <WpfPreviewFile Include="$(WpfPreviewFolder)Passenger.WpfPreview.*" Exclude="$(WpfPreviewFolder)*.runtimeconfig.dev.json" />
       <None Include="@(WpfPreviewFile)" Link="wpfpreview/%(WpfPreviewFile.Filename)%(WpfPreviewFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Windows Forms' designer becomes this project's output under winformsdesigner/ when the app is built or published for
+       Windows, the one system Windows Forms draws on: its assembly and runtime configuration, as it carries no package. -->
+  <Target Name="IncludeWinFormsDesigner" BeforeTargets="AssignTargetPaths"
+          Condition="('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $(RuntimeIdentifier.StartsWith('win-'))">
+    <MSBuild Projects="../Passenger.WinFormsDesigner/Passenger.WinFormsDesigner.csproj" Targets="GetTargetPath"
+             RemoveProperties="RuntimeIdentifier;SelfContained;PublishReadyToRun;TargetFramework" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="WinFormsDesignerAssembly" />
+    </MSBuild>
+    <PropertyGroup>
+      <WinFormsDesignerFolder>@(WinFormsDesignerAssembly->'%(RootDir)%(Directory)')</WinFormsDesignerFolder>
+    </PropertyGroup>
+    <ItemGroup>
+      <WinFormsDesignerFile Include="$(WinFormsDesignerFolder)Passenger.WinFormsDesigner.*" Exclude="$(WinFormsDesignerFolder)*.runtimeconfig.dev.json" />
+      <None Include="@(WinFormsDesignerFile)" Link="winformsdesigner/%(WinFormsDesignerFile.Filename)%(WinFormsDesignerFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>
@@ -436,6 +625,22 @@
                       Condition="'$(RuntimeIdentifier)' == 'osx-x64' Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('OSX'))
                                  And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64')" />
       <None Include="@(DebugRelayFile)" Link="debugger/relay/%(DebugRelayFile.RecursiveDir)%(DebugRelayFile.Filename)%(DebugRelayFile.Extension)"
+            CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The debug adapter's 32-bit host becomes this project's output under debugger/x86/ in a build for Windows: the helper
+       host built self-contained for win-x86, with its x86 runtime and dbgshim for x86 (GetX86AdapterHost), which runs the
+       adapter above for a 32-bit program (X86DebuggerSource), as a runtime's debugging library loads only into a process
+       of its program's processor. A release's installer and portable zip leave it out, a release file of its own that
+       Passenger downloads the first time it debugs a 32-bit program (tools/package-win.sh). -->
+  <Target Name="IncludeX86AdapterHost" BeforeTargets="AssignTargetPaths" Condition="'$(CommandFor)' == 'windows'">
+    <MSBuild Projects="../Passenger.Helper/Passenger.Helper.csproj" Targets="GetX86AdapterHost" Properties="RuntimeIdentifier=win-x86"
+             RemoveProperties="SelfContained;PublishReadyToRun" BuildInParallel="$(BuildInParallel)">
+      <Output TaskParameter="TargetOutputs" ItemName="X86AdapterHostFile" />
+    </MSBuild>
+    <ItemGroup>
+      <None Include="@(X86AdapterHostFile)" Link="debugger/x86/%(X86AdapterHostFile.Filename)%(X86AdapterHostFile.Extension)"
             CopyToOutputDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>
   </Target>

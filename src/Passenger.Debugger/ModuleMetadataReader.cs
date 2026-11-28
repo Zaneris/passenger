@@ -1,7 +1,9 @@
 using System.Collections.Immutable;
+using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using Passenger.Debugger.ExpressionEvaluator.Cil;
 using Passenger.Debugger.Interop;
 using ZLinq;
 
@@ -27,6 +29,12 @@ public partial class ModuleMetadataReader : IDisposable
     internal Guid Mvid => _mvid ??= _peMetadataReader.GetGuid(_peMetadataReader.GetModuleDefinition().Mvid);
     public bool HasSymbols => _pdbMetadataReader is not null;
 
+    /// <summary>The file its symbols were read from, or that they are embedded in the assembly; null with none.</summary>
+    public string? SymbolsFrom { get; private set; }
+
+    /// <summary>What <see cref="SymbolsFrom"/> says of symbols embedded in the assembly.</summary>
+    public const string Embedded = "embedded in the assembly";
+
     /// <summary>The pointer size the module is built for: CoreLib's is its runtime's.</summary>
     internal int PointerSize => _peReader?.PEHeaders.PEHeader?.Magic == PEMagic.PE32Plus ? 8 : 4;
 
@@ -37,6 +45,129 @@ public partial class ModuleMetadataReader : IDisposable
 
     /// <summary>Whether the module's own code says a method is not the user's.</summary>
     internal bool IsNonUserCode(int methodToken) => NonUserCodeMethodTokens().Contains(methodToken);
+
+    /// <summary>The methods whose calls a recording of the user's code takes: those its symbols place in a source file,
+    /// written by the user (no compiler's own: a lambda's, a state machine's, a record's or an auto-property's accessor),
+    /// its own code not saying they are not the user's, nor hidden from debuggers.</summary>
+    internal IEnumerable<int> RecordedMethodTokens()
+    {
+        if (_pdbMetadataReader is not { } pdb)
+        {
+            yield break;
+        }
+        foreach (MethodDefinitionHandle method in _peMetadataReader.MethodDefinitions)
+        {
+            int token = MetadataTokens.GetToken(method);
+            MethodDefinition definition = _peMetadataReader.GetMethodDefinition(method);
+            if (definition.RelativeVirtualAddress == 0 || !WrittenByUser(definition)
+                || MetadataTokens.GetRowNumber(method) > pdb.GetTableRowCount(TableIndex.MethodDebugInformation)
+                || pdb.GetMethodDebugInformation(method.ToDebugInformationHandle()).SequencePointsBlob.IsNil
+                || IsNonUserCode(token) || IsHidden(token))
+            {
+                continue;
+            }
+            yield return token;
+        }
+    }
+
+    /// <summary>Whether a method is one the user wrote: no compiler's own, but a local function and a top-level program's
+    /// Main, which the compiler names (and marks) as its own.</summary>
+    private bool WrittenByUser(MethodDefinition definition)
+    {
+        string name = _peMetadataReader.GetString(definition.Name);
+        return Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameParser.GetKind(name) is Microsoft.CodeAnalysis.CSharp.Symbols.GeneratedNameKind.LocalFunction
+            || name == "<Main>$"
+            || (!name.Contains('<', StringComparison.Ordinal) && !_peMetadataReader.GetString(_peMetadataReader.GetTypeDefinition(definition.GetDeclaringType()).Name).Contains('<', StringComparison.Ordinal)
+                && !HasAttribute(_peMetadataReader, definition.GetCustomAttributes(), CompilerGenerated));
+    }
+
+    /// <summary>An async method a recording takes: the method the user wrote, which runs none of its code itself; the
+    /// MoveNext its state machine runs that code in; the IL offsets there of its opening brace, which a call passes once as
+    /// it begins, and its closing brace, which a call that completes passes; the local its result is in there, none for a
+    /// method returning no value; its parameters' names, which the state machine keeps as its fields; and for an async
+    /// iterator, where each yield passes, its item in the state machine's current field, and the IL offset of each yield by
+    /// the state it leaves the state machine in, none for any other.</summary>
+    internal sealed record AsyncMethod(int Kickoff, int MoveNext, int Begins, int Ends, int? Result, IReadOnlyList<string> Parameters, int? Yields = null,
+        IReadOnlyDictionary<int, int>? YieldedAt = null);
+
+    /// <summary>The field an async iterator's state machine holds the item it yields in.</summary>
+    internal const string YieldedField = "<>2__current";
+
+    /// <summary>The field a state machine holds its state in.</summary>
+    internal const string StateField = "<>1__state";
+
+    private static readonly string[] AsyncStateMachine =
+        ["System.Runtime.CompilerServices.AsyncStateMachineAttribute", "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute"];
+
+    /// <summary>The async methods of the user's code a recording takes, as <see cref="RecordedMethodTokens"/> takes methods.</summary>
+    internal IEnumerable<AsyncMethod> RecordedAsyncMethods()
+    {
+        if (_pdbMetadataReader is null)
+        {
+            yield break;
+        }
+        foreach (MethodDefinitionHandle method in _peMetadataReader.MethodDefinitions)
+        {
+            int token = MetadataTokens.GetToken(method);
+            MethodDefinition definition = _peMetadataReader.GetMethodDefinition(method);
+            // The compiler marks the method it starts the state machine from [DebuggerStepThrough]: its MoveNext says whose it is.
+            if (!HasAttribute(_peMetadataReader, definition.GetCustomAttributes(), AsyncStateMachine) || !WrittenByUser(definition) || IsHidden(token)
+                || GetStateMachineMoveNextToken(token) is not int moveNext || IsNonUserCode(moveNext) || VisibleSequencePoints(moveNext) is not { Count: >= 2 } points
+                || MethodIL(moveNext) is not { } il)
+            {
+                continue;
+            }
+            int ends = points[^1].Offset;
+            IReadOnlyList<CilInstruction> instructions = CilInstructionDecoder.Decode(il);
+            int? result = null;
+            int? yields = null;
+            for (int i = 3; i < instructions.Count; i++)
+            {
+                // An async iterator's yields all go on to the promise's SetResult(true), its item already in its current field.
+                if (instructions[i].Code is ILOpCode.Call && instructions[i - 1].Code is ILOpCode.Ldc_i4_1 && instructions[i - 2].Code is ILOpCode.Ldflda
+                    && instructions[i - 3].Code is ILOpCode.Ldarg_0 && DescribeCall(instructions[i].Token) is { Name: "SetResult", Parameters.Count: 1 })
+                {
+                    yields = instructions[i - 3].Offset;
+                }
+            }
+            Dictionary<int, int> yieldedAt = [];
+            for (int i = 0; yields is not null && i + 5 < instructions.Count; i++)
+            {
+                // A yield sets the current item, then the state the state machine goes on from.
+                if (instructions[i].Code is ILOpCode.Stfld && FieldName(instructions[i].Token) == YieldedField && instructions[i + 2].Code is ILOpCode.Ldc_i4_s or ILOpCode.Ldc_i4
+                    && instructions[i + 5].Code is ILOpCode.Stfld && FieldName(instructions[i + 5].Token) == StateField)
+                {
+                    yieldedAt[instructions[i + 2].Index] = instructions[i].Offset;
+                }
+            }
+            for (int i = 1; i < instructions.Count; i++)
+            {
+                // The builder's SetResult after the closing brace, given the local the method's value is in.
+                if (instructions[i].Offset >= ends && instructions[i].Code is ILOpCode.Call or ILOpCode.Callvirt && DescribeCall(instructions[i].Token) is { Name: "SetResult", Parameters.Count: 1 })
+                {
+                    result = instructions[i - 1].Code switch
+                    {
+                        ILOpCode.Ldloc_0 => 0,
+                        ILOpCode.Ldloc_1 => 1,
+                        ILOpCode.Ldloc_2 => 2,
+                        ILOpCode.Ldloc_3 => 3,
+                        ILOpCode.Ldloc_s or ILOpCode.Ldloc => instructions[i - 1].Index,
+                        _ => null,
+                    };
+                    break;
+                }
+            }
+            List<string> parameters = [];
+            foreach (ParameterHandle parameter in definition.GetParameters())
+            {
+                if (_peMetadataReader.GetParameter(parameter) is { SequenceNumber: > 0 } named)
+                {
+                    parameters.Add(_peMetadataReader.GetString(named.Name));
+                }
+            }
+            yield return new AsyncMethod(token, moveNext, points[0].Offset, ends, result, parameters, yields, yields is null ? null : yieldedAt);
+        }
+    }
 
     /// <summary>Whether a method is [DebuggerHidden], which no debugger stops in, Just My Code or not.</summary>
     internal bool IsHidden(int methodToken)
@@ -66,6 +197,7 @@ public partial class ModuleMetadataReader : IDisposable
 
     private static readonly string[] DebuggerHidden = ["System.Diagnostics.DebuggerHiddenAttribute"];
     private static readonly string[] StackTraceHidden = ["System.Diagnostics.StackTraceHiddenAttribute"];
+    private static readonly string[] CompilerGenerated = ["System.Runtime.CompilerServices.CompilerGeneratedAttribute"];
 
     private HashSet<int>? _nonUserCode;
     private HashSet<int>? _hidden;
@@ -272,6 +404,7 @@ public partial class ModuleMetadataReader : IDisposable
             provider = MetadataReaderProvider.FromPortablePdbStream(new FileStream(pdbPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete),
                 MetadataStreamOptions.PrefetchMetadata);
             SetPdbProvider(provider);
+            SymbolsFrom = pdbPath;
             return true;
         }
         catch (Exception error) when (Failures.OfReading(error))
@@ -375,6 +508,7 @@ public partial class ModuleMetadataReader : IDisposable
             if (codeViewData.Age == 1 && pdbId == expectedId)
             {
                 SetPdbProvider(provider);
+                SymbolsFrom = pdbPath;
                 return true;
             }
 
@@ -393,6 +527,7 @@ public partial class ModuleMetadataReader : IDisposable
         try
         {
             SetPdbProvider(_peReader!.ReadEmbeddedPortablePdbDebugDirectoryData(embeddedPdbEntry));
+            SymbolsFrom = Embedded;
             return true;
         }
         catch (Exception error) when (Failures.OfReading(error))
@@ -605,10 +740,6 @@ public partial class ModuleMetadataReader : IDisposable
         int? nextUserCodeIlOffset = GetNextUserCodeIlOffset(methodToken, ipResult.pnOffset, VersionOf(ilFrame));
         return (ipResult.pnOffset, nextUserCodeIlOffset);
     }
-
-    /// <summary>The EnC version of the code a frame runs (1 for the build's), or null when the runtime will not say.</summary>
-    internal static int? VersionOf(ICorDebugFrame frame) =>
-        frame.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code.TryGetVersionNumber(out uint version) is Cor.S_OK ? (int)version : null;
 
     public int? GetNextUserCodeIlOffset(int methodToken, int currentIlOffset, int? version = null)
     {

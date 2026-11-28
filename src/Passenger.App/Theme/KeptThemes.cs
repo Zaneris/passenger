@@ -146,9 +146,14 @@ public static class KeptThemes
 
     /// <summary>Keeps a theme's VS Code base beside it, each file by its path in the extension, the manifest last, so a kept
     /// manifest never names a theme not kept yet; why not where it cannot be written.</summary>
-    public static string? KeepBase(ThemeSource source, bool code, string name, IReadOnlyDictionary<string, byte[]> files)
+    public static string? KeepBase(ThemeSource source, bool code, string name, IReadOnlyDictionary<string, byte[]> files) =>
+        KeepUnder(source, code, name, BaseFolder, files);
+
+    /// <summary>Keeps an extension's files under a folder beside a theme (<paramref name="under"/>, its folders joined by /),
+    /// each by its path in the extension, the manifest last; why not where it cannot be written.</summary>
+    public static string? KeepUnder(ThemeSource source, bool code, string name, string under, IReadOnlyDictionary<string, byte[]> files)
     {
-        string folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, BaseFolder));
+        string folder = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(PathOf(source, code, name))!, under.Replace('/', Path.DirectorySeparatorChar)));
         try
         {
             foreach ((string path, byte[] bytes) in files.OrderBy(f => f.Key == VsCodeThemes.Manifest ? 1 : 0))

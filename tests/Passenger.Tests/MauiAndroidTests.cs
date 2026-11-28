@@ -10,9 +10,12 @@ namespace Passenger.Tests;
 
 /// <summary>The app <c>dotnet new maui</c> makes, its Android head debugged on an emulator from the window: Passenger's
 /// MAUI inspector goes in beside the debugger's relay, and the Live Visual Tree shows the app's window down to its main
-/// page's labels and its button, named by its x:Name; the button's details give its type, its Text set on it and its box
-/// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, and a
-/// tap given through the inspector clicks it. Debug's end ends the app and leaves nothing of the inspector's in it.
+/// page's labels and its button, named by its x:Name, once its XAML's breakpoints stopped where the page is made; the
+/// button's details give its type, its Text set on it and its box
+/// in the window; the outline over the button chosen is drawn in the app where the platform lays the button out, a tap
+/// given through the inspector clicks it, and its main page's XAML edits reach it with Hot Reload, a property's patched by
+/// MAUI, an added label's too, stopping at its breakpoint as the patch makes it, a C# expression's with the page made again,
+/// stopping at each breakpoint as it is made. Debug's end ends the app and leaves nothing of the inspector's in it.
 /// Skips, saying why, without MAUI's workload, the Android SDK's platform and Java, an emulator, or the relays.
 /// Steps of <see cref="AndroidDeviceTests"/>' flow, which runs alone.</summary>
 internal static class MauiAndroidTests
@@ -35,7 +38,7 @@ internal static class MauiAndroidTests
         }
         if (tools.Lacks is { } lacks)
         {
-            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
+            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks).Shown}");
         }
         if (MauiApp.Target(targets) is not { } target)
         {
@@ -46,7 +49,8 @@ internal static class MauiAndroidTests
         {
             Assert.Skip("This build carries no Android debug relay, which `just debug-relay android` makes before a build carries it");
         }
-        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { HotReload = true });
         try
         {
             Ui.WaitFor(() => window.Configurations.Any(c => c.Name == MauiApp.Name), () => $"{MauiApp.Name}'s run configuration; the window has configurations "
@@ -56,11 +60,17 @@ internal static class MauiAndroidTests
             window.ChooseRunTarget(model, target);
             Ui.Settle();
 
+            // Breakpoints in the page's XAML, bound in the code MAUI's source generator wrote of it, stop as the page is made.
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            // adb ends each connection the app's socket does not take yet a second late, as on a loaded machine.
+            using LateRefusals late = new();
             Ui.Launched(window, window.DebugAsync(), "the build, the install and the debugged start on the emulator", Slow);
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
+            Ui.Run(window, AppActions.Resume);
             LiveTreeView tree = window.LiveTree;
-            Ui.WaitFor(() => tree.Rows.Any(r => r.Element is { Type: "Button", Name: "CounterBtn" }),
-                () => $"the main page's button in the Live Visual Tree; it shows {string.Join(", ", tree.Rows.Select(r => r.Element.Type))}; the inspector is "
-                    + $"{window.LiveApp?.State.ToString() ?? "not made"} ({window.LiveApp?.Problem}): {Ui.Said(window)}", Slow);
+            InspectorWaits.Until(window, () => window.LiveApp, () => tree.Rows.Any(r => r.Element is { Type: "Button", Name: "CounterBtn" }),
+                () => $"the main page's button in the Live Visual Tree; it shows {string.Join(", ", tree.Rows.Select(r => r.Element.Type))}", Slow);
+            Assert.True(late.Refused > 0, "adb ended no connection before the app's inspector listened, so the step did not hold Passenger's reach to adb's late ends");
             Assert.True(window.LiveApp is { Kind: LiveAppKind.Maui } && window.LiveApp.Framework.StartsWith("MAUI 11.", StringComparison.Ordinal),
                 $"The app was taken for {window.LiveApp?.Kind}, {window.LiveApp?.Framework}");
             Assert.True(tree.Rows[0].Element.Type == "Window", $"The tree's first row is {tree.Rows[0].Element.Type}, not the app's window");
@@ -95,6 +105,7 @@ internal static class MauiAndroidTests
 
             InputDone tapped = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button", TimeSpan.FromMinutes(1));
             Assert.True(tapped.Target == button.Id && tapped.Shows == "Clicked 1 time", $"The tap reached {tapped.TargetName}, which shows \"{tapped.Shows}\", not the button counting it");
+            MauiApp.TakesXamlEdits(window, app, project, (xaml, hello, clickMe), Slow);
 
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));

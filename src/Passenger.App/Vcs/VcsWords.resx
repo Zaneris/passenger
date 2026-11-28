@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="RemoveRemoteAsks" xml:space="preserve">
+    <value>Remove the remote {remote}? {branches, plural, =0 {It has no branches here} one {Its # branch here goes with it} other {Its # branches here go with it}}{tracking, plural, =0 {} one {, and {tracked} tracks nothing from then on} other {, and {tracked} track nothing from then on}}. The repository at {url} keeps everything: adding the remote again and fetching brings its branches back.</value>
+    <comment>Remove Remote's question: {tracked} lists the local branches that track the remote's.</comment>
+  </data>
+  <data name="RenamesRemote" xml:space="preserve">
+    <value>Renames {remote} to {name}{branches, plural, =0 {} one {: its # branch here becomes {name}/…} other {: its # branches here become {name}/…}}{tracking, plural, =0 {} one {{branches, plural, =0 {:} other {, and}} {tracked} tracks its branch under the new name} other {{branches, plural, =0 {:} other {, and}} {tracked} track their branch under the new name}}.</value>
+    <comment>Edit Remote: what a new name does; {tracked} lists the local branches that track the remote's.</comment>
+  </data>
+  <data name="RemovedRemote" xml:space="preserve">
+    <value>Removed the remote {remote} and its branches here{tracking, plural, =0 {} one {; {tracked} tracks nothing now} other {; {tracked} track nothing now}}: the repository it named keeps everything</value>
+    <comment>What Remove Remote did; {tracked} lists the local branches that tracked the remote's.</comment>
+  </data>
+  <data name="SearchGitActions" xml:space="preserve">
+    <value>Search Git actions</value>
+    <comment>VCS Operations' search field.</comment>
+  </data>
+</root>

@@ -47,7 +47,7 @@ public sealed class MetricsPaneTests
         {
             pane.Show("api", Environment.ProcessId);
             Ui.Settle();
-            Assert.Equal(Refusals.MetricsWhilePaused("api"), pane.Said);
+            Assert.Equal(Refusals.MetricsWhilePaused("api").Shown, pane.Said);
             Assert.Empty(pane.Charted);
 
             paused = false;
@@ -57,7 +57,7 @@ public sealed class MetricsPaneTests
 
             paused = true;
             pane.DebuggerChanged();
-            Assert.Equal(Refusals.MetricsWhilePaused("api"), pane.Said);
+            Assert.Equal(Refusals.MetricsWhilePaused("api").Shown, pane.Said);
             paused = false;
             pane.DebuggerChanged();
             Assert.Equal(string.Empty, pane.Said);

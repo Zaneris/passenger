@@ -120,7 +120,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
             }
             string name = Editor.Document.Snapshot.GetText(start, end - start);
             context.ShowUsages($"Usages of {(name.Length > 0 ? name : "symbol")}", usages, inPopup ? asked : null,
-                untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Path.GetFileName(u.Path))]) : null);
+                (untaken.Count > 0 ? Refusals.Untaken([.. untaken.Select(u => Path.GetFileName(u.Path))]) : null)?.Shown);
         }
         catch (LanguageServerFailed failed)
         {
@@ -141,7 +141,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
 
     /// <summary>Straight to the one place, else the places to choose from, in a popup or kept in the Find window; the status
     /// bar says <paramref name="none"/> when there are none.</summary>
-    public void Go(IReadOnlyList<LspLocation> locations, int offset, string title, string none, IReadOnlyList<string?>? names = null)
+    public void Go(IReadOnlyList<LspLocation> locations, int offset, Words title, Words none, IReadOnlyList<string?>? names = null)
     {
         if (locations.Count == 0)
         {
@@ -153,7 +153,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
         }
         else if (context.KeepsPlaces())
         {
-            context.ShowUsages(title, locations, popupAt: null);
+            context.ShowUsages(title.Shown, locations, popupAt: null);
         }
         else
         {
@@ -163,7 +163,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
 
     /// <summary>The places to choose from: a type by its name with its file and line beside it, any other place by its file
     /// and line with its line of code beside it.</summary>
-    private void Pick(string title, IReadOnlyList<LspLocation> locations, int offset, IReadOnlyList<string?>? names = null)
+    private void Pick(Words title, IReadOnlyList<LspLocation> locations, int offset, IReadOnlyList<string?>? names = null)
     {
         string root = context.Root ?? string.Empty;
         Dictionary<string, string> paths = DocumentUris.ToPaths(locations.Select(l => l.Uri));
@@ -177,7 +177,7 @@ internal sealed class CodeNavigation(AssistContext context, PopupPlacement popup
                 ? new Choice(name, shown, l)
                 : new Choice(shown, code, l, DetailIsCode: true);
         }).ToList();
-        popups.ShowModal(new ChoicePopup(title, choices), offset, title, choice =>
+        popups.ShowModal(new ChoicePopup(title, choices), offset, title.Shown, choice =>
         {
             if (choice?.Value is LspLocation location)
             {

@@ -142,7 +142,7 @@ internal sealed class ProjectFiles
         {
             foreach (DirectoryInfo folder in new DirectoryInfo(PathOf(relative)).EnumerateDirectories())
             {
-                if (folder.Name.StartsWith('.') || folder.Name is "bin" or "obj" || shown.Contains(folder.Name))
+                if (LeftOut(folder.Name) || shown.Contains(folder.Name))
                 {
                     continue;
                 }
@@ -160,6 +160,9 @@ internal sealed class ProjectFiles
         }
         return shown;
     }
+
+    /// <summary>Whether a folder of a project's is never shown for having nothing in it: a hidden one, or its build's.</summary>
+    public static bool LeftOut(string name) => name.StartsWith('.') || name is "bin" or "obj";
 
     /// <summary>For a shared project, the files on disk at a place that its items file leaves out, each by its name and path,
     /// its items file and .shproj aside; none for any other project.</summary>

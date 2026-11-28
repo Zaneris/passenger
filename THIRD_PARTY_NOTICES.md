@@ -10,21 +10,61 @@ the solution restores, Roslyn's language server carries, the container tools car
 
 What `just publish` carries for macOS, Windows and Linux: the app, the debugger beside it under `debugger/`, the
 project host under `host/` (MSBuild's evaluation in a process of its own, run on the .NET it carries with the installed
-SDK's MSBuild, of which it carries nothing), the .NET MAUI previewer under `mauipreview/` (its own process, on that .NET), Roslyn's language server under `roslyn/` and Passenger's own extension to
+SDK's MSBuild, of which it carries nothing), the .NET MAUI previewer under `mauipreview/` (its own process, on that .NET), Coverlet under `coverage/` (what measures a test run's coverage, listed below), Roslyn's language server under `roslyn/` and Passenger's own extension to
 it under `roslyn-extension/` (compiled against the server's assemblies and carrying none), the JavaScript, TypeScript,
 HTML, CSS, JSON, Dockerfile and YAML language servers' npm packages under `web/` (listed below), on Windows what Velopack's installer
 adds to it (`just package-win`), and in the Linux archive Passenger's own launcher, install script, desktop entry and
 file types beside it (`just package-linux`). The Linux build carries the Linux natives of SkiaSharp, HarfBuzzSharp and
-dbgshim for its processor (x64 or Arm64), each named below. Packages restored with these whose files no build carries
-(SkiaSharp's and HarfBuzzSharp's natives for the browser, dbgshim's for 32-bit Arm and for 32-bit Windows) are left
-out; dbgshim's musl Linux natives are the container tools' (below), which the app never carries.
+dbgshim for its processor (x64 or Arm64), each named below; the Windows build carries the debugger's 32-bit host under
+`debugger/x86/` too, with its x86 .NET runtime and dbgshim for 32-bit Windows, which a release leaves out of its installer
+and portable zip as `Passenger-debugger-win-x86.zip` of its own, downloaded into the state's cache the first time a 32-bit
+program is debugged. Packages restored with these whose files
+no build carries (SkiaSharp's and HarfBuzzSharp's natives for the browser, dbgshim's for 32-bit Arm) are left out;
+dbgshim's musl Linux natives are the container tools' (below), which the app never carries.
 
 | Package | In Passenger | Licence | Copyright |
 |---|---|---|---|
+| `Microsoft.Data.Sqlite`, `Microsoft.Data.Sqlite.Core` | The Database window's SQLite provider | MIT | © Microsoft Corporation. All rights reserved. |
+| `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | The SQLite provider's native runtime and interop | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
+| `Npgsql` | The Database window's PostgreSQL provider | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
+| `MySqlConnector` | The Database window's MySQL and MariaDB provider | MIT | Copyright 2016–2026 Bradley Grainger |
+| `SSH.NET` | A database connection's SSH tunnel through a bastion | MIT | Copyright © Renci 2010-2026 |
+| `BouncyCastle.Cryptography` | SSH.NET's ciphers, keys and key exchange | MIT | Copyright © Legion of the Bouncy Castle Inc. 2000-2026 |
+| `DuckDB.NET.Data.Full`, `DuckDB.NET.Bindings.Full` | The Database window's DuckDB provider, with DuckDB's own native library for each system (libduckdb, MIT, Copyright 2018-2026 Stichting DuckDB Foundation), which a release leaves out of its installers and portable builds as `Passenger-duckdb-<system>` of its own, downloaded into the state's cache the first time a DuckDB connection opens | MIT | Copyright © 2020 - 2026 Giorgi Dalakishvili |
+| `Apache.Arrow`, `Apache.Arrow.Scalars` | Arrow's columns, which the DuckDB and Snowflake providers read results through | Apache-2.0 | Copyright 2016-2025 The Apache Software Foundation |
+| `ClickHouse.Driver` | The Database window's ClickHouse provider | MIT | ClickHouse |
+| `NodaTime` | the ClickHouse provider's dates and times | Apache-2.0 | Jon Skeet |
+| `Microsoft.IO.RecyclableMemoryStream` | the ClickHouse provider's buffers | MIT | © Microsoft Corporation. All rights reserved. |
+| `Snowflake.Data` | The Database window's Snowflake provider | Apache-2.0 | Snowflake |
+| `AWSSDK.Core`, `AWSSDK.S3` | the Snowflake provider's stages on Amazon S3, which a query's large results and PUT and GET reach, and the DynamoDB provider's requests | Apache-2.0 | Amazon Web Services |
+| `Azure.Storage.Blobs`, `Azure.Storage.Common` | the Snowflake provider's stages on Azure | MIT | © Microsoft Corporation. All rights reserved. |
+| `Google.Cloud.Storage.V1`, `Google.Apis`, `Google.Apis.Auth`, `Google.Apis.Core`, `Google.Apis.Storage.v1` | the Snowflake provider's stages on Google Cloud | Apache-2.0 | Copyright 2021-2026 Google LLC |
+| `Google.Api.Gax`, `Google.Api.Gax.Rest` | Google Cloud Storage's client support | BSD-3-Clause | Copyright 2020 Google LLC |
+| `TimeZoneConverter` | the Snowflake provider's time zones | MIT | Matt Johnson-Pint |
+| `Tomlyn.Signed` | the Snowflake provider's connections.toml | BSD-2-Clause | Alexandre Mutel |
+| `MongoDB.Driver`, `MongoDB.Bson` | The Database window's MongoDB provider | Apache-2.0 | Copyright © 2010-present MongoDB Inc. |
+| `DnsClient` | the MongoDB provider's mongodb+srv:// lookups | Apache-2.0 | Copyright (c) 2021 Michael Conrad |
+| `SharpCompress` | the MongoDB provider's compression | MIT | Copyright (c) 2025 Adam Hathcock |
+| `Snappier` | the MongoDB provider's Snappy compression | BSD-3-Clause | Copyright 2011-2020, Google, Inc. and Snappier Authors |
+| `ZstdSharp.Port` | the MongoDB provider's Zstandard compression | MIT | Copyright Oleg Stepanischev 2023 |
+| `Microsoft.Azure.Cosmos` | The Database window's Cosmos DB provider | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Bcl.HashCode` | the Cosmos DB provider's hashing | MIT | © Microsoft Corporation. All rights reserved. |
+| `StackExchange.Redis` | The Database window's Redis provider | MIT | 2014 - 2026 Stack Exchange, Inc. |
+| `RESPite` | the Redis provider's protocol reader | MIT | 2025 - 2026 Marc Gravell |
+| `AWSSDK.DynamoDBv2` | The Database window's DynamoDB provider | Apache-2.0 | Amazon Web Services |
+| `AWSSDK.RDS`, `AWSSDK.Redshift`, `AWSSDK.RedshiftServerless`, `AWSSDK.SecretsManager` | The Database window's AWS sign-ins: RDS's IAM tokens, Redshift's credentials and Secrets Manager's secrets | Apache-2.0 | Amazon Web Services |
+| `AWSSDK.SecurityToken`, `AWSSDK.SSO`, `AWSSDK.SSOOIDC` | an AWS profile's assumed role and IAM Identity Center sign-in | Apache-2.0 | Amazon Web Services |
+| `AWSSDK.Extensions.Numerics` | the AWS SDK's numbers carried whole | Apache-2.0 | Amazon Web Services |
+| `CassandraCSharpDriver` | The Database window's Cassandra provider | Apache-2.0 (the package's LICENSE.md) | Copyright © by DataStax |
+| `K4os.Compression.LZ4` | the Cassandra provider's compression | MIT (its nuspec names only its licence's URL, the MIT License there) | Milosz Krajewski, as its nuspec states; the licence there: Copyright (c) 2017 Milosz Krajewski |
+| `Mono.Unix`, `System.Management`, `System.CodeDom`, `System.IO.Hashing` | the Snowflake and Google Cloud providers' file modes, machine details and hashes | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Data.SqlClient`, `Microsoft.Data.SqlClient.Extensions.Abstractions`, `Microsoft.Data.SqlClient.Internal.Logging`, `Microsoft.Data.SqlClient.SNI.runtime` | The Database window's SQL Server provider and its native transport | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Bcl.Cryptography`, `Microsoft.IdentityModel.JsonWebTokens`, `Microsoft.IdentityModel.Logging`, `Microsoft.IdentityModel.Protocols`, `Microsoft.IdentityModel.Protocols.OpenIdConnect`, `Microsoft.IdentityModel.Tokens`, `Microsoft.SqlServer.Server`, `System.IdentityModel.Tokens.Jwt`, `System.Threading.RateLimiting`, `System.Security.Cryptography.Pkcs` | SQL Server's authentication, cryptography and protocol dependencies | MIT | © Microsoft Corporation. All rights reserved. |
 | `Google.Protobuf` | Aspire resource service protocol messages | BSD-3-Clause | Copyright 2015, Google Inc. |
 | `Grpc.Net.Client`, `Grpc.Net.Common`, `Grpc.Core.Api` | Native Aspire interactions and resource commands | Apache-2.0 | Copyright 2019 The gRPC Authors |
 | `Microsoft.Extensions.Logging.Abstractions` | gRPC client's logging contracts | MIT | © Microsoft Corporation. All rights reserved. |
 | The .NET runtime (`Microsoft.NETCore.App`) | the app and the debugger are self-contained; Roslyn's server and the project host run on that .NET | MIT | © Microsoft Corporation. All rights reserved. |
+| The x86 .NET runtime and apphost (`Microsoft.NETCore.App.Runtime.win-x86`, `Microsoft.NETCore.App.Host.win-x86`) | on Windows, the debugger's 32-bit host (`debugger/x86/`, a release's `Passenger-debugger-win-x86.zip`), which runs the debugger for a 32-bit program, as a runtime's debugging library loads only into a process of its program's processor | MIT | © Microsoft Corporation. All rights reserved. |
 | `Avalonia`, `Avalonia.Desktop`, `Avalonia.Native`, `Avalonia.Win32`, `Avalonia.X11`, `Avalonia.FreeDesktop`, `Avalonia.FreeDesktop.AtSpi`, `Avalonia.Remote.Protocol`, `Avalonia.Themes.Fluent`, `Avalonia.Skia`, `Avalonia.HarfBuzz`, `Avalonia.Headless` | the UI, and the headless platform the screenshots draw on, `Avalonia.Headless` carried beside the inspector too (`inspector/`, and older Avalonia 12s' builds under `inspector/avalonia/`) for an Avalonia app a Passenger nobody sees runs | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Markup.Xaml.Loader` | XAML Hot Reload's compiler, carried beside the inspector into an Avalonia app Passenger runs or debugs (`inspector/`, and older Avalonia 12s' builds under `inspector/avalonia/`) | MIT | Copyright 2013-2026 © The AvaloniaUI Project |
 | `Avalonia.Controls.WebView` | an HTML file's preview beside its text, in the system's own web view (WebView2, WKWebView, WebKitGTK) | MIT | Copyright 2019-2026 © AvaloniaUI OÜ |
@@ -47,6 +87,7 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Cucumber.Messages` | the Gherkin reader's message types | MIT | Copyright © Cucumber Ltd, TechTalk |
 | `Cucumber.CucumberExpressions` | a step definition's Cucumber Expression matched to a step's text | MIT | Copyright © Cucumber Ltd, Gaspar Nagy |
 | `roslyn-language-server.osx-arm64`, `roslyn-language-server.osx-x64`, `roslyn-language-server.win-x64`, `roslyn-language-server.win-arm64`, `roslyn-language-server.linux-x64`, `roslyn-language-server.linux-arm64` | Roslyn's language server, one per system, copied under `roslyn/` with the package's own `ThirdPartyNotices.rtf`, less four assemblies under Visual Studio's terms; what it carries is listed below | MIT | © Microsoft Corporation. All rights reserved. |
+| `coverlet.collector`, `coverlet.console` | Coverlet, which measures which lines and branches a run of tests ran, under `coverage/`: its VSTest data collector, which a VSTest run with coverage is given, and its console, which a Microsoft.Testing.Platform application runs under for one; neither is ever added to a project; what they carry is listed below | MIT | (c) 2018 Toni Solarin-Sodara |
 | `StreamJsonRpc` | JSON-RPC with the language server, the debug adapter and Microsoft.Testing.Platform's test hosts | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.VisualStudio.Threading.Only` | StreamJsonRpc's, whose NonConcurrentSynchronizationContext keeps the language server's and the test hosts' messages in order, and whose JoinableTaskFactory runs async work to its end where a caller must stay synchronous | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.VisualStudio.Validation` | StreamJsonRpc's | MIT | © Microsoft Corporation. All rights reserved. |
@@ -63,17 +104,30 @@ out; dbgshim's musl Linux natives are the container tools' (below), which the ap
 | `Microsoft.Build.Locator` | the project host's way to the installed .NET SDK's own MSBuild, which it loads, the one package under `host/` | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Diagnostics.NETCore.Client` | the debugger's and the profiler's diagnostic port | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Diagnostics.Runtime` | ClrMD, reading the profiler's memory snapshots | MIT | © Microsoft Corporation. All rights reserved. |
-| `Azure.Identity`, `Azure.Core`, `System.ClientModel`, `System.Memory.Data`, `Microsoft.Identity.Client`, `Microsoft.Identity.Client.Extensions.Msal`, `Microsoft.IdentityModel.Abstractions`, `Microsoft.Security.AntiSSRF`, `Microsoft.Bcl.AsyncInterfaces` | ClrMD's: its downloads from symbol servers and their Azure sign-in, which the profiler never asks for (its file locator finds nothing), carried because ClrMD loads Azure.Core as it reads a dump | MIT | © Microsoft Corporation. All rights reserved. |
+| `Azure.Identity`, `Azure.Core`, `System.ClientModel`, `System.Memory.Data`, `Microsoft.Identity.Client.Extensions.Msal`, `Microsoft.IdentityModel.Abstractions`, `Microsoft.Security.AntiSSRF`, `Microsoft.Bcl.AsyncInterfaces` | ClrMD's: its downloads from symbol servers and their Azure sign-in, which the profiler never asks for (its file locator finds nothing), carried because ClrMD loads Azure.Core as it reads a dump | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Identity.Client` | The Database window's Microsoft Entra ID sign-in to Azure's databases, and ClrMD's Azure sign-in | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.Diagnostics.Tracing.TraceEvent` | reading the profiler's EventPipe traces, with its COM interop assemblies `Dia2Lib.dll` and `TraceReloggerLib.dll`; its Windows natives (`msdia140.dll`, `KernelTraceControl.dll`), which reading EventPipe never loads, are left out of every publish (`Passenger.App.csproj`) | MIT | © Microsoft Corporation. All rights reserved. |
 | `Porta.Pty` | the terminal's pseudo-terminal, with its native forkpty shim (`libporta_pty`) | MIT | Tom Laird-McConnell All Rights Reserved |
 | `Microsoft.Windows.Console.ConPTY` | Porta.Pty's console host (`conpty.dll`, `OpenConsole.exe`), Windows only | MIT | © Microsoft Corporation |
-| `Microsoft.Diagnostics.DbgShim`, `Microsoft.Diagnostics.DbgShim.osx-arm64`, `Microsoft.Diagnostics.DbgShim.osx-x64`, `Microsoft.Diagnostics.DbgShim.win-x64`, `Microsoft.Diagnostics.DbgShim.win-arm64`, `Microsoft.Diagnostics.DbgShim.linux-x64`, `Microsoft.Diagnostics.DbgShim.linux-arm64` | the debugger's way into a runtime (dbgshim), one native per system | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.Diagnostics.DbgShim`, `Microsoft.Diagnostics.DbgShim.osx-arm64`, `Microsoft.Diagnostics.DbgShim.osx-x64`, `Microsoft.Diagnostics.DbgShim.win-x64`, `Microsoft.Diagnostics.DbgShim.win-arm64`, `Microsoft.Diagnostics.DbgShim.win-x86`, `Microsoft.Diagnostics.DbgShim.linux-x64`, `Microsoft.Diagnostics.DbgShim.linux-arm64` | the debugger's way into a runtime (dbgshim), one native per system, and on Windows 32-bit Windows' in the debugger's 32-bit host | MIT | © Microsoft Corporation. All rights reserved. |
 | `Microsoft.DiaSymReader` | the expression compiler's | MIT | © Microsoft Corporation. All rights reserved. |
 | `ICSharpCode.Decompiler` | ILSpy's decompiler: the debugger's frames without source, and a library's type opened from XAML | MIT | Copyright 2011-2026 AlphaSierraPapa |
 | `MP.Microsoft.CodeAnalysis.CSharp.ExpressionEvaluator.ExpressionCompiler`, `MP.Microsoft.CodeAnalysis.ExpressionEvaluator.ExpressionCompiler` | Roslyn's expression compiler, packed from Roslyn's source by MattParkerDev (https://github.com/MattParkerDev/roslyn, branch custom-ee-5.9.0) | MIT | no copyright line; its authors: .NET Foundation and contributors |
 | `ZLinq` | the debugger's queries | MIT | © Cysharp, Inc. |
 | `Velopack` | the Windows install's hooks, which register and remove the file types Passenger opens as it is installed, updated and uninstalled, and its updates: the UpdateManager that downloads a newer release's package from its feed and checks its size and SHA-256 | MIT | Copyright © Velopack Ltd. All rights reserved. |
 | `vpk` | in the Windows installer, Velopack's own programs, written in Rust with open-source crates: `Setup.exe` (the installer itself), and in the install `Update.exe` (which installs an update once Passenger has closed, and uninstalls it from Settings > Apps) and a `Passenger.exe` that starts `current\Passenger.exe` | MIT | Copyright © Velopack Ltd. All rights reserved. |
+
+### Inside `coverage/`
+
+Coverlet's collector and console carry these packages' assemblies beside their own (and Coverlet's own `coverlet.core`,
+built with them under its MIT), at the versions their `.deps.json` files name. What each package says of itself on
+nuget.org:
+
+| Package | Licence | Copyright |
+|---|---|---|
+| `Microsoft.Bcl.AsyncInterfaces`, `Microsoft.Bcl.Cryptography`, `Microsoft.Extensions.DependencyInjection`, `Microsoft.Extensions.DependencyInjection.Abstractions`, `Microsoft.Extensions.DependencyModel`, `Microsoft.Extensions.FileSystemGlobbing`, `Microsoft.TestPlatform.ObjectModel`, `System.CommandLine`, `System.Formats.Asn1`, `System.IO.Pipelines`, `System.Security.Cryptography.Pkcs`, `System.Text.Encodings.Web`, `System.Text.Json` | MIT | © Microsoft Corporation. All rights reserved. |
+| `NuGet.Frameworks`, `NuGet.Versioning` | Apache-2.0 | © Microsoft Corporation. All rights reserved. |
+| `Mono.Cecil` | MIT | no copyright line; its author: Jb Evain |
 
 ### Inside `roslyn/`
 
@@ -246,10 +300,9 @@ Packages the build or the tests use that no app carries.
 | `Hex1b` | Aspire hosting's terminal dependency, restored for the tests' local feed | MIT | Copyright (c) 2024 Mitch Denny |
 | `Polly.RateLimiting` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `Polly.Core` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2015-2026, App vNext |
-| `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Abstractions`, `Microsoft.EntityFrameworkCore.Analyzers`, `Microsoft.EntityFrameworkCore.Relational`, `Microsoft.EntityFrameworkCore.Sqlite`, `Microsoft.EntityFrameworkCore.Sqlite.Core`, `Microsoft.EntityFrameworkCore.Design`, `Microsoft.Data.Sqlite.Core`, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.DependencyModel`, `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.Common`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `System.Composition` | EF Core with SQLite and the Design package dotnet ef loads, and what they depend on: the graph of the projects the Migrations window's tests write, restored for the tests' local feed (tests/EfGraphs), `Microsoft.Extensions.DependencyModel` also NUnit's adapter's dependency, downloaded for the tests' package cache (tests/UnitTestGraphs); the two Workspaces packages and System.Composition also the unit tests' Roslyn workspaces; Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
+| `Microsoft.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.Abstractions`, `Microsoft.EntityFrameworkCore.Analyzers`, `Microsoft.EntityFrameworkCore.Relational`, `Microsoft.EntityFrameworkCore.Sqlite`, `Microsoft.EntityFrameworkCore.Sqlite.Core`, `Microsoft.EntityFrameworkCore.Design`, `Microsoft.Extensions.Caching.Memory`, `Microsoft.Extensions.DependencyModel`, `Microsoft.CodeAnalysis.CSharp.Workspaces`, `Microsoft.CodeAnalysis.Workspaces.Common`, `Microsoft.CodeAnalysis.Workspaces.MSBuild`, `System.Composition` | EF Core with SQLite and the Design package dotnet ef loads, and what they depend on: the graph of the projects the Migrations window's tests write, restored for the tests' local feed (tests/EfGraphs), `Microsoft.Extensions.DependencyModel` also NUnit's adapter's dependency, downloaded for the tests' package cache (tests/UnitTestGraphs); the two Workspaces packages and System.Composition also the unit tests' Roslyn workspaces; Passenger never carries them | MIT | © Microsoft Corporation. All rights reserved. |
 | `dotnet-ef` | EF Core's command-line tool at the tests' EF Core version, the one before and EF Core 11's, downloaded for the tests' local feed, from which the Migrations window's tests install it as a local tool; Passenger never carries it, and installs it only when asked | MIT | © Microsoft Corporation. All rights reserved. |
 | `Mono.TextTemplating` | the EF Core Design package's template engine, restored for the tests' local feed | MIT | no copyright line; its author: Mikayla Hutchinson |
-| `SQLitePCLRaw.bundle_e_sqlite3`, `SQLitePCLRaw.lib.e_sqlite3`, `SQLitePCLRaw.provider.e_sqlite3` | SQLite for EF Core's SQLite provider, restored for the tests' local feed | Apache-2.0 | Copyright 2014-2024 SourceGear, LLC |
 | `SQLitePCLRaw.config.e_sqlite3` | SQLite's configuration for EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | Apache-2.0 | Copyright 2014-2026 SourceGear, LLC |
 | `Microsoft.Maui.Controls`, `Microsoft.Maui.Controls.Build.Tasks`, `Microsoft.Maui.Resizetizer` | .NET MAUI's controls and their XAML source generator, which the MAUI XAML tests' app builds against without MAUI's workload: restored for the tests' package cache (tests/MauiGraphs); Passenger carries only the controls' own assemblies, in its MAUI previewer (above) | MIT | © Microsoft Corporation. All rights reserved. |
 | `gdUnit4.api`, `gdUnit4.test.adapter` | GdUnit4's API and its VSTest adapter, which the Godot tests write into a game: downloaded for the tests' package cache (tests/GodotGraphs); Passenger never carries them | MIT | © 2026 Mike Schulze |
@@ -266,7 +319,7 @@ Packages the build or the tests use that no app carries.
 | `NUnit3TestAdapter` | NUnit's adapter and its own runner on the Testing Platform, which the unit testing tests write into the test projects they make: downloaded for the tests' package cache (tests/UnitTestGraphs); Passenger never carries it | MIT | Copyright (c) 2011-2021 Charlie Poole, 2014-2026 Terje Sandstrom |
 | `Serilog` | Serilog at the version the Solution view's evaluation tests pin in the project they make, downloaded for the tests' package cache; Passenger never carries it | Apache-2.0 | Copyright © 2013-24 Serilog Contributors |
 | `SQLite` | SQLite's native builds under EF Core 11's SQLite provider, restored for the tests' local feed (tests/EfGraphs) | public domain (the package's LICENSE.txt: "SQLite is Public Domain", https://sqlite.org/copyright.html) | Copyright 2014-2026 SourceGear, LLC (the package's builds) |
-| `Npgsql.EntityFrameworkCore.PostgreSQL`, `Npgsql` | EF Core's PostgreSQL provider and the driver under it: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries them | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
+| `Npgsql.EntityFrameworkCore.PostgreSQL` | EF Core's PostgreSQL provider: the graph of the web app the Migrations window's compose run test writes, restored for the tests' local feed (tests/EfGraphs); Passenger never carries it | PostgreSQL | Copyright 2025 © The Npgsql Development Team |
 | `Polly.Extensions` | starters' resilience dependency, restored for the tests' local feed | BSD-3-Clause | Copyright (c) 2024, App vNext |
 | `System.Drawing.Common` | Aspire hosting's dependency, restored for the tests' local feed | MIT | © Microsoft Corporation. All rights reserved. |
 | `QRCoder` | Aspire hosting's dependency, restored for the tests' local feed | MIT | Copyright © 2013-2025 Raffael Herrmann. Copyright © 2024-2025 Shane Krueger. All rights reserved. |
@@ -505,7 +558,7 @@ SOFTWARE.
 `src/Passenger.Workspace/GDScript/` (`GDScriptToken.cs`, `GDScriptTokenizer.cs`, `GDScriptNodes.cs` and the
 `GDScriptParser` files) is a port to C# of the Godot Engine's GDScript tokenizer and parser,
 `modules/gdscript/gdscript_tokenizer.cpp`, `gdscript_tokenizer.h`, `gdscript_parser.cpp` and `gdscript_parser.h` at
-commit a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768 (4.8 beta 5) of https://github.com/godotengine/godot: their tokens,
+commit 7c97c297793ce4711679491d34693a5719a79ebe (4.8 RC 1) of https://github.com/godotengine/godot: their tokens,
 nodes, parse rules and error messages, kept as Godot words them. `GDScriptAnalyzer` (with `GDScriptType`,
 `GDScriptAnalysis` and `GodotEngineApi`) ports the typing of `modules/gdscript/gdscript_analyzer.cpp` and
 `gdscript_analyzer.h` at the same commit (its data types, how a declaration, an override's return and each expression
@@ -686,6 +739,72 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## .NET MAUI's XAML generator's file names
+
+The names Passenger finds what .NET MAUI's XAML source generator wrote of a XAML file by, its InitializeComponent and its
+Hot Reload patch (`GeneratedMarkup.HintOf` in `src/Passenger.Roslyn.Extension/GeneratedMarkup.cs`), are made as that
+generator's own `GetHintName` makes them, ported from `src/Controls/src/SourceGen/XamlGenerator.cs` in
+https://github.com/dotnet/maui at tag 11.0.0 (commit d153424cc4c11f1825691857b2b9cedb7fc90e5f), under the MIT License below.
+
+```
+The MIT License (MIT)
+
+Copyright (c) .NET Foundation and Contributors
+
+All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## WinUI's XAML diagnostics
+
+The declarations through which Passenger's WinUI inspector calls WinUI's XAML diagnostics in a WinUI app
+(`src/Passenger.Inspector.WinUI/Diagnostics.cs`, `VisualTree.cs` and `Tap.cs`: the interface ids and method slots of
+IXamlDiagnostics, IVisualTreeService and IVisualTreeServiceCallback, the SourceInfo, VisualElement, ParentChildRelation,
+PropertyChainSource and PropertyChainValue structs, and BaseValueSource's values) follow
+`Samples/WinUISnoop/WinUISnoopTap/xamlOM.h` of the Windows UI Library, https://github.com/microsoft/microsoft-ui-xaml
+(commit edd107d4f7312f6dad40c4bc797f4c1b290d0143), under the MIT License below.
+
+```
+MIT License
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE
+```
+
 ## JetBrains Mono
 
 `src/Passenger.Editor/Fonts/` holds JetBrains Mono 2.304 (Regular, Bold, Italic, Bold Italic), the
@@ -705,6 +824,28 @@ Authors, under the SIL Open Font License 1.1, whose full text is beside the font
 | `Inter-Medium.ttf` | `97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872` |
 | `Inter-SemiBold.ttf` | `78a843fade9d4612a5567302fb595b56976eb5fcebf4fea5a5912d638bafcde3` |
 | `Inter-Bold.ttf` | `288316099b1e0a47a4716d159098005eef7c0066921f34e3200393dbdb01947f` |
+
+## Noto Sans Devanagari and Noto Sans Gurmukhi
+
+`src/Passenger.App/Fonts/` holds the hinted Regular, Medium, SemiBold and Bold faces of Noto Sans Devanagari 2.007
+(`NotoSansDevanagari/hinted/ttf/` of `NotoSansDevanagari-v2.007.zip`,
+https://github.com/notofonts/devanagari/releases/tag/NotoSansDevanagari-v2.007) and Noto Sans Gurmukhi 2.004
+(`NotoSansGurmukhi/hinted/ttf/` of `NotoSansGurmukhi-v2.004.zip`,
+https://github.com/notofonts/gurmukhi/releases/tag/NotoSansGurmukhi-v2.004), Hindi's and Punjabi's words where the
+system has no face of their script, Copyright 2022 The Noto Project Authors, under the SIL Open Font License 1.1, whose
+full text is beside the fonts as each release gives it (`NotoSansDevanagari-OFL.txt`, `NotoSansGurmukhi-OFL.txt`). The
+fonts are unmodified; their SHA-256:
+
+| File | SHA-256 |
+|---|---|
+| `NotoSansDevanagari-Regular.ttf` | `4e3c66638958c3e2ab5d37f47a8deb89fffeb7be9985c665a519bbc7ba762313` |
+| `NotoSansDevanagari-Medium.ttf` | `9e5a7818700cac18ae596543362c59c36dbcd28f0c1efc40dd0690ec638ffb35` |
+| `NotoSansDevanagari-SemiBold.ttf` | `943a11e02d0d282bed619951ab4dc9a4912e9fceb00441bf4aacd54fa57b6e63` |
+| `NotoSansDevanagari-Bold.ttf` | `6a09c8d797cfc803d32cdc731e809424d74cbaff59f503de34ade421a08e5bc2` |
+| `NotoSansGurmukhi-Regular.ttf` | `658d0207da305a1411c539a8b0bbeda64d4146e54fb4827facddb890b6b90d74` |
+| `NotoSansGurmukhi-Medium.ttf` | `f7e0a2184434ca064304a2c727b7ded8584049e4b12a7728109b7885a665f75d` |
+| `NotoSansGurmukhi-SemiBold.ttf` | `f8a54df867ccdf5e329877be789e6fc94558e9adb7754e89900368af7b983870` |
+| `NotoSansGurmukhi-Bold.ttf` | `4f1bb4b1a05a0ebe1520678132a9448fce8f1741552c5292d7df7a7786d2c956` |
 
 ## Fluent UI System Icons
 
@@ -851,7 +992,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-## Unicode Character Database
+## Unicode Character Database and CLDR
 
 `src/Passenger.Text/WideCharacters.cs`, the characters the terminal and Vim mode count two columns wide, is derived from the
 Unicode Character Database 16.0.0's `EastAsianWidth.txt` and `emoji/emoji-data.txt`
@@ -861,6 +1002,11 @@ spoof check reads, is derived from Unicode 17.0.0's `security/IdentifierStatus.t
 #39) and its Character Database's `Scripts.txt`, `ScriptExtensions.txt`, `PropertyValueAliases.txt`, `UnicodeData.txt`,
 `PropList.txt` and `DerivedCoreProperties.txt` (https://www.unicode.org/Public/17.0.0/), written by
 `tools/unicode-identifiers.py`.
+`src/Passenger.Core/PluralRules.Cldr.cs`, each language's plural rules, `src/Passenger.Core/LikelyScripts.Cldr.cs`, the
+script each language is likely written in, and `src/Passenger.Core/LanguagePatterns.Cldr.cs`, how each language Passenger
+carries joins a list and writes the units of a while and a size, are derived from the Unicode CLDR 49's
+`supplemental/plurals.xml`, `supplemental/likelySubtags.xml` and `main/<language>.xml`
+(https://github.com/unicode-org/cldr at tag release-49), written by `tools/cldr.py`.
 `src/Passenger.Workspace/GDScript/IdentifierSpoofing.cs` is a port to C# of International Components for Unicode (ICU)
 78.3's spoof check, `icu4c/source/i18n/uspoof.cpp` (`checkImpl`) and `uspoof_impl.cpp` (its script sets, restriction
 level, numerics and hidden overlay) of https://github.com/unicode-org/icu at tag release-78.3, under the same licence.
@@ -981,7 +1127,7 @@ SOFTWARE.
 
 `src/Passenger.Workspace/GodotShaderTypes.json` is a table of Godot's shading language, written by `just godot-shader-types`
 (`tools/godot-shader-types.py`) from two files of the Godot Engine (https://github.com/godotengine/godot) at commit
-a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768, which Godot 4.8 beta 5 was built from: `servers/rendering/shader_types.cpp`
+7c97c297793ce4711679491d34693a5719a79ebe, which Godot 4.8 RC 1 was built from: `servers/rendering/shader_types.cpp`
 (each shader type's processor functions, the built-ins each offers, the stage functions each may call, its render and
 stencil modes) and `servers/rendering/shader_language.cpp` (the uniform hints of its keyword list, its built-in
 functions with their arguments' names, and every entry of its built-in function table in order, constructors too). The
@@ -998,7 +1144,7 @@ complete, check and describe the theme items a Godot game's C# names.
 `src/Passenger.Workspace/GodotShader/` is a port to C# of the Godot Engine's shader language front end, by which
 Passenger checks a shader as Godot reads it: `GodotShaderPreprocessor.cs` ports `servers/rendering/shader_preprocessor.cpp`
 and `shader_preprocessor.h` (its directives, macro expansion, includes and error messages, with 4.7.2-stable's reading of
-line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 beta 5's); `GodotShaderExpression.cs`
+line continuations, at commit ed1daf0bf001b61586d9930840f2f1394092c079, beside 4.8 RC 1's); `GodotShaderExpression.cs`
 ports the tokenizer of `servers/rendering/shader_expression.cpp` and the parser of `core/math/expression.cpp` it runs
 on; `GodotPathStrings.cs` ports `simplify_path`, `is_absolute_path`, `get_base_dir` and `path_join` of
 `core/string/ustring.cpp`; the `GodotShaderLanguage` files and `GodotShaderNodes.cs` port
@@ -1008,7 +1154,7 @@ ports `servers/rendering/shader_warnings.cpp` and `shader_warnings.h`; `GodotSha
 `editor/shader/shader_text_editor.cpp`'s validation of a shader and an include; and
 `src/Passenger.App/Godot/GodotShaderChecker.cs` ports `uniform_to_property_info` of `shader_language.cpp` and `rtos`'s
 writing of a number (`String::num` of `core/string/ustring.cpp`); all at commit
-a661dfdbccc664ccca57ad76c2bb5dcd8f3fc768 (4.8 beta 5), their words kept as Godot words them.
+7c97c297793ce4711679491d34693a5719a79ebe (4.8 RC 1), their words kept as Godot words them.
 
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
@@ -1075,9 +1221,16 @@ Microsoft Corporation), unchanged, from the project its header names:
   Docker's NOTICE.
 - `ini.tmLanguage.json` (VS Code 1.148.0, `extensions/ini`): converted from textmate/ini.tmbundle
   (https://github.com/textmate/ini.tmbundle), under the TextMate bundle licence below; it colours .editorconfig files.
+- `sql.tmLanguage.json` (VS Code 1.144.0, `extensions/sql`): converted from microsoft/vscode-mssql's
+  `extensions/mssql/syntaxes/SQL.plist` (https://github.com/microsoft/vscode-mssql) at commit 684648ee, MIT,
+  Copyright (c) Microsoft Corporation; it colours .sql files and the database tools' consoles.
 - `MagicPython.tmLanguage.json` (VS Code 1.148.0, `extensions/python`): converted from MagicStack/MagicPython
   (https://github.com/MagicStack/MagicPython) at commit 7d0f2b22, its 1.1.1, MIT, Copyright (c) 2015-present MagicStack
   Inc.
+
+The `proto3.tmLanguage.json` grammar comes unchanged from zxh0/vscode-proto3
+(https://github.com/zxh0/vscode-proto3/tree/5563d58bc5935213a41ab168f321cf9d99c34fcb), MIT, "Copyright (c) 2016" as its
+LICENSE.txt states it, naming no holder; the repository is zxh0's.
 
 And two that colour Razor's .razor and .cshtml files before the language server answers, files of Razor's tooling in
 dotnet/roslyn (https://github.com/dotnet/roslyn, where Razor's tooling moved from dotnet/razor; MIT, Copyright (c) .NET
@@ -1103,7 +1256,8 @@ tag 2.7.1 (commit 7317ea20), its `syntaxes/` folder, unchanged: `GDScript.tmLang
 `GDResource.tmLanguage.json` (scenes, resources and project.godot, which embeds the other two) and
 `GDShader.tmLanguage.json` (Godot's shaders).
 
-`gitattributes.tmLanguage.json`, which colours .gitattributes files, is Passenger's own, under Passenger's licence.
+`gitattributes.tmLanguage.json`, which colours .gitattributes files, is Passenger's own, under Passenger's licence, as is
+`datetime-format.tmLanguage.json`, which colours a C# string's date and time format.
 
 Reading them, Passenger leaves out what VS Code's reader passes over (a capture that is not a rule) and lets a rule
 that begins with no end never end, as VS Code does, takes YAML's typed scalars (booleans, numbers, null) out of a block

@@ -19,6 +19,7 @@ public sealed class ColouredCode : Border
 {
     private readonly SelectableWords text;
     private readonly Languages.Language? language;
+    private readonly IReadOnlyDictionary<int, string>? declarations;
     private TextDocument? document;
     private IHighlighter? highlighter;
 
@@ -31,16 +32,19 @@ public sealed class ColouredCode : Border
 
     protected override Type StyleKeyOverride => typeof(Border);
 
-    private ColouredCode(string code, Languages.Language? language, IReadOnlyList<SyntaxSpan>? spans, Languages.Language? coloursOf = null)
+    private ColouredCode(string code, Languages.Language? language, IReadOnlyList<SyntaxSpan>? spans, Languages.Language? coloursOf = null,
+        IReadOnlyDictionary<int, string>? declarations = null, Action<string, string>? openDeclaration = null)
     {
         Code = code;
         this.language = language;
+        this.declarations = declarations;
         Classes.Add(StyleClasses.Code);
         text = new SelectableWords
         {
             TextWrapping = TextWrapping.Wrap,
             FontFeatures = CSharp.Fonts.NoLigatures,
             Text = code,
+            Follow = openDeclaration is null ? null : link => openDeclaration(Shown[link.Start..link.End], (string)link.Target),
         };
         text.Bind(TextElement.ForegroundProperty, text.GetResourceObservable(TokenKeys.Editor_Text));
         Child = text;
@@ -59,7 +63,9 @@ public sealed class ColouredCode : Border
 
     /// <summary>Code in the colours a server gave it, each kind's as the theme gives it <paramref name="language"/>; never
     /// coloured again by that language's highlighter, which would read it as a file of its own.</summary>
-    public static ColouredCode Of(string code, IReadOnlyList<SyntaxSpan> spans, Languages.Language? language = null) => new(code, null, spans, language);
+    public static ColouredCode Of(string code, IReadOnlyList<SyntaxSpan> spans, Languages.Language? language = null,
+        IReadOnlyDictionary<int, string>? declarations = null, Action<string, string>? openDeclaration = null) =>
+        new(code, null, spans, language, declarations, openDeclaration);
 
     /// <summary>Code of no language, in the code's own colour.</summary>
     public static ColouredCode Plain(string code) => new(code, null, null);
@@ -213,15 +219,22 @@ public sealed class ColouredCode : Border
             strong = (stretch.Start, stretch.End);
         }
         List<Inline> runs = [];
+        List<WordsLink> links = [];
         int at = 0;
-        foreach (SyntaxSpan span in placed)
+        for (int index = 0; index < placed.Count; index++)
         {
+            SyntaxSpan span = placed[index];
             if (span.Start < at || span.End > shown.Length)
             {
                 continue;
             }
             Add(at, span.Start, null);
+            string? key = declarations?.GetValueOrDefault(given[index].Start);
             Add(span.Start, span.End, span.Kind);
+            if (key is not null)
+            {
+                links.Add(new WordsLink(span.Start, span.End, key));
+            }
             at = span.End;
         }
         Add(at, shown.Length, null);
@@ -229,6 +242,7 @@ public sealed class ColouredCode : Border
         // An inline added beside a text would take the text as a run before it.
         text.Text = null;
         text.Inlines.AddRange(runs);
+        text.WordLinks = links;
 
         // A run of the stretch, split where the strong stretch begins and ends.
         void Add(int from, int to, TokenKind? kind)
@@ -265,7 +279,7 @@ public sealed class ColouredCode : Border
     private void Look(TextRun run, TokenKind kind, bool strong = false)
     {
         run.Bind(TextElement.ForegroundProperty, this.GetResourceObservable($"Passenger.Syntax.{kind}"));
-        string style = $"Passenger.SyntaxStyle.{kind}";
+        string style = $"Passenger.SyntaxStyle.{TokenKinds.StyledAs(kind)}";
         if (!strong)
         {
             run.Bind(TextElement.FontWeightProperty, this.GetResourceObservable(style, set =>

@@ -72,8 +72,9 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
 
     /// <summary>A newer release is announced as its answer comes, asked again a wall-clock day later, named a security
     /// release where its notes say so, downloaded once for every window and checked against its SHA-256, never by a
-    /// copy no installer put in place or with checks off, and restarted into only by the person, as one flow, each step
-    /// the check one test made in an instance of its own.</summary>
+    /// copy no installer put in place or with checks off, and restarted into only by the person, and what earlier versions
+    /// downloaded from their releases removed but a running one's, as one flow, each step the check one test made in an
+    /// instance of its own.</summary>
     [AvaloniaFact]
     public async Task A_release_is_announced_downloaded_checked_and_restarted_into_by_the_person_alone()
     {
@@ -89,6 +90,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Flow.StepApart("with Check for updates off nothing is downloaded and turning it off drops a download made", () => new UpdatesTests(images), t => t.With_Check_for_updates_off_nothing_is_downloaded_and_turning_it_off_drops_a_download_made());
         Flow.StepApart("a copy its installer or disk image did not put in place never downloads an update", () => new UpdatesTests(images), t => t.A_copy_its_installer_or_disk_image_did_not_put_in_place_never_downloads_an_update());
         Flow.StepApart("an installed Passenger downloads a newer release in the background checks it and offers Restart to Update", () => new UpdatesTests(images), t => t.An_installed_Passenger_downloads_a_newer_release_in_the_background_checks_it_and_offers_Restart_to_Update());
+        Flow.StepApart("a new version removes what earlier versions downloaded from their releases but a running Passenger of one keeps its own", () => new UpdatesTests(images), t => t.A_new_version_removes_what_earlier_versions_downloaded_from_their_releases_but_a_running_Passenger_of_one_keeps_its_own());
     }
 
     /// <summary>On macOS Restart to Update puts the disk image's app in place of the old and starts it, a disk image
@@ -416,7 +418,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Ui.Settle();
         dialog.Query = "updates";
         Ui.Settle();
-        Assert.Equal(SettingsDialog.UpdatesPage, dialog.Page);
+        Assert.Equal(SettingsDialog.GeneralPage, dialog.Page);
         Assert.Contains("Check for updates", dialog.Shown);
         dialog.Change(s => s with { CheckForUpdates = false });
         dialog.Ok();
@@ -636,7 +638,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.WatchForUpdates();
         Ui.WaitFor(() => Notice(window) == $"Restart to install security update Passenger {newer}", () => $"the status bar to offer the security update once v{newer} had downloaded: {UpdatesSaid(window)}");
         Assert.Equal($"Passenger {newer} is a security update: {SecurityFixes}, downloaded and checked", window.Status);
-        Assert.Equal("restart into it now", window.StatusPlace?.Name);
+        Assert.Equal("restart into it now", window.StatusPlace?.Name.English);
         Assert.StartsWith($"Passenger {newer} is a security update: {SecurityFixes}\nRestart into it now rather than later.\n",
             ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty, StringComparison.Ordinal);
         window.Close();
@@ -662,13 +664,13 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         try
         {
             Task<CallToolResult> clicking = Waiting.Apart(() => Result(client, McpTools.AppClick, new() { ["app"] = "ide", ["control"] = "#UpdateButton" }));
-            Press(Question(window, "the question for the agent's click in Passenger's windows"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's click in Passenger's windows"), McpWords.AllowForSession.English);
             CallToolResult clicked = Await(clicking, "the agent's click on the status bar's Restart to Update");
-            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.RestartIsThePersons, StringComparison.Ordinal),
+            Assert.True(clicked.IsError == true && Text(clicked).Contains(Refusals.RestartIsThePersons.Shown, StringComparison.Ordinal),
                 $"The agent's click on the status bar's Restart to Update was answered: {Text(clicked)}");
             Ui.Settle();
             Assert.True(window.IsVisible, "The agent's click on Restart to Update closed the person's window");
-            Assert.Equal(Refusals.RestartIsThePersons, window.Status);
+            Assert.Equal(Refusals.RestartIsThePersons.Shown, window.Status);
             Assert.True(Notice(window) == $"Restart to update to Passenger {newer}" && window.UpdateReady?.Version == newer,
                 $"After the agent's click the update no longer waits for the person: {UpdatesSaid(window)}");
             Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version, $"The agent's click installed the update, as {copy.InstalledVersion}");
@@ -676,6 +678,52 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         finally
         {
             Gone(client);
+            window.Close();
+        }
+    }
+
+    /// <summary>A Passenger opening a folder after a version change removes, from each cache of what it downloads from its
+    /// release (the container tools', the 32-bit debugger's), every earlier version's folder whole, its hold with it, but
+    /// one a Passenger of that version still running holds (here a stand-in's hold on 0.0.2), and keeps its own version's,
+    /// which it now holds, and a folder that names no version.</summary>
+    private void A_new_version_removes_what_earlier_versions_downloaded_from_their_releases_but_a_running_Passenger_of_one_keeps_its_own()
+    {
+        string tools = TestFolders.Create("release-tools-");
+        string debugger = TestFolders.Create("release-debugger-");
+        foreach ((string cache, string name) in (ReadOnlySpan<(string, string)>)[(tools, "linux-x64"), (debugger, "win-x86")])
+        {
+            foreach (string version in (string[])["0.0.1", "0.0.2", Product.Version, "notes"])
+            {
+                TestFolders.Write(cache, Path.Combine(version, name, "kept.txt"), version);
+            }
+        }
+        // A Passenger of 0.0.2 still running, which holds its own.
+        using FileStream? running = ReleaseAssets.Held(tools, "0.0.2");
+        Assert.NotNull(running);
+        ReleaseFeed feed = new(github.Listing, ReleaseFeed.ShortTimeout.Scaled());
+        MainWindow window = new()
+        {
+            Width = 1200, Height = 800, StateFolder = settings, Releases = feed, StartsLanguageServer = false,
+            ContainerToolsFrom = new Passenger.App.Containers.ContainerToolsSource([], feed, tools),
+            X86DebuggerFrom = new Passenger.App.Debugging.X86DebuggerSource(Path.Combine(debugger, "carried-none"), feed, debugger),
+        };
+        window.Show();
+        try
+        {
+            window.OpenFolder(TestFolders.Create("release-files-folder-"));
+            Ui.Settle();
+            string[] Left(string cache) => [.. Directory.EnumerateDirectories(cache).Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)];
+            string[] Holds(string cache) => [.. Directory.EnumerateFiles(Path.Combine(cache, ".running")).Select(Path.GetFileName).OfType<string>().Order(StringComparer.Ordinal)];
+            Assert.True(Left(tools).SequenceEqual(((string[])[".running", "0.0.2", Product.Version, "notes"]).Order(StringComparer.Ordinal)),
+                $"The container tools' cache keeps {string.Join(", ", Left(tools))}, where 0.0.1's downloads were to go and 0.0.2's, held by its running Passenger, to stay");
+            Assert.True(Left(debugger).SequenceEqual(((string[])[".running", Product.Version, "notes"]).Order(StringComparer.Ordinal)),
+                $"The 32-bit debugger's cache keeps {string.Join(", ", Left(debugger))}, where 0.0.1's and 0.0.2's downloads, held by no Passenger, were to go");
+            Assert.True(Holds(tools).SequenceEqual(((string[])["0.0.2", Product.Version]).Order(StringComparer.Ordinal)) && Holds(debugger).SequenceEqual([Product.Version]),
+                $"The holds are {string.Join(", ", Holds(tools))} and {string.Join(", ", Holds(debugger))}, where each cache's running versions alone were to hold theirs");
+            Assert.Equal("0.0.2", File.ReadAllText(Path.Combine(tools, "0.0.2", "linux-x64", "kept.txt")));
+        }
+        finally
+        {
             window.Close();
         }
     }
@@ -702,7 +750,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.True(window.UpdateReady?.Version == newer, $"The window offers Restart to Update with {window.UpdateReady?.Version ?? "nothing"} ready, not {newer}");
         Assert.True(copy.InstalledVersion is null || copy.InstalledVersion == Product.Version,
             $"The update was installed at once, as {copy.InstalledVersion}, before Passenger restarted");
-        Assert.True(window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()) is null, "Restart to Update cannot run with the update ready");
+        Assert.True(window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown is null, "Restart to Update cannot run with the update ready");
         Assert.Contains(Ui.IdeLog().Split('\n'), line => line.Contains($"Updates: Passenger {newer} downloaded to ", StringComparison.Ordinal));
 
         foreach (string name in update.Keys)
@@ -760,7 +808,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             Ui.WaitFor(() => Notice(front) == $"Restart to update to Passenger {newer}",
                 () => $"the window in front to offer Restart to Update once v{newer} had downloaded, where {UpdatesSaid(front)}");
             Assert.True(Notice(window) == Notice(front), $"The window watching says '{Notice(window)}', the one in front '{Notice(front)}'");
-            Assert.True(front.Actions.WhyNot(AppActions.RestartToUpdate, front.Actions.Context()) is null,
+            Assert.True(front.Actions.WhyNot(AppActions.RestartToUpdate, front.Actions.Context())?.Shown is null,
                 "The window in front shows the update ready, but its Restart to Update cannot run");
             Assert.True(front.UpdateReady?.Version == newer, $"The window in front has {front.UpdateReady?.Version ?? "nothing"} ready, not {newer}");
 
@@ -769,7 +817,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             MainWindow later = laterWindow = Assert.Single(PassengerApp.Windows, w => w != window && w != front);
             Assert.True(Notice(later) == $"Restart to update to Passenger {newer}",
                 $"A window opened after v{newer} was made ready does not offer Restart to Update: {UpdatesSaid(later)}");
-            Assert.True(later.Actions.WhyNot(AppActions.RestartToUpdate, later.Actions.Context()) is null,
+            Assert.True(later.Actions.WhyNot(AppActions.RestartToUpdate, later.Actions.Context())?.Shown is null,
                 "A window opened after the update was made ready cannot run Restart to Update");
             Assert.True(github.Requests.Count == update.Count + 1,
                 $"Three windows made {github.Requests.Count} requests, not one for the release and one for each of the {update.Count} files of this system's update");
@@ -818,7 +866,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         Assert.Null(window.UpdateReady);
         Assert.False(copy.Holds(newer), $"The refused v{newer} is still there to install");
         Assert.True(copy.Downloaded().Count == 0, $"The refused download left {string.Join(", ", copy.Downloaded())} behind");
-        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
         window.Close();
         Ended(window);
         window.InstallUpdate();
@@ -1115,7 +1163,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         CheckForUpdates(window);
         Assert.True(github.Requests.Count == 2 && files.Keys.All(name => github.RequestsFor(name).Length == 0),
             "Check for Updates had a copy that cannot update itself download the release");
-        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
         window.Close();
 
         // A portable copy, as App makes the person's window of one: it never replaces itself, and says what to put in its place.
@@ -1791,7 +1839,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
             string tip = ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty;
             Assert.True(tip.Contains($"this user cannot write {copy.Install}", StringComparison.Ordinal) && tip.Contains(command, StringComparison.Ordinal),
                 $"The notice does not say why Passenger cannot install v{newer} and the command that does: '{tip}'");
-            Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+            Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
 
             Ui.Click(window.FindControl<Button>("UpdateButton")!);
             Ui.WaitFor(() => window.Status == $"Copied the command that installs Passenger {newer}: paste it into a terminal", "the notice's click to copy the command");
@@ -1885,7 +1933,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         string[] downloaded = [.. update.Keys.Where(name => github.RequestsFor(name).Length > 0)];
         Assert.True(downloaded.Length == 0, $"A package manager's copy downloaded {string.Join(", ", downloaded)}");
         Assert.False(copy.Holds(newer), $"A package manager's copy made v{newer} ready to install");
-        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context()));
+        Assert.Equal("No update is downloaded and ready to install", window.Actions.WhyNot(AppActions.RestartToUpdate, window.Actions.Context())?.Shown);
         Ui.Click(window.FindControl<Button>("UpdateButton")!, settle: false);
         Assert.True(window.Browsed.LastOrDefault()?.AbsoluteUri == page, $"The notice's click opened [{string.Join(", ", window.Browsed)}], not the release's page");
         window.Close();

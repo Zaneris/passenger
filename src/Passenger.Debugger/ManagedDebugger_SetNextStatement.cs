@@ -31,7 +31,7 @@ public partial class ManagedDebugger
         {
             return null;
         }
-        int? version = ModuleMetadataReader.VersionOf(frame);
+        int? version = module.MetadataReader.VersionOf(frame);
         (int, int?) running = (function.Token, version);
         ModuleMetadataReader.ResolvedBreakpoint? target = module.MetadataReader.ResolveBreakpoint(filePath, line, column, running: running);
         if (target?.MethodToken != function.Token)
@@ -62,7 +62,7 @@ public partial class ManagedDebugger
         }
         ICorDebugFunction function = frame.Function;
         if (FindModule(function.Module) is not { MetadataReader.HasSymbols: true } module
-            || !module.MetadataReader.Points(function.Token, ModuleMetadataReader.VersionOf(frame)).Any(point => !point.IsHidden && point.Offset == ilOffset))
+            || !module.MetadataReader.Points(function.Token, module.MetadataReader.VersionOf(frame)).Any(point => !point.IsHidden && point.Offset == ilOffset))
         {
             throw new InvalidOperationException("The program cannot go on from there: no statement of the code the paused method runs begins there");
         }

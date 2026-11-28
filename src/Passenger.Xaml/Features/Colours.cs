@@ -67,7 +67,7 @@ public static class Colours
                 }
                 if (MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is { } extension)
                 {
-                    if (extension.LocalName is "StaticResource" or "DynamicResource" && extension.Argument(null) is { Nested: null, Value.Length: > 0 } key
+                    if (extension.TakesResource && extension.Argument(null) is { Nested: null, Value.Length: > 0 } key
                         && Resource(project, own, key.Value, variant, 2) is { } resource)
                     {
                         found.Add(resource with { Offset = key.ValueStart });
@@ -114,7 +114,7 @@ public static class Colours
             return new ColourUse(0, colour, chosen.Path, chosen.ColourRange, ColourForm.Text);
         }
         string trimmed = written.Trim();
-        if (steps > 0 && trimmed.StartsWith('{') && MarkupExtension.Parse(trimmed, 0, trimmed.Length) is { LocalName: "StaticResource" or "DynamicResource" } named
+        if (steps > 0 && trimmed.StartsWith('{') && MarkupExtension.Parse(trimmed, 0, trimmed.Length) is { TakesResource: true } named
             && named.Argument(null) is { Value.Length: > 0 } next && project.Files.TryGetValue(chosen.Path, out XamlFileSummary? defining))
         {
             return Resource(project, defining, next.Value, variant, steps - 1);

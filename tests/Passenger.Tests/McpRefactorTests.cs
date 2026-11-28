@@ -110,6 +110,34 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         await Flow.StepApartAsync("an agent extracts an indexer into an interface and is told a name with a space is no identifier", () => new McpRefactorTests(restored), t => t.An_agent_extracts_an_indexer_into_an_interface_and_is_told_a_name_with_a_space_is_no_identifier());
         await Flow.StepApartAsync("an agent that writes a new class and its caller and at once renames it or asks its usages has the caller counted", () => new McpRefactorTests(restored), t => t.An_agent_that_writes_a_new_class_and_its_caller_and_at_once_renames_it_or_asks_its_usages_has_the_caller_counted());
         await Flow.StepApartAsync("usages answer at once without a file another project has yet to load and a rename waits for it", () => new McpRefactorTests(restored), t => t.Usages_answer_at_once_without_a_file_another_project_has_yet_to_load_and_a_rename_waits_for_it());
+        await Flow.StepApartAsync("an agent finds exact and renamed code clones across the solution and those of the lines it names", () => new McpRefactorTests(restored), t => t.An_agent_finds_exact_and_renamed_code_clones_across_the_solution_and_those_of_the_lines_it_names());
+    }
+
+    /// <summary>clones answers each group of the solution's clones, the most code first, exact or renamed with how alike, each
+    /// clone's lines and member; within narrows it to a file, and a path's lines find their statements' clones anywhere.</summary>
+    private async Task An_agent_finds_exact_and_renamed_code_clones_across_the_solution_and_those_of_the_lines_it_names()
+    {
+        await TakeFolderAsync();
+        const string Notice = "        lines.Add(\"Shop report\");\n        lines.Add(\"===========\");\n        lines.Add(DateTime.Today.ToShortDateString());\n"
+            + "        lines.Add(\"Thank you for your custom\");\n        lines.Add(\"Please pay within thirty days\");\n        lines.Add(\"Goods sold are not returned\");\n";
+        const string Loop = "        int {0} = 0;\n        foreach (int {1} in {2})\n        {{\n            if ({1} > {3})\n            {{\n                {0} += {1} * 9 / 10;\n            }}\n"
+            + "            else\n            {{\n                {0} += {1};\n            }}\n        }}\n        return {0};\n";
+        Shop(("Ledger.cs", "using System;\nusing System.Collections.Generic;\n\nnamespace Shop;\n\npublic static class Ledger\n{\n    public static int Total(int[] prices)\n    {\n"
+                + string.Format(System.Globalization.CultureInfo.InvariantCulture, Loop, "total", "price", "prices", 100)
+                + "    }\n\n    public static void Header(List<string> lines)\n    {\n" + Notice + "    }\n}\n"),
+            ("Tally.cs", "using System;\nusing System.Collections.Generic;\n\nnamespace Shop;\n\npublic static class Tally\n{\n    public static int Sum(int[] amounts)\n    {\n"
+                + string.Format(System.Globalization.CultureInfo.InvariantCulture, Loop, "sum", "amount", "amounts", 250)
+                + "    }\n\n    public static void Footer(List<string> lines)\n    {\n" + Notice + "    }\n}\n"));
+        await using McpClient client = await Start(["--mcp", Folder]);
+
+        JsonElement found = await Call(client, McpTools.Clones, new() { ["tokens"] = 30 });
+        Assert.Equal(["exact 100: Ledger.cs:27-32 Ledger.Header, Tally.cs:27-32 Tally.Footer", "renamed 75: Ledger.cs:10-22 Ledger.Total, Tally.cs:10-22 Tally.Sum"], Groups(found));
+        Assert.Empty(Groups(await Call(client, McpTools.Clones, new() { ["tokens"] = 30, ["within"] = "Tally.cs" })));
+        Assert.Equal(["exact 100: Tally.cs:27-32 Tally.Footer, Ledger.cs:27-32 Ledger.Header"],
+            Groups(await Call(client, McpTools.Clones, new() { ["path"] = "Tally.cs", ["line"] = 27, ["endLine"] = 32 })));
+
+        static List<string> Groups(JsonElement groups) => [.. groups.EnumerateArray().Select(g => $"{g.GetProperty("kind").GetString()} {g.GetProperty("alike").GetInt32()}: "
+            + string.Join(", ", g.GetProperty("clones").EnumerateArray().Select(c => $"{c.GetProperty("path").GetString()}:{c.GetProperty("line").GetInt32()}-{c.GetProperty("endLine").GetInt32()} {c.GetProperty("member").GetString()}")))];
     }
 
     /// <summary>Solution-wide refactorings an attached agent makes as one flow, each step one test's check in an
@@ -134,7 +162,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<JsonElement> describing = Waiting.Apart(() => Call(client, McpTools.Refactor, Place("change_signature", "Calc.cs", Calc, "int Sca")));
-            Press(Question(window, "the question for the agent's refactoring"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's refactoring"), McpWords.AllowForSession.English);
             JsonElement dialog = Await(describing, "Change Signature described").GetProperty("dialog");
             Assert.Equal("public static int Scale(int value, int factor, int unused)", dialog.GetProperty("preview").GetString());
             Assert.Equal(["value", "factor", "unused"], dialog.GetProperty("parameters").EnumerateArray().Select(p => p.GetProperty("name").GetString()));
@@ -207,7 +235,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         try
         {
             Task<CallToolResult> refusing = Waiting.Apart(() => Result(client, McpTools.Refactor, Place("safe_delete", "Calc.cs", Calc, "int Sca")));
-            Press(Question(window, "the question for the agent's refactoring"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's refactoring"), McpWords.AllowForSession.English);
             CallToolResult refused = Await(refusing, "Safe Delete of a used method");
             Assert.True(refused.IsError == true && Text(refused).Contains("has 3 usages that would no longer compile", StringComparison.Ordinal)
                 && Text(refused).Contains("Till.cs:5: public static int Total()", StringComparison.Ordinal) && Text(refused).Contains("give options {\"deleteAnyway\": true}", StringComparison.Ordinal),
@@ -1080,7 +1108,7 @@ public sealed class McpRefactorTests : McpRig, IClassFixture<RestoredFolders>
         {
             // System is the project's implicit using, so nothing needs it.
             Task<JsonElement> optimizing = Waiting.Apart(() => Call(client, McpTools.Refactor, new() { ["kind"] = "optimize_imports", ["path"] = "Tidy.cs" }));
-            Press(Question(window, "the question for the agent's refactoring"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's refactoring"), McpWords.AllowForSession.English);
             JsonElement optimized = Await(optimizing, "Optimize Imports on a file");
             Assert.Equal(["Tidy.cs changed"], Files(optimized));
             string tidied = File.ReadAllText(PathOf("Tidy.cs"));

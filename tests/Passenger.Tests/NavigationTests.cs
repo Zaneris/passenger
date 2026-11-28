@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -45,6 +46,7 @@ public sealed class NavigationTests : IDisposable
         Flow.StepApart<NavigationTests>("Back and Forward step through the files opened from the Explorer, each at its caret", t => t.Back_and_forward_step_through_the_files_opened_from_the_explorer_each_at_its_caret());
         Flow.StepApart<NavigationTests>("Back and Forward step through the files shown by a click on their tabs, each once", t => t.Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once());
         Flow.StepApart<NavigationTests>("the mouse's back and forward buttons step back and forward over the editor and over a tool window", t => t.The_mouses_back_and_forward_buttons_step_back_and_forward_over_the_editor_and_over_a_tool_window());
+        Flow.StepApart<NavigationTests>("the toolbar's Back and Forward step as their keys do, each greyed saying why where there is no place its way", t => t.The_toolbars_back_and_forward_step_as_their_keys_do_each_greyed_saying_why_where_there_is_no_place_its_way());
         Flow.StepApart<NavigationTests>("Go to Related File switches between markup and its code-behind both ways", t => t.Go_to_related_file_switches_between_markup_and_its_code_behind_both_ways());
     }
 
@@ -421,6 +423,45 @@ public sealed class NavigationTests : IDisposable
         window.Close();
     }
 
+    /// <summary>The toolbar's Back and Forward run their actions, each greyed while there is no place its way, its tip saying
+    /// why: both as the first file opens, Back once a second file left the first behind, Forward once Back put it ahead.</summary>
+    private void The_toolbars_back_and_forward_step_as_their_keys_do_each_greyed_saying_why_where_there_is_no_place_its_way()
+    {
+        WriteFiles("A.cs", "B.cs");
+        MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        Button back = window.FindControl<Button>("BackButton")!;
+        Button forward = window.FindControl<Button>("ForwardButton")!;
+        FromExplorer(window, "A.cs");
+        Down(window, 2);
+        Ui.Settle();
+        Greyed(back, "Back: No place to go back to", "the first file opened");
+        Greyed(forward, "Forward: No place to go forward to", "the first file opened");
+        FromExplorer(window, "B.cs");
+        Down(window, 4);
+        Ui.Settle();
+        Greyed(forward, "Forward: No place to go forward to", "B.cs opened after A.cs");
+        Ui.Click(back);
+        Shows(window, "A.cs", 2, "The toolbar's Back from B.cs");
+        Greyed(back, "Back: No place to go back to", "Back to the first file");
+        Ui.Click(forward);
+        Shows(window, "B.cs", 4, "The toolbar's Forward after its Back");
+        Greyed(forward, "Forward: No place to go forward to", "Forward to the last file");
+        Assert.True(back.IsEnabled, $"The toolbar's Back is greyed after Forward put A.cs behind again: {ToolTip.GetTip(back)}");
+        window.Close();
+
+        static void Greyed(Button button, string tip, string after) =>
+            Assert.True(!button.IsEnabled && ToolTip.GetTip(button) as string == tip,
+                $"After {after} the toolbar's {AutomationProperties.GetName(button)} is {(button.IsEnabled ? "enabled" : "greyed")}, its tip \"{ToolTip.GetTip(button)}\", not greyed saying \"{tip}\"");
+    }
+
+    /// <summary>The file and line the window shows after <paramref name="what"/>.</summary>
+    private static void Shows(MainWindow window, string file, int line, string what)
+    {
+        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
+        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
+            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
+    }
+
     /// <summary>A click on a tab leaves the file shown for Back as a navigation does; a file left again keeps one place
     /// behind, where it was left last.</summary>
     private void Back_and_forward_step_through_the_files_shown_by_a_click_on_their_tabs_each_once()
@@ -531,18 +572,14 @@ public sealed class NavigationTests : IDisposable
     private static void Side(MainWindow window, Control over, MouseButton button, string file, int line, string what, int times = 1, bool afterClick = false)
     {
         Ui.SideClick(over, button, times: times, afterClick: afterClick);
-        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
-        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
-            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
+        Shows(window, file, line, what);
     }
 
     /// <summary>Back or Forward by its keys, and the file and line it shows.</summary>
     private static void Step(MainWindow window, string action, string file, int line, string what)
     {
         Ui.Press(window, Ui.Shortcut(action));
-        TextPosition caret = window.EditorArea.CodeEditor.CaretPosition;
-        Assert.True(window.EditorArea.Active?.Name == file && caret.Line == line,
-            $"{what} showed {window.EditorArea.Active?.Name} at line {caret.Line + 1}, not {file} at line {line + 1}");
+        Shows(window, file, line, what);
     }
 
     private MainWindow Open() => Ui.OpenFolder(folder);

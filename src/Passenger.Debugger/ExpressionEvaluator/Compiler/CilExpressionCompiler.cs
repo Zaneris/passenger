@@ -144,8 +144,10 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         // The exception's type in the program's assemblies, where the compiler looks, not the debugger's runtime's.
         string? exception = debugger.GetCurrentException(context.ThreadId) is { } thrown ? debugger.AliasTypeName(thrown.ExactType) : null;
         IReadOnlyList<(string Name, string Type)> returnValues = context.RootValue is null ? debugger.ReturnValueAliases(context.ThreadId) : [];
+        IReadOnlyList<(string Name, string Type)> marks = context.RootValue is null ? debugger.MarkAliases() : [];
         EnsureModuleVersion();
-        CompileCacheKey key = CreateCacheKey(expression, context, frame, preferredModule, exception, string.Join(';', returnValues.Select(r => r.Type)));
+        CompileCacheKey key = CreateCacheKey(expression, context, frame, preferredModule, exception,
+            string.Join(';', returnValues.Select(r => r.Type).Concat(marks.Select(m => $"{m.Name} {m.Type}"))));
         if (TryGetCachedCompiled(key, out CompiledEvaluationMethod? cached))
         {
             return cached;
@@ -166,7 +168,7 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         DiagnosticBag diagnostics = DiagnosticBag.GetInstance();
         try
         {
-            ImmutableArray<Alias> aliases = GetAliases(exception, returnValues);
+            ImmutableArray<Alias> aliases = GetAliases(exception, returnValues, marks);
             (CompileResult? result, bool atExactType) = CodeBrackets.OnStack(expression, () => Compile(evaluationContext, expression, aliases, diagnostics, exactType, definition));
             if (result is null || diagnostics.HasAnyErrors())
             {
@@ -336,12 +338,13 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         _metadataBlocksCache.Clear();
     }
 
-    /// <summary>The debugger's own names an expression may use: $exception while the thread has one, and the values the
-    /// last step's calls returned, each typed as it is.</summary>
-    private static ImmutableArray<Alias> GetAliases(string? exception, IReadOnlyList<(string Name, string Type)> returnValues) =>
+    /// <summary>The debugger's own names an expression may use: $exception while the thread has one, the values the last
+    /// step's calls returned and the objects marked ($1), each typed as it is.</summary>
+    private static ImmutableArray<Alias> GetAliases(string? exception, IReadOnlyList<(string Name, string Type)> returnValues, IReadOnlyList<(string Name, string Type)> marks) =>
     [
         .. exception is not null ? [new Alias(DkmClrAliasKind.Exception, "Error", DapRows.Exception, exception, Guid.Empty, null!)] : ImmutableArray<Alias>.Empty,
         .. returnValues.Select(returned => new Alias(DkmClrAliasKind.ReturnValue, returned.Name, returned.Name, returned.Type, Guid.Empty, null!)),
+        .. marks.Select(marked => new Alias(DkmClrAliasKind.ObjectId, marked.Name, marked.Name, marked.Type, Guid.Empty, null!)),
     ];
 
     internal DelegateMaterializerAssembly GetDelegateMaterializer(CompiledExpressionEvaluationContext context)
@@ -446,6 +449,37 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
 
     private static string ToHexString(byte[] bytes) => Convert.ToHexString(bytes);
 
+    /// <summary>Whether the compiler has been warmed in this process (<see cref="WarmUp"/>).</summary>
+    private static int _warmed;
+
+    /// <summary>Compiles an expression in a method of the debugger's own runtime, once a process, as a frame's is compiled, so
+    /// the compiler's code is ready before the session's first condition, message, watch or snapshot needs it: a first
+    /// compile costs about half a second more than any after. Off every lock; it reads nothing of the program.</summary>
+    public static unsafe void WarmUp()
+    {
+        if (Interlocked.Exchange(ref _warmed, 1) != 0 || !typeof(object).Assembly.TryGetRawMetadata(out byte* metadata, out int length))
+        {
+            return;
+        }
+        System.Reflection.Module own = typeof(object).Module;
+        ModuleId moduleId = new(own.ModuleVersionId, own.Name);
+        ImmutableArray<MetadataBlock> blocks = [new MetadataBlock(moduleId, Guid.Empty, (nint)metadata, length)];
+        CSharpCompilation compilation = AddRuntimeAccessAttributes(blocks.ToCompilation(moduleId: default, MakeAssemblyReferencesKind.AllAssemblies).AddReferences(_intrinsicMethodsReference));
+        MethodDefinitionHandle method = (MethodDefinitionHandle)MetadataTokens.Handle(typeof(object).GetMethod(nameof(ToString))!.MetadataToken);
+        PEMethodSymbol frame = compilation.GetMethod(moduleId, method);
+        EvaluationContext context = new(new MethodContextReuseConstraints(moduleId, MetadataTokens.GetToken(method), methodVersion: 1, ILSpan.MaxValue), compilation, frame,
+            compilation.GetSourceMethod(moduleId, method), [], ImmutableSortedSet<int>.Empty, MethodDebugInfo<TypeSymbol, LocalSymbol>.None);
+        DiagnosticBag diagnostics = DiagnosticBag.GetInstance();
+        try
+        {
+            context.CompileExpression("GetHashCode() * 10 + ToString().Length", DkmEvaluationFlags.TreatAsExpression, [], diagnostics, out _, testData: null);
+        }
+        finally
+        {
+            diagnostics.Free();
+        }
+    }
+
     private EvaluationContext CreateMethodContext(ImmutableArray<MetadataBlock> blocks, ICorDebugILFrame frame)
     {
         ModuleInfo moduleInfo = debugger.GetModuleInfoForModule(frame.Function.Module);
@@ -457,13 +491,13 @@ internal sealed class CilExpressionCompiler(ManagedDebugger debugger)
         PEMethodSymbol currentFrame = compilation.GetMethod(moduleId, methodHandle);
         CSharpEESymbolProvider symbolProvider = new CSharpEESymbolProvider(compilation.SourceAssembly, (PEModuleSymbol)currentFrame.ContainingModule, currentFrame);
         MetadataDecoder metadataDecoder = new MetadataDecoder((PEModuleSymbol)currentFrame.ContainingModule, currentFrame);
-        StandaloneSignatureHandle localSignature = frame.Function.LocalVarSigToken == 0
-            ? default
-            : (StandaloneSignatureHandle)MetadataTokens.Handle(frame.Function.LocalVarSigToken);
+        // The frame's version of the method, read from the PDB delta of the update that made it, as Roslyn's reader reads one.
+        int version = moduleInfo.MetadataReader.VersionOf(frame) ?? 1;
+        // Its locals as that version declares them: the runtime's code of an interpreted frame an update changed is another's.
+        StandaloneSignatureHandle localSignature = moduleInfo.MetadataReader.LocalSignature(methodToken, version)
+            ?? (frame.Function.LocalVarSigToken == 0 ? default : (StandaloneSignatureHandle)MetadataTokens.Handle(frame.Function.LocalVarSigToken));
         ImmutableArray<LocalInfo<TypeSymbol>> localInfo = metadataDecoder.GetLocalInfo(localSignature);
         int ilOffset = EvaluationContextBase.NormalizeILOffset((uint)frame.IP.pnOffset);
-        // The frame's version of the method, read from the PDB delta of the update that made it, as Roslyn's reader reads one.
-        int version = ModuleMetadataReader.VersionOf(frame) ?? 1;
         MetadataReader? pdbReader = moduleInfo.MetadataReader.DebugOf(methodToken, version)?.Reader;
         MethodDebugInfo<TypeSymbol, LocalSymbol> debugInfo = pdbReader is null
             ? MethodDebugInfo<TypeSymbol, LocalSymbol>.None

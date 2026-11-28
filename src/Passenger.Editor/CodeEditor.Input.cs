@@ -22,6 +22,10 @@ public sealed partial class CodeEditor
     private Avalonia.Threading.DispatcherTimer? hover;
     private Point hoverAt;
     private bool hovering;
+
+    /// <summary>The word a rest on the text was told of (<see cref="Hovered"/>), in the text it was told in: while the rest
+    /// lasts, the pointer moving over it neither ends the rest nor tells it again.</summary>
+    private (TextSnapshot Text, TextRange Word)? restedWord;
     private Drag drag;
     private EditorInputMethod? inputMethod;
 
@@ -62,6 +66,16 @@ public sealed partial class CodeEditor
             e.Handled = true;
         }
         else if (consumed && action is null)
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>A modifier's second tap let go runs the double tap's action, where the editor resolves its own keys.</summary>
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (ownKeys?.Release(e) is { } action && TryExecute(action))
         {
             e.Handled = true;
         }
@@ -117,6 +131,11 @@ public sealed partial class CodeEditor
             TypedOverEndTag?.Invoke(this, EventArgs.Empty);
             return;
         }
+        if (overwrite && vim is null)
+        {
+            Apply(TextEditing.Overtype(document.Snapshot, selections, typed));
+            return;
+        }
         formattedKey = BeginFormattedKey(typed);
         Apply(TextEditing.Type(document.Snapshot, selections, typed, ClosesWhole(typed)));
         EditPlan? closing = ClosesTags ? TextEditing.CloseTag(document.Snapshot, selections, typed, Markup) : null;
@@ -146,13 +165,13 @@ public sealed partial class CodeEditor
         RaiseEvent(new RoutedEventArgs(TypingRefusedEvent, this));
     }
 
-    private static readonly System.Buffers.SearchValues<char> ControlCharacters = System.Buffers.SearchValues.Create(
+    private static readonly System.Buffers.SearchValues<char> Unprintable = System.Buffers.SearchValues.Create(
         "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000A\u000B\u000C\u000D\u000E\u000F\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D\u001E\u001F\u007F");
 
     /// <summary>What was typed less its control characters: the text itself when it holds none, as a key's does.</summary>
     private static string Printable(string text)
     {
-        if (text.AsSpan().IndexOfAny(ControlCharacters) < 0)
+        if (text.AsSpan().IndexOfAny(Unprintable) < 0)
         {
             return text;
         }
@@ -160,7 +179,7 @@ public sealed partial class CodeEditor
         int count = 0;
         foreach (char c in text)
         {
-            if (!ControlCharacters.Contains(c))
+            if (!Unprintable.Contains(c))
             {
                 kept[count++] = c;
             }
@@ -178,6 +197,13 @@ public sealed partial class CodeEditor
             return;
         }
         PointerPoint point = e.GetCurrentPoint(this);
+        if (PressAbove(point.Position, e.KeyModifiers, point.Properties.IsRightButtonPressed))
+        {
+            Focus();
+            CancelChoices();
+            e.Handled = true;
+            return;
+        }
         if (point.Properties.IsRightButtonPressed && point.Position.X < GutterWidth && GutterClicked is not null && ShowLineNumbers)
         {
             int line = LineAtY(point.Position.Y);
@@ -288,7 +314,7 @@ public sealed partial class CodeEditor
             drag = new Drag(DragMode.Column, offset, from);
             SetSelections(ColumnSelection(text, from, point.Position), reveal: false);
         }
-        else if (dragged == EditorActions.ColumnSelectionDrag)
+        else if (dragged == EditorActions.ColumnSelectionDrag || (columnMode && left && clicked is null && dragged is null && mods == KeyModifiers.None))
         {
             drag = new Drag(DragMode.Column, offset, point.Position, Clicked: clicked, Before: selections);
             SetSelections(SelectionSet.Single(offset), reveal: false);
@@ -338,7 +364,9 @@ public sealed partial class CodeEditor
         RestartHover(position);
         Cursor = position.X < GutterWidth || drag.Mode == DragMode.Gutter ? Cursor.Default : IbeamCursor;
         FollowLinks(position, drag.Mode != DragMode.None && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed);
+        FollowAbove(position);
         pointer = position;
+        RefreshNumberHover();
         FollowGesture(e.KeyModifiers);
         bool inGutter = position.X < GutterWidth;
         if (inGutter != overGutter)
@@ -395,6 +423,7 @@ public sealed partial class CodeEditor
         Drag released = drag;
         drag = default;
         e.Pointer.Capture(null);
+        RefreshNumberHover();
         if (released.Clicked is { } clicked && Stayed(released.Start, e.GetPosition(this)))
         {
             Click(released, clicked);
@@ -433,6 +462,11 @@ public sealed partial class CodeEditor
         hovered.Release();
         pointer = null;
         DropReach();
+        if (aboveHovered is not null)
+        {
+            aboveHovered = null;
+            RedrawChanged();
+        }
     }
 
     /// <summary>Whether Ctrl+wheel (Cmd+wheel on macOS) asks for a bigger or smaller font rather than scrolling.</summary>
@@ -476,6 +510,16 @@ public sealed partial class CodeEditor
         {
             return;
         }
+        TextSnapshot text = document.Snapshot;
+        if (IsAboveRow(hoverAt))
+        {
+            if (AboveWordAt(hoverAt) is { } word && word.Line < text.LineCount)
+            {
+                hovering = true;
+                Hovered?.Invoke(this, new HoverEventArgs(text.GetLineStart(word.Line), hoverAt, above: word.Word));
+            }
+            return;
+        }
         if (hoverAt.X < GutterWidth)
         {
             int rested = LineAtY(hoverAt.Y);
@@ -491,7 +535,6 @@ public sealed partial class CodeEditor
             ShowFoldPreview(placeholder.Line, placeholder.Chip);
             return;
         }
-        TextSnapshot text = document.Snapshot;
         if (AnnotationAt(hoverAt) is { } annotation && annotation.Line < text.LineCount)
         {
             hovering = true;
@@ -513,12 +556,15 @@ public sealed partial class CodeEditor
             return;
         }
         hovering = true;
-        Hovered?.Invoke(this, new HoverEventArgs(offset, hoverAt, HintUnder(hoverAt)));
+        InlayHint? hint = HintUnder(hoverAt);
+        TextRange under = TextNavigation.WordAt(text, offset);
+        restedWord = hint is null && under.Length > 0 && TextNavigation.IsWholeWord(text, under) ? (text, under) : null;
+        Hovered?.Invoke(this, new HoverEventArgs(offset, hoverAt, hint));
     });
 
     private void RestartHover(Point position)
     {
-        if (Math.Abs(position.X - hoverAt.X) < 2 && Math.Abs(position.Y - hoverAt.Y) < 2)
+        if ((Math.Abs(position.X - hoverAt.X) < 2 && Math.Abs(position.Y - hoverAt.Y) < 2) || (hovering && drag.Mode == DragMode.None && OnRestedWord(position)))
         {
             return;
         }
@@ -535,11 +581,25 @@ public sealed partial class CodeEditor
 
     private void EndHover()
     {
+        restedWord = null;
         if (hovering)
         {
             hovering = false;
             HoverEnded?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>Whether a point is on the word the rest was told of, the text unchanged since: from its first character's
+    /// left to its last's right, on its row.</summary>
+    private bool OnRestedWord(Point position)
+    {
+        if (restedWord is not { } rested || !ReferenceEquals(rested.Text, document.Snapshot))
+        {
+            return false;
+        }
+        Point start = PointOf(rested.Word.Start);
+        Point end = PointOf(rested.Word.End);
+        return start.Y == end.Y && position.Y >= start.Y && position.Y < start.Y + metrics.LineHeight && position.X >= start.X && position.X <= end.X;
     }
 
     /// <summary>The offset under a point in the control, its row clamped to the document.</summary>
@@ -593,13 +653,22 @@ public sealed partial class CodeEditor
             firstRow = lastRow - (step * (most - 1));
             CaretLimitReached?.Invoke(this, EventArgs.Empty);
         }
+        RowMap map = Rows;
         for (int row = firstRow; ; row += step)
         {
-            rows.Add(new Selection(OffsetAtRow(text, row, fromX, out _), OffsetAtRow(text, row, toX, out _)));
+            // A row above a line holds no text to select.
+            if (map.LineOfRow(row).Row >= 0)
+            {
+                rows.Add(new Selection(OffsetAtRow(text, row, fromX, out _), OffsetAtRow(text, row, toX, out _)));
+            }
             if (row == lastRow)
             {
                 break;
             }
+        }
+        if (rows.Count == 0)
+        {
+            rows.Add(Selection.At(OffsetAtRow(text, lastRow, toX, out _)));
         }
         return SelectionSet.Create(rows, rows.Count - 1);
     }

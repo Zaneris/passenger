@@ -169,8 +169,8 @@ public sealed class CommitFolder(string key, string name, int depth, IReadOnlyLi
 /// <summary>The Commit window: the changed files under Changes and the new ones under Unversioned Files, each with a box
 /// for whether it goes in (changes are in and new files out until chosen), and files in conflict above them under Merge
 /// Conflicts, with its Resolve link and no box; Amend, Sign-off (kept for the folder) and whether this commit is signed
-/// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up), then the message (a
-/// merge's own message while one is under way); Commit and Commit and Push. Group By › Directory lists each group's files
+/// and with which key (git's config, turned on or off for one commit; Commit Signing… sets it up) and the message history,
+/// then the message (a merge's own message while one is under way); Commit and Commit and Push. Group By › Directory lists each group's files
 /// under their folders, each folder with a box for every file under it. Double-click opens a file's diff, or a
 /// conflicted file's merge; Rollback puts the chosen ones back. In a folder of no repository it shows its empty state
 /// alone.</summary>
@@ -194,6 +194,17 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>The groups and folders the person closed, by their keys, kept closed as the list is filled again.</summary>
     private readonly HashSet<string> closed = [];
     private readonly TreeList list;
+    private readonly ToolTabs.Strip<bool> pages = new();
+
+    /// <summary>The repositories the folder holds, one tab each, while it holds more than one; the one chosen is listed.</summary>
+    private readonly ToolTabs.Strip<VcsController> repositories = new();
+    private readonly Border repositoriesRow;
+    private bool listingRepositories;
+    private readonly Panel pagesShown = new();
+    private readonly ToolFlow bar;
+    private readonly DockPanel changes;
+    private readonly StackPanel tools;
+    private StashesView? stashes;
     private readonly TextBox message;
     private readonly CheckBox amend;
     private readonly CheckBox signOff;
@@ -223,6 +234,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private readonly StackPanel underWay;
     private readonly TextBlock underWayText;
     private readonly Button continueRebase;
+    private readonly Button skipCommit;
     private readonly Button abort;
     private string? beforeAmend;
 
@@ -324,6 +336,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
         underWayText = new TextBlock { TextWrapping = TextWrapping.Wrap };
         continueRebase = new Button { Classes = { StyleClasses.Link }, Content = "Continue Rebase" };
         continueRebase.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.ContinueRebase);
+        skipCommit = new Button { Classes = { StyleClasses.Link }, Content = "Skip Commit" };
+        skipCommit.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.SkipRebase);
         abort = new Button { Classes = { StyleClasses.Link } };
         abort.Click += (_, _) =>
         {
@@ -332,7 +346,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 ActionRequested?.Invoke(this, action.Id);
             }
         };
-        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Wide, Children = { continueRebase, abort } };
+        StackPanel links = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Wide, Children = { continueRebase, skipCommit, abort } };
         underWay = new StackPanel { Margin = new Thickness(ListRow.TextStart, Gaps.Small, ListRow.TextStart, 0), Spacing = Gaps.Hair, IsVisible = false, Children = { underWayText, links } };
 
         amend = new CheckBox { Content = "Amend" };
@@ -357,7 +371,11 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         Button setUp = new() { Classes = { StyleClasses.Link }, Content = SigningFailure.SetUp, VerticalAlignment = VerticalAlignment.Center };
         setUp.Click += (_, _) => ActionRequested?.Invoke(this, AppActions.CommitSigning);
-        WrapPanel options = new() { Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, 0), ItemSpacing = Gaps.Group, Children = { amend, signOff, sign, setUp } };
+        WrapPanel choices = new() { ItemSpacing = Gaps.Group, Children = { amend, signOff, sign, setUp } };
+        Button history = ToolButtons.Of(AppActions.CommitMessageHistory, IconKeys.History, "Commit Message History", action => ActionRequested?.Invoke(this, action));
+        history.VerticalAlignment = VerticalAlignment.Top;
+        DockPanel options = new() { Margin = new Thickness(ListRow.TextStart, Gaps.Tight, ListRow.TextStart, 0), Children = { history, choices } };
+        SetDock(history, Dock.Right);
         unsigned = new TextBlock { TextWrapping = TextWrapping.Wrap, IsVisible = false, Margin = new Thickness(ListRow.TextStart, Gaps.Hair, ListRow.TextStart, 0) };
         unsigned.Classes.Add(StyleClasses.Error);
         movesFirst = new CheckBox { Content = MovesFirstTitle, IsChecked = true };
@@ -406,11 +424,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
         };
         form.Bind(Border.BorderBrushProperty, form.GetResourceObservable(TokenKeys.Divider));
 
-        StackPanel tools = new()
+        tools = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = Gaps.Hair,
-            Margin = new Thickness(Gaps.Small, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
@@ -426,11 +443,29 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 groupBy,
             },
         };
-        Border top = ToolBars.Top(tools);
+        pages.Add(false, "Changes", name: "commitChangesTab");
+        pages.Add(true, "Stashes", name: "commitStashesTab");
+        pages.Choice = false;
+        pages.Chosen += (_, shown) => ShowStashes(shown);
+        bar = new ToolFlow { Margin = new Thickness(Gaps.Small, Gaps.Hair), Children = { pages, ToolFlow.Spring(), tools } };
+        Border top = ToolBars.Top(bar);
+        changes = new DockPanel { Children = { form, new Panel { Children = { list, placeholder } } } };
 
+        repositories.Chosen += (_, chosen) =>
+        {
+            if (!listingRepositories && chosen != vcs)
+            {
+                Bind(chosen);
+                RepositoryChosen?.Invoke(this, chosen);
+            }
+        };
+        repositoriesRow = ToolBars.Top(new ToolFlow { Margin = new Thickness(Gaps.Small, Gaps.Hair), Children = { repositories } });
+        repositoriesRow.IsVisible = false;
+
+        Children.Add(repositoriesRow);
         Children.Add(top);
-        Children.Add(form);
-        Children.Add(new Panel { Children = { list, placeholder } });
+        Children.Add(pagesShown);
+        pagesShown.Children.Add(changes);
         vcs.Changed += OnChanged;
         vcs.BusyChanged += OnBusyChanged;
         vcs.Refreshed += OnSigning;
@@ -440,9 +475,118 @@ public sealed class CommitView : DockPanel, IOwnKeys
         ShowSigning();
     }
 
+    /// <summary>The Stashes tab: every stash, its files and what Pop, Apply and Drop do; built as it is first shown or asked for.</summary>
+    public StashesView Stashes => stashes ??= MakeStashes();
+
+    private StashesView MakeStashes()
+    {
+        StashesView made = new(vcs) { IsVisible = false };
+        made.Tools.IsVisible = false;
+        made.DiffRequested += (_, asked) => StashDiffRequested?.Invoke(this, asked);
+        made.Drop = stash => DropStash?.Invoke(stash) ?? Task.CompletedTask;
+        made.ActionRequested += (_, action) => ActionRequested?.Invoke(this, action);
+        bar.Children.Add(made.Tools);
+        pagesShown.Children.Add(made);
+        return made;
+    }
+
+    /// <summary>The repository whose changes are listed and committed.</summary>
+    public VcsController Vcs => vcs;
+
+    /// <summary>Another of the folder's repositories chosen to list and commit.</summary>
+    public event EventHandler<VcsController>? RepositoryChosen;
+
+    /// <summary>The tab of each repository the folder holds, by its name, branch and how many files changed, shown while
+    /// there are several: the one listed chosen, the first where the one listed has no repository.</summary>
+    public void ShowRepositories(IReadOnlyList<VcsController> shown)
+    {
+        repositoriesRow.IsVisible = shown.Count > 1;
+        listingRepositories = true;
+        try
+        {
+            // The same repositories keep their tabs, only their words said again, as each status read calls here.
+            if (shown.Count > 1 && repositories.Keys.SequenceEqual(shown))
+            {
+                foreach (VcsController each in shown)
+                {
+                    repositories[each].Content = Titled(each);
+                    repositories[each].ContextMenu = RepositoryMenu(each);
+                }
+            }
+            else
+            {
+                repositories.Clear();
+                foreach (VcsController each in shown.Count > 1 ? shown : [])
+                {
+                    repositories.Add(each, Titled(each)).ContextMenu = RepositoryMenu(each);
+                }
+            }
+            if (shown.Count > 1)
+            {
+                repositories.Choice = shown.Contains(vcs) ? vcs : shown[0];
+            }
+        }
+        finally
+        {
+            listingRepositories = false;
+        }
+        if (shown.Count > 0 && !shown.Contains(vcs) && vcs.Repository is null)
+        {
+            Bind(shown[0]);
+            RepositoryChosen?.Invoke(this, shown[0]);
+        }
+    }
+
+    /// <summary>Push… of a repository's tab, which the window asks of in its Push dialog.</summary>
+    public event EventHandler<VcsController>? PushRequested;
+
+    /// <summary>A repository's tab's menu: its own Update Project, Push… and Fetch, whichever tab is chosen.</summary>
+    private ContextMenu RepositoryMenu(VcsController repository) => new()
+    {
+        ItemsSource = (Control[])
+        [
+            ListMenus.Item("Update Project…", () => IdeErrors.Observe(repository.UpdateAsync()), repository.WhyNotRemote),
+            ListMenus.Item("Push…", () => PushRequested?.Invoke(this, repository), repository.WhyNotRemote),
+            ListMenus.Item("Fetch", () => IdeErrors.Observe(repository.FetchAsync()), repository.WhyNotRemote),
+        ],
+    };
+
+    /// <summary>The repositories' tabs, for a test to choose in.</summary>
+    public IReadOnlyList<Avalonia.Controls.Primitives.ToggleButton> RepositoryTabs => repositoriesRow.IsVisible ? repositories.Toggles : [];
+
+    /// <summary>A repository's tab's words: its name, its branch, and how many files changed.</summary>
+    public static string Titled(VcsController repository) =>
+        $"{(repository.Repository is { } tree ? VcsController.NameOf(tree) : "?")} · {repository.Branch ?? "detached"}{(repository.Changes.Count > 0 ? $" ({Numbers.Said(repository.Changes.Count)})" : string.Empty)}";
+
+    /// <summary>The Stashes tab's own toggle in the toolbar.</summary>
+    public Avalonia.Controls.Primitives.ToggleButton StashesTab => pages[true];
+
+    /// <summary>Whether the Stashes tab is shown, else the changes and the commit's form.</summary>
+    public bool ShowsStashes => pages.Choice;
+
+    /// <summary>The Changes or the Stashes tab shown, with its toolbar's buttons.</summary>
+    public void ShowStashes(bool shown)
+    {
+        pages.Choice = shown;
+        changes.IsVisible = !shown;
+        tools.IsVisible = !shown;
+        if (shown || stashes is not null)
+        {
+            Stashes.IsVisible = shown;
+            Stashes.Tools.IsVisible = shown;
+        }
+    }
+
+    /// <summary>A file of a stash to show beside what it was before the stash.</summary>
+    public event EventHandler<(StashInfo Stash, FileChange File)>? StashDiffRequested;
+
+    /// <summary>Drops a stash once the person agrees, done when it is dropped or kept; the window's.</summary>
+    public Func<StashInfo, Task>? DropStash { get; set; }
+
     /// <summary>Lists another folder's changes from now on, its session's working tree in place of the last's.</summary>
     public void Bind(VcsController next)
     {
+        stashes?.Bind(next);
         vcs.Changed -= OnChanged;
         vcs.BusyChanged -= OnBusyChanged;
         vcs.Refreshed -= OnSigning;
@@ -661,6 +805,21 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// <summary>One changed file chosen in the list, which a diff following the choice shows (<see cref="Vcs.DiffTab.Follows"/>).</summary>
     public event EventHandler<string>? ChoiceMoved;
 
+    /// <summary>Moves the choice to the next (1) or previous (-1) changed file as the list shows them, the diff following it;
+    /// false where the choice is no file, or none comes after it that way.</summary>
+    public bool StepChoice(int step)
+    {
+        CommitRow[] files = [.. rows.OfType<CommitRow>().Where(r => r.Change.Kind != ChangeKind.Conflicted)];
+        int at = list.SelectedItem is CommitRow chosen ? Array.IndexOf(files, chosen) : -1;
+        if (at < 0 || at + step < 0 || at + step >= files.Length)
+        {
+            return false;
+        }
+        list.SelectedItem = files[at + step];
+        list.ScrollIntoView(files[at + step]);
+        return true;
+    }
+
     /// <summary>A file to open in the editor.</summary>
     public event EventHandler<string>? OpenRequested;
 
@@ -760,6 +919,20 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// the tree only at its first layout, and a window just shown has had none.</summary>
     public void FocusMessage() => Avalonia.Threading.Dispatcher.UIThread.Post(() => message.Focus(), Avalonia.Threading.DispatcherPriority.Loaded);
 
+    /// <summary>A message from the history put in the box in place of what it held, the keys in it at its end.</summary>
+    public void TakeMessage(string taken)
+    {
+        message.Text = taken;
+        message.CaretIndex = taken.Length;
+        FocusMessage();
+    }
+
+    /// <summary>Whether what has the keys is the message box, where the history's keys are its.</summary>
+    public bool HasMessageKeys(object? focused) => focused is Visual inside && (inside == message || message.IsVisualAncestorOf(inside));
+
+    /// <summary>A commit was made, with the message it took and the Git it was made in.</summary>
+    public event EventHandler<(VcsController Git, string Message)>? Committed;
+
     /// <summary>Commits the chosen files with the message (pushing after when asked), then empties the message. Whether the
     /// commit was made, whatever came of the push.</summary>
     public async Task<bool> CommitAsync(bool push)
@@ -788,13 +961,25 @@ public sealed class CommitView : DockPanel, IOwnKeys
         {
             row.IsChosen = false;
         }
+        // A merge's message as git wrote it is git's, not one the person wrote.
+        if (Message != prefilled)
+        {
+            Committed?.Invoke(this, (vcs, Message));
+        }
         beforeAmend = null;
         amend.IsChecked = false;
         message.Text = string.Empty;
         signTurned = false;
+        if (!signing.IsSetUp)
+        {
+            CommittedUnsigned?.Invoke(this, EventArgs.Empty);
+        }
         ShowSigning();
         return true;
     }
+
+    /// <summary>A commit was made that git's config signs nothing of.</summary>
+    public event EventHandler? CommittedUnsigned;
 
     private Dictionary<string, PartialCommit> Partial() => Files.Where(r => r.IsChosen && r.Partial is not null)
         .ToDictionary(r => r.Change.Path, r => r.Partial!, PathNames.Comparer);
@@ -901,7 +1086,7 @@ public sealed class CommitView : DockPanel, IOwnKeys
     private void UpdateRollback() => ToolButtons.Grey(rollback, vcs.WhyNotRollback(RollbackTargets()));
 
     /// <summary>Why a file's own item (Go to Source, Delete…) cannot act on a change that deleted it; null where it can.</summary>
-    private static string? Deleted(FileChange change) => change.Kind is ChangeKind.Deleted ? Refusals.FileDeleted : null;
+    private static string? Deleted(FileChange change) => (change.Kind is ChangeKind.Deleted ? Refusals.FileDeleted : null)?.Shown;
 
     /// <summary>Lists the status again in place: a file still changed as it was keeps its row, its box and whether it is
     /// selected, so a refresh with nothing new (the window coming to the front, a save) leaves the list as it was, and
@@ -957,13 +1142,15 @@ public sealed class CommitView : DockPanel, IOwnKeys
         }
         placeholder.Text = vcs.Repository is null ? vcs.NoRepository : "No changes";
         bool creates = vcs.Repository is null && vcs.WhyNotCreate is null;
-        placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
+        placeholder.Offer(creates ? AppActions.CreateRepository : null, ActionTitles.CreateRepository);
         placeholder.IsVisible = rows.Count == 0;
         // Nothing of the form can be used before there is a repository, and the window is its empty state's.
         form.IsVisible = vcs.Repository is not null;
         underWay.IsVisible = vcs.Merge.UnderWay is not null;
         underWayText.Text = vcs.Merge.UnderWay;
         continueRebase.IsVisible = vcs.Merge.Operation is MergeOperation.Rebase;
+        // Only where it stopped for conflicts: at an edit its commit is made already.
+        skipCommit.IsVisible = vcs.WhyNotSkip is null;
         abort.Content = AbortOf(vcs.Merge.Operation)?.Title;
         // A merge under way gives the commit that finishes it the message git wrote for it, until it ends.
         string? merging = vcs.Merge.CommitsWhole ? vcs.Merge.Message : null;
@@ -1161,10 +1348,10 @@ public sealed class CommitView : DockPanel, IOwnKeys
     /// saying why as a press would.</summary>
     private void UpdateButtons()
     {
-        string? why = vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(groups.Any(g => g.IsChosen != false), Message, Amend);
+        string? why = (vcs.Repository is null ? vcs.NoRepository : vcs.WhyNotCommit(groups.Any(g => g.IsChosen != false), Message, Amend))?.Shown;
         foreach (Button button in (Button[])[commit, commitAndPush])
         {
-            string? refused = button == commitAndPush ? why ?? vcs.WhyNotRemote : why;
+            string? refused = (button == commitAndPush ? why ?? vcs.WhyNotRemote : why)?.Shown;
             ToolButtons.Grey(button, refused);
             // Off while a commit (or a stash, a rollback) runs, so a second press cannot start another on git's index lock.
             button.IsEnabled = refused is null && !vcs.IsBusy;
@@ -1258,8 +1445,8 @@ public sealed class CommitView : DockPanel, IOwnKeys
                 if (folder is not null)
                 {
                     string last = folder.Name[(folder.Name.LastIndexOf('/') + 1)..];
-                    folderIcon.Data = Explorer.FileIcons.ForFolder(last, branch.IsExpanded);
-                    folderIcon.ForegroundKey = Explorer.FileIcons.TintForFolder(last);
+                    folderIcon.DataKey = Explorer.FileIcons.FolderKey(last, branch.IsExpanded);
+                    folderIcon.ForegroundKey = Explorer.FileIcons.FolderBrushKey(last);
                 }
                 branchName.Text = folder?.Name ?? ((CommitGroup)branch).Name;
                 branchName.Classes.Set(StyleClasses.Strong, folder is null);

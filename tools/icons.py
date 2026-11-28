@@ -30,6 +30,9 @@ ICONS = [
     ("Run", "Play", "20_filled"),
     ("Debug", "Bug", "20_regular"),
     ("Search", "Search", "20_regular"),
+    # Back and Forward through the places left, on the title bar.
+    ("Back", "Arrow Left", "20_regular"),
+    ("Forward", "Arrow Right", "20_regular"),
     ("Terminal", "Window Console", "20_regular"),
     ("Problems", "Warning", "20_regular"),
     ("Notifications", "Alert", "20_regular"),
@@ -123,12 +126,22 @@ ICONS = [
     ("Overlays", "Layer", "20_regular"),
     # A Godot game's loop stepped one frame while it is held.
     ("NextFrame", "Next", "20_regular"),
+    # Step back debugging: Record Calls on the Debug window's side, Step Back and Step Forward through what it recorded.
+    ("RecordCalls", "Record", "20_regular"),
+    ("StepBack", "Arrow Previous", "20_regular"),
+    ("StepForward", "Arrow Next", "20_regular"),
     # A debugged Godot game's audio muted from the Debug window's toolbar.
     ("MuteAudio", "Speaker Mute", "20_regular"),
     # Apply Hot Reload Changes on the toolbar and the Run and Debug windows: a flame.
     ("HotReload", "Fire", "20_regular"),
     # The Hierarchy window's stripe button: a type over the types it derives from or that derive from it.
     ("Hierarchy", "Diagram", "20_regular"),
+    # The Modules window's stripe button: the pieces a debugged program has loaded.
+    ("Modules", "Puzzle Piece", "20_regular"),
+    # The Compiled Code window's stripe button: the code a build made of the file shown.
+    ("CompiledCode", "Code", "20_regular"),
+    # The Syntax Tree window's stripe button: the file's code as its parser reads it, part within part.
+    ("SyntaxTree", "Braces", "20_regular"),
     # The Endpoints window's stripe button: the requests of the folder's .http files, sent over the web.
     ("Endpoints", "Globe", "20_regular"),
     # The Requests window's stripe button: what the running web apps are asked and answer.
@@ -139,8 +152,22 @@ ICONS = [
     ("Aspire", "Cube Tree", "20_regular"),
     # Attach to a service as it runs: the debugger plugged in, beside Detach's plug unplugged.
     ("Attach", "Plug Connected", "20_regular"),
-    # The Migrations window's stripe button: a database, whose migrations it lists and applies.
+    # The Database and Migrations windows: the database itself, and changes applied to it.
     ("Database", "Database", "20_regular"),
+    ("Migrations", "Database Arrow Right", "20_regular"),
+    # The database explorer's rows: a schema, a table, a view (a table looked into), a column, a key, an index (rows kept in
+    # order), a routine (a body of code), and a SQL console.
+    ("DatabaseSchema", "Organization", "20_regular"),
+    ("DatabaseTable", "Table", "20_regular"),
+    ("DatabaseView", "Table Search", "20_regular"),
+    ("DatabaseColumn", "Column", "20_regular"),
+    ("DatabaseKey", "Key", "20_regular"),
+    ("DatabaseIndex", "Arrow Sort", "20_regular"),
+    ("DatabaseRoutine", "Braces", "20_regular"),
+    ("SqlConsole", "Window Console", "20_regular"),
+    # A table's trigger (what fires as its rows change) and a statement's plan (the steps the database takes, as a tree).
+    ("DatabaseTrigger", "Flash", "20_regular"),
+    ("DatabasePlan", "Flowchart", "20_regular"),
     # A web project's web root (wwwroot) in the Explorer: the folder whose files are served on the web.
     ("WebRootFolder", "Folder Globe", "20_regular"),
     # A signed commit's mark in the Git log: a good signature, one unverified, a bad one and one expired.
@@ -152,6 +179,12 @@ ICONS = [
     ("Filter", "Filter", "20_regular"),
     # The Step Library window's stripe button: the shelf of steps a project's features may be written in.
     ("StepLibrary", "Library", "20_regular"),
+    # The Dependency Map window's stripe button: nodes joined by what each uses.
+    ("DependencyMap", "Flowchart", "20_regular"),
+    # The Coverage window's stripe button: the share of the code a run of tests ran.
+    ("Coverage", "Data Pie", "20_regular"),
+    # What a window writes out to a file a person names for another tool (the Coverage window's Cobertura report).
+    ("Export", "Arrow Export Up", "20_regular"),
     # A project by what it builds, wherever a project is listed, where no window's icon says it.
     ("FunctionsApp", "Flash", "20_regular"),
     ("MauiApp", "Phone Laptop", "20_regular"),

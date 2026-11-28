@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using Microsoft.CodeAnalysis.CSharp.Symbols;
+using Passenger.Debugger.Interop;
 
 namespace Passenger.Debugger;
 
@@ -184,6 +185,48 @@ public partial class ModuleMetadataReader
         }
         return 0;
     }
+
+    /// <summary>The code of a method an update changed that a frame ran as the update came, by the method's token and the
+    /// start of its compiled code, with that code's version.</summary>
+    private readonly Dictionary<(int Token, ulong Start), int> _runningCode = [];
+
+    /// <summary>The EnC version of the code a frame runs (1 for the build's), or null when the runtime will not say.</summary>
+    internal int? VersionOf(ICorDebugFrame frame) =>
+        frame.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code.TryGetVersionNumber(out uint said) is Cor.S_OK
+            && frame.TryGetFunctionToken(out mdMethodDef token) is Cor.S_OK
+            ? VersionOf(token, (int)said, () => StartOf(frame))
+            : null;
+
+    /// <summary>The EnC version of a method's compiled code that starts at <paramref name="start"/>, which the runtime
+    /// <paramref name="said"/>. It says 1, the build's, of every frame its interpreter runs, so where an update has changed the
+    /// method that is taken for the version the code had as the last update came, if a frame ran it then (<see
+    /// cref="KeepRunning"/>), else for the method's newest version, which every call since runs: code compiled before an
+    /// update that changed the method runs in none of the frames begun after it.</summary>
+    internal int VersionOf(int methodToken, int said, Func<ulong?> start)
+    {
+        int changed = GenerationOf(methodToken, null);
+        return said != 1 || changed == 0 || start() is not ulong at ? said
+            : _runningCode.TryGetValue((methodToken, at), out int ran) ? ran : changed + 1;
+    }
+
+    /// <summary>Keeps the version a frame of a method an update is about to change runs, by its compiled code's start, where
+    /// the runtime says it runs the build's code (<see cref="VersionOf(int, int, Func{ulong?})"/>).</summary>
+    internal void KeepRunning(ICorDebugFrame frame)
+    {
+        if (frame.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code.TryGetVersionNumber(out uint said) is Cor.S_OK && said == 1
+            && frame.TryGetFunctionToken(out mdMethodDef token) is Cor.S_OK && StartOf(frame) is ulong start)
+        {
+            _runningCode[(token, start)] = VersionOf(token, 1, () => start);
+        }
+    }
+
+    /// <summary>Where a frame's compiled code starts (its native code's, or its interpreted code's), or null where the runtime
+    /// will not say.</summary>
+    private static ulong? StartOf(ICorDebugFrame frame) =>
+        frame is ICorDebugNativeFrame native && native.TryGetCode(out ICorDebugCode code) is Cor.S_OK && code is not null
+            && code.TryGetAddress(out CORDB_ADDRESS start) is Cor.S_OK
+            ? start.Value
+            : null;
 
     /// <summary>A method's debug information at a version (the newest without one), or null where it has none.</summary>
     internal MethodDebug? DebugOf(int methodToken, int? version = null)
@@ -468,10 +511,43 @@ public partial class ModuleMetadataReader
         }
     }
 
+    /// <summary>Each of a method's local variables' types at a version (the newest without one) as its signature writes it, by
+    /// their slots: what the runtime reads a local at an address as. Empty as <see cref="LocalTypes"/> is.</summary>
+    internal ImmutableArray<byte[]> LocalTypeSignatures(int methodToken, int? version)
+    {
+        if (LocalSignature(methodToken, version) is not { IsNil: false } locals)
+        {
+            return [];
+        }
+        try
+        {
+            BlobHandle handle = _peMetadataReader.GetStandaloneSignature(locals).Signature;
+            byte[] blob = _peMetadataReader.GetBlobBytes(handle);
+            BlobReader reader = _peMetadataReader.GetBlobReader(handle);
+            if (reader.ReadSignatureHeader().Kind is not SignatureKind.LocalVariables)
+            {
+                return [];
+            }
+            SignatureDecoder<DeclaredType?, object?> decoder = new(DeclaredTypeProvider.Instance, _peMetadataReader, null);
+            ImmutableArray<byte[]>.Builder types = ImmutableArray.CreateBuilder<byte[]>(reader.ReadCompressedInteger());
+            while (types.Count < types.Capacity)
+            {
+                int start = reader.Offset;
+                decoder.DecodeType(ref reader);
+                types.Add(blob[start..reader.Offset]);
+            }
+            return types.MoveToImmutable();
+        }
+        catch (BadImageFormatException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>A method's local variables' signature at a version (the newest without one): the update's that last changed
     /// it, else the image's; nil for a body with no locals, null where the body is not read (a module with no image) or its
     /// signature is not in the metadata the updates made.</summary>
-    private StandaloneSignatureHandle? LocalSignature(int methodToken, int? version)
+    internal StandaloneSignatureHandle? LocalSignature(int methodToken, int? version)
     {
         int generation = GenerationOf(methodToken, version);
         StandaloneSignatureHandle locals;

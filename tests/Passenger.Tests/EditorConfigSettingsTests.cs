@@ -29,7 +29,7 @@ public sealed class EditorConfigSettingsTests
         SettingsDialog settings = window.ShowSettings();
         try
         {
-            settings.Page = SettingsDialog.EditorPage;
+            settings.Page = SettingsDialog.SavingPage;
             Ui.Settle();
             Assert.Equal("./.editorconfig sets insert_final_newline = true for *", settings.SaidOver(FinalLineBreak));
             Assert.True(settings.SaidOver("Reformat on save") is null, "A row no .editorconfig key says over said something was set over it");
@@ -101,8 +101,8 @@ public sealed class EditorConfigSettingsTests
                 XamlFormat = plain.XamlFormat.Over(k => k == key ? value : null),
                 GDScriptFormat = plain.GDScriptFormat.Over(k => k == key ? value : null),
             })), StringComparer.Ordinal);
-            string[] changes = [.. Declared.Every.Where(s => changed.Contains(kept[s])).Select(s => s.Row?.Label ?? kept[s])];
-            string[] declared = [.. declaring.Where(s => s.Row!.Over!.Names(key)).Select(s => s.Row!.Label)];
+            string[] changes = [.. Declared.Every.Where(s => changed.Contains(kept[s])).Select(s => s.Row?.Label.English ?? kept[s])];
+            string[] declared = [.. declaring.Where(s => s.Row!.Over!.Names(key)).Select(s => s.Row!.Label.English)];
             if (!changes.SequenceEqual(declared))
             {
                 wrong.Add($"{key} changes {Listed(changes)} but is declared on {Listed(declared)}");
@@ -111,10 +111,10 @@ public sealed class EditorConfigSettingsTests
         foreach (Setting setting in declaring.Where(s => kept[s].Split('.')[0] is "xamlFormat" or "gdScriptFormat"))
         {
             EditorConfigOver over = setting.Row!.Over!;
-            wrong.AddRange(over.Keys.Concat(over.Aliases).Where(k => !keys.Contains(k)).Select(k => $"{setting.Row.Label} declares {k}, which no layout reads"));
+            wrong.AddRange(over.Keys.Concat(over.Aliases).Where(k => !keys.Contains(k)).Select(k => $"{setting.Row.Label.English} declares {k}, which no layout reads"));
         }
-        wrong.AddRange(Declared.Every.Select(s => s.Row).OfType<SettingRow>().Where(r => r.Note?.Contains("says over this", StringComparison.Ordinal) == true)
-            .Select(r => $"{r.Label}'s note names its .editorconfig keys by hand"));
+        wrong.AddRange(Declared.Every.Select(s => s.Row).OfType<SettingRow>().Where(r => r.Note?.English.Contains("says over this", StringComparison.Ordinal) == true)
+            .Select(r => $"{r.Label.English}'s note names its .editorconfig keys by hand"));
         Assert.True(wrong.Count == 0, $"Settings says a key of a file's .editorconfig over rows it does not change, or misses rows it does:\n{string.Join("\n", wrong)}");
 
         static string Listed(string[] labels) => labels.Length == 0 ? "no row" : string.Join(", ", labels);

@@ -30,13 +30,45 @@ public sealed class GDScriptColoursTests : FileColoursFolder
         return kinds.Distinct().ToArray() is [var one] ? one : null;
     }
 
-    /// <summary>A GDScript's names are drawn in C#'s colours for what they are, drawn again by the next reading where
-    /// typing overtook one.</summary>
+    /// <summary>A GDScript's names are drawn in C#'s colours for what they are, carried through what is typed on a name as
+    /// Godot reads its names, and drawn again by the next reading where typing overtook one.</summary>
     [AvaloniaFact]
     public void Gdscript_names_are_drawn_in_csharps_colours()
     {
+        Flow.StepApart<GDScriptColoursTests>(nameof(A_name_typed_on_with_characters_godot_reads_in_names_keeps_its_colour_through_the_key),
+            test => test.A_name_typed_on_with_characters_godot_reads_in_names_keeps_its_colour_through_the_key());
         Flow.StepApart<GDScriptColoursTests>(nameof(A_name_replaced_while_typing_overtook_its_reading_is_drawn_again_by_the_next_reading),
             test => test.A_name_replaced_while_typing_overtook_its_reading_is_drawn_again_by_the_next_reading());
+    }
+
+    /// <summary>What is typed at a name's end that Godot reads as carrying the name on, a combining mark or a letter past the
+    /// first plane, keeps the name's colour from the key, before any reading of the text it made.</summary>
+    private void A_name_typed_on_with_characters_godot_reads_in_names_keeps_its_colour_through_the_key()
+    {
+        const string Healing = "extends Node\n\nvar health := 10\n\n\nfunc heal() -> void:\n\tprint(health)\n";
+        MainWindow window = new() { Width = 1200, Height = 800, Autosaves = false, StartsLanguageServer = false };
+        window.Show();
+        window.OpenFolder(folder);
+        Ui.Settle();
+        try
+        {
+            CodeEditor editor = Open(window, "healing.gd", Healing);
+            Ui.WaitFor(() => KindAt(editor, "health)", "health".Length) == TokenKind.Field, () => "health's use in a field's colour", TimeSpan.FromSeconds(90));
+            Ui.PlaceAfter(editor, "print(health");
+            editor.Focus();
+            string name = "health";
+            foreach (string typed in (string[])["\u0301", "\U0001D4BD"])
+            {
+                name += typed;
+                window.KeyTextInput(typed);
+                Assert.True(KindAt(editor, name + ")", name.Length) == TokenKind.Field,
+                    $"{name} lost its field's colour over what was typed on it, U+{char.ConvertToUtf32(typed, 0):X4}, which Godot reads as part of the name, until the script is read again");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     /// <summary>A name replaced by one of its length loses its colour at the key. Typing on while that reading ran leaves it

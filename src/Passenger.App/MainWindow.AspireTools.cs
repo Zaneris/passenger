@@ -25,7 +25,7 @@ public partial class MainWindow
         foreach (AspireAppRun app in apps)
         {
             IReadOnlyList<AspireResource> resources = await (app.Interactions
-                ?? throw new InvalidOperationException(Refusals.AppHostStarting)).GetResourcesAsync(cancel);
+                ?? throw new RefusedException(Refusals.AppHostStarting)).GetResourcesAsync(cancel);
             CheckAspireToolTarget(current, app);
             matches.AddRange(resources.Where(resource => resource.Name == name || !qualified && resource.DisplayName == name)
                 .Select(resource => new AspireSelection(app.Configuration.Project, resource)));
@@ -88,7 +88,7 @@ public partial class MainWindow
         IReadOnlyList<AspireRunResource> resources = await ReadAspireConfigurationResourcesAsync(configuration, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         AspireRunResource[] matches = resources.Where(resource => resource.Name == name).ToArray();
         if (matches.Length != 1 || resources.GroupBy(resource => resource.Name, StringComparer.Ordinal).Any(group => group.Count() != 1))
@@ -97,16 +97,16 @@ public partial class MainWindow
         }
         RunConfiguration selected = Targeting(configuration, resources.Select(resource => (resource.Name, resource.Project)), name, debug: mode != RunStart.Run);
         // The target marked Debug alone keeps unproven, dynamically added projects out of the debugger, under Debug's work too.
-        string? problem = mode == RunStart.Profile
+        Words? problem = mode == RunStart.Profile
             ? await buildRun.ProfileAspireAsync(selected, arguments, cancel)
             : await buildRun.RunAspireAsync(selected, arguments, mode == RunStart.Debug ? RunStart.Debug : RunStart.Run, cancel);
         if (session != current || current.IsEnded)
         {
-            throw new InvalidOperationException(Refusals.SolutionClosed);
+            throw new RefusedException(Refusals.SolutionClosed);
         }
         if (problem is not null)
         {
-            throw new InvalidOperationException(problem);
+            throw new RefusedException(problem);
         }
         AspireAppRun app = current.Aspire.OwnedApp(configuration.Project);
         try
@@ -259,7 +259,7 @@ public partial class MainWindow
                 // Refused below as it stands, naming the command it lacks.
             }
         }
-        string? problem = action switch
+        Words? problem = action switch
         {
             "run" => await RestartAspireServiceAsync(current, fresh, debugging: false, cancel),
             "debug" => await RestartAspireServiceAsync(current, fresh, debugging: true, cancel),
@@ -275,14 +275,14 @@ public partial class MainWindow
             await WaitForAspireToolServiceAsync(current, app, name, project, cancel, previous, debugging: action == "debug",
                 resourceName: fresh.Resource.Name);
         }
-        return problem;
+        return problem?.English;
     }
 
     private void CheckAspireToolTarget(ProjectSession current, AspireAppRun app)
     {
         if (session != current || current.IsEnded || app.Stopping || current.Aspire.FindApp(app.Configuration.Project) != app)
         {
-            throw new InvalidOperationException(Refusals.AppHostChanged);
+            throw new RefusedException(Refusals.AppHostChanged);
         }
     }
 

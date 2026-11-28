@@ -610,8 +610,8 @@ public sealed class NewServiceSetupTests : IDisposable
                 "Undo's carry of the folder to the state's volume to be held");
             Assert.True(held.IsCompleted, $"Undo of New Project on another volume carried nothing: {window.Status}");
             Assert.Equal("Setting Lib aside: copying it to another disk…", window.Status);
-            Assert.True(window.Actions.WhyNot(EditorActions.Undo, window.Actions.Context()) is null,
-                $"Undo is greyed while the folder is carried, so the typing's own Undo cannot be asked: {window.Actions.WhyNot(EditorActions.Undo, window.Actions.Context())}");
+            Assert.True(window.Actions.WhyNot(EditorActions.Undo, window.Actions.Context())?.Shown is null,
+                $"Undo is greyed while the folder is carried, so the typing's own Undo cannot be asked: {window.Actions.WhyNot(EditorActions.Undo, window.Actions.Context())?.Shown}");
             Typed(window, "a", "a" + Program);
             release.SetResult();
             Ui.WaitFor(() => window.Status == "Undone: New Project Lib", () => $"Undo of New Project once its folder is carried; the status says '{window.Status}'");
@@ -701,7 +701,7 @@ public sealed class NewServiceSetupTests : IDisposable
 
             Assert.SkipWhen(Docker.WhyNot is not null, Docker.WhyNot ?? string.Empty);
             Ui.WaitFor(() => !window.IsBuilding, "the new solution's build", TimeSpan.FromMinutes(3));
-            string? refused = Ui.Await(window.RunAsync(), "the first Run to bring the web API up", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(window.RunAsync(), "the first Run to bring the web API up", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             Assert.True(window.IsRunning, $"The first Run did not bring the service up: {window.Status}");
             Assert.StartsWith("Running Compose: compose.yaml", window.Status, StringComparison.Ordinal);

@@ -8,8 +8,8 @@ namespace Passenger.App.ToolWindows;
 
 /// <summary>A tab of the Git window, Show Diff with Working Tree's: the files that differ between a branch and the working
 /// tree, or those a stash holds, read again while shown as the working tree changes, the first chosen; a file's diff (the
-/// branch's or stash's text beside the file's) opens wherever Settings opens diffs, the list staying. Where nothing
-/// differs it says so.</summary>
+/// branch's or stash's text beside the file's) opens wherever Settings opens diffs, the list staying, and a branch's file's
+/// menu's Get from takes the branch's version whole. Where nothing differs it says so.</summary>
 public sealed class WorkingTreeDiffView : Panel, IOwnKeys
 {
     private readonly VcsController vcs;
@@ -24,7 +24,9 @@ public sealed class WorkingTreeDiffView : Panel, IOwnKeys
     {
         vcs = git;
         Compared = compared;
-        files = new ChangedFileList(() => vcs.Repository);
+        files = compared.Stash is null
+            ? new ChangedFileList(() => vcs.Repository, change => [ListMenus.Item($"Get from '{compared.Name}'", () => GetRequested?.Invoke(this, change))])
+            : new ChangedFileList(() => vcs.Repository);
         files.DiffRequested += (_, change) => DiffRequested?.Invoke(this, change);
         files.OpenRequested += (_, path) => OpenRequested?.Invoke(this, path);
         Children.Add(files.List);
@@ -62,6 +64,9 @@ public sealed class WorkingTreeDiffView : Panel, IOwnKeys
 
     /// <summary>A file's diff asked for: the branch's or stash's text beside the file's.</summary>
     public event EventHandler<FileChange>? DiffRequested;
+
+    /// <summary>A file to take the branch's version of, whole; a stash's tab asks for none.</summary>
+    public event EventHandler<FileChange>? GetRequested;
 
     /// <summary>A file asked for as it is now, by its path.</summary>
     public event EventHandler<string>? OpenRequested;

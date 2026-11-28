@@ -8,12 +8,16 @@ public static class ContainerCommands
     /// <summary>The actions an agent may name, and what each runs.</summary>
     public static readonly IReadOnlyList<string> AgentActions = ["start", "stop", "restart", "remove"];
 
-    /// <summary>The words for an action on a row, or why it cannot run there.</summary>
-    public static (IReadOnlyList<string>? Words, string? WhyNot) For(string action, ContainerRow? row)
+    /// <summary>The words for an action on a row, or why it cannot run there, on the engine as it last answered.</summary>
+    public static (IReadOnlyList<string>? Words, string? WhyNot) For(string action, ContainerRow? row, EngineState? engine = null)
     {
         if (row is null || row.Kind == ContainerRowKind.Group)
         {
             return (null, "No container, project, image, volume or network is chosen in the Containers window");
+        }
+        if (action == "pause" && engine is { IsWslc: true })
+        {
+            return (null, Refusals.WslcNoPause.Shown);
         }
         // No container yet: its Start goes through the run that left it unstarted, which starts it.
         if (row.LeftUnstarted && action != "start")
@@ -43,7 +47,7 @@ public static class ContainerCommands
                 "start" => (["start", container.Id], null),
                 "stop" => (["stop", container.Id], null),
                 "restart" => (["restart", container.Id], null),
-                "pause" => (container.IsPaused ? ["unpause", container.Id] : ["pause", container.Id], container.IsRunning || container.IsPaused ? null : Refusals.NotRunning(container.Name)),
+                "pause" => (container.IsPaused ? ["unpause", container.Id] : ["pause", container.Id], (container.IsRunning || container.IsPaused ? null : Refusals.NotRunning(container.Name))?.Shown),
                 "remove" => (["rm", "-f", container.Id], null),
                 "pull" => (["pull", container.Image], null),
                 _ => (null, null),
@@ -65,7 +69,7 @@ public static class ContainerCommands
     }
 
     /// <summary>How a service row its run left unstarted says what starts it.</summary>
-    public static string NotStarted(ContainerRow row) => Refusals.NotStarted(row.Name, ContainerRun.StartsService);
+    public static string NotStarted(ContainerRow row) => Refusals.NotStarted(row.Name, ContainerRun.StartsService).Shown;
 
     /// <summary>The words a stage of the action says while it runs ("Stopping web…").</summary>
     public static string Stage(string action, ContainerRow row) => action switch

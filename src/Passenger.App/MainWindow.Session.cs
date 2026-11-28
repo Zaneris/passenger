@@ -49,11 +49,12 @@ public partial class MainWindow
 
     /// <summary>What a session of this window is made with: its editors, where it keeps state, how it watches folders, the
     /// warm server it may take up, its consoles, Debug window and tests tree, a test run's build (which the session's builds
-    /// and runs make), the Terminal tab the debugger asks for, and where its container tools come from.</summary>
+    /// and runs make), the Terminal tab the debugger asks for, and where its container tools and 32-bit debugger come from.</summary>
     private SessionSetup Setup() => new(Editors, StateFolder, HistoryKeeping, Watching, () => settings.SolutionWideAnalysis, WarmServer, Bottom,
         (projects, cancel) => buildRun.BuildTestsAsync(projects, cancel), RunForDebugger, () => settings, work, () => Engine)
     {
         ContainerTools = () => ContainerToolsFrom ?? Containers.ContainerToolsSource.Default(Releases),
+        X86Debugger = () => X86DebuggerFrom ?? Debugging.X86DebuggerSource.Default(Releases),
         DockerHub = DockerHub,
         GodotEnvironment = GodotFolders,
         StartsLanguageServer = StartsLanguageServer,
@@ -147,6 +148,10 @@ public partial class MainWindow
             if (opener is null && AsksOfLetGo)
             {
                 return OpenLetGoAsync(path, opening, opened);
+            }
+            if (opener is null && AsksOfDatabase)
+            {
+                return OpenDatabaseAsync(path, opening, opened);
             }
             if (!LeaveFolder())
             {
@@ -284,6 +289,7 @@ public partial class MainWindow
     private void Bind(ProjectSession next)
     {
         session = next;
+        signposts?.Bind(next.Vcs);
         // The tool windows follow what the folder holds, before anything of the session shows one.
         Dock.Serve();
         next.HoldsChanged += (_, _) =>
@@ -300,6 +306,7 @@ public partial class MainWindow
         next.Debug.RunDetach = new(runs.DetachesContainers, runs.WhyNotDetachContainers, runs.DetachContainersAsync);
         BindAspire(next);
         BindSoundCues(next);
+        BindErrorFiles(next);
         buildRun.RunningChanged += (_, _) =>
         {
             if (session == next)
@@ -316,7 +323,13 @@ public partial class MainWindow
             }
         };
         BindTests(next);
+        next.FilesCameOrWent += (_, paths) => FollowFolderItems(next, paths);
+        BindCoverage(next);
+        BindContinuous(next);
         BindDebug(next);
+        BindModules(next);
+        BindClones(next);
+        ReadLayers();
         profiler?.Rebind();
         liveTree?.Bind(next);
         bindingValues?.Bind(next);
@@ -331,6 +344,7 @@ public partial class MainWindow
         BindEndpoints(next);
         BindStepLibrary(next);
         BindMigrations(next);
+        BindDatabase(next);
         BindPackages(next);
         BindContainers(next);
         // The Explorer's filter shows the files the index has, so it follows them as they are walked, come and go.
@@ -367,7 +381,7 @@ public partial class MainWindow
         // The last folder's build said nothing of this one.
         Bottom.Problems.ForgetBuild();
         buildRun.ShowBindings();
-        Dock[ToolWindowIds.Problems].Title = "Problems";
+        Dock[ToolWindowIds.Problems].Title = ToolWindowTitles.Problems;
         Explorer.Tree.Unloaded = next.Unloaded;
         next.CSharpChanged += (_, _) =>
         {
@@ -457,9 +471,6 @@ public partial class MainWindow
                 ListenForGodotEditors();
             }
         };
-        // Another folder's offer is not this one's.
-        GodotBanner.Say(null);
-        godotEditorOffered = false;
         ShowDotnet();
         ShowSdk();
         // The installation the new folder's projects take may be another (Dotnet.Find(folder)).
@@ -535,8 +546,10 @@ public partial class MainWindow
         agentSocket?.Describe(next.Folder);
         OnCSharpChanged(next.CSharp);
         BindPreviews(next);
+        BindDesigns(next);
         BindXamlWorkspace(next);
         BindTargetFrameworks(next);
+        BindIlViewer(next);
         BindRunTargets(next);
         BindBuildConfigurations(next);
         BindMobile(next);
@@ -559,6 +572,13 @@ public partial class MainWindow
         debugger.Breakpoints.Changed += (_, _) => ListBreakpoints();
         debugger.StateChanged += (_, _) => ListBreakpoints();
         ListBreakpoints();
+        debugger.Breakpoints.WaitsEnded += (_, ended) =>
+        {
+            if (session == next && next.Debug == debugger)
+            {
+                Say(ended.Words);
+            }
+        };
         debugger.ActionRequested += (_, action) =>
         {
             if (session == next && next.Debug == debugger)
@@ -618,6 +638,19 @@ public partial class MainWindow
     {
         if (service is not null)
         {
+            service.ReadLayersAgain = ReadLayers;
+            service.Generated.Listed += (_, listed) =>
+            {
+                if (service == session.CSharp)
+                {
+                    Explorer.Tree.ShowGenerated(listed.Project, listed.Made);
+                }
+            };
+            foreach (string project in generatedListed)
+            {
+                service.Generated.List(project);
+            }
+            service.ProjectsLoaded += (_, _) => dependencyMap?.CodeMoved();
             service.StateChanged += (_, _) => status.ShowLanguage(LanguageLabel());
             service.StateChanged += (_, _) => usages.Refresh();
             service.StateChanged += (_, _) => OutlineWhenUnseen();
@@ -630,6 +663,28 @@ public partial class MainWindow
             service.ProjectsLoaded += (_, _) => RoutesProjectsLoaded(service);
             service.StateChanged += (_, _) => StepsServerChanged(service);
             service.ProjectsLoaded += (_, _) => StepsServerChanged(service, loaded: true);
+            service.ProjectsLoaded += (_, _) =>
+            {
+                if (service == session.CSharp)
+                {
+                    signposts?.Recount();
+                }
+            };
+            // A count asked while the server could not yet answer for the file is asked again once it can.
+            service.StateChanged += (_, _) =>
+            {
+                if (service == session.CSharp && service.IsReady)
+                {
+                    signposts?.Soon();
+                }
+            };
+            service.Connected += (_, _) =>
+            {
+                if (service == session.CSharp)
+                {
+                    signposts?.Soon();
+                }
+            };
             service.StateChanged += (_, _) =>
             {
                 // Ready, as it loaded the folder's projects: the open AppHosts' resources are read from it once.
@@ -698,7 +753,7 @@ public partial class MainWindow
     }
 
     /// <summary>The want of a .NET SDK in the banner's words, or dotnet's before the machine's .NET is read.</summary>
-    private string SdkWords(MissingSdk missing) => WithoutSdk() ?? Refusals.NoSdk(missing, Folder);
+    private string SdkWords(MissingSdk missing) => (WithoutSdk() ?? Refusals.NoSdk(missing, Folder)).Shown;
 
     /// <summary>The want of a .NET SDK said in the status bar as an error, a click there opening its download page.</summary>
     private void SaySdk(MissingSdk missing)

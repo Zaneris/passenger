@@ -17,7 +17,8 @@ public class ThreeWayMergeTests
             ("a\nb", "a\n", "a\nb", "a\n"),
             ("a\nb\nc", "a\nb\nc\nd\n", "a\nb\nc", "a\nb\nc\nd\n"),
         ], row => A_change_only_one_side_made_to_the_last_line_break_is_a_change_and_taking_it_gives_that_sides_ending(row.Item1, row.Item2, row.Item3, row.Item4))),
-        ("both sides adding the last break alike is no conflict and one adding it where the other changed the line is one", Both_sides_adding_the_last_break_alike_is_no_conflict_and_one_adding_it_where_the_other_changed_the_line_is_one));
+        ("both sides adding the last break alike is no conflict and one adding it where the other changed the line is one", Both_sides_adding_the_last_break_alike_is_no_conflict_and_one_adding_it_where_the_other_changed_the_line_is_one),
+        ("resolving simply takes a letters marks as its words so a word both sides changed stays a conflict", Resolving_simply_takes_a_letters_marks_as_its_words_so_a_word_both_sides_changed_stays_a_conflict));
 
     private void A_change_only_one_side_made_to_the_last_line_break_is_a_change_and_taking_it_gives_that_sides_ending(string common, string left, string right, string merged) =>
         Assert.Equal(merged, Merged(common, left, right));
@@ -27,6 +28,15 @@ public class ThreeWayMergeTests
         Assert.DoesNotContain(Chunks("a\nb", "a\nb\n", "a\nb\n"), c => c.IsConflict);
         Assert.Contains(Chunks("a\nb", "a\nb\n", "a\nc"), c => c.IsConflict);
         Assert.Empty(Chunks("a\nb\n", "a\nb\n", "a\nb\n"));
+    }
+
+    /// <summary>Naïve written as i and a combining diaeresis: one side changing its first letter and the other its last
+    /// changed one word, which no word-by-word merge takes both of; words apart still merge.</summary>
+    private void Resolving_simply_takes_a_letters_marks_as_its_words_so_a_word_both_sides_changed_stays_a_conflict()
+    {
+        string[]? merged = ThreeWayMerge.ResolveSimply(["a nai\u0308ve plan"], ["a Nai\u0308ve plan"], ["a nai\u0308vE plan"]);
+        Assert.True(merged is null, $"Both sides' changes to naïve were merged word by word into '{(merged is null ? null : string.Join('\n', merged))}', splitting the word at its diaeresis");
+        Assert.Equal(["A nai\u0308ve plaN"], ThreeWayMerge.ResolveSimply(["a nai\u0308ve plan"], ["A nai\u0308ve plan"], ["a nai\u0308ve plaN"]) ?? []);
     }
 
     private static IReadOnlyList<MergeChunk> Chunks(string common, string left, string right) =>

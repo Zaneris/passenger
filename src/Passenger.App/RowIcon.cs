@@ -7,9 +7,10 @@ using Passenger.Editor;
 
 namespace Passenger.App;
 
-/// <summary>A row's icon as one control, drawn pixel for pixel as a PathIcon of its size draws it: a list styles a row
-/// it brings back into view again whole, and a PathIcon is five styled controls. Its geometry is stretched to the size
-/// it measures at, rounded up, then fitted into the box, centred and clipped to the fit, as the PathIcon's Viewbox does.
+/// <summary>An icon as one control, drawn pixel for pixel as Avalonia's own PathIcon (a Path in a Viewbox) of its size draws
+/// it: a list styles a row it brings back into view again whole, and that PathIcon is five styled controls, so every
+/// PathIcon is drawn by one of these (ControlThemes.axaml). Its geometry is stretched to the size it measures at, rounded
+/// up, then fitted into the box, centred and clipped to the fit, as the PathIcon's Viewbox does.
 /// Its size is one of two, never one of its own: <see cref="Size"/>, an icon beside words (a row's, a tab's), or
 /// <see cref="GlyphSize"/>, a glyph (<see cref="Glyph"/>: a chevron, a tab's close). Its brush is the theme's icon colour
 /// unless given, by <see cref="Foreground"/> or a theme key (<see cref="ForegroundKey"/>), its geometry <see cref="Data"/> or a key's.</summary>
@@ -94,12 +95,14 @@ public sealed class RowIcon : Control
         {
             return;
         }
-        Draw(context, data, brush, Bounds.Size, LayoutHelper.ApplyLayoutConstraints(this, Bounds.Size), Turned, LayoutHelper.GetLayoutScale(this));
+        Draw(context, data, brush, IconLook.Of(this, ActualThemeVariant), Bounds.Size, LayoutHelper.ApplyLayoutConstraints(this, Bounds.Size), Turned, LayoutHelper.GetLayoutScale(this));
     }
 
     /// <summary>Draws a geometry as a PathIcon arranged at <paramref name="bounds"/>, of size <paramref name="box"/>, draws
-    /// it, turned a quarter about its middle as one under a RotateTransform of 90 about its centre is.</summary>
-    internal static void Draw(DrawingContext context, Geometry data, IBrush? brush, Size bounds, Size box, bool turned, double scale)
+    /// it, turned a quarter about its middle as one under a RotateTransform of 90 about its centre is, its colours as the
+    /// theme's look of its icons draws them, and an icon a theme gives as an SVG fitted to the same place: the one place
+    /// every icon is drawn.</summary>
+    internal static void Draw(DrawingContext context, Geometry data, IBrush? brush, IconLook look, Size bounds, Size box, bool turned, double scale)
     {
         Rect extent = data.Bounds;
         if (extent.Width <= 0 || extent.Height <= 0)
@@ -114,18 +117,23 @@ public sealed class RowIcon : Control
         Vector fit = Stretch.Uniform.CalculateScaling(box, path, StretchDirection.Both);
         Size shown = new Size(path.Width * fit.X, path.Height * fit.Y).Constrain(box);
         Point at = LayoutHelper.RoundLayoutPoint(new Point((available.Width - shown.Width) / 2, (available.Height - shown.Height) / 2), scale);
+        Matrix turn = turned ? Turn(bounds) : Matrix.Identity;
+        // The clip pushed before the turn, so it stands square to the device's pixels.
+        using DrawingContext.PushedState clipped = context.PushClip(Whole(new Rect(shown).TransformToAABB(Matrix.CreateTranslation(at.X, at.Y) * turn), scale));
+        using DrawingContext.PushedState turning = context.PushTransform(turn);
+        if (data is IconPicture picture)
+        {
+            picture.Draw(context, new Rect(at, shown), brush, look);
+            return;
+        }
         // The path arranged at its measure, rounded up, its geometry stretched to fill it.
         Size arranged = LayoutHelper.RoundLayoutSizeUp(LayoutHelper.RoundLayoutSizeUp(path, scale), scale);
         double stretch = Math.Min(arranged.Width / extent.Width, arranged.Height / extent.Height);
         Geometry drawn = StretchedOf(data, Matrix.CreateTranslation(-(Vector)extent.Position) * Matrix.CreateScale(stretch, stretch));
-        Matrix turn = turned ? Turn(bounds) : Matrix.Identity;
-        // The clip pushed before the turn, so it stands square to the device's pixels.
-        using (context.PushClip(Whole(new Rect(shown).TransformToAABB(Matrix.CreateTranslation(at.X, at.Y) * turn), scale)))
-        using (context.PushTransform(turn))
         using (context.PushTransform(Matrix.CreateTranslation(at.X, at.Y)))
         using (context.PushTransform(Matrix.CreateScale(fit.X, fit.Y)))
         {
-            context.DrawGeometry(brush, null, drawn);
+            context.DrawGeometry(look.Apply(brush), null, drawn);
         }
     }
 

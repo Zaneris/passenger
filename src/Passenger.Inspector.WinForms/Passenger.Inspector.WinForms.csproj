@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Passenger's inspector inside a Windows Forms app it runs or debugs (the Live Visual Tree, an agent's app tools): the
+       runtime loads it as a startup hook (DOTNET_STARTUP_HOOKS) into a run Passenger launches, never into the app as built or
+       shipped, and it answers over the socket Passenger names, on the app's UI thread (Protocol.cs). Built on every system
+       (EnableWindowsTargeting), so a change that breaks it fails every build, and carried under inspector/winforms/ only by
+       Passenger's Windows builds, where Windows Forms runs. -->
+  <PropertyGroup>
+    <!-- The oldest .NET a Windows Forms app Passenger runs is on (CoreCLR alone), so it loads into any of them. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Passenger.Inspector.WinForms</RootNamespace>
+    <Optimize>false</Optimize>
+    <!-- PathNames asks Windows for a file's own name into a buffer it fixes, and a window's title is read into one. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows Forms' implicit usings name a Timer and a Point beside the linked files' own: each file here names its own. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- What Passenger and its inspectors say to each other, and the app's end of the socket, one definition for all. -->
+    <Compile Include="../Passenger.Inspector/Protocol.cs" Link="Protocol.cs" />
+    <Compile Include="../Passenger.Inspector/Connection.cs" Link="Connection.cs" />
+    <Compile Include="../Passenger.Core/JsonLines.cs" Link="JsonLines.cs" />
+    <Compile Include="../Passenger.Core/ApartThreads.cs" Link="ApartThreads.cs" />
+    <!-- The system's command key, which an agent's primary holds. -->
+    <Compile Include="../Passenger.Core/CommandKey.cs" Link="CommandKey.cs" />
+    <!-- The serve loop, the request switch and the words every inspector answers in. -->
+    <Compile Include="../Passenger.Inspector/Serving.cs" Link="Serving.cs" />
+    <!-- The app's tree made into the wire's and walked, with stacks of their own, as every inspector walks it. -->
+    <Compile Include="../Passenger.Inspector/ElementTrees.cs" Link="ElementTrees.cs" />
+    <!-- The runtime's variables, and the startup hooks' rule (this hook first, taken out as it starts, out of the process's
+         own environment too), as Passenger names them. -->
+    <Compile Include="../Passenger.Core/RuntimeVariables.cs" Link="RuntimeVariables.cs" />
+    <Compile Include="../Passenger.Core/StartupHooks.cs" Link="StartupHooks.cs" />
+    <Compile Include="../Passenger.Core/OwnEnvironment.cs" Link="OwnEnvironment.cs" />
+    <Compile Include="../Passenger.Core/PathNames.cs" Link="PathNames.cs" />
+    <Compile Include="../Passenger.Core/Kernel32.cs" Link="Kernel32.cs" />
+    <!-- How PathNames tells a link apart as a walk meets one, as the rest of Passenger does. -->
+    <Compile Include="../Passenger.Core/FileLinks.cs" Link="FileLinks.cs" />
+    <Compile Include="../Passenger.Core/PathComparer.cs" Link="PathComparer.cs" />
+    <!-- A socket's path checked against what a Unix socket's address holds, as Passenger checks the paths it makes. -->
+    <Compile Include="../Passenger.Core/SocketFolders.Limit.cs" Link="SocketFolders.Limit.cs" />
+    <!-- A wait's limit on the clock that stops while the machine sleeps, as Passenger's own waits keep one. -->
+    <Compile Include="../Passenger.Core/Deadline.cs" Link="Deadline.cs" />
+    <!-- When a wait for the app to set itself up looks again, as every inspector looks. -->
+    <Compile Include="../Passenger.Inspector/Looking.cs" Link="Looking.cs" />
+    <!-- Designer code read as the designer reads it and run as the designer runs it, so a form's designer edit reaches the app
+         as it reaches the design (Hot Reload). -->
+    <Compile Include="../Passenger.Core/FormDesign.cs" Link="FormDesign.cs" />
+    <Compile Include="../Passenger.WinFormsDesigner/Types.cs" Link="Types.cs" />
+    <Compile Include="../Passenger.WinFormsDesigner/Values.cs" Link="Values.cs" />
+    <Compile Include="../Passenger.WinFormsDesigner/Statements.cs" Link="Statements.cs" />
+  </ItemGroup>
+</Project>

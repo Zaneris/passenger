@@ -23,8 +23,9 @@ public static class OutboundHttp
     /// <summary>A client, to keep for the process, whose requests give up after <paramref name="timeout"/> (infinite where
     /// the caller holds its own) and whose answers read whole may be <paramref name="most"/> bytes at most; with
     /// <paramref name="anyCertificate"/>, one that takes a server's certificate unchecked, as a package feed's configuration
-    /// may ask; without <paramref name="followsRedirects"/>, one handing a redirect to its caller to judge.</summary>
-    public static HttpClient Client(TimeSpan timeout, long most, bool anyCertificate = false, bool followsRedirects = true)
+    /// may ask; without <paramref name="followsRedirects"/>, one handing a redirect to its caller to judge; with
+    /// <paramref name="to"/>, one sending each request to the address it gives (a stand-in's in place of a host's).</summary>
+    public static HttpClient Client(TimeSpan timeout, long most, bool anyCertificate = false, bool followsRedirects = true, Func<Uri, Uri>? to = null)
     {
         SocketsHttpHandler handler = new()
         {
@@ -39,7 +40,17 @@ public static class OutboundHttp
         {
             handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
         }
-        return new HttpClient(handler) { Timeout = timeout, MaxResponseContentBufferSize = most };
+        return new HttpClient(to is null ? handler : new Rerouted(handler, to)) { Timeout = timeout, MaxResponseContentBufferSize = most };
+    }
+
+    /// <summary>Sends each request to the address a function gives for it.</summary>
+    private sealed class Rerouted(HttpMessageHandler inner, Func<Uri, Uri> to) : DelegatingHandler(inner)
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.RequestUri = to(request.RequestUri!);
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     /// <summary>A request carrying Passenger's User-Agent (some hosts, GitHub's API among them, refuse one without).</summary>

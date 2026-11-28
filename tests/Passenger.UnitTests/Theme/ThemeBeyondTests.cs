@@ -5,9 +5,9 @@ using Passenger.App;
 namespace Passenger.UnitTests.Theme;
 
 /// <summary>A theme's members beyond its tokens, as read: its background picture for each variant (its file, opacity, tint,
-/// places, fit and alignment, and a variant's own), its fonts, and the code's tokens for a language over its own, in themes
-/// and code colour schemes; each refusal, which takes the whole file; and a picture's kind and size read from its header
-/// alone, refused past its bounds before anything decodes it.</summary>
+/// places, fit and alignment, and a variant's own), its fonts, the code's tokens for a language over its own, in themes
+/// and code colour schemes, and the carried theme it is laid over; each refusal, which takes the whole file; and a picture's
+/// kind and size read from its header alone, refused past its bounds before anything decodes it.</summary>
 public class ThemeBeyondTests
 {
     private static readonly Dictionary<string, ThemeTokenKind> Tokens = new(StringComparer.Ordinal)
@@ -43,6 +43,10 @@ public class ThemeBeyondTests
         ("fonts give the codes family and size and the windows family", Fonts_give_the_codes_family_and_size_and_the_windows_family),
         ("a language gives the codes tokens for both variants and for each and one this Passenger does not know is passed over", A_language_gives_the_codes_tokens_for_both_variants_and_for_each_and_one_this_Passenger_does_not_know_is_passed_over),
         ("a code colour scheme gives languages but no background or fonts which it passes over", A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over),
+        ("a theme names a carried theme as its base and laid over it keeps all the base gives that it does not", A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not),
+        ("an icons saturation brightness and tint work on its colour as CSSs filters do keeping its alpha", An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha),
+        ("a theme gives its own icons by key beside its file the same in both variants or each its own and laid over a base keeps the bases others", A_theme_gives_its_own_icons_by_key_beside_its_file_the_same_in_both_variants_or_each_its_own_and_laid_over_a_base_keeps_the_bases_others),
+        ("a theme names a vs code file icon theme by its extension or beside its file for both variants or each and laid over a base keeps the bases", A_theme_names_a_vs_code_file_icon_theme_by_its_extension_or_beside_its_file_for_both_variants_or_each_and_laid_over_a_base_keeps_the_bases),
         ("a picture is read beside its themes file in the source", () => Cases.Each<(string, string, string)>(
         [
             ("Dusk/theme.json", "dusk.webp", "Dusk/dusk.webp"),
@@ -100,6 +104,23 @@ public class ThemeBeyondTests
             ("\"languages\": {\"csharp\": {\"tokens\": {\"Syntax.Keyword\": \"#000000\"}, \"dark\": {\"Syntax.Keyword\": \"#111111\"}}}", "in tokens and in dark of languages' csharp"),
             ("\"languages\": [\"csharp\"]", "gives languages as"),
         ], row => A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(row.Item1, row.Item2))),
+        ("a base Passenger does not carry refuses the theme", () => Cases.Each<(string, string)>(
+        [
+            ("\"base\": \"Harbour\"", "(Harbour is in Passenger's themes repository, not carried): a base is a theme Passenger carries, \"Passenger\", \"Cubicle\" or \"High Contrast\""),
+            ("\"base\": \"cubicle\"", "gives base as \"cubicle\": a base is a theme Passenger carries"),
+            ("\"base\": [\"Cubicle\"]", "gives base as"),
+            ("\"base\": \"Cubicle\", \"vscode\": {\"file\": \"dark.json\"}", "gives both base and vscode"),
+        ], row => A_base_Passenger_does_not_carry_refuses_the_theme(row.Item1, row.Item2))),
+        ("an icon that is no SVG beside the themes file or an icon theme that names no extension or file beside it refuses the theme and one that does not read as an SVG is refused as its theme is fetched", () => Cases.Each<(string, string)>(
+        [
+            ("\"icons\": {\"Icon.Lantern\": \"run.png\"}", "gives icons' Icon.Lantern as \"run.png\": an icon is an SVG beside the theme's file"),
+            ("\"icons\": {\"Icon.Lantern\": \"../run.svg\"}", "an icon is an SVG beside the theme's file"),
+            ("\"icons\": {\"Icon.Lantern\": {\"dark\": 3}}", "gives icons' Icon.Lantern under dark as 3"),
+            ("\"icons\": [\"run.svg\"]", "gives icons as"),
+            ("\"iconTheme\": \"Catppuccin Mocha\"", "gives iconTheme as \"Catppuccin Mocha\": iconTheme is {\"id\": \"publisher.extension\", \"theme\": \"its label\"}"),
+            ("\"iconTheme\": {\"file\": \"../icons.json\"}", "gives iconTheme's file as \"../icons.json\": it is a VS Code file icon theme's JSON beside the theme's file"),
+            ("\"iconTheme\": {\"dark\": {\"id\": \"catppuccin\", \"theme\": \"Mocha\"}}", "gives iconTheme's dark's id as \"catppuccin\": it is an extension's Open VSX id"),
+        ], row => An_icon_that_is_no_SVG_beside_the_themes_file_refuses_the_theme(row.Item1, row.Item2))),
         ("a pictures kind and size come from its header as PNG JPEG and each kind of WebP write them", A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them),
         ("a picture larger than a background may be is refused before anything decodes it", A_picture_larger_than_a_background_may_be_is_refused_before_anything_decodes_it));
 
@@ -142,6 +163,8 @@ public class ThemeBeyondTests
     private void A_language_whose_tokens_are_not_the_codes_or_of_the_wrong_kind_refuses_the_theme(string members, string why) =>
         Assert.Contains(why, Refused(members), StringComparison.Ordinal);
 
+    private void A_base_Passenger_does_not_carry_refuses_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
+
     private void A_code_colour_scheme_gives_languages_but_no_background_or_fonts_which_it_passes_over()
     {
         ThemeRead<ThemeFile> read = ThemeFiles.ReadCodeColours("Code.json", Encoding.UTF8.GetBytes("""
@@ -151,6 +174,91 @@ public class ThemeBeyondTests
         Assert.Null(read.Read.DarkBackground);
         Assert.Equal(ThemeFonts.None, read.Read.Fonts);
         Assert.Equal(2, read.Problems.Count);
+    }
+
+    private void A_theme_names_a_carried_theme_as_its_base_and_laid_over_it_keeps_all_the_base_gives_that_it_does_not()
+    {
+        ThemeFile under = Read("""
+            "tokens": {"Frame": "#101010"}, "dark": {"Syntax.Keyword": "#202020"}, "fonts": {"code": {"family": "Fira Code", "size": 12}},
+            "background": {"image": "under.png"}, "languages": {"csharp": {"tokens": {"Syntax.Keyword": "#303030"}}, "json": {"dark": {"Syntax.Keyword": "#404040"}}}
+            """);
+        ThemeFile over = Read("""
+            "base": "Cubicle", "light": {"Frame": "#EEEEEE"}, "fonts": {"window": {"family": "Inter"}},
+            "languages": {"csharp": {"dark": {"Syntax.Keyword": "#505050"}}}
+            """);
+        Assert.Equal("Cubicle", over.BuiltInBase);
+        Assert.Null(Read("""
+            "base": "Passenger"
+            """).BuiltInBase);
+        ThemeFile laid = ThemeFiles.Over(under, over);
+        Assert.Equal(new ColourValue(0xFF101010, 1), laid.Dark["Frame"]);
+        Assert.Equal(new ColourValue(0xFFEEEEEE, 1), laid.Light["Frame"]);
+        Assert.Equal(new ColourValue(0xFF202020, 1), laid.Dark["Syntax.Keyword"]);
+        Assert.Equal(new ThemeFonts("Fira Code", 12, "Inter"), laid.Fonts);
+        Assert.Equal("under.png", laid.DarkBackground?.Image);
+        Assert.Equal(new ColourValue(0xFF505050, 1), laid.Languages["csharp"].Dark["Syntax.Keyword"]);
+        Assert.Equal(new ColourValue(0xFF303030, 1), laid.Languages["csharp"].Light["Syntax.Keyword"]);
+        Assert.Equal(new ColourValue(0xFF404040, 1), laid.Languages["json"].Dark["Syntax.Keyword"]);
+        Assert.True(ThemeFiles.CodeOf(laid) is { Both.Count: 0 } code && code.Dark.ContainsKey("Syntax.Keyword") && !code.Dark.ContainsKey("Frame"),
+            "A code colour scheme over a carried theme takes more than the theme's code");
+    }
+
+    private void A_theme_gives_its_own_icons_by_key_beside_its_file_the_same_in_both_variants_or_each_its_own_and_laid_over_a_base_keeps_the_bases_others()
+    {
+        ThemeRead<ThemeFile> read = Theme("""
+            "icons": {"FileIcon.CSharp": "icons/cs.svg", "Icon.Lantern": {"dark": "icons/lantern-dark.svg", "light": "icons/lantern-light.svg"},
+                      "Icon.Kettle": {"light": "icons/kettle.svg"}, "Wand": "icons/wand.svg"}
+            """);
+        ThemeFile own = read.Read!;
+        Assert.Equal(new Dictionary<string, string> { ["FileIcon.CSharp"] = "icons/cs.svg", ["Icon.Lantern"] = "icons/lantern-dark.svg" }, own.DarkIcons);
+        Assert.Equal(new Dictionary<string, string> { ["FileIcon.CSharp"] = "icons/cs.svg", ["Icon.Lantern"] = "icons/lantern-light.svg", ["Icon.Kettle"] = "icons/kettle.svg" }, own.LightIcons);
+        Assert.Equal(["icons/cs.svg", "icons/kettle.svg", "icons/lantern-dark.svg", "icons/lantern-light.svg"], own.IconFiles.Order(StringComparer.Ordinal));
+        Assert.Equal(["Mine.json: Wand in icons is no icon this Passenger draws, so it was passed over"], read.Problems);
+        ThemeFile under = Read("""
+            "icons": {"FileIcon.CSharp": "base/cs.svg", "FileIcon.Npm": "base/npm.svg"}
+            """);
+        ThemeFile laid = ThemeFiles.Over(under, own);
+        Assert.Equal("icons/cs.svg", laid.DarkIcons["FileIcon.CSharp"]);
+        Assert.Equal("base/npm.svg", laid.LightIcons["FileIcon.Npm"]);
+        Assert.Null(ThemeImages.IconWhyNot("cs.svg", Encoding.UTF8.GetBytes("""<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>""")));
+        Assert.Equal("cs.svg is no SVG: its first element is <html>", ThemeImages.IconWhyNot("cs.svg", Encoding.UTF8.GetBytes("<html></html>")));
+        Assert.Contains("more than the 256 KB an icon may hold", ThemeImages.IconWhyNot("big.svg", new byte[300_000]), StringComparison.Ordinal);
+    }
+
+    private void An_icon_that_is_no_SVG_beside_the_themes_file_refuses_the_theme(string members, string why) => Assert.Contains(why, Refused(members), StringComparison.Ordinal);
+
+    private void A_theme_names_a_vs_code_file_icon_theme_by_its_extension_or_beside_its_file_for_both_variants_or_each_and_laid_over_a_base_keeps_the_bases()
+    {
+        VsCodeBase mocha = new("Catppuccin.catppuccin-vsc-icons", "Catppuccin Mocha", "1.26.0");
+        ThemeFile both = Read("""
+            "iconTheme": {"id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha", "version": "1.26.0"}
+            """);
+        Assert.Equal((mocha, mocha), (both.DarkIconTheme, both.LightIconTheme));
+        Assert.Equal([mocha], both.IconThemes);
+        ThemeRead<ThemeFile> each = Theme("""
+            "iconTheme": {"dark": {"file": "icons/night.json"}, "light": {"id": "Catppuccin.catppuccin-vsc-icons", "theme": "catppuccin-latte"}, "dim": {}}
+            """);
+        Assert.Equal((new VsCodeBase(null, null, null, "icons/night.json"), new VsCodeBase("Catppuccin.catppuccin-vsc-icons", "catppuccin-latte", null)),
+            (each.Read!.DarkIconTheme, each.Read.LightIconTheme));
+        Assert.Contains(each.Problems, p => p.Contains("dim", StringComparison.Ordinal));
+        ThemeFile laid = ThemeFiles.Over(both, Read("""
+            "iconTheme": {"dark": {"file": "icons/night.json"}}
+            """));
+        Assert.Equal((new VsCodeBase(null, null, null, "icons/night.json"), mocha), (laid.DarkIconTheme, laid.LightIconTheme));
+        Assert.Null(Read("""
+            "description": "Passenger's icons."
+            """).DarkIconTheme);
+    }
+
+    private void An_icons_saturation_brightness_and_tint_work_on_its_colour_as_CSSs_filters_do_keeping_its_alpha()
+    {
+        Assert.Equal(0x80FF0000u, IconLook.AsDrawn.Apply(0x80FF0000));
+        Assert.Equal(0xFF363636u, new IconLook(0, 1, 0).Apply(0xFFFF0000));
+        Assert.Equal(0xFF404040u, new IconLook(1, 0.5, 0).Apply(0xFF808080));
+        Assert.Equal(0xC0800000u, new IconLook(1, 1, 0x80FF0000).Apply(0xC0000000));
+        Assert.Equal(0xFFFF0000u, new IconLook(3, 1, 0).Apply(0xFFFF4040));
+        // Saturation first, then brightness, then the tint, each clamped: a grey halved, then washed a quarter toward white.
+        Assert.Equal(0xFF545454u, new IconLook(0, 0.5, 0x40FFFFFF).Apply(0xFFFF0000));
     }
 
     private void A_pictures_kind_and_size_come_from_its_header_as_PNG_JPEG_and_each_kind_of_WebP_write_them()

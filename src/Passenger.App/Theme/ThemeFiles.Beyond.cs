@@ -59,8 +59,8 @@ public sealed record ThemeFonts(string? CodeFamily, double? CodeSize, string? Wi
 public sealed record LanguageColours(IReadOnlyDictionary<string, TokenValue> Both, IReadOnlyDictionary<string, TokenValue> Dark,
     IReadOnlyDictionary<string, TokenValue> Light);
 
-/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c>, <c>layout</c> and <c>vscode</c>
-/// (docs/themes.md).</summary>
+/// <summary>A theme's members beyond its tokens: <c>fonts</c>, <c>background</c>, <c>languages</c>, <c>layout</c>, <c>icons</c>,
+/// <c>iconTheme</c>, and its base, <c>vscode</c> or <c>base</c> (docs/themes.md).</summary>
 public static partial class ThemeFiles
 {
     /// <summary>The most of a background picture that shows: every glyph keeps at least the rest of its difference from its
@@ -82,15 +82,22 @@ public static partial class ThemeFiles
     /// <summary>The largest size of the code's font, in points.</summary>
     public const double MostFontSize = 48;
 
+    /// <summary>The most an icon's SVG may hold.</summary>
+    public const int MostIconBytes = 256 * 1024;
+
     private const double OwnOpacity = 0.15;
     private const int LongestLanguage = 40;
 
-    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", Member.VsCode];
+    private static readonly string[] Beyond = ["fonts", "background", "languages", "layout", "icons", Member.IconTheme, Member.VsCode, Member.Base];
     private static readonly string[] PictureTypes = [".png", ".jpg", ".jpeg", ".webp"];
     private static readonly (string Word, BackgroundPlaces Place)[] PlaceWords =
         [("editor", BackgroundPlaces.Editor), ("toolWindows", BackgroundPlaces.ToolWindows), ("frame", BackgroundPlaces.Frame), ("welcome", BackgroundPlaces.Welcome)];
     private static readonly (string Word, BackgroundFit Fit)[] FitWords =
         [("cover", BackgroundFit.Cover), ("contain", BackgroundFit.Contain), ("tile", BackgroundFit.Tile), ("centre", BackgroundFit.Centre)];
+
+    /// <summary>The keys of the icons a theme may give in Passenger's place, as the App's icon sets name them; a key outside
+    /// them is passed over and named. Empty, any key shaped as one (<c>Icon.Run</c>, <c>FileIcon.CSharp</c>) is taken.</summary>
+    public static IReadOnlySet<string> IconNames { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>The language ids a theme may give the code's colours for, as the App's languages name them; a language
     /// outside them is passed over and named. Empty, any id is taken.</summary>
@@ -253,6 +260,50 @@ public static partial class ThemeFiles
         return (x ?? 0.5, y ?? 0.5);
     }
 
+    /// <summary>The icons a theme gives in Passenger's place under Dark and under Light, each key's SVG beside the theme's
+    /// file, the same under both or <c>{"dark": …, "light": …}</c>, either of which may be left out.</summary>
+    private static (Dictionary<string, string>? Dark, Dictionary<string, string>? Light) Icons(string file, JsonElement? icons, List<string> problems)
+    {
+        if (icons is null)
+        {
+            return (null, null);
+        }
+        if (icons.Value.ValueKind != JsonValueKind.Object || icons.Value.EnumerateObject().Count() > MostEntries)
+        {
+            throw new FormatException($"gives icons as {ThemeJson.Shown(icons.Value)}: icons is an object of an icon's key (\"FileIcon.CSharp\", \"Icon.Run\") and its SVG "
+                + $"beside the theme's file, at most {Numbers.Said(MostEntries)}");
+        }
+        Dictionary<string, string> dark = new(StringComparer.Ordinal);
+        Dictionary<string, string> light = new(StringComparer.Ordinal);
+        foreach (JsonProperty icon in icons.Value.EnumerateObject())
+        {
+            if (!(IconNames.Count == 0 ? IconKey().IsMatch(icon.Name) : IconNames.Contains(icon.Name)))
+            {
+                problems.Add($"{file}: {icon.Name} in icons is no icon this Passenger draws, so it was passed over");
+                continue;
+            }
+            if (icon.Value.ValueKind == JsonValueKind.Object)
+            {
+                PassOver(file, icon.Value, ["dark", "light"], $"icons' {icon.Name}", problems);
+                foreach ((string variant, Dictionary<string, string> into) in ((string, Dictionary<string, string>)[])[("dark", dark), ("light", light)])
+                {
+                    if (JsonMembers.Value(icon.Value, variant) is { } given)
+                    {
+                        into[icon.Name] = Svg(icon.Name, $" under {variant}", given);
+                    }
+                }
+                continue;
+            }
+            dark[icon.Name] = light[icon.Name] = Svg(icon.Name, string.Empty, icon.Value);
+        }
+        return (dark, light);
+
+        static string Svg(string key, string variant, JsonElement value) =>
+            value.ValueKind == JsonValueKind.String && Inside(value.GetString()!, [".svg"]) ? value.GetString()!
+            : throw new FormatException($"gives icons' {key}{variant} as {ThemeJson.Shown(value)}: an icon is an SVG beside the theme's file, its folders joined by /, "
+                + "with no .., ending .svg, or {\"dark\": …, \"light\": …}");
+    }
+
     private static Dictionary<string, LanguageColours> Languages(string file, JsonElement? languages, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool plain,
         List<string> problems)
     {
@@ -283,7 +334,51 @@ public static partial class ThemeFiles
         return read;
     }
 
-    private static VsCodeBase? Base(string file, JsonElement? named, List<string> problems)
+    /// <summary>The theme Passenger carries a file names as its <c>base</c>, or null where it names none or Passenger's own,
+    /// which is under every theme; refused where it names another or a VS Code theme too.</summary>
+    private static string? BuiltInBase(JsonElement root)
+    {
+        if (JsonMembers.Value(root, Member.Base) is not { } named)
+        {
+            return null;
+        }
+        string[] carried = [ThemeSource.Own, .. ThemeSource.Carried];
+        string? name = named.ValueKind == JsonValueKind.String ? named.GetString() : null;
+        if (name is null || !carried.Contains(name, StringComparer.Ordinal))
+        {
+            string moved = name is not null && ThemeSource.FormerlyCarried.Contains(name, StringComparer.Ordinal) ? $" ({name} is in Passenger's themes repository, not carried)" : string.Empty;
+            throw new FormatException($"gives base as {ThemeJson.Shown(named)}{moved}: a base is a theme Passenger carries, {Listed(carried)}");
+        }
+        if (JsonMembers.Value(root, Member.VsCode) is not null)
+        {
+            throw new FormatException("gives both base and vscode: a theme is laid over one base, Passenger's or a VS Code theme");
+        }
+        return name == ThemeSource.Own ? null : name;
+    }
+
+    private static VsCodeBase? Base(string file, JsonElement? named, List<string> problems) =>
+        Extension(file, named, Member.VsCode, "a VS Code theme's JSON", problems);
+
+    /// <summary>The VS Code file icon theme a theme draws its files and folders with under Dark and under Light: one for both,
+    /// or <c>{"dark": …, "light": …}</c>, either of which may be left out.</summary>
+    private static (VsCodeBase? Dark, VsCodeBase? Light) IconTheme(string file, JsonElement? named, List<string> problems)
+    {
+        if (named is { ValueKind: JsonValueKind.Object } given && (JsonMembers.Value(given, "dark") is not null || JsonMembers.Value(given, "light") is not null))
+        {
+            PassOver(file, given, ["dark", "light"], Member.IconTheme, problems);
+            return (IconThemeOf("dark"), IconThemeOf("light"));
+        }
+        VsCodeBase? both = IconThemeOf(null);
+        return (both, both);
+
+        VsCodeBase? IconThemeOf(string? variant) =>
+            Extension(file, variant is null ? named : JsonMembers.Value(named!.Value, variant), variant is null ? Member.IconTheme : $"{Member.IconTheme}'s {variant}",
+                "a VS Code file icon theme's JSON", problems);
+    }
+
+    /// <summary>A VS Code extension's theme a theme names under <paramref name="member"/>: by its extension's Open VSX id, its
+    /// label (an icon theme's id too) and the version pinned, or by its JSON's file beside the theme's.</summary>
+    private static VsCodeBase? Extension(string file, JsonElement? named, string member, string json, List<string> problems)
     {
         if (named is null)
         {
@@ -291,15 +386,15 @@ public static partial class ThemeFiles
         }
         if (named.Value.ValueKind != JsonValueKind.Object)
         {
-            throw new FormatException($"gives vscode as {ThemeJson.Shown(named.Value)}: vscode is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional, "
-                + "or {\"file\": \"a VS Code theme's JSON beside the theme's\"}");
+            throw new FormatException($"gives {member} as {ThemeJson.Shown(named.Value)}: {member} is {{\"id\": \"publisher.extension\", \"theme\": \"its label\"}}, its version optional, "
+                + $"or {{\"file\": \"{json} beside the theme's\"}}");
         }
-        PassOver(file, named.Value, [Member.Id, Member.Theme, Member.Version, Member.File], Member.VsCode, problems);
+        PassOver(file, named.Value, [Member.Id, Member.Theme, Member.Version, Member.File], member, problems);
         if (JsonMembers.Value(named.Value, Member.File) is { } beside)
         {
             if (beside.ValueKind != JsonValueKind.String || !Inside(beside.GetString()!, [".json"]) || JsonMembers.Value(named.Value, Member.Id) is not null)
             {
-                throw new FormatException($"gives vscode's file as {ThemeJson.Shown(beside)}: it is a VS Code theme's JSON beside the theme's file, its folders joined by /, "
+                throw new FormatException($"gives {member}'s file as {ThemeJson.Shown(beside)}: it is {json} beside the theme's file, its folders joined by /, "
                     + "with no .., ending .json, given instead of an id");
             }
             return new VsCodeBase(null, null, null, beside.GetString());
@@ -307,13 +402,13 @@ public static partial class ThemeFiles
         string id = Words(named.Value, Member.Id, LongestName * 4, needed: true);
         if (!ExtensionId().IsMatch(id))
         {
-            throw new FormatException($"gives vscode's id as \"{id}\": it is an extension's Open VSX id, publisher.extension");
+            throw new FormatException($"gives {member}'s id as \"{id}\": it is an extension's Open VSX id, publisher.extension");
         }
         string theme = Words(named.Value, Member.Theme, LongestName * 2, needed: true);
         string? version = JsonMembers.Value(named.Value, Member.Version) is null ? null : Words(named.Value, Member.Version, LongestName, needed: true);
         if (version is not null && !IsVersion(version))
         {
-            throw new FormatException($"gives vscode's version as \"{version}\": it is the extension's version, as 2.25.1");
+            throw new FormatException($"gives {member}'s version as \"{version}\": it is the extension's version, as 2.25.1");
         }
         return new VsCodeBase(id, theme, version);
     }
@@ -385,24 +480,71 @@ public static partial class ThemeFiles
         public const string Theme = "theme";
         public const string Version = "version";
         public const string File = "file";
+        public const string Base = "base";
+        public const string IconTheme = "iconTheme";
     }
 
-    /// <summary>A theme laid over another, as over its VS Code base: the one under giving every token the one over leaves
-    /// out, the one over its name, words, tokens, fonts, pictures, languages and layout; a token the one over gives one
-    /// variant alone keeps the one under's value for the other.</summary>
+    /// <summary>A theme laid over another, as over its base: the one under giving every token the one over leaves out, and
+    /// its fonts, pictures, layout, languages' tokens and icons where the one over gives none; the one over its name, words
+    /// and what it gives; a token the one over gives one variant alone keeps the one under's value for the other.</summary>
     public static ThemeFile Over(ThemeFile under, ThemeFile over)
     {
-        Dictionary<string, TokenValue> both = new(under.Both, StringComparer.Ordinal);
-        Dictionary<string, TokenValue> dark = new(under.Dark, StringComparer.Ordinal);
-        Dictionary<string, TokenValue> light = new(under.Light, StringComparer.Ordinal);
-        foreach ((string token, TokenValue value) in over.Both)
+        (Dictionary<string, TokenValue> both, Dictionary<string, TokenValue> dark, Dictionary<string, TokenValue> light) =
+            Laid(under.Both, under.Dark, under.Light, over.Both, over.Dark, over.Light);
+        Dictionary<string, LanguageColours> languages = new(under.Languages, StringComparer.Ordinal);
+        foreach ((string language, LanguageColours given) in over.Languages)
+        {
+            (Dictionary<string, TokenValue> Both, Dictionary<string, TokenValue> Dark, Dictionary<string, TokenValue> Light) laid = languages.TryGetValue(language, out LanguageColours? beneath)
+                ? Laid(beneath.Both, beneath.Dark, beneath.Light, given.Both, given.Dark, given.Light)
+                : (new(given.Both, StringComparer.Ordinal), new(given.Dark, StringComparer.Ordinal), new(given.Light, StringComparer.Ordinal));
+            languages[language] = new LanguageColours(laid.Both, laid.Dark, laid.Light);
+        }
+        bool pictured = over.DarkBackground is not null || over.LightBackground is not null;
+        return over with
+        {
+            Both = both,
+            Dark = dark,
+            Light = light,
+            Shows = under.Shows,
+            Fonts = new ThemeFonts(over.Fonts.CodeFamily ?? under.Fonts.CodeFamily, over.Fonts.CodeSize ?? under.Fonts.CodeSize, over.Fonts.WindowFamily ?? under.Fonts.WindowFamily),
+            DarkBackground = pictured ? over.DarkBackground : under.DarkBackground,
+            LightBackground = pictured ? over.LightBackground : under.LightBackground,
+            Languages = languages,
+            Layout = over.Layout ?? under.Layout,
+            DarkIcons = Merged(under.DarkIcons, over.DarkIcons),
+            LightIcons = Merged(under.LightIcons, over.LightIcons),
+            DarkIconTheme = over.DarkIconTheme ?? under.DarkIconTheme,
+            LightIconTheme = over.LightIconTheme ?? under.LightIconTheme,
+        };
+
+        static Dictionary<string, string> Merged(IReadOnlyDictionary<string, string> beneath, IReadOnlyDictionary<string, string> given)
+        {
+            Dictionary<string, string> icons = new(beneath, StringComparer.Ordinal);
+            foreach ((string key, string path) in given)
+            {
+                icons[key] = path;
+            }
+            return icons;
+        }
+    }
+
+    /// <summary>Tokens for both variants, Dark and Light, laid over others: a value for both variants the one over gives
+    /// takes either variant's under it away, and one variant's moves a value for both under it to the other variant.</summary>
+    private static (Dictionary<string, TokenValue> Both, Dictionary<string, TokenValue> Dark, Dictionary<string, TokenValue> Light) Laid(
+        IReadOnlyDictionary<string, TokenValue> underBoth, IReadOnlyDictionary<string, TokenValue> underDark, IReadOnlyDictionary<string, TokenValue> underLight,
+        IReadOnlyDictionary<string, TokenValue> overBoth, IReadOnlyDictionary<string, TokenValue> overDark, IReadOnlyDictionary<string, TokenValue> overLight)
+    {
+        Dictionary<string, TokenValue> both = new(underBoth, StringComparer.Ordinal);
+        Dictionary<string, TokenValue> dark = new(underDark, StringComparer.Ordinal);
+        Dictionary<string, TokenValue> light = new(underLight, StringComparer.Ordinal);
+        foreach ((string token, TokenValue value) in overBoth)
         {
             both[token] = value;
             dark.Remove(token);
             light.Remove(token);
         }
         foreach ((Dictionary<string, TokenValue> variant, Dictionary<string, TokenValue> other, IReadOnlyDictionary<string, TokenValue> given) in
-            ((Dictionary<string, TokenValue>, Dictionary<string, TokenValue>, IReadOnlyDictionary<string, TokenValue>)[])[(dark, light, over.Dark), (light, dark, over.Light)])
+            ((Dictionary<string, TokenValue>, Dictionary<string, TokenValue>, IReadOnlyDictionary<string, TokenValue>)[])[(dark, light, overDark), (light, dark, overLight)])
         {
             foreach ((string token, TokenValue value) in given)
             {
@@ -414,7 +556,16 @@ public static partial class ThemeFiles
                 variant[token] = value;
             }
         }
-        return over with { Both = both, Dark = dark, Light = light, Shows = under.Shows };
+        return (both, dark, light);
+    }
+
+    /// <summary>The code's colours of a theme as a code colour scheme: its <c>Editor.*</c>, <c>Syntax.*</c>, <c>SyntaxStyle.*</c>
+    /// and <c>Diff.*</c> tokens and its languages', nothing else of it.</summary>
+    public static ThemeFile CodeOf(ThemeFile theme)
+    {
+        static Dictionary<string, TokenValue> Code(IReadOnlyDictionary<string, TokenValue> tokens) =>
+            new(tokens.Where(t => IsCode(t.Key)), StringComparer.Ordinal);
+        return new ThemeFile(theme.Name, theme.Description, Code(theme.Both), Code(theme.Dark), Code(theme.Light)) { Languages = theme.Languages };
     }
 
     private static JsonElement? Holder(JsonElement root, string member, string within)
@@ -438,6 +589,10 @@ public static partial class ThemeFiles
 
     [GeneratedRegex(@"^[0-9A-Za-z.+-]{1,64}$")]
     private static partial Regex VersionWords();
+
+    // An icon's key as Passenger's icon sets name it.
+    [GeneratedRegex(@"^(?:Icon|FileIcon)\.[A-Za-z0-9]{1,64}$")]
+    private static partial Regex IconKey();
 
     private static string Listed(IEnumerable<string> words) => Plural.Either([.. words.Select(w => $"\"{w}\"")]);
 }

@@ -17,6 +17,14 @@ public sealed record PackageUpdate(string Id, string Version, IReadOnlyList<stri
     public IReadOnlyList<string>? Frameworks { get; init; }
 }
 
+/// <summary>A run of package updates as it is named: one command of Undo and one Local History set by <see cref="Name"/>,
+/// the words it says while it works, and the action its work is held under, which an agent's ide_action is answered by.</summary>
+public sealed record UpdateRun(string Name, string Stage, string Action)
+{
+    /// <summary>Update All, every update the Updates tab lists.</summary>
+    public static UpdateRun All { get; } = new("Update All NuGet Packages", "Updating all NuGet packages…", AppActions.NuGetUpdateAll);
+}
+
 public sealed record PackageUpdateResult(int Updated, IReadOnlyList<string> Skipped, int Remaining, string? Failure)
 {
     public string Message => $"Updated {Plural.Of(Updated, "package reference")}" + (Skipped.Count > 0 ? $"; skipped: {string.Join("; ", Skipped)}" : string.Empty)
@@ -26,6 +34,7 @@ public sealed record PackageUpdateResult(int Updated, IReadOnlyList<string> Skip
 public sealed partial class FolderPackages
 {
     private CancellationTokenSource? bulkStopping;
+    private UpdateRun? bulkRun;
     private CommandHistory.Recording? bulkRecording;
     private PackageOutcome? bulkLastChange;
     private readonly Dictionary<string, byte[]?> bulkSnapshots = new(PathNames.Comparer);
@@ -36,19 +45,23 @@ public sealed partial class FolderPackages
     /// <summary>Fresh evaluations use the same solution properties as the session's project model.</summary>
     public Func<ProjectModel, IReadOnlyDictionary<string, string>>? EvaluationProperties { get; set; }
 
-    public async Task<PackageUpdateResult> UpdateAllAsync(IReadOnlyList<PackageUpdate> updates,
-        Func<ProjectModel, string, string, CommandHistory.Recording?, CancellationToken, Task<bool>>? before)
+    /// <summary>Moves packages to their versions in projects (and makes the fixes among them) as one run, named
+    /// <paramref name="run"/>: project by project, each read again first, its moves one change, stopped by the first
+    /// that fails or an edit the person makes to a file it wrote, the whole one command of Undo.</summary>
+    public async Task<PackageUpdateResult> UpdateAsync(IReadOnlyList<PackageUpdate> updates,
+        Func<ProjectModel, string, string, CommandHistory.Recording?, CancellationToken, Task<bool>>? before, UpdateRun run)
     {
         if (IsBusy || Commands is null)
         {
             return new PackageUpdateResult(0, [], updates.Sum(u => u.Projects.Count), $"{Refusals.PackageChangeUnderWay} or command history is unavailable");
         }
         IsBusy = true;
-        changing = "Updating all NuGet packages…";
+        changing = run.Stage;
         using IDisposable held = BackgroundWork.Scope();
-        using Working? working = Work?.Begin(AppActions.NuGetUpdateAll, changing);
+        using Working? working = Work?.Begin(run.Action, changing);
         using CancellationTokenSource stopping = working is null ? new() : CancellationTokenSource.CreateLinkedTokenSource(working.Stopping);
         bulkStopping = stopping;
+        bulkRun = run;
         using CancellationTokenRegistration stop = stopping.Token.Register(manager.Stop);
         int updated = 0;
         int remaining = updates.Sum(u => u.Projects.Count);
@@ -64,7 +77,7 @@ public sealed partial class FolderPackages
             }
             else
             {
-                using CommandHistory.Recording recording = Commands.RecordWrites("Update All NuGet Packages");
+                using CommandHistory.Recording recording = Commands.RecordWrites(run.Name);
                 bulkRecording = recording;
                 string[] paths = [.. updates.SelectMany(u => u.Projects).Distinct(PathNames.Comparer).OrderBy(p => p, PathNames.Comparer)];
                 foreach (string path in paths)
@@ -229,6 +242,7 @@ public sealed partial class FolderPackages
             bulkSnapshots.Clear();
             bulkStale.Clear();
             bulkStopping = null;
+            bulkRun = null;
             IsBusy = false;
             changing = null;
         }
@@ -239,12 +253,12 @@ public sealed partial class FolderPackages
         }
         Line?.Invoke(this, result.Message);
         working?.Tell(failure is null, result.Message);
-        Changed?.Invoke(this, new PackageOutcome(failure is null, [.. written.Distinct(PathNames.Comparer)], [result.Message]) { Name = "Update All NuGet Packages" });
+        Changed?.Invoke(this, new PackageOutcome(failure is null, [.. written.Distinct(PathNames.Comparer)], [result.Message]) { Name = run.Name });
         return result;
     }
 
     private string? ChangedBulkFile() => bulkSnapshots.FirstOrDefault(file => !Same(Bytes(file.Key), file.Value)).Key is { } changed
-        ? $"{PathNames.Shown(changed, root())} changed during Update All; stopped to preserve that edit" : null;
+        ? $"{PathNames.Shown(changed, root())} changed during {bulkRun?.Name}; stopped to preserve that edit" : null;
 
     /// <summary>A project whose versions an earlier change of the run moved, restored as one change of the run's, so what
     /// does not restore with them is found now, not by the next build: null once restored, or where none moved, else why

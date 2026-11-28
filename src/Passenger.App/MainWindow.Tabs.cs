@@ -6,6 +6,7 @@ using Passenger.App.Editors;
 using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using A = Passenger.App.AppActions;
 
 namespace Passenger.App;
@@ -38,7 +39,6 @@ public partial class MainWindow
         }, under);
     }
 
-    private const string Tabs = "Editor Tabs";
     private const string TabsMenu = "Window/Editor Tabs";
 
     /// <summary>A tab's menu items, in their order: the file's path and Open In as the Explorer's row has them, an HTML
@@ -63,33 +63,33 @@ public partial class MainWindow
         Editors.MaximizeRequested += (_, _) => Request(A.HideAllToolWindows);
         Editors.HiddenTabsRequested += (_, group) => ShowHiddenTabs(group);
         // Run from the terminal too, as its shells are tabs of their own.
-        actions!.Add(new IdeAction(A.NextTab, "Next Tab", Tabs, c => StepTab(c, 1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 0)], FromTerminal = true });
-        actions.Add(new IdeAction(A.PreviousTab, "Previous Tab", Tabs, c => StepTab(c, -1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 1)], FromTerminal = true });
-        actions!.Add(new IdeAction(A.PinTab, "Pin Tab", Tabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))
+        actions!.Add(new IdeAction(A.NextTab, ActionTitles.NextTab, ActionGroups.EditorTabs, c => StepTab(c, 1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 0)], FromTerminal = true });
+        actions.Add(new IdeAction(A.PreviousTab, ActionTitles.PreviousTab, ActionGroups.EditorTabs, c => StepTab(c, -1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 1)], FromTerminal = true });
+        actions!.Add(new IdeAction(A.PinTab, ActionTitles.PinTab, ActionGroups.EditorTabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace(TabsMenu, 0, 2)],
-            TitleIn = c => Pinned(c) ? "Unpin Tab" : "Pin Tab",
+            TitleIn = c => Pinned(c) ? ActionTitles.UnpinTab : ActionTitles.PinTab,
         });
 
         // The split worked in loses its tab; the file stays open in any other.
-        actions.Add(new IdeAction(A.CloseTab, "Close Tab", "IDE", c => Editors.CloseTab(TabOf(c)!.Value.Group, TabOf(c)!.Value.File))
+        actions.Add(new IdeAction(A.CloseTab, ActionTitles.CloseTab, ActionGroups.Ide, c => Editors.CloseTab(TabOf(c)!.Value.Group, TabOf(c)!.Value.File))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("File", 1, 2), new MenuPlace(TabsMenu, 1, 0)],
-            TitleIn = c => c.Tab is null ? "Close Tab" : "Close",
+            TitleIn = c => c.Tab is null ? ActionTitles.CloseTab : ActionTitles.CloseTabInMenu,
         });
-        Tab(A.CloseOtherTabs, "Close Other Tabs", c => Editors.CloseOthers(TabOf(c)!.Value.Group, TabOf(c)!.Value.File),
+        Tab(A.CloseOtherTabs, ActionTitles.CloseOtherTabs, c => Editors.CloseOthers(TabOf(c)!.Value.Group, TabOf(c)!.Value.File),
             c => Closes(c, (tab, _) => tab.Document != TabOf(c)!.Value.File, "No other unpinned tab is open"), (1, 1));
-        Tab(A.CloseAllTabs, "Close All Tabs", c => Editors.CloseAllTabs(TabOf(c)!.Value.Group), c => Closes(c, (_, _) => true, "Every tab is pinned"), (1, 2));
-        Tab(A.CloseUnpinned, "Close All but Pinned", c => Editors.CloseUnpinned(c.Tab?.Group),
+        Tab(A.CloseAllTabs, ActionTitles.CloseAllTabs, c => Editors.CloseAllTabs(TabOf(c)!.Value.Group), c => Closes(c, (_, _) => true, "Every tab is pinned"), (1, 2));
+        Tab(A.CloseUnpinned, ActionTitles.CloseUnpinned, c => Editors.CloseUnpinned(c.Tab?.Group),
             c => Refusals.NeedsFile(c) ?? ((c.Tab is { } tab ? [tab.Group] : Editors.Groups).Any(g => EditorArea.Unpinned(g, (_, _) => true).Count > 0) ? null : "Every tab is pinned"), (1, 3));
-        Tab(A.CloseTabsLeft, "Close Tabs to the Left", c => Editors.CloseToSide(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, left: true),
+        Tab(A.CloseTabsLeft, ActionTitles.CloseTabsLeft, c => Editors.CloseToSide(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, left: true),
             c => Closes(c, (_, index) => index < IndexOf(c), "No unpinned tab is to the left"), (1, 4));
-        Tab(A.CloseTabsRight, "Close Tabs to the Right", c => Editors.CloseToSide(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, left: false),
+        Tab(A.CloseTabsRight, ActionTitles.CloseTabsRight, c => Editors.CloseToSide(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, left: false),
             c => Closes(c, (_, index) => index > IndexOf(c), "No unpinned tab is to the right"), (1, 5));
 
-        Tab(A.ReopenClosedTab, "Reopen Closed Tab", _ =>
+        Tab(A.ReopenClosedTab, ActionTitles.ReopenClosedTab, _ =>
         {
             if (Editors.ReopenClosedTab() is { } why)
             {
@@ -97,32 +97,32 @@ public partial class MainWindow
             }
         }, _ => Editors.CanReopen ? null : "No tab has been closed", (2, 0));
         // Found by older names too.
-        Tab(A.SplitRight, "Split Right", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Horizontal, move: false), Splits, (2, 1), ["Split Vertically"]);
-        Tab(A.SplitDown, "Split Down", c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Vertical, move: false), Splits, (2, 2), ["Split Horizontally"]);
-        Tab(A.Unsplit, "Unsplit", c => Editors.Unsplit(GroupOf(c), all: false), NotSplit, (2, 3));
-        Tab(A.UnsplitAll, "Unsplit All", c => Editors.Unsplit(GroupOf(c), all: true), NotSplit, (2, 4));
-        Tab(A.NextSplit, "Next Split", _ => Editors.StepSplit(1), _ => NotSplit(null), (2, 5), ["Next Splitter"]);
-        Tab(A.PreviousSplit, "Previous Split", _ => Editors.StepSplit(-1), _ => NotSplit(null), (2, 6), ["Previous Splitter"]);
+        Tab(A.SplitRight, ActionTitles.SplitRight, c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Horizontal, move: false), Splits, (2, 1), ["Split Vertically"]);
+        Tab(A.SplitDown, ActionTitles.SplitDown, c => Editors.Split(TabOf(c)!.Value.Group, TabOf(c)!.Value.File, Orientation.Vertical, move: false), Splits, (2, 2), ["Split Horizontally"]);
+        Tab(A.Unsplit, ActionTitles.Unsplit, c => Editors.Unsplit(GroupOf(c), all: false), NotSplit, (2, 3));
+        Tab(A.UnsplitAll, ActionTitles.UnsplitAll, c => Editors.Unsplit(GroupOf(c), all: true), NotSplit, (2, 4));
+        Tab(A.NextSplit, ActionTitles.NextSplit, _ => Editors.StepSplit(1), _ => NotSplit(null), (2, 5), ["Next Splitter"]);
+        Tab(A.PreviousSplit, ActionTitles.PreviousSplit, _ => Editors.StepSplit(-1), _ => NotSplit(null), (2, 6), ["Previous Splitter"]);
 
         // The Window menu keeps these two after its Editor Tabs.
-        Add(A.MoveToOppositeGroup, "Move to Opposite Group", Tabs, c => Editors.MoveToOpposite(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), c => Refusals.NeedsFile(c) ?? NotSplit(c), ("Window", 2, 0));
-        Add(A.OpenInNewWindow, "Open Tab in New Window", Tabs, c => Editors.OpenInNewWindow(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), Refusals.NeedsFile, ("Window", 2, 1));
+        Add(A.MoveToOppositeGroup, ActionTitles.MoveToOppositeGroup, ActionGroups.EditorTabs, c => Editors.MoveToOpposite(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), c => Refusals.NeedsFile(c) ?? NotSplit(c), ("Window", 2, 0));
+        Add(A.OpenInNewWindow, ActionTitles.OpenInNewWindow, ActionGroups.EditorTabs, c => Editors.OpenInNewWindow(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), Refusals.NeedsFile, ("Window", 2, 1));
 
-        actions.Add(new IdeAction(A.RestoreDefaultLayout, "Restore Default Layout", "Tool Windows", _ => Dock.RestoreDefault())
+        actions.Add(new IdeAction(A.RestoreDefaultLayout, ActionTitles.RestoreDefaultLayout, ActionGroups.ToolWindows, _ => Dock.RestoreDefault())
         {
             Menus = [new MenuPlace("Window/Layout Settings", 0, 0)],
             FromTerminal = true,
         });
 
         string? Closes(ActionContext c, Func<EditorTab, int, bool> which, string none) =>
-            Refusals.NeedsFile(c) ?? (EditorArea.Unpinned(TabOf(c)!.Value.Group, which).Count > 0 ? null : none);
+            (Refusals.NeedsFile(c) ?? (EditorArea.Unpinned(TabOf(c)!.Value.Group, which).Count > 0 ? null : none))?.Shown;
 
         int IndexOf(ActionContext c) => TabOf(c)!.Value.Group.Tabs.Select(t => t.Document).ToList().IndexOf(TabOf(c)!.Value.File);
 
-        string? NotSplit(ActionContext? c) => Editors.IsSplit(c is null ? Editors.ActiveGroup : GroupOf(c)) ? null : "The editor is not split";
+        Words? NotSplit(ActionContext? c) => Editors.IsSplit(c is null ? Editors.ActiveGroup : GroupOf(c)) ? null : "The editor is not split";
 
         // A tool window's view stands in one place, so its tab moves between groups but is never shown twice.
-        string? Splits(ActionContext c) => Refusals.NeedsFile(c) ?? (TabOf(c)?.File.Tool is { } tool ? $"{tool.Window.Title} shows in one place at a time" : null);
+        Words? Splits(ActionContext c) => Refusals.NeedsFile(c) ?? (TabOf(c)?.File.Tool is { } tool ? $"{tool.Window.Title} shows in one place at a time" : null);
     }
 
     /// <summary>The theme's default layout as the dock's default, once every tool window is added: what the window opens on
@@ -141,12 +141,14 @@ public partial class MainWindow
     }
 
     /// <summary>The window's arrangement in force, the person's where they set it, else the theme's: where the editor's tabs
-    /// stand, how the tool windows are named and whether one closed leaves its stripe.</summary>
+    /// stand, how the tool windows are named and whether one closed leaves its stripe; and the person's own, when the side
+    /// areas run the whole height.</summary>
     private void FollowArrangement(AppSettings next)
     {
         Editors.TabsPlace = next.TabsPlace();
         Dock.TitledTabs = next.ToolWindowsAs() == ToolWindowLook.TitledTabs;
         Dock.ClosesOffStripe = next.ClosedWindows() == ClosedToolWindows.LeaveStripe;
+        Dock.Wide = next.WideLayout;
     }
 
     /// <summary>The tab an action acts on: the one whose menu it was chosen from, else the one the active group shows.</summary>
@@ -158,8 +160,8 @@ public partial class MainWindow
     private bool Pinned(ActionContext context) => TabOf(context) is { } tab && tab.Group.IsPinned(tab.File);
 
     /// <summary>A tab action listed in Window > Editor Tabs at a place.</summary>
-    private void Tab(string id, string title, Action<ActionContext> run, Func<ActionContext, string?> whyNot, (int Group, int Order) at, IReadOnlyList<string>? words = null) =>
-        Add(id, title, Tabs, run, whyNot, (TabsMenu, at.Group, at.Order), words);
+    private void Tab(string id, Words title, Action<ActionContext> run, Func<ActionContext, Words?> whyNot, (int Group, int Order) at, IReadOnlyList<string>? words = null) =>
+        Add(id, title, ActionGroups.EditorTabs, run, whyNot, (TabsMenu, at.Group, at.Order), words);
 
     /// <summary>Next Tab (1) or Previous Tab (-1): the tabs of what has the keys stepped (<see cref="TabsWithKeys"/>), the
     /// keys kept in its window, else the active group's.</summary>
@@ -177,7 +179,7 @@ public partial class MainWindow
         }
     }
 
-    private string? WhyNotStepTab(ActionContext context) => TabsWithKeys(context) is null ? Refusals.NeedsFile(context) : null;
+    private Words? WhyNotStepTab(ActionContext context) => TabsWithKeys(context) is null ? Refusals.NeedsFile(context) : null;
 
     /// <summary>The tabs of what has the keys: those of the nearest part holding them (the Terminal's shells), else the
     /// first of the tool window with them, its header's before its view's; null where the editors have them.</summary>

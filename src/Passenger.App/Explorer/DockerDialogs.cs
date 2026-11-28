@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Passenger.App.ToolWindows;
 using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Explorer;
 
@@ -24,7 +25,7 @@ public sealed class DockerSupportDialog : IdeWindow
 
     public DockerSupportDialog(string project, bool hasDockerfile)
     {
-        Title = "Add Docker Support";
+        ShownWords.Set(this, TitleProperty, ActionTitles.AddDockerSupport.TrimmedEnd('…'));
         Width = DialogWidths.Form;
         SizeToContent = SizeToContent.Height;
         MinWidth = 360;
@@ -34,20 +35,20 @@ public sealed class DockerSupportDialog : IdeWindow
             GroupName = "kind",
             IsChecked = !hasDockerfile,
             IsEnabled = !hasDockerfile,
-            Content = Words(hasDockerfile ? $"A Dockerfile ({project} has one already)" : "A Dockerfile beside the project, and a .dockerignore at the solution's folder"),
+            Content = Wrapped(hasDockerfile ? ExplorerWords.DockerfileHad(Words.Verbatim(project)) : ExplorerWords.DockerfileBeside),
         };
         sdk = new RadioButton
         {
             GroupName = "kind",
             IsChecked = hasDockerfile,
-            Content = Words($"The .NET SDK's container support: dotnet publish /t:{MSBuildNames.PublishContainer} builds the image, with no Dockerfile"),
+            Content = Wrapped(ExplorerWords.SdkContainer(Words.Verbatim(MSBuildNames.PublishContainer))),
         };
         foreach (RadioButton choice in new[] { dockerfile, sdk })
         {
             choice.Margin = new Thickness(0, 0, 0, Gaps.Normal);
             choice.HorizontalAlignment = HorizontalAlignment.Stretch;
         }
-        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, Text = $"How {project}'s image is built", Margin = new Thickness(0, 0, 0, Gaps.Wide) };
+        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, [ShownWords.TextProperty] = ExplorerWords.ImageBuilt(Words.Verbatim(project)), Margin = new Thickness(0, 0, 0, Gaps.Wide) };
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Accept();
         StackPanel page = new() { [DialogFooter.InsetProperty] = true, Children = { heading, dockerfile, sdk } };
@@ -65,7 +66,7 @@ public sealed class DockerSupportDialog : IdeWindow
     public void Accept() => Close((DockerSupportKind?)Chosen);
 
     /// <summary>A choice's words, wrapped within the dialog where they need more than a line.</summary>
-    private static TextBlock Words(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
+    private static TextBlock Wrapped(Words text) => new() { [ShownWords.TextProperty] = text, TextWrapping = TextWrapping.Wrap };
 }
 
 /// <summary>Add > Docker Compose on the solution: its projects that run, each checked, a project with no Dockerfile given
@@ -80,7 +81,7 @@ public sealed class DockerComposeDialog : IdeWindow
     {
         Projects = projects;
         Services = services;
-        Title = "Add Docker Compose";
+        ShownWords.Set(this, TitleProperty, ActionTitles.AddDockerCompose.TrimmedEnd('…'));
         Width = DialogWidths.Form;
         Height = 460;
         MinWidth = 380;
@@ -89,11 +90,11 @@ public sealed class DockerComposeDialog : IdeWindow
         Button ok = DialogFooter.Default();
         ok.Click += (_, _) => Close((bool?)true);
         Grid page = new() { [DialogFooter.InsetProperty] = true, RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto") };
-        page.Children.Add(Heading($"The services of {solution}'s compose.yaml", 0));
+        page.Children.Add(Heading(ExplorerWords.ComposeServices(Words.Verbatim(solution)), 0));
         page.Children.Add(List(projects, 1));
-        page.Children.Add(Heading("Beside them, from their packages", 2));
+        page.Children.Add(Heading(ExplorerWords.BesidePackages, 2));
         Control backing = services.Count == 0
-            ? new EmptyState("No database, cache or broker among their packages")
+            ? new EmptyState(ExplorerWords.NoBacking)
             : List(services, 3);
         Grid.SetRow(backing, 3);
         page.Children.Add(backing);
@@ -109,19 +110,19 @@ public sealed class DockerComposeDialog : IdeWindow
     public IReadOnlyList<CheckChoice> Services { get; }
 
     /// <summary>What is said under the backing services of one of them (SQL Server's image on an Arm engine); null for nothing.</summary>
-    public string? Note
+    public Words? Note
     {
-        get => note.IsVisible ? note.Text : null;
+        get => note.IsVisible ? ShownWords.Of(note, TextBlock.TextProperty) : null;
         set
         {
-            note.Text = value ?? string.Empty;
+            ShownWords.Set(note, TextBlock.TextProperty, value);
             note.IsVisible = value is not null;
         }
     }
 
-    private static TextBlock Heading(string text, int row)
+    private static TextBlock Heading(Words text, int row)
     {
-        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, Text = text, Margin = new Thickness(0, row == 0 ? 0 : Gaps.Wide, 0, Gaps.Normal) };
+        TextBlock heading = new() { Classes = { StyleClasses.PaneTitle }, [ShownWords.TextProperty] = text, Margin = new Thickness(0, row == 0 ? 0 : Gaps.Wide, 0, Gaps.Normal) };
         Grid.SetRow(heading, row);
         return heading;
     }

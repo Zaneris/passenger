@@ -1,0 +1,80 @@
+<Project>
+  <!-- A project's words: each neutral .resx (Name.resx, keys named for meaning, its English) becomes members of its home
+       class by Passenger.Analyzers' WordsResources, and each translation beside it (xlf/Name.fr.xlf, XLIFF 1.2, its units'
+       source, target and state) becomes a satellite .resx of that culture as the project builds, the target alone of each
+       unit that has one, so ResourceManager finds a translation where it is and the English where it isn't. -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="RootNamespace" />
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+    <AdditionalFiles Include="**/*.resx" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder);**/*.*.resx" />
+    <AdditionalFiles Include="**/xlf/*.xlf" Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <CreateCustomManifestResourceNamesDependsOn>WordsSatellites;$(CreateCustomManifestResourceNamesDependsOn)</CreateCustomManifestResourceNamesDependsOn>
+  </PropertyGroup>
+
+  <UsingTask TaskName="WordsTranslations" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Xliff Required="true" />
+      <Resx Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Xml.Linq" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        XNamespace x = "urn:oasis:names:tc:xliff:document:1.2";
+        XElement root = new XElement("root",
+            new XElement("resheader", new XAttribute("name", "resmimetype"), new XElement("value", "text/microsoft-resx")),
+            new XElement("resheader", new XAttribute("name", "version"), new XElement("value", "2.0")),
+            new XElement("resheader", new XAttribute("name", "reader"),
+                new XElement("value", "System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089")),
+            new XElement("resheader", new XAttribute("name", "writer"),
+                new XElement("value", "System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089")));
+        foreach (XElement unit in XDocument.Load(Xliff).Descendants(x + "trans-unit"))
+        {
+            XElement target = unit.Element(x + "target");
+            string state = target == null ? null : (string)target.Attribute("state");
+            if (target != null && state != "new" && target.Value.Length > 0)
+            {
+                root.Add(new XElement("data", new XAttribute("name", (string)unit.Attribute("id")),
+                    new XAttribute(XNamespace.Xml + "space", "preserve"), new XElement("value", target.Value)));
+            }
+        }
+        string text = new XDocument(new XDeclaration("1.0", "utf-8", null), root).ToString();
+        if (!File.Exists(Resx) || File.ReadAllText(Resx) != text)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Resx));
+            File.WriteAllText(Resx, text);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Each neutral .resx's translations, made satellites of its manifest name and their culture. -->
+  <Target Name="WordsSatellites" Condition="'@(EmbeddedResource)' != ''">
+    <ItemGroup>
+      <_WordsNeutral Include="@(EmbeddedResource)" Condition="'%(Extension)' == '.resx' and '%(EmbeddedResource.WithCulture)' != 'true'" />
+      <_WordsXliff Include="%(_WordsNeutral.RootDir)%(_WordsNeutral.Directory)xlf/%(_WordsNeutral.Filename).*.xlf">
+        <Neutral>%(_WordsNeutral.ManifestResourceName)</Neutral>
+      </_WordsXliff>
+      <_WordsXliff>
+        <Culture>$([System.IO.Path]::GetExtension('%(Filename)').TrimStart('.'))</Culture>
+      </_WordsXliff>
+      <_WordsXliff>
+        <Resx>$(IntermediateOutputPath)words/%(Neutral).%(Culture).resx</Resx>
+        <ManifestResourceName>%(Neutral).%(Culture)</ManifestResourceName>
+        <WithCulture>true</WithCulture>
+        <Type>Resx</Type>
+      </_WordsXliff>
+    </ItemGroup>
+    <WordsTranslations Condition="'@(_WordsXliff)' != ''" Xliff="%(_WordsXliff.FullPath)" Resx="%(_WordsXliff.Resx)" />
+    <ItemGroup>
+      <EmbeddedResource Include="@(_WordsXliff->'%(Resx)')" />
+      <FileWrites Include="@(_WordsXliff->'%(Resx)')" />
+      <_WordsNeutral Remove="@(_WordsNeutral)" />
+      <_WordsXliff Remove="@(_WordsXliff)" />
+    </ItemGroup>
+  </Target>
+</Project>

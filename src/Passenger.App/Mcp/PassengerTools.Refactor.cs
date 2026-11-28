@@ -89,7 +89,7 @@ public sealed partial class PassengerTools
         (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, named, cancel);
         if (document.ReadOnlyWhy is { } readOnly)
         {
-            throw new InvalidOperationException($"{Refactoring(named, null)} was not applied: {readOnly}");
+            throw new InvalidOperationException($"{Refactoring(named, null)} was not applied: {readOnly.English}");
         }
         int offset = Offset(document, line.Value, column.Value);
         naming.Names(Refactoring(named, NameAt(document, offset)));
@@ -495,7 +495,7 @@ public sealed partial class PassengerTools
             (chosen, scope) = (taken.Action, taken.Scope);
         }
         (RefactorOutcome made, _) = await window.Assist.Actions.ApplyAsync(document, chosen, scope, refactoring.Name, asked, patience);
-        return Applied(kind, made.Said.Length > 0 || made.Problem is not null ? made : made with { Said = $"{refactoring.Name} done" });
+        return Applied(kind, !made.Said.IsEmpty || made.Problem is not null ? made : made with { Said = $"{refactoring.Name} done" });
     }
 
     /// <summary>Optimize Imports or Code Cleanup, as the window's command makes it, on a file or on each C# file of a
@@ -528,7 +528,7 @@ public sealed partial class PassengerTools
             (OpenDocument document, LspDocument lsp) = await CSharpOnly(path, kind, cancel);
             if (document.ReadOnlyWhy is { } readOnly)
             {
-                throw new InvalidOperationException($"{name} was not applied: {readOnly}");
+                throw new InvalidOperationException($"{name} was not applied: {readOnly.English}");
             }
             if (describe)
             {
@@ -615,9 +615,9 @@ public sealed partial class PassengerTools
 
     /// <summary>A refactoring's outcome as the agent reads it: refused with why, or each file it changed and what it left.</summary>
     private RefactorAnswer Applied(string kind, RefactorOutcome made) => made.Problem is { } problem
-        ? throw new InvalidOperationException(problem)
-        : new RefactorAnswer(kind, made.Said, [.. made.Files.Select(f => new RefactorFile(Relative(f.Path), Words(f.Change), f.Lines, To: f.To is { } to ? Relative(to) : null))],
-            [.. made.Left.Select(name => $"{name}: {Refusals.EditedMeanwhile(1)}, so it was left as it is"),
+        ? throw new RefusedException(problem)
+        : new RefactorAnswer(kind, made.Said.English, [.. made.Files.Select(f => new RefactorFile(Relative(f.Path), Words(f.Change), f.Lines, To: f.To is { } to ? Relative(to) : null))],
+            [.. made.Left.Select(name => $"{name}: {Refusals.EditedMeanwhile(1).English}, so it was left as it is"),
                 .. made.Unchanged.Select(use => $"{Relative(use.Path)}:{use.Line}:{use.Column}: {use.Why}, so it was left as it is")]);
 
     /// <summary>What a refactoring did to a file, as an agent reads it ("moved").</summary>

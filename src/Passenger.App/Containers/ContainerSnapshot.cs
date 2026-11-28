@@ -121,7 +121,7 @@ public sealed record ContainerInfo(string Id, string Name, string Image, string 
             : status.Contains("(healthy)", StringComparison.Ordinal) ? "healthy"
             : status.Contains("(unhealthy)", StringComparison.Ordinal) ? "unhealthy"
             : status.Contains("(health: starting)", StringComparison.Ordinal) || status.Contains("(starting)", StringComparison.Ordinal) ? "starting" : null;
-        return new ContainerInfo(IdOf(row) ?? string.Empty, First(row, "Names") ?? string.Empty,
+        return new ContainerInfo(IdOf(row) ?? string.Empty, First(row, "Names")?.TrimStart('/') ?? string.Empty,
             JsonMembers.Scalar(row, "Image") ?? string.Empty, (JsonMembers.Scalar(row, "State") ?? string.Empty).ToLowerInvariant(), status, health,
             ContainerPort.Read(row), ReadLabels(row));
     }

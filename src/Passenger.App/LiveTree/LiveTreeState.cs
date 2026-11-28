@@ -17,6 +17,10 @@ public sealed record LiveTreeState : IStateDocument<LiveTreeState>
 
     public double? Maui { get; init; }
 
+    public double? WinUI { get; init; }
+
+    public double? WinForms { get; init; }
+
     public double? Godot { get; init; }
 
     public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned];
@@ -26,6 +30,8 @@ public sealed record LiveTreeState : IStateDocument<LiveTreeState>
     {
         LiveApp { Kind: LiveAppKind.Wpf } => Wpf,
         LiveApp { Kind: LiveAppKind.Maui } => Maui,
+        LiveApp { Kind: LiveAppKind.WinUI } => WinUI,
+        LiveApp { Kind: LiveAppKind.WinForms } => WinForms,
         LiveApp => Avalonia,
         Passenger.App.Godot.GodotGame => Godot,
         _ => null,
@@ -36,12 +42,14 @@ public sealed record LiveTreeState : IStateDocument<LiveTreeState>
     {
         LiveApp { Kind: LiveAppKind.Wpf } => this with { Wpf = Share(share) },
         LiveApp { Kind: LiveAppKind.Maui } => this with { Maui = Share(share) },
+        LiveApp { Kind: LiveAppKind.WinUI } => this with { WinUI = Share(share) },
+        LiveApp { Kind: LiveAppKind.WinForms } => this with { WinForms = Share(share) },
         LiveApp => this with { Avalonia = Share(share) },
         Passenger.App.Godot.GodotGame => this with { Godot = Share(share) },
         _ => this,
     };
 
-    public LiveTreeState Clamped() => this with { Avalonia = Share(Avalonia), Wpf = Share(Wpf), Maui = Share(Maui), Godot = Share(Godot) };
+    public LiveTreeState Clamped() => this with { Avalonia = Share(Avalonia), Wpf = Share(Wpf), Maui = Share(Maui), WinUI = Share(WinUI), WinForms = Share(WinForms), Godot = Share(Godot) };
 
     private static double? Share(double? share) => share is double kept && double.IsFinite(kept) ? Math.Clamp(kept, Least, 1 - Least) : null;
 }

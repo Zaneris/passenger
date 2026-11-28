@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Explorer;
 
@@ -12,24 +14,24 @@ public sealed class FileNestingDialog : IdeWindow
 {
     public FileNestingDialog(bool nest)
     {
-        Title = "File Nesting";
+        ShownWords.Set(this, TitleProperty, ExplorerWords.FileNesting.TrimmedEnd('…'));
         Width = DialogWidths.Wide;
         Height = 480;
         MinWidth = 420;
         MinHeight = 300;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        NestBox = new CheckBox { Content = "Show files with the same names as nested", IsChecked = nest };
+        NestBox = new CheckBox { [ShownWords.ContentProperty] = ExplorerWords.NestSameNames, IsChecked = nest };
 
         Grid table = new() { ColumnDefinitions = new ColumnDefinitions("150,*"), Margin = new Thickness(Gaps.Normal, Gaps.Tight) };
-        void Row(string parent, string children, bool heading = false)
+        void Row(Words parent, Words children, bool heading = false)
         {
             int row = table.RowDefinitions.Count;
             table.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            foreach ((string text, int column) in (IEnumerable<(string, int)>)[(parent, 0), (children, 1)])
+            foreach ((Words text, int column) in (IEnumerable<(Words, int)>)[(parent, 0), (children, 1)])
             {
                 TextBlock cell = new()
                 {
-                    Text = text,
+                    [ShownWords.TextProperty] = text,
                     Margin = new Thickness(0, Gaps.Hair, Gaps.Wide, Gaps.Hair),
                     TextWrapping = TextWrapping.Wrap,
                     [Grid.RowProperty] = row,
@@ -43,20 +45,20 @@ public sealed class FileNestingDialog : IdeWindow
                 table.Children.Add(cell);
             }
         }
-        Row("Parent File Suffix", "Child File Suffix", heading: true);
+        Row(ExplorerWords.ParentSuffix, ExplorerWords.ChildSuffix, heading: true);
         foreach (IGrouping<string, (string Parent, string Child)> rule in FileNesting.Defaults.GroupBy(r => r.Parent, StringComparer.OrdinalIgnoreCase))
         {
-            Row(rule.Key, string.Join("; ", rule.Select(r => r.Child)));
+            Row(Words.Verbatim(rule.Key), Words.Verbatim(string.Join("; ", rule.Select(r => r.Child))));
         }
-        Row(FileNesting.EnvironmentParent, FileNesting.EnvironmentChildren);
-        Row(FileNesting.ComposeParent, FileNesting.ComposeChildren);
+        Row(Words.Verbatim(FileNesting.EnvironmentParent), Words.Verbatim(FileNesting.EnvironmentChildren));
+        Row(Words.Verbatim(FileNesting.ComposeParent), Words.Verbatim(FileNesting.ComposeChildren));
         Rules = table;
         Border framed = new() { Classes = { StyleClasses.Framed }, Child = new ScrollViewer { Content = table, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
         Rules.IsEnabled = nest;
         NestBox.IsCheckedChanged += (_, _) => Rules.IsEnabled = NestBox.IsChecked == true;
 
         DockPanel body = new() { [DialogFooter.InsetProperty] = true };
-        TextBlock title = new() { Text = "Nesting rules:", Margin = new Thickness(0, Gaps.Wide, 0, Gaps.Small) };
+        TextBlock title = new() { [ShownWords.TextProperty] = ExplorerWords.NestingRules, Margin = new Thickness(0, Gaps.Wide, 0, Gaps.Small) };
         DockPanel.SetDock(NestBox, Dock.Top);
         DockPanel.SetDock(title, Dock.Top);
         body.Children.Add(NestBox);

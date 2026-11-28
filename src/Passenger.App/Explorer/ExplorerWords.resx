@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FilterFiles" xml:space="preserve">
+    <value>Filter files</value>
+    <comment>The Explorer's filter field.</comment>
+  </data>
+  <data name="SwitchView" xml:space="preserve">
+    <value>Switch between the solution and the files on disk</value>
+    <comment>The tip of the Explorer's view switch.</comment>
+  </data>
+  <data name="SolutionView" xml:space="preserve">
+    <value>Solution</value>
+    <comment>The Explorer's view switch while it shows the solution's projects.</comment>
+  </data>
+  <data name="FilesView" xml:space="preserve">
+    <value>Files</value>
+    <comment>The Explorer's view switch while it shows the folder's files on disk.</comment>
+  </data>
+  <data name="NothingOpen" xml:space="preserve">
+    <value>Nothing open</value>
+    <comment>The Explorer with no folder, solution or project open.</comment>
+  </data>
+  <data name="NoFileMatches" xml:space="preserve">
+    <value>No file matches</value>
+    <comment>The Explorer's rows where its filter leaves no file.</comment>
+  </data>
+  <data name="MoreMatch" xml:space="preserve">
+    <value>{count, plural, one {# more file matches} other {# more files match}}: a longer filter narrows them</value>
+    <comment>Under the Explorer's rows, the files its filter matched beyond those it shows.</comment>
+  </data>
+  <data name="FileNesting" xml:space="preserve">
+    <value>File Nesting…</value>
+    <comment>The Explorer's option opening the File Nesting dialog; without its dots, that dialog's title.</comment>
+  </data>
+  <data name="HasErrors" xml:space="preserve">
+    <value>Has errors</value>
+    <comment>What a screen reader is told of a file whose name the error's wave underlines.</comment>
+  </data>
+  <data name="Projects" xml:space="preserve">
+    <value>{count, plural, one {# project} other {# projects}}</value>
+    <comment>Beside a solution's name in the Explorer: how many projects it shows.</comment>
+  </data>
+  <data name="Unloaded" xml:space="preserve">
+    <value>(unloaded)</value>
+    <comment>Beside an unloaded project's name in the Explorer.</comment>
+  </data>
+  <data name="NoSdk" xml:space="preserve">
+    <value>(no SDK)</value>
+    <comment>Beside a project's name in the Explorer while the folder has no .NET SDK to read it with.</comment>
+  </data>
+  <data name="LoadFailed" xml:space="preserve">
+    <value>(load failed)</value>
+    <comment>Beside a project's name in the Explorer where MSBuild could not read it.</comment>
+  </data>
+  <data name="Shared" xml:space="preserve">
+    <value>shared</value>
+    <comment>Beside a shared project's name in the Explorer.</comment>
+  </data>
+  <data name="WindowsOnly" xml:space="preserve">
+    <value>Windows only · {frameworks}</value>
+    <comment>Beside a project's name in the Explorer where every framework it targets runs only on Windows; {frameworks} lists them.</comment>
+  </data>
+  <data name="SomeWindowsOnly" xml:space="preserve">
+    <value>{frameworks} · {windows} Windows only</value>
+    <comment>Beside a project's name where some of its frameworks run only on Windows; {frameworks} lists them all, {windows} those.</comment>
+  </data>
+  <data name="WindowsOnlyTip" xml:space="preserve">
+    <value>{why}: Passenger builds {project} here for its code help (EnableWindowsTargeting), and Run, Debug and Profile need Windows</value>
+    <comment>The tip of a project that runs only on Windows, off Windows; {why} says why it runs only there.</comment>
+  </data>
+  <data name="SharedUnimported" xml:space="preserve">
+    <value>Shared project: no project imports {items}, so none compiles its files</value>
+    <comment>The tip of a shared project no project imports; {items} is its items file's name.</comment>
+  </data>
+  <data name="SharedImported" xml:space="preserve">
+    <value>Shared project: its files are compiled into {projects}, which {count, plural, one {imports} other {import}} {items}</value>
+    <comment>The tip of a shared project; {projects} lists the projects importing it, {count} how many, {items} its items file's name.</comment>
+  </data>
+  <data name="Dependencies" xml:space="preserve">
+    <value>Dependencies</value>
+    <comment>The row under a project listing what it references.</comment>
+  </data>
+  <data name="SourceGenerators" xml:space="preserve">
+    <value>Source Generators</value>
+    <comment>The row under a project's dependencies listing its source generators.</comment>
+  </data>
+  <data name="GeneratorTip" xml:space="preserve">
+    <value>The source generator {generator}, in {assembly}</value>
+    <comment>The tip of a source generator's row; {generator} is its type's whole name, {assembly} its assembly.</comment>
+  </data>
+  <data name="AskedVersion" xml:space="preserve">
+    <value>{version} · asked {asked}</value>
+    <comment>Beside a package a package brings, resolved to a newer version than asked; {asked} is the version range asked for, briefly.</comment>
+  </data>
+  <data name="AsksFor" xml:space="preserve">
+    <value>{package} asks for {asked}</value>
+    <comment>The tip of a package a package brings; {asked} is the version range asked for.</comment>
+  </data>
+  <data name="AsksForResolved" xml:space="preserve">
+    <value>{package} asks for {asked}; the restore resolved {version}</value>
+    <comment>The tip of a package a package brings, resolved to a newer version than asked.</comment>
+  </data>
+  <data name="Unlisted" xml:space="preserve">
+    <value>{items} leaves it out of the shared project: Include in Project takes it in</value>
+    <comment>The tip of a file in a shared project's folder its items file leaves out; {items} is that file's name.</comment>
+  </data>
+  <data name="PackageWorkspace" xml:space="preserve">
+    <value>{manager} workspace of {count, plural, one {# package} other {# packages}}</value>
+    <comment>Beside a Node workspace's folder: its package manager and how many packages it holds.</comment>
+  </data>
+  <data name="NamedPackage" xml:space="preserve">
+    <value>{package} · {kind}</value>
+    <comment>Beside a Node package's folder whose package's name is another; {kind} is its package manager, or its workspace.</comment>
+  </data>
+  <data name="PackageTip" xml:space="preserve">
+    <value>Node package {package}, run with {manager} ({source}): {runs}</value>
+    <comment>The tip of a Node package's folder; {source} says what named its package manager, {runs} its scripts.</comment>
+  </data>
+  <data name="NoScripts" xml:space="preserve">
+    <value>it has no scripts</value>
+    <comment>A Node package's tip where it has no scripts.</comment>
+  </data>
+  <data name="ScriptsRun" xml:space="preserve">
+    <value>{count, plural, one {its script {scripts} runs} other {its scripts {scripts} run}} from the run configurations</value>
+    <comment>A Node package's tip: the scripts it runs from the run configurations, listed.</comment>
+  </data>
+  <data name="ReferencesThis" xml:space="preserve">
+    <value>{where} (references this project)</value>
+    <comment>Beside a project Add Reference cannot offer, as it references the project already; {where} is where it is.</comment>
+  </data>
+  <data name="ReferencedBy" xml:space="preserve">
+    <value>Projects {project} references</value>
+    <comment>Add Reference's heading; {project} is the project's name.</comment>
+  </data>
+  <data name="NestSameNames" xml:space="preserve">
+    <value>Show files with the same names as nested</value>
+    <comment>File Nesting's check box nesting files by their names.</comment>
+  </data>
+  <data name="ParentSuffix" xml:space="preserve">
+    <value>Parent File Suffix</value>
+    <comment>The heading of File Nesting's column of the suffixes of files others nest under.</comment>
+  </data>
+  <data name="ChildSuffix" xml:space="preserve">
+    <value>Child File Suffix</value>
+    <comment>The heading of File Nesting's column of the suffixes of files that nest under them.</comment>
+  </data>
+  <data name="NestingRules" xml:space="preserve">
+    <value>Nesting rules:</value>
+    <comment>The heading over File Nesting's rules.</comment>
+  </data>
+  <data name="DockerfileHad" xml:space="preserve">
+    <value>A Dockerfile ({project} has one already)</value>
+    <comment>Add Docker Support's first choice where the project has a Dockerfile.</comment>
+  </data>
+  <data name="DockerfileBeside" xml:space="preserve">
+    <value>A Dockerfile beside the project, and a .dockerignore at the solution's folder</value>
+    <comment>Add Docker Support's first choice.</comment>
+  </data>
+  <data name="SdkContainer" xml:space="preserve">
+    <value>The .NET SDK's container support: dotnet publish /t:{target} builds the image, with no Dockerfile</value>
+    <comment>Add Docker Support's second choice; {target} is the SDK's publish target.</comment>
+  </data>
+  <data name="ImageBuilt" xml:space="preserve">
+    <value>How {project}'s image is built</value>
+    <comment>Add Docker Support's heading.</comment>
+  </data>
+  <data name="ComposeServices" xml:space="preserve">
+    <value>The services of {solution}'s compose.yaml</value>
+    <comment>Add Docker Compose's heading over the projects it runs.</comment>
+  </data>
+  <data name="BesidePackages" xml:space="preserve">
+    <value>Beside them, from their packages</value>
+    <comment>Add Docker Compose's heading over the databases, caches and brokers their packages point to.</comment>
+  </data>
+  <data name="NoBacking" xml:space="preserve">
+    <value>No database, cache or broker among their packages</value>
+    <comment>Add Docker Compose where the projects' packages point to no database, cache or broker.</comment>
+  </data>
+</root>

@@ -10,8 +10,12 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App.Editors;
+using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Text;
 
 namespace Passenger.App.CSharp;
 
@@ -37,7 +41,7 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     public InfoCard(string called, Action<Uri> browse)
     {
         Called = called;
-        documentationPage = new MarkdownPage(browse);
+        documentationPage = new MarkdownPage(link => Follow(link, browse)) { SymbolLinks = () => OpenDeclaration is not null };
         Classes.Add(StyleClasses.Popup);
         Padding = PopupFrame.CardInset;
         MaxWidth = PopupFrame.Medium;
@@ -55,6 +59,21 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
 
     /// <summary>Plays a sound a preview offers; nothing without it.</summary>
     public Action<string>? Play { get; set; }
+
+    /// <summary>Opens a signature part, or a symbol the documentation links, by its displayed name and the symbol key Roslyn
+    /// gave it; the documentation's links to symbols are drawn as links only while it is set.</summary>
+    public Action<string, string>? OpenDeclaration { get; set; }
+
+    /// <summary>A link of the documentation followed: a symbol's to its declaration, any other through the window.</summary>
+    private void Follow(Uri link, Action<Uri> browse)
+    {
+        if (Roslyn.Extension.SymbolLinks.Read(link.OriginalString) is { } symbol)
+        {
+            OpenDeclaration?.Invoke(symbol.Words, symbol.Key);
+            return;
+        }
+        browse(link);
+    }
 
     /// <summary>The largest a preview's picture is drawn, in logical units.</summary>
     private const double PictureSize = 128;
@@ -141,9 +160,10 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
     /// for C# and Razor, whose server shows display text rather than code to parse.</summary>
     public void AddServed(string code, IReadOnlyList<Roslyn.Extension.CodePart>? given, Languages.Language? language)
     {
-        if (given is not null && Languages.CSharp.ServerCode.Of(given) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
+        Dictionary<int, string>? declarations = OpenDeclaration is not null && given?.Any(part => part.Declaration is not null) == true ? [] : null;
+        if (given is not null && Languages.CSharp.ServerCode.Of(given, declarations) is var (shown, spans) && Languages.CSharp.ServerCode.SameCode(shown, code))
         {
-            parts.Children.Add(Signed(ColouredCode.Of(shown, spans, language)));
+            parts.Children.Add(Signed(ColouredCode.Of(shown, spans, language, declarations, OpenDeclaration)));
             return;
         }
         AddCode(code, language == Languages.Language.CSharp || language == Languages.Language.Razor ? null : language);
@@ -317,6 +337,11 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
             if (code)
             {
                 int at = unused.FindIndex(p => Languages.CSharp.ServerCode.SameCode(Languages.CSharp.ServerCode.Of(p).Text, text));
+                if (at < 0 && rich && info == "text")
+                {
+                    parts.Children.Add(ColouredCode.Of(text, IsCSharpExample(text) ? Languages.Language.CSharp : null));
+                    continue;
+                }
                 AddServed(text, at < 0 ? null : unused[at], ColouredCode.LanguageOf(info));
                 if (at >= 0)
                 {
@@ -337,6 +362,16 @@ internal sealed class InfoCard : Border, IHoverCard, IHeldToEditor, IHeardPopup
                 AddText(text);
             }
         }
+    }
+
+    /// <summary>Whether a documentation comment's code example, which comes fenced as text, reads as C#: parsed without an
+    /// error and declaring something (a using, a namespace, a type, a variable of a type or of <c>var</c>), as a log's
+    /// line or a lone call of words does not.</summary>
+    private static bool IsCSharpExample(string code)
+    {
+        SyntaxNode root = Languages.CSharp.CSharpParsing.Parse(code).GetRoot();
+        return !root.ContainsDiagnostics && root.DescendantNodes().Any(node => node is PredefinedTypeSyntax or UsingDirectiveSyntax
+            or BaseNamespaceDeclarationSyntax or BaseTypeDeclarationSyntax or VariableDeclarationSyntax { Type.IsVar: true });
     }
 
     internal static IBrush Brush(string key) =>
@@ -709,20 +744,21 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 {
     private readonly ListBox list;
 
-    /// <summary>What is offered, by its words.</summary>
-    public IReadOnlyList<string> Titles { get; }
+    private readonly IReadOnlyList<Choice> choices;
+
+    /// <summary>What is offered, by its words in the language in force.</summary>
+    public IReadOnlyList<string> Titles => [.. choices.Select(c => c.Text.Shown)];
 
     /// <summary>What each choice says beside its words.</summary>
-    public IReadOnlyList<string> Details { get; }
+    public IReadOnlyList<string> Details => [.. choices.Select(c => c.Detail.Shown)];
 
     /// <summary>What the list is titled.</summary>
-    public string Title { get; }
+    public Words Title { get; }
 
-    public ChoicePopup(string title, IReadOnlyList<Choice> choices)
+    public ChoicePopup(Words title, IReadOnlyList<Choice> choices)
     {
         Title = title;
-        Titles = [.. choices.Select(c => c.Text)];
-        Details = [.. choices.Select(c => c.Detail)];
+        this.choices = choices;
         bool numbered = choices.Any(c => c.Mnemonic is not null);
         Padding = ListRow.PopupList;
         list = new ListBox
@@ -740,7 +776,7 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
             Spacing = Gaps.Tight,
             Children =
             {
-                new TextBlock { Text = title, Classes = { StyleClasses.PaneTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
+                new TextBlock { [ShownWords.TextProperty] = title, Classes = { StyleClasses.PaneTitle }, Margin = new Thickness(Gaps.Wide, Gaps.Hair) },
                 list,
             },
         };
@@ -751,7 +787,7 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 
     public AutomationControlType Role => AutomationControlType.List;
 
-    public string Called => Title;
+    public string Called => Title.Shown;
 
     /// <summary>Held to a room narrower than the width it takes, its words then ending in an ellipsis.</summary>
     public void Within(double room) => MaxWidth = Math.Max(0, room);
@@ -791,8 +827,8 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
         {
             digit.Text = choice.Mnemonic?.ToString();
             digit.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
-            text.Text = choice.Text;
-            detail.Text = choice.Detail;
+            ShownWords.Set(text, TextBlock.TextProperty, choice.Text);
+            ShownWords.Set(detail, TextBlock.TextProperty, choice.Detail);
             detail.Foreground = InfoCard.Brush(TokenKeys.TextMuted);
             detail.Resource(TextBlock.FontFamilyProperty, ref detailFont, choice.DetailIsCode ? CodeFonts.Key : null);
         });
@@ -816,20 +852,24 @@ public sealed class ChoicePopup : FittingFrame, IHeardPopup, IHeldToEditor
 
 /// <summary>One thing to choose: what it says, a quieter detail beside it, what it stands for, and the digit that
 /// chooses it, if it has one.</summary>
-public sealed record Choice(string Text, string Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
+public sealed record Choice(Words Text, Words Detail, object Value, bool DetailIsCode = false, char? Mnemonic = null);
 
 /// <summary>Inline rename: the name in a box over itself, all of it selected; Enter renames (a new name's box, under its
 /// own caption, names what a refactoring makes). For a
 /// type declared in files named after it, Also rename files to reflect this change is a check box under it, with the
 /// files it would rename, clicked while the keys stay with the name.</summary>
-public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
+public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
 {
+    private const int VisibleNameLimit = 6;
+    private readonly string original;
     private readonly TextBox name;
     private readonly StackPanel body;
     private CheckBox? renameFiles;
+    private ListBox? suggestionList;
 
     public RenameBox(string current, string caption = "Rename")
     {
+        original = current;
         Called = caption;
         Classes.Add(StyleClasses.Popup);
         Width = PopupFrame.Narrow;
@@ -860,6 +900,22 @@ public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
     /// <summary>Held to a room narrower than a name's popup is wide.</summary>
     public void Within(double room) => Width = Math.Min(PopupFrame.Narrow, Math.Max(0, room));
 
+    /// <summary>Held to a room lower than it would be, its names' list giving way, down to a row, so the name and one name
+    /// offered show whole; as tall as it is of itself in a taller one.</summary>
+    public void WithinHeight(double room)
+    {
+        if (suggestionList is not { } list)
+        {
+            return;
+        }
+        list.MaxHeight = double.PositiveInfinity;
+        if (double.IsFinite(room) && list.IsEffectivelyVisible)
+        {
+            Measure(Size.Infinity);
+            list.MaxHeight = Math.Max(ListRow.Height, room - (DesiredSize.Height - list.DesiredSize.Height));
+        }
+    }
+
     /// <summary>What the box asks for, its caption.</summary>
     public string Called { get; }
 
@@ -877,6 +933,62 @@ public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
 
     /// <summary>Also rename files to reflect this change, checked or cleared.</summary>
     public event EventHandler<bool>? RenamesFilesChanged;
+
+    /// <summary>Names offered in place of the one renamed, best first: shown under the name, at most six at a time, those the
+    /// name as typed matches as completion matches its names (<see cref="FuzzyMatch.Label"/>), best way first and the
+    /// offer's order within a way, every one while the box holds the name it opened on; Up and Down or a click put one in
+    /// the box, the keys staying there.</summary>
+    internal void OfferSuggestions(IReadOnlyList<string> suggestions)
+    {
+        if (suggestions.Count == 0)
+        {
+            return;
+        }
+        ListBox list = new() { Classes = { StyleClasses.Tree }, Focusable = false };
+        ReusedRows.Use(list, () =>
+        {
+            TextBlock row = new() { Classes = { StyleClasses.Code }, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            return row.Showing<string>(offered => row.Text = offered);
+        });
+        suggestionList = list;
+        TextBlock label = new() { Text = "Suggested names", Classes = { StyleClasses.Muted, StyleClasses.Caption } };
+        AutomationProperties.SetLabeledBy(list, label);
+        StackPanel offered = new() { Spacing = Gaps.Tight, Children = { label, list } };
+        body.Children.Insert(2, offered);
+
+        void Filter(string typed)
+        {
+            string[] matches = [.. suggestions.Select((name, at) => (name, at, score: FuzzyMatch.Label(typed, name)))
+                .Where(m => m.score is not null)
+                .OrderByDescending(m => FuzzyMatch.LabelWay(typed, m.name, m.score!.Value)).ThenBy(m => m.at)
+                .Take(VisibleNameLimit).Select(m => m.name)];
+            list.SelectedIndex = -1;
+            list.ItemsSource = matches;
+            offered.IsVisible = matches.Length > 0;
+            InvalidateMeasure();
+        }
+
+        list.SelectionChanged += (_, _) =>
+        {
+            if (list.SelectedItem is string selected)
+            {
+                name.Text = selected;
+                name.Focus();
+                name.CaretIndex = selected.Length;
+            }
+        };
+        // Heard a moment after the text changes, so the first may tell of the name the box opened on once the names are in.
+        name.TextChanged += (_, _) =>
+        {
+            if (Text != (list.SelectedItem as string))
+            {
+                Filter(Typed());
+            }
+        };
+        Filter(Typed());
+
+        string Typed() => Text == original ? string.Empty : Text;
+    }
 
     /// <summary>Offers to rename the files named after the type with it, checked as the option was left.</summary>
     public void OfferFiles(IReadOnlyList<string> files, bool on)
@@ -897,6 +1009,16 @@ public sealed class RenameBox : Border, IHeardPopup, IHeldToEditor
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.KeyModifiers == KeyModifiers.None && e.Key is Key.Up or Key.Down && suggestionList is { ItemCount: > 0 } list)
+        {
+            int direction = e.Key == Key.Down ? 1 : -1;
+            int selected = list.SelectedIndex;
+            list.SelectedIndex = selected < 0 ? (direction > 0 ? 0 : list.ItemCount - 1)
+                : (selected + direction + list.ItemCount) % list.ItemCount;
+            list.ScrollIntoView(list.SelectedIndex);
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Enter)
         {
             string text = name.Text?.Trim() ?? string.Empty;

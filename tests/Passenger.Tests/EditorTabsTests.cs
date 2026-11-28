@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Editors;
@@ -41,7 +43,7 @@ public sealed class EditorTabsTests : IDisposable
     /// Closed Tab brings tabs back in reverse order each with its caret, a tab scrolled to a file's end draws the lines
     /// left once it is shorter on disk, closing the tab shown shows the one shown before it, Close Tabs to the Right
     /// and Close Other Tabs end on the tab chosen, Unsplit joins splits keeping each tab and caret, and the strip's end
-    /// lists the tabs out of sight.</summary>
+    /// lists the tabs out of sight, which the wheel scrolls into view.</summary>
     [AvaloniaFact]
     public void Editor_tabs_open_close_pin_and_come_back_as_a_person_left_them()
     {
@@ -264,7 +266,7 @@ public sealed class EditorTabsTests : IDisposable
 
     /// <summary>More tabs than the strip shows: the button at its end appears, lists the tabs out of its sight with their
     /// files' icons, narrows them as a name is typed and goes to the one chosen by Enter or by Down and Enter, which comes
-    /// into the strip's sight; with the tabs fitting again it is gone.</summary>
+    /// into the strip's sight; the wheel scrolls the strip across; with the tabs fitting again it is gone.</summary>
     private void The_button_at_the_strips_end_lists_the_tabs_out_of_its_sight_and_goes_to_the_one_chosen()
     {
         string[] many = [.. Enumerable.Range(1, 16).Select(i => $"Component{i:00}.cs")];
@@ -289,7 +291,7 @@ public sealed class EditorTabsTests : IDisposable
         Ui.Click(group.HiddenTabsButton);
         HiddenTabsPopup popup = Assert.IsType<HiddenTabsPopup>(window.Popup);
         Assert.Equal(hidden, popup.Rows.Select(r => r.Name));
-        Assert.True(popup.GetVisualDescendants().OfType<RowIcon>().Any(i => i.IsEffectivelyVisible && i.Data is not null), "The hidden tabs' rows show no file icon");
+        Assert.True(popup.GetVisualDescendants().OfType<RowIcon>().Any(i => i.IsEffectivelyVisible && (i.Data is not null || i.DataKey is { } key && i.FindResource(key) is Geometry)), "The hidden tabs' rows show no file icon");
         window.KeyTextInput("Component03");
         Ui.Settle();
         Ui.Press(window, "ENTER");
@@ -302,6 +304,19 @@ public sealed class EditorTabsTests : IDisposable
         Ui.Press(window, "DOWN");
         Ui.Press(window, "ENTER");
         Assert.Equal(second, window.EditorArea.Active?.Name);
+
+        // The wheel over the strip scrolls it across, the tab shown staying the one shown.
+        Point over = group.TabStrip.TranslatePoint(new Point(group.TabStrip.Bounds.Width / 2, group.TabStrip.Bounds.Height / 2), window)!.Value;
+        window.MouseWheel(over, new Vector(0, -100));
+        Ui.Settle();
+        string[] right = [.. group.HiddenTabs.Select(t => t.Document.Name)];
+        window.MouseWheel(over, new Vector(0, 100));
+        Ui.Settle();
+        string[] left = [.. group.HiddenTabs.Select(t => t.Document.Name)];
+        Assert.True(right.Contains("One.cs") && !right.Contains("Component16.cs") && left.Contains("Component16.cs") && !left.Contains("One.cs")
+            && window.EditorArea.Active?.Name == second,
+            $"The wheel turned down left [{string.Join(", ", right)}] out of sight and turned up [{string.Join(", ", left)}], showing {window.EditorArea.Active?.Name}, "
+            + $"where the strip goes to its end and back to its start, {second} shown throughout");
 
         foreach (string file in many)
         {

@@ -28,7 +28,7 @@ public partial class MainWindow
 
     private void AddGodotOpenInEditor()
     {
-        actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, "Open in Godot Editor", "Godot", _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotOpenInEditor, ActionTitles.GodotOpenInEditor, ActionGroups.Godot, _ => IdeErrors.Observe(OpenInGodotEditorAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : Untrusted() is { } untrusted ? untrusted : GodotAtHand() is null ? Refusals.NoGodotProject
                 : Editors.Active?.Path is { } path && GodotOfFile(path) is not null && (GodotFileKinds.IsScene(path) || IsGodotScript(path)) ? null : Refusals.NoGodotScene,
@@ -59,13 +59,13 @@ public partial class MainWindow
     {
         if (Editors.Active is not { } shown || GodotOfFile(shown.Path) is not { } folder)
         {
-            return (false, GodotAtHand() is null ? Refusals.NoGodotProject : Refusals.NoGodotScene);
+            return (false, (GodotAtHand() is null ? Refusals.NoGodotProject : Refusals.NoGodotScene).Shown);
         }
         int caret = Editors.CodeEditor.Document == shown.Text ? Editors.CodeEditor.Selections.Primary.Caret : shown.Selections.Primary.Caret;
         (string? scene, string node, string? why) = await GodotPlaceAtAsync(folder, shown, caret);
         if (scene is null)
         {
-            return (false, why ?? Refusals.NoGodotScene);
+            return (false, (why ?? Refusals.NoGodotScene).Shown);
         }
         string name = Path.GetFileName(folder);
         string place = node == "." ? Path.GetFileName(scene) : $"{node} in {Path.GetFileName(scene)}";
@@ -106,7 +106,7 @@ public partial class MainWindow
         string kept = session.Configurations.Chosen?.Name ?? configuration.Name;
         session.Configurations.Select(configuration.Name);
         // Godot's command line opens a scene in its editor, which it names after --editor, and no node in it.
-        string? refusedRun = await buildRun.RunAsync(arguments: scene);
+        Words? refusedRun = await buildRun.RunAsync(arguments: scene);
         session.Configurations.Select(kept);
         if (refusedRun is not null)
         {

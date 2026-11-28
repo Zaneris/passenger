@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App;
 
@@ -44,10 +46,10 @@ public static class PopupFrame
     /// <summary>An option of a popup beside its field (Match case, Show edited only, Also rename files): a check box at the
     /// caption's step, as tall as its words; it leaves the keys with the field unless it <paramref name="takesKeys"/>
     /// (one that turns its own field on, as File mask does).</summary>
-    public static CheckBox Option(string words, bool on, bool takesKeys = false) => new()
+    public static CheckBox Option(Words words, bool on, bool takesKeys = false) => new()
     {
         Classes = { StyleClasses.Caption },
-        Content = words,
+        [ShownWords.ContentProperty] = words,
         IsChecked = on,
         Focusable = takesKeys,
         MinHeight = 0,

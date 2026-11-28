@@ -20,7 +20,7 @@ public partial class MainWindow
     private void AddEndpoints()
     {
         // Built as it is first shown or asked for (a route's request sent), over the session's files and routes then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Endpoints, "Endpoints", IconKeys.Endpoints, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Endpoints, ToolWindowTitles.Endpoints, IconKeys.Endpoints, () =>
         {
             EndpointsView view = new(new EndpointsParts(work, () => session.EndpointGrants, text => status.Text = text, RowMenuItem) { DocumentOf = RunningDocumentAsync, KnownDocument = address => session.AppDocuments.Of(address) });
             endpoints = view;
@@ -38,13 +38,13 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 3)],
             Chosen = () => endpoints?.Chosen,
         });
-        actions!.Add(new IdeAction(AppActions.EndpointsRefresh, "Refresh Endpoints", "Endpoints", _ => Endpoints.Reload(session.Folder))
+        actions!.Add(new IdeAction(AppActions.EndpointsRefresh, ActionTitles.EndpointsRefresh, ActionGroups.Endpoints, _ => Endpoints.Reload(session.Folder))
         {
             WhyNot = c => NeedsFolder(c) ?? Unserved(ToolWindowIds.Endpoints),
             Words = ["Read the .http files again"],
         });
         // A row's Test, Enter and menu, an agent and Find Action test the row chosen; an .http file's icon, its line's request.
-        actions.Add(new IdeAction(AppActions.TestEndpoint, "Test Request", "Endpoints", context =>
+        actions.Add(new IdeAction(AppActions.TestEndpoint, ActionTitles.TestEndpoint, ActionGroups.Endpoints, context =>
         {
             if (context.Request is { } sending)
             {
@@ -56,16 +56,18 @@ public partial class MainWindow
         })
         {
             WhyNot = c => c.Request is null && endpoints?.Chosen is null ? "No request is chosen in the Endpoints window" : null,
-            TitleIn = c => c.Request is { Request: var request } ? request.Name.Length > 0 ? $"Send '{request.Name}'" : $"Send {request.Method} {request.Url}" : "Test Request",
+            TitleIn = c => c.Request is { Request: var request }
+                ? request.Name.Length > 0 ? ActionTitles.TestEndpointNamed(request.Name) : ActionTitles.TestEndpointTo(request.Method, request.Url)
+                : ActionTitles.TestEndpoint,
             Words = ["HTTP Client", "Send Request"],
         });
-        actions.Add(new IdeAction(AppActions.GenerateOpenApiRequests, "Generate Requests from OpenAPI", "Endpoints", _ => IdeErrors.Observe(GenerateFromOpenApiAsync(OpenApiProject()!)))
+        actions.Add(new IdeAction(AppActions.GenerateOpenApiRequests, ActionTitles.GenerateOpenApiRequests, ActionGroups.Endpoints, _ => IdeErrors.Observe(GenerateFromOpenApiAsync(OpenApiProject()!)))
         {
             WhyNot = _ => OpenApiProject() is null ? "No web project is chosen in the Endpoints window" : null,
             Works = AppActions.GenerateOpenApiRequests,
             Words = ["OpenAPI", "Swagger", "HTTP Client"],
         });
-        actions.Add(new IdeAction(AppActions.NameOpenApiDocument, "Name OpenAPI Document…", "Endpoints", _ => IdeErrors.Observe(NameOpenApiDocumentAsync(OpenApiProject()!)))
+        actions.Add(new IdeAction(AppActions.NameOpenApiDocument, ActionTitles.NameOpenApiDocument, ActionGroups.Endpoints, _ => IdeErrors.Observe(NameOpenApiDocumentAsync(OpenApiProject()!)))
         {
             WhyNot = _ => OpenApiProject() is null ? "No web project is chosen in the Endpoints window" : null,
             Words = ["OpenAPI", "Swagger", "schema"],

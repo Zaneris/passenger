@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AllowOnce" xml:space="preserve">
+    <value>Allow Once</value>
+    <comment>The answer to an agent's tool question letting this call alone go on.</comment>
+  </data>
+  <data name="AllowForSession" xml:space="preserve">
+    <value>Allow for This Session</value>
+    <comment>The answer to an agent's tool question letting it use the tool, or every tool, without asking until it disconnects.</comment>
+  </data>
+  <data name="Deny" xml:space="preserve">
+    <value>Deny</value>
+    <comment>The answer to an agent's tool question refusing it.</comment>
+  </data>
+  <data name="AllowTool" xml:space="preserve">
+    <value>Allow {tool}?</value>
+    <comment>The title of the question whether an agent may use one of its tools; {tool} is the tool's name, as edit.</comment>
+  </data>
+  <data name="AllowToolInOwnWindows" xml:space="preserve">
+    <value>Allow {tool} in Passenger's windows?</value>
+    <comment>The title of the question whether an agent may give input to Passenger's own windows; {tool} is the tool's name, as app_click.</comment>
+  </data>
+  <data name="WantsTo" xml:space="preserve">
+    <value>{agent}, connected through Passenger's MCP server, wants to {what} (its {tool} tool).</value>
+    <comment>What an agent's call would do; {agent} is the agent's name, {what} what the tool does as its title says it in English (edit a file), {tool} the tool's name.</comment>
+  </data>
+  <data name="WantsToInOwnWindows" xml:space="preserve">
+    <value>{agent}, connected through Passenger's MCP server, wants to {what} (its {tool} tool), the app being Passenger's own windows, where its input does what yours would.</value>
+    <comment>What an agent's call giving input to Passenger's own windows would do; {agent} is the agent's name, {what} what the tool does as its title says it in English, {tool} the tool's name.</comment>
+  </data>
+  <data name="AllowOnceSays" xml:space="preserve">
+    <value>Allow Once lets this call alone go on, asking again at the agent's next. Allow for This Session lets it use {tool} without asking in this folder until it disconnects.</value>
+    <comment>What a tool question's answers do; {tool} is the tool's name.</comment>
+  </data>
+  <data name="AllowOnceSaysInOwnWindows" xml:space="preserve">
+    <value>Allow Once lets this call alone go on, asking again at the agent's next. Allow for This Session lets it use {tool} in Passenger's windows without asking in this folder until it disconnects.</value>
+    <comment>What the answers of a question about input to Passenger's own windows do; {tool} is the tool's name.</comment>
+  </data>
+  <data name="AllowEveryTool" xml:space="preserve">
+    <value>Allow every tool?</value>
+    <comment>The title of the question whether an agent may use every tool that changes something without asking.</comment>
+  </data>
+  <data name="AsksEveryTool" xml:space="preserve">
+    <value>{agent}, connected through Passenger's MCP server, asks to use the tools below without your leave at each call: to edit and refactor files, build, run, debug and evaluate code, commit, run commands, and click or type in the apps it runs and in Passenger's own windows, where its input does what yours would.</value>
+    <comment>What an agent's request for every tool asks; {agent} is the agent's name. The tools' names follow it.</comment>
+  </data>
+  <data name="EveryToolSays" xml:space="preserve">
+    <value>Allow for This Session lets it use them all in this folder until it disconnects. Deny keeps each asking at its call, and refuses the agent's later requests for every tool until then.</value>
+    <comment>What the answers to an agent's request for every tool do.</comment>
+  </data>
+  <data name="Allow" xml:space="preserve">
+    <value>Allow</value>
+    <comment>The answer letting an agent work in the window, or open another folder there.</comment>
+  </data>
+  <data name="DontAllow" xml:space="preserve">
+    <value>Don't allow</value>
+    <comment>The answer refusing an agent work in the window, or opening another folder there.</comment>
+  </data>
+  <data name="AlwaysHere" xml:space="preserve">
+    <value>Always for this folder</value>
+    <comment>The check box beside an agent's admission question keeping the answer for the folder.</comment>
+  </data>
+  <data name="WantsWindow" xml:space="preserve">
+    <value>{agent} wants to work in this window</value>
+    <comment>The title of the question whether an agent may work in the window; {agent} is the agent's name.</comment>
+  </data>
+  <data name="ThisWindow" xml:space="preserve">
+    <value>this window</value>
+    <comment>What an agent may read and search where the window has no folder open, in the admission question.</comment>
+  </data>
+  <data name="AdmissionSays" xml:space="preserve">
+    <value>It asked through Passenger's MCP server. Allowed, it can read and search {where}, see the window, save files, stop what runs and step through what is debugged; Passenger asks you before each other kind of change, such as an edit, a build, a run, a breakpoint or code run in the debugged program, which you allow once or for its session, or every tool at once when it asks. Enable MCP Server in Settings lets agents in without asking, and Settings' Agents page lists the folders allowed always, each to take back.</value>
+    <comment>What an agent let into the window may do; {where} is the folder's name, or this window.</comment>
+  </data>
+</root>

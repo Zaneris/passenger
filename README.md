@@ -178,7 +178,7 @@ logs and traces and a run's OpenTelemetry logs and traces show beside its consol
 
 ### Godot 4
 
-A Godot 4 game, in C# or in GDScript alone, runs, debugs, profiles and Hot Reloads on the Godot Settings › Godot names
+A Godot 4 game, in C# or in GDScript alone, runs, debugs, profiles and Hot Reloads on the Godot Settings › Languages and Frameworks › Godot names
 or the one found. A breakpoint in C# or GDScript stops the game and a saved script reloads in it; Run Current Scene
 plays the scene open, Run Another Copy plays up to 16 copies for multiplayer, and on Windows, macOS and Linux under X11
 the game can draw in a pane beside its code. New Project makes a game, Publish exports it through its presets, and
@@ -291,7 +291,7 @@ needs:
 - **Node.js**, or **Bun** for a folder that uses it, for JavaScript, TypeScript, HTML, CSS, JSON,
   Dockerfiles and YAML; C#, XAML, GDScript and shaders do without them;
 - for Godot games, **Godot 4** (its .NET build for C#), found from `GODOT`, the PATH or your applications, or named in
-  Settings › Godot; Passenger is tested on Godot 4.7 and 4.8's betas;
+  Settings › Languages and Frameworks › Godot; Passenger is tested on Godot 4.7 and 4.8's betas;
 - for Blazor's WebAssembly debugging, **Chrome, Edge or another Chromium browser**;
 - for containers, **a container engine running Linux containers** (Docker Desktop, Colima, OrbStack, Rancher Desktop,
   Podman or a remote engine).
@@ -319,7 +319,7 @@ There are two ways in, each a flag on Passenger's own executable:
   of Passenger's windows), so its breakpoints and stops show in your editor and its runs in your Run window; its first
   call opens the folder in Passenger, starting it if need be, and it never joins a window on another folder. The window
   asks you before it lets an agent in (Allow, Don't allow, or Always for this folder), unless you have turned on
-  Settings | MCP Server | Enable MCP Server, and asks again before each call of a tool that changes anything: Allow Once
+  Settings | Agents | Enable MCP Server, and asks again before each call of a tool that changes anything: Allow Once
   for that call, or Allow for This Session for every call of that tool until the agent disconnects. An agent about to
   make several changes can ask once for every tool, which Allow for This Session lets it use unasked until it
   disconnects; Deny keeps each tool asking. A question not answered within two minutes comes back to the agent as nobody
@@ -327,7 +327,7 @@ There are two ways in, each a flag on Passenger's own executable:
 - **`--mcp FOLDER`** starts a Passenger of the agent's own with no window, over a folder or solution, for work it does
   alone. It asks nothing, so it suits an agent you leave to work while you are away.
 
-Passenger's own Settings | MCP Server shows each agent's setup with this copy's path filled in, each with a Copy button,
+Passenger's own Settings | Agents shows each agent's setup with this copy's path filled in, each with a Copy button,
 and the website's [agents page](https://passenger-ide.net/agents) has the same setups, Claude Desktop's, the Codex
 desktop app's and OpenCode's among them. Passenger is `/Applications/Passenger.app/Contents/MacOS/Passenger` on a Mac,
 `%LOCALAPPDATA%\PassengerIDE\current\Passenger.exe` on Windows, and `~/.local/bin/passenger-ide` on Linux
@@ -355,7 +355,7 @@ codex mcp add passenger -- /Applications/Passenger.app/Contents/MacOS/Passenger 
 ```
 
 A call that takes a while (a build, a test run, a debug session waiting for a stop) tells the agent what it is doing
-every 10 seconds when the agent asks for progress. With Settings | Diagnostics | Trace protocol messages on, `mcp.log`
+every 10 seconds when the agent asks for progress. With Settings | General | Diagnostics | Trace protocol messages on, `mcp.log`
 in the logs folder has each agent's call, what it waited on and for how long.
 
 This repository's own [`.mcp.json`](.mcp.json) runs [`tools/mcp.sh`](tools/mcp.sh), the script `just mcp` runs too: the

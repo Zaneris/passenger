@@ -199,7 +199,7 @@ public partial class MainWindow
     {
         if (Solution is not { } solution)
         {
-            return Refusals.NoSolution;
+            return Refusals.NoSolution.Shown;
         }
         // Opened again, the filter would name a project the solution no longer has.
         string? filter = leaving is not null && session.Workspace?.Filter is { } open && leaving.Any(open.Projects.Contains) ? open.Path : null;
@@ -237,11 +237,11 @@ public partial class MainWindow
 
     /// <summary>Run Unit Tests on projects or solution folders in the Solution view: the tests of the test projects
     /// among them, as found once the run's build has ended.</summary>
-    private void RunProjectTests(IReadOnlyList<string> projects, string what, bool debug)
+    private void RunProjectTests(IReadOnlyList<string> projects, Words what, bool debug, bool cover = false)
     {
         HashSet<string> chosen = new(projects, StringComparer.Ordinal);
         RunTests(() => session.Tests.RunMatchingAsync(Folder!, m => m.ProjectPath is { } project && chosen.Contains(project),
-            unfound => $"No tests were found in {what}" + (unfound is null ? string.Empty : $": {unfound}"), debug));
+            unfound => unfound is null ? Testing.TestingWords.NoneFoundIn(what) : Testing.TestingWords.NoneFoundInWhy(what, unfound), debug, cover));
     }
 
     private static SolutionFolder? FindFolder(IEnumerable<SolutionEntry> entries, string path)

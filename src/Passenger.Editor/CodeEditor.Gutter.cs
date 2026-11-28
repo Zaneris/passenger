@@ -162,6 +162,25 @@ public sealed partial class CodeEditor
 
     internal bool GutterHides(int line) => IsHidden(line);
 
+    private void RefreshNumberHover()
+    {
+        if (HoveredNumberLine() != frameHoveredNumberLine)
+        {
+            RequestFrame();
+        }
+    }
+
+    private int HoveredNumberLine()
+    {
+        if (!ShowLineNumbers || drag.Mode != DragMode.None || pointer is not { } at
+            || at.X < columnRoom.Left || at.X >= NumbersRight || at.Y < 0 || at.Y >= Bounds.Height)
+        {
+            return -1;
+        }
+        (int line, int row) = Rows.LineOfRow(RowAtY(at.Y));
+        return row == 0 && line < document.Snapshot.LineCount ? line : -1;
+    }
+
     /// <summary>A token's brush in the look in force, immutable, kept until the look changes; transparent for one the look
     /// lacks.</summary>
     internal IBrush GutterBrush(string key)
@@ -259,22 +278,22 @@ public sealed partial class CodeEditor
 
     /// <summary>The gutter beside a row the frame shows, at the top of the row's visual, clipped to it: the columns, as
     /// one line's frame, then on a line's first row the fold's chevron and its number unless a column covered it. A
-    /// wrapped line's other rows draw what the columns draw down beside them.</summary>
-    private void DrawGutterRow(DrawingContext context, RowSlot slot, RowSpan span)
+    /// wrapped line's other rows and the rows above a line draw what the columns draw down beside them.</summary>
+    private void DrawGutterRow(DrawingContext context, int row, int line, bool firstRow)
     {
         if (!ShowLineNumbers)
         {
             return;
         }
-        int line = span.Line;
         double lineHeight = metrics.LineHeight;
+        using DrawingContext.PushedState clip = context.PushClip(new Rect(0, 0, frameGutter, lineHeight));
         double right = NumbersRight;
-        gutterTop = slot.Row * lineHeight;
+        gutterTop = row * lineHeight;
         GutterFrame frame = gutterFrame ??= new GutterFrame(this);
         frame.Begin(context, right, lineHeight, lineHeight, metrics.CharWidth, line, line, frameText!.LineCount);
-        if (span.Row == 0)
+        if (firstRow)
         {
-            frame.Shown.Add(new GutterLine(line, 0));
+            frame.Shown.Add(new GutterLine(line, 0) { NumberHovered = line == frameHoveredNumberLine });
         }
         GutterFont font = new(metrics.CharWidth, lineHeight);
         double x = right + columnRoom.Right;
@@ -297,7 +316,7 @@ public sealed partial class CodeEditor
             leftColumns[i].Draw(frame);
             x += width;
         }
-        if (span.Row == 0)
+        if (firstRow)
         {
             DrawFoldMarkers(context, line, frameGutter);
         }

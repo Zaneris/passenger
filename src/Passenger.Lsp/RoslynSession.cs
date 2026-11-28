@@ -438,6 +438,13 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
     public Task<Roslyn.Extension.SymbolsFound> SymbolsNamedAsync(string name, int limit, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolsNamed, new Roslyn.Extension.SymbolsAsked(name, limit), cancel);
 
+    /// <summary>A level of the dependency map (Passenger's extension's <see cref="Roslyn.Extension.DependenciesAsked"/>): the
+    /// children of a node and what each depends on, the solution's projects for none, each multi-targeted project read in the
+    /// framework <paramref name="frameworks"/> chooses for its file, each edge judged by the folder's layer rules.</summary>
+    public Task<Roslyn.Extension.DependenciesFound> DependenciesAsync(string? of, IReadOnlyDictionary<string, string> frameworks, Roslyn.Extension.LayerRules? rules,
+        CancellationToken cancel = default) =>
+        ExtensionAsync<Roslyn.Extension.DependenciesFound>(Roslyn.Extension.Handlers.Dependencies, new Roslyn.Extension.DependenciesAsked(of, frameworks, rules), cancel);
+
     /// <summary>What the symbols declared at places the server named are in (Passenger's extension's <see
     /// cref="Roslyn.Extension.ContainersAsked"/>), in order, as <see cref="SymbolsNamedAsync"/> names a symbol's container: a
     /// member's type, a type's namespace; null when the server has no extension to ask.</summary>
@@ -483,6 +490,13 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
     public async Task<IReadOnlyList<Roslyn.Extension.GeneratedText?>?> GeneratedNamedAsync(string project, string file, CancellationToken cancel = default) =>
         Server.ExtensionProblem is null
             ? (await ExtensionAsync<Roslyn.Extension.GeneratedFound>(Roslyn.Extension.Handlers.GeneratedNamed, new Roslyn.Extension.GeneratedNameAsked(project, file), cancel).ConfigureAwait(false)).Texts
+            : null;
+
+    /// <summary>The documents the source generators of the projects named by their files make now, every target framework's
+    /// (Passenger's extension's <see cref="Roslyn.Extension.GeneratedListAsked"/>); null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.GeneratedFile>?> GeneratedListAsync(IReadOnlyList<string> projects, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.GeneratedListFound>(Roslyn.Extension.Handlers.GeneratedListed, new Roslyn.Extension.GeneratedListAsked(projects), cancel).ConfigureAwait(false)).Files
             : null;
 
     /// <summary>The members source generators add to the types of the projects named by their files and to those the C# files
@@ -535,6 +549,27 @@ public sealed partial class RoslynSession : IAsyncDisposable, IDocumentHost
     public async Task<IReadOnlyList<Roslyn.Extension.MauiCheck>?> MauiChecksAsync(string path, string text, IReadOnlyList<Roslyn.Extension.MauiExpression> expressions, CancellationToken cancel = default) =>
         Server.ExtensionProblem is null
             ? (await ExtensionAsync<Roslyn.Extension.MauiChecksFound>(Roslyn.Extension.Handlers.MauiXamlChecks, new Roslyn.Extension.MauiChecksAsked(path, text, expressions), cancel).ConfigureAwait(false)).Checks
+            : null;
+
+    /// <summary>What completion offers at a place (an offset of the file) in a XAML page's x:Code (Passenger's extension's
+    /// <see cref="Roslyn.Extension.XamlCodeCompletion"/>); null when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.MauiCompletions?> XamlCodeCompletionAsync(string path, string text, Roslyn.Extension.XamlCode code, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? await ExtensionAsync<Roslyn.Extension.MauiCompletions>(Roslyn.Extension.Handlers.XamlCodeCompletion, new Roslyn.Extension.XamlCodeAsked(path, text, code, at), cancel).ConfigureAwait(false)
+            : null;
+
+    /// <summary>The symbol a place in a XAML page's x:Code names (Passenger's extension's <see cref="Roslyn.Extension.XamlCodeSymbol"/>);
+    /// null for none, or when the server has no extension to ask.</summary>
+    public async Task<Roslyn.Extension.NamedSymbol?> XamlCodeSymbolAsync(string path, string text, Roslyn.Extension.XamlCode code, int at, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.XamlCodeSymbol, new Roslyn.Extension.XamlCodeAsked(path, text, code, at), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault()
+            : null;
+
+    /// <summary>The problems C# finds in a XAML page's x:Code (Passenger's extension's <see cref="Roslyn.Extension.XamlCodeChecks"/>);
+    /// null when the server has no extension to ask.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.XamlCodeCheck>?> XamlCodeChecksAsync(string path, Roslyn.Extension.XamlCode code, CancellationToken cancel = default) =>
+        Server.ExtensionProblem is null
+            ? (await ExtensionAsync<Roslyn.Extension.XamlCodeChecksFound>(Roslyn.Extension.Handlers.XamlCodeChecks, new Roslyn.Extension.XamlCodeChecked(path, code), cancel).ConfigureAwait(false)).Checks
             : null;
 
     /// <summary>The class a Razor component's file makes, and where the server takes it (Passenger's extension's
@@ -856,6 +891,11 @@ public sealed class LspDocument : IDisposable
     public async Task<Hover?> HoverAsync(int offset, CancellationToken cancel = default) =>
         await Server.RequestAsync<Hover>(HoverMethod, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
 
+    /// <summary>Where the symbol carried by a hover signature part is declared.</summary>
+    public async Task<IReadOnlyList<LspLocation>> HoverDeclarationAsync(string symbolKey) =>
+        Shapes.Locations(await Read(Server.RequestAsync<JsonElement>(ExtensionMethods.HoverDeclaration,
+            new { textDocument = Identifier, symbolKey }, default)));
+
     /// <summary>The signatures of the call at a place (<see cref="SignatureHelpMethod"/>).</summary>
     public async Task<SignatureHelp?> SignatureHelpAsync(int offset, CancellationToken cancel = default) =>
         await Server.RequestAsync<SignatureHelp>(SignatureHelpMethod, new TextDocumentPositionParams(Identifier, PositionOf(offset)), cancel);
@@ -1021,15 +1061,41 @@ public sealed class LspDocument : IDisposable
     public async Task<Roslyn.Extension.NamedSymbol?> SymbolAtAsync(int offset, CancellationToken cancel = default) =>
         (await ExtensionAsync<Roslyn.Extension.SymbolsFound>(Roslyn.Extension.Handlers.SymbolAt, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Symbols.FirstOrDefault();
 
+    /// <summary>The aliases the parameter list at an offset names, each with the type it stands for written whole, as the
+    /// compiler binds them: the file's own and those its project's every file takes.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.AliasFound>> ParameterAliasesAsync(int offset, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.AliasesFound>(Roslyn.Extension.Handlers.ParameterAliases, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Aliases;
+
     /// <summary>The uses of what the MVVM Toolkit makes of the field or method at an offset, with the names they take as it
     /// is renamed to <paramref name="name"/> (<see cref="Roslyn.Extension.ToolkitFound"/>); none for any other symbol.</summary>
     public Task<Roslyn.Extension.ToolkitFound> ToolkitRenamesAsync(int offset, string name, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.ToolkitFound>(Roslyn.Extension.Handlers.ToolkitRenames, new Roslyn.Extension.ToolkitAsked(PlaceOf(offset), name), cancel);
 
+    public Task<string[]> RenameSuggestionsAsync(int offset, CancellationToken cancel) =>
+        ExtensionAsync<string[]>(Roslyn.Extension.Handlers.RenameSuggestions, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel);
+
     /// <summary>Whether the method whose name, just written, ends at <paramref name="offset"/> is called where it stands,
     /// and takes arguments.</summary>
     public Task<Roslyn.Extension.CallFound> CompletionCallAsync(int offset, CancellationToken cancel = default) =>
         ExtensionAsync<Roslyn.Extension.CallFound>(Roslyn.Extension.Handlers.CompletionCall, new Roslyn.Extension.CallAsked(PlaceOf(offset)), cancel);
+
+    /// <summary>The counts of the signposts above declarations whose names stand at offsets of the text as it stands, in one
+    /// request (<see cref="Roslyn.Extension.SignpostsAsked"/>): each one's own usages and what inherits from it, as asked, with
+    /// the places its usages count where <paramref name="places"/>.</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.SignpostCount>> SignpostsAsync(IReadOnlyList<int> names, bool usages, bool inheriting, bool places = false,
+        CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.SignpostsFound>(Roslyn.Extension.Handlers.Signposts,
+            new Roslyn.Extension.SignpostsAsked([.. names.Select(PlaceOf)], usages, inheriting, places), cancel).ConfigureAwait(false)).Counts;
+
+    /// <summary>The dependency map's ids from the project down of the symbol at an offset, else of the declaration around it,
+    /// else of the document's first type (<see cref="Roslyn.Extension.DependencyPlace"/>); none in a document of no project's.</summary>
+    public async Task<IReadOnlyList<string>> DependencyAtAsync(int offset, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.DependencyPlace>(Roslyn.Extension.Handlers.DependencyAt, new Roslyn.Extension.Caret(PlaceOf(offset)), cancel).ConfigureAwait(false)).Path;
+
+    /// <summary>The uses in the document that break a folder's layer rules, each where it is written (Passenger's extension's
+    /// <see cref="Roslyn.Extension.LayersAsked"/>).</summary>
+    public async Task<IReadOnlyList<Roslyn.Extension.LayerBreak>> LayersBrokenAsync(Roslyn.Extension.LayerRules rules, CancellationToken cancel = default) =>
+        (await ExtensionAsync<Roslyn.Extension.LayersBroken>(Roslyn.Extension.Handlers.LayerChecks, new Roslyn.Extension.LayersAsked(rules), cancel).ConfigureAwait(false)).Broken;
 
     /// <summary>An offset as the extension's messages give a place.</summary>
     public Roslyn.Extension.Place PlaceOf(int offset)

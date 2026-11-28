@@ -42,7 +42,7 @@ scheme file of your own.
 
 `name` is required, at most 64 characters; `description` is optional, at most 1,000. `tokens` holds values for both
 variants, `dark` and `light` for one each; a token goes in `tokens` or in `dark` and `light`, never both. Any of the
-three may be left out, as may `background`, `fonts`, `languages`, `layout` and `vscode` below.
+three may be left out, as may `background`, `fonts`, `languages`, `layout`, `icons`, `iconTheme`, `base` and `vscode` below.
 
 A token is named as its key in [Tokens.axaml](../src/Passenger.App/Theme/Tokens.axaml) without `Passenger.`:
 `Frame`, `Editor.Background`, `Syntax.Keyword`, `SyntaxStyle.Comment`, `ControlRadius`, and the margins
@@ -66,12 +66,31 @@ through exactly those (`Syntax.Brace5` counts only after `Syntax.Brace4`, `Synta
 five draws the sixth depth in `Syntax.Brace1`'s colour. It may also give `SyntaxStyle.Parameter`, how a parameter is set.
 `Syntax.Parameter`, `Syntax.Local`, `Syntax.Namespace` and `Syntax.Operator` are drawn in the code's plain words in
 Passenger's own theme; a file that leaves them out draws them in its own `Editor.Text`, unless it is laid over a VS Code
-theme, whose own they are.
+theme, whose own they are. A C# documentation comment's markup has colours of its own beside `Syntax.DocComment`, its
+words: `Syntax.DocCommentTag` its `///` and tags, `Syntax.DocCommentAttributeName` an attribute's name (`cref`, `name`)
+and `Syntax.DocCommentAttributeValue` its value with its quotes (a `cref`'s names keep the colours of what they name), all
+set in `SyntaxStyle.DocComment`; a file that leaves them out draws them in its own `Syntax.DocComment`, unless it is laid
+over a VS Code theme.
 A file that leaves out `ButtonHover`, `ButtonPressed` or `AccentPressed`, a button's grounds under the pointer and
 pressed, has them worked out in each variant from its own colours, as Passenger's themes work them out: a plain button's
 are its `Hover` and `Selected` laid over its `Button`, and the default button's pressed goes as far past its `AccentHover`
 as that is from its `Accent`. One that leaves out `Debug` or `TitleBar.Debug`, the Debug button's own colours, draws it in
-its own `Icon` and `TitleBar.Icon`.
+its own `Icon` and `TitleBar.Icon`; one that leaves out `Editor.Fine`, a measure's mark on the code where it is fine (a
+function's cognitive complexity below yellow), draws it in its own `Test.Passed`; one that leaves out `Memory.Changed`,
+a byte the debugged program changed since it last stopped, draws it in its own `Error`.
+
+A theme may give three more for its icons, each left out of Passenger's own, whose icons are drawn as they are:
+`IconSaturation` and `IconBrightness`, numbers working on every icon's colours as CSS's `saturate()` and `brightness()`
+filters work on sRGB (1 as drawn; 0 grey, or black; above 1 more vivid, or brighter), and `IconTint`, a colour washed over
+every icon at its opacity (`{"colour": "#E6C384", "opacity": 0.2}`). Each colour of an icon takes them in that order,
+saturation, brightness, then the tint, its alpha kept. Every icon in every window follows, wherever it is drawn: the file
+and folder icons, the tool windows' and the toolbar's, a tree's chevrons, a tab's close, and the icons a theme brings of
+its own (below), all colours of them. Give them in `dark` or `light` to set one variant's icons alone:
+
+```json
+"tokens": { "IconSaturation": 0.55, "IconBrightness": 0.9 },
+"dark": { "IconTint": { "colour": "#E6C384", "opacity": 0.15 } }
+```
 
 ### Its background picture
 
@@ -114,6 +133,86 @@ The picture is kept beside the theme when the theme is chosen, so it draws offli
 The code's and the window's family, each by its name, and the code's `size` in points (6 to 48). A family or size you
 choose in Settings wins wherever you chose one; Reset Font Size goes back to the theme's size. A family not installed
 here leaves Passenger's own.
+
+### Its own icons
+
+```json
+"icons": {
+  "FileIcon.CSharp": "icons/csharp.svg",
+  "Icon.Explorer": "icons/folder.svg",
+  "Icon.Run": { "dark": "icons/run-dark.svg", "light": "icons/run-light.svg" }
+}
+```
+
+A theme may draw any of Passenger's icons with an SVG of its own beside its file (its folders joined by `/`, no `..`),
+each named by the key Passenger draws it by: `Icon.*` for the window's icons, as
+[Icons.axaml](../src/Passenger.App/Theme/Icons.axaml) names them (`Icon.Run`, `Icon.Explorer`, a plain folder's, and
+`Icon.FolderOpen`, an open one's), and `FileIcon.*` for a kind of file, as
+[FileIconSet.axaml](../src/Passenger.App/Theme/FileIconSet.axaml) names them (`FileIcon.CSharp`, `FileIcon.Npm`,
+`FileIcon.Docker`). An icon is the same in both variants, or `{"dark": …, "light": …}`, either of which may be left out.
+Every icon it names none for stays Passenger's, and a key this Passenger does not draw is passed over and named.
+
+Its SVG is drawn in its own colours, fitted into the icon's place; where it says `currentColor` it takes the colour
+Passenger draws that icon in (a file's kind's colour, the theme's `Icon`), so a set of one colour follows the theme. The
+theme's icon saturation, brightness and tint above work on all its colours. An SVG is at most 256 KB, read as data alone:
+nothing it names beside it or on the web is read. The icons are fetched and kept with the theme, as its pictures are, so
+they draw offline, and a set whose licence allows it (Catppuccin's icons, under MIT) can be drawn so, each file mapped to
+the key it stands for.
+
+A theme over a carried theme takes the base's icons for the keys it names none for. A theme of your own, added from its
+file, may give icons over any base, a VS Code theme's too, so a set of icons goes with whichever colours you like. Settings
+| Appearance | Show icons on plain folders, off, leaves a plain folder's row its chevron alone whatever the theme draws,
+its name in line with its files'.
+
+### Its file icon theme
+
+```json
+"iconTheme": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha" }
+```
+
+```json
+"iconTheme": {
+  "dark": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha", "version": "1.26.0" },
+  "light": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Latte" }
+}
+```
+
+```json
+"iconTheme": { "file": "icons/theme.json" }
+```
+
+`iconTheme` names a VS Code file icon theme (one an extension contributes as `iconThemes`) that draws the theme's files and
+folders: by its extension's Open VSX id (`publisher.name`), its label in that extension (or its id there), and the version
+pinned, which may be left out; or as a file icon theme's JSON beside the theme's file (`file`, its folders joined by `/`, no
+`..`), its SVGs where it names them beside it. One is the same in both variants, or `{"dark": …, "light": …}` gives each its
+own, either of which may be left out. It is fetched with the theme, from Open VSX or beside the theme's file, with every SVG
+it draws, and kept beside it (`iconTheme/` in its folder), so it draws offline; Refresh takes the extension's newest version
+unless `version` pins one. Nothing of the extension runs: Passenger reads its JSON as VS Code does, comments and trailing
+commas allowed, and draws its SVGs as data, as a theme's own icons are drawn (each at most 256 KB, 5,000 icons a theme).
+
+A file takes the icon theme's icon for its whole name, else for each extension its name ends in, the longest first
+(`d.ts` before `ts`, and one given under a folder's name, `workflows/yml`, first for a file in that folder), else for its
+language as Passenger knows it by its name (VS Code's ids: `csharp`, `typescript`, `markdown`, …); a folder for its name,
+open or closed; names and extensions in any letter case. Where the icon theme names none of these, a file or folder
+Passenger draws apart keeps Passenger's icon (a project file, a Dockerfile, `.github`, a project's `Properties`), and every
+other takes the icon theme's file or folder icon; Passenger's own where it gives none. Its `light` section draws under
+Light, laid over what it gives for both. An icon of a font's character, or a picture that is no SVG, is passed over and
+named, its files keeping Passenger's icons. Projects keep their kinds' icons, and the window's other icons stay
+Passenger's or the theme's own `icons`. The theme's icon saturation, brightness and tint work on the icon theme's colours
+too, and with Show icons on plain folders off, a folder the icon theme draws by its name keeps its icon while every other
+plain folder shows its chevron alone.
+
+A theme of your own, added from its file, pairs any colours with any icon theme, naming a carried theme or a VS Code theme
+as its base beside its `iconTheme`:
+
+```json
+{
+  "format": 1,
+  "name": "Mocha with its icons",
+  "vscode": { "id": "Catppuccin.catppuccin-vsc", "theme": "Catppuccin Mocha" },
+  "iconTheme": { "id": "Catppuccin.catppuccin-vsc-icons", "theme": "Catppuccin Mocha" }
+}
+```
 
 ### The code's colours by language
 
@@ -171,7 +270,7 @@ resized the new theme's size. What you moved, floated, put among the editors, op
   a tab to go back to, where the places Go to Declaration and the like find to choose from are listed too; left out, the
   popup.
 
-What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance: the
+What the layout arranges beyond where the windows dock (`editorTabs`, `toolWindows`, `closedWindows`, `findResults`) is each a setting of Settings | Appearance | Layout: the
 theme's is the default there, and the place you choose wins over it whatever theme you choose, until you choose Theme
 default again.
 
@@ -203,6 +302,9 @@ refused, saying so.
 | `Syntax.ControlKeyword` | `controlKeyword` | `keyword.control`, else `Syntax.Keyword` |
 | `Syntax.Comment` | `comment` | `comment.line.double-slash`, `comment` |
 | `Syntax.DocComment` | – | `comment.block.documentation`, `comment.documentation`, else `Syntax.Comment` |
+| `Syntax.DocCommentTag` | `xmlDocCommentName`, `xmlDocCommentDelimiter` | `comment.documentation.name`, `comment.documentation.delimiter`, a documentation comment's `entity.name.tag`, else `Syntax.DocComment` |
+| `Syntax.DocCommentAttributeName` | `xmlDocCommentAttributeName` | `comment.documentation.attribute.name`, a documentation comment's `entity.other.attribute-name`, else `Syntax.DocComment` |
+| `Syntax.DocCommentAttributeValue` | `xmlDocCommentAttributeValue` | `comment.documentation.attribute.value`, a documentation comment's `string.quoted.double`, else `Syntax.DocComment` |
 | `Syntax.String` | `string` | `string.quoted.double`, `string` |
 | `Syntax.StringEscape` | `stringEscapeCharacter` | `constant.character.escape`, else `Syntax.String` |
 | `Syntax.Number` | `number` | `constant.numeric` |
@@ -330,6 +432,26 @@ A kind a theme colours no way takes the one after "else", then Passenger's palet
 | `Diff.Deleted` | `diffEditor.removedLineBackground`, `diffEditor.removedTextBackground` |
 | `Diff.AddedWord` | `diffEditor.insertedTextBackground` |
 | `Diff.DeletedWord` | `diffEditor.removedTextBackground` |
+
+## A theme over one Passenger carries
+
+```json
+{
+  "format": 1,
+  "name": "Cubicle in rose",
+  "base": "Cubicle",
+  "tokens": { "Accent": "#C0306A", "ControlRadius": 4 }
+}
+```
+
+`base` names a theme Passenger carries as the theme's base: `Cubicle` or `High Contrast`, or `Passenger`, its own, which is
+under every theme already, so naming it is the same as leaving `base` out. The theme shows the base with only what it
+gives changed: the base gives every token the theme leaves out (a token the theme gives one variant alone keeps the base's
+for the other), its fonts where the theme names none, its picture where the theme gives no `background`, its default
+layout where the theme gives no `layout`, and its colours for a language beneath the theme's own for it. The base is
+carried with Passenger, so it needs no fetching and draws offline, and a later Passenger's base is the theme's base from
+then on. A theme gives `base` or `vscode`, never both. A code colour scheme may name a carried theme as its base too,
+taking that theme's code colours (`Editor.*`, `Syntax.*`, `SyntaxStyle.*`, `Diff.*` and its languages) alone.
 
 ## A theme over a VS Code theme
 

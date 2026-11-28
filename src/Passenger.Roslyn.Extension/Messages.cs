@@ -35,11 +35,13 @@ public static class Handlers
     public const string LocalizedReads = "Passenger.Roslyn.Extension.LocalizedReads";
     public const string SymbolsNamed = "Passenger.Roslyn.Extension.SymbolsNamed";
     public const string SymbolAt = "Passenger.Roslyn.Extension.SymbolAt";
+    public const string ParameterAliases = "Passenger.Roslyn.Extension.ParameterAliases";
     public const string SymbolContainers = "Passenger.Roslyn.Extension.SymbolContainers";
     public const string WrittenPlaces = "Passenger.Roslyn.Extension.WrittenPlaces";
     public const string ComponentClass = "Passenger.Roslyn.Extension.ComponentClass";
     public const string GeneratedTexts = "Passenger.Roslyn.Extension.GeneratedTexts";
     public const string GeneratedNamed = "Passenger.Roslyn.Extension.GeneratedNamed";
+    public const string GeneratedListed = "Passenger.Roslyn.Extension.GeneratedListed";
     public const string PartialHalf = "Passenger.Roslyn.Extension.PartialHalf";
     public const string GeneratedParts = "Passenger.Roslyn.Extension.GeneratedParts";
     public const string GeneratedDocuments = "Passenger.Roslyn.Extension.GeneratedDocuments";
@@ -51,25 +53,46 @@ public static class Handlers
     public const string GodotNameStrings = "Passenger.Roslyn.Extension.GodotNameStrings";
     public const string GodotFix = "Passenger.Roslyn.Extension.GodotFix";
     public const string ToolkitRenames = "Passenger.Roslyn.Extension.ToolkitRenames";
+    public const string RenameSuggestions = "Passenger.Roslyn.Extension.RenameSuggestions";
     public const string GeneratedMembers = "Passenger.Roslyn.Extension.GeneratedMembers";
     public const string MauiExpressionCompletion = "Passenger.Roslyn.Extension.MauiExpressionCompletion";
     public const string MauiExpressionSymbol = "Passenger.Roslyn.Extension.MauiExpressionSymbol";
     public const string MauiXamlChecks = "Passenger.Roslyn.Extension.MauiXamlChecks";
     public const string MauiExpressionUses = "Passenger.Roslyn.Extension.MauiExpressionUses";
     public const string MauiExpressionHover = "Passenger.Roslyn.Extension.MauiExpressionHover";
+    public const string XamlCodeCompletion = "Passenger.Roslyn.Extension.XamlCodeCompletion";
+    public const string XamlCodeSymbol = "Passenger.Roslyn.Extension.XamlCodeSymbol";
+    public const string XamlCodeChecks = "Passenger.Roslyn.Extension.XamlCodeChecks";
     public const string CompletionCall = "Passenger.Roslyn.Extension.CompletionCall";
     public const string StepBindings = "Passenger.Roslyn.Extension.StepBindings";
     public const string EditorConfigKeys = "Passenger.Roslyn.Extension.EditorConfigKeys";
     public const string EditorConfigValues = "Passenger.Roslyn.Extension.EditorConfigValues";
+    public const string Signposts = "Passenger.Roslyn.Extension.Signposts";
+    public const string CodeClones = "Passenger.Roslyn.Extension.CodeClones";
+    public const string ExtractClones = "Passenger.Roslyn.Extension.ExtractClones";
+    public const string Dependencies = "Passenger.Roslyn.Extension.Dependencies";
+    public const string DependencyAt = "Passenger.Roslyn.Extension.DependencyAt";
+    public const string LayerChecks = "Passenger.Roslyn.Extension.LayerChecks";
+    public const string TestDoublesOffered = "Passenger.Roslyn.Extension.TestDoublesOffered";
+    public const string CreateFake = "Passenger.Roslyn.Extension.CreateFake";
+    public const string FillArguments = "Passenger.Roslyn.Extension.FillArguments";
+    public const string ExpressionType = "Passenger.Roslyn.Extension.ExpressionType";
+    public const string SymbolReference = "Passenger.Roslyn.Extension.SymbolReference";
+    public const string TypeFits = "Passenger.Roslyn.Extension.TypeFits";
+    public const string InspectAt = "Passenger.Roslyn.Extension.InspectAt";
+    public const string ValueFlow = "Passenger.Roslyn.Extension.ValueFlow";
+    public const string Inspections = "Passenger.Roslyn.Extension.Inspections";
+    public const string RunInspection = "Passenger.Roslyn.Extension.RunInspection";
 
     public static readonly IReadOnlyList<string> All =
     [
         DescribeSignature, ChangeSignature, DescribeInterface, ExtractInterface, DescribeType, MoveTypeToFile, MoveTypeToNamespace,
         DescribeHierarchy, PullMembersUp, PushMembersDown, InterfacesLacking, DocumentTexts, DocumentsWritten, ReferencesRead, ReferencedFiles, GeneratorsRun, AspireProjectDeclaration, AspireCodeHelp, AspireReferenceFix, AspireRunResources,
-        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, SymbolContainers, WrittenPlaces,
-        ComponentClass, GeneratedTexts, GeneratedNamed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
-        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover,
-        CompletionCall, StepBindings, EditorConfigKeys, EditorConfigValues,
+        AspireRename, AspireParameters, ConnectionReads, WebRoutes, RouteBody, LocalizedReads, SymbolsNamed, SymbolAt, ParameterAliases, SymbolContainers, WrittenPlaces,
+        ComponentClass, GeneratedTexts, GeneratedNamed, GeneratedListed, PartialHalf, GeneratedParts, GeneratedDocuments, JsInteropCalls, GodotCode, GodotNames, GodotPaths, GodotKindStrings, GodotNameStrings, GodotFix, ToolkitRenames, GeneratedMembers,
+        MauiExpressionCompletion, MauiExpressionSymbol, MauiXamlChecks, MauiExpressionUses, MauiExpressionHover, XamlCodeCompletion, XamlCodeSymbol, XamlCodeChecks,
+        CompletionCall, RenameSuggestions, StepBindings, EditorConfigKeys, EditorConfigValues, Signposts, CodeClones, ExtractClones, Dependencies, DependencyAt, LayerChecks,
+        TestDoublesOffered, CreateFake, FillArguments, ExpressionType, SymbolReference, TypeFits, InspectAt, ValueFlow, Inspections, RunInspection,
     ];
 }
 
@@ -101,6 +124,9 @@ public static class ExtensionMethods
 
     /// <summary>textDocument/hover, answered as the server answers it, with its code's parts (<see cref="CodeParts"/>).</summary>
     public const string Hover = "passenger/hover";
+
+    /// <summary>Where a symbol named by one of the hover signature's parts is declared.</summary>
+    public const string HoverDeclaration = "passenger/hoverDeclaration";
 
     /// <summary>completionItem/resolve, answered as the server answers it, with its documentation's code's parts
     /// (<see cref="CodeParts"/>).</summary>
@@ -134,10 +160,34 @@ public static class CodeParts
     public const string OverloadFits = "passengerOverloadFits";
 }
 
-/// <summary>A stretch of code and its semantic token type, null for none.</summary>
+/// <summary>A link in a C# hover's words to a symbol they name, which the client follows to its declaration: the scheme, then
+/// the symbol's key and the words, each escaped, the words after a <c>#</c>.</summary>
+public static class SymbolLinks
+{
+    public const string Scheme = "passenger-symbol";
+
+    public static string Of(string key, string words) => $"{Scheme}:{Uri.EscapeDataString(key)}#{Uri.EscapeDataString(words)}";
+
+    /// <summary>The symbol's key and the words a link names it by; null for a link of another scheme.</summary>
+    public static (string Key, string Words)? Read(string link)
+    {
+        if (!link.StartsWith(Scheme + ":", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        string rest = link[(Scheme.Length + 1)..];
+        int words = rest.IndexOf('#', StringComparison.Ordinal);
+        return words < 0
+            ? (Uri.UnescapeDataString(rest), string.Empty)
+            : (Uri.UnescapeDataString(rest[..words]), Uri.UnescapeDataString(rest[(words + 1)..]));
+    }
+}
+
+/// <summary>A stretch of code, its semantic token type, and the symbol key of a navigable hover signature part.</summary>
 public sealed record CodePart(
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("type")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type);
+    [property: JsonPropertyName("type")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type,
+    [property: JsonPropertyName("declaration")][property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Declaration = null);
 
 /// <summary>A C# completion list asked in two parts: what is in scope first, then the types and extension members of
 /// namespaces not imported, which the server lists after every other item and is slowest to find, worked out at once but
@@ -293,6 +343,22 @@ public sealed record GeneratedSource(
 /// extension, or its name where it has no file).</summary>
 public sealed record GeneratedNameAsked([property: JsonPropertyName("project")] string Project, [property: JsonPropertyName("file")] string File);
 
+/// <summary>Projects by their files, whose source generators' documents are listed.</summary>
+public sealed record GeneratedListAsked([property: JsonPropertyName("projects")] IReadOnlyList<string> Projects);
+
+/// <summary>The documents the projects' source generators make now, every target framework's, in no order.</summary>
+public sealed record GeneratedListFound([property: JsonPropertyName("files")] IReadOnlyList<GeneratedFile> Files);
+
+/// <summary>A document a source generator makes: its project's file, the target framework of the project's build that
+/// makes it (null for a project of one), its generator's type and assembly, its hint name and the URI the server names it by.</summary>
+public sealed record GeneratedFile(
+    [property: JsonPropertyName("projectPath")] string ProjectPath,
+    [property: JsonPropertyName("framework")] string? Framework,
+    [property: JsonPropertyName("generator")] string Generator,
+    [property: JsonPropertyName("assembly")] string Assembly,
+    [property: JsonPropertyName("hint")] string Hint,
+    [property: JsonPropertyName("uri")] string Uri);
+
 /// <summary>Each document asked for, in order, or null for one no generator makes now.</summary>
 public sealed record GeneratedFound([property: JsonPropertyName("texts")] IReadOnlyList<GeneratedText?> Texts);
 
@@ -382,6 +448,40 @@ public sealed record MauiCheck(
     [property: JsonPropertyName("code")] string Code,
     [property: JsonPropertyName("message")] string Message);
 
+/// <summary>A XAML page's x:Code blocks, whose C# its compiler puts in the page's class (<paramref name="Class"/>, its x:Class).</summary>
+public sealed record XamlCode(
+    [property: JsonPropertyName("class")] string Class,
+    [property: JsonPropertyName("blocks")] IReadOnlyList<XamlCodeBlock> Blocks);
+
+/// <summary>An x:Code block's code, and for each of its characters and its end the offset in the XAML file it is written at.</summary>
+public sealed record XamlCodeBlock(
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("writtenOf")] IReadOnlyList<int> WrittenOf);
+
+/// <summary>A place in a XAML file's x:Code (an offset of the file, whose text is given), at which completion or the
+/// symbol named is asked for.</summary>
+public sealed record XamlCodeAsked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("code")] XamlCode Code,
+    [property: JsonPropertyName("at")] int At);
+
+/// <summary>A XAML file's x:Code, whose C#'s problems are asked for.</summary>
+public sealed record XamlCodeChecked(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("code")] XamlCode Code);
+
+/// <summary>The problems C# finds in a XAML file's x:Code, each from <paramref name="Start"/> to <paramref name="End"/>, offsets
+/// of the file.</summary>
+public sealed record XamlCodeChecksFound([property: JsonPropertyName("checks")] IReadOnlyList<XamlCodeCheck> Checks);
+
+public sealed record XamlCodeCheck(
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("end")] int End,
+    [property: JsonPropertyName("error")] bool Error,
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("message")] string Message);
+
 /// <summary>A Razor component's file, whose class is asked for.</summary>
 public sealed record ComponentAsked([property: JsonPropertyName("path")] string Path);
 
@@ -389,8 +489,136 @@ public sealed record ComponentAsked([property: JsonPropertyName("path")] string 
 /// server takes the class; both null for a file of no project's.</summary>
 public sealed record ComponentFound([property: JsonPropertyName("symbol")] NamedSymbol? Symbol, [property: JsonPropertyName("name")] UriSpan? Name);
 
+/// <summary>The declarations of a document whose signposts are asked for, each by where its name stands, whether their
+/// usages and what inherits from them are counted, and whether the places their usages count are given too.</summary>
+public sealed record SignpostsAsked([property: JsonPropertyName("at")] IReadOnlyList<Place> At, [property: JsonPropertyName("usages")] bool Usages,
+    [property: JsonPropertyName("inheriting")] bool Inheriting, [property: JsonPropertyName("places")] bool Places = false);
+
+/// <summary>Each declaration's counts, in the order asked.</summary>
+public sealed record SignpostsFound([property: JsonPropertyName("counts")] IReadOnlyList<SignpostCount> Counts);
+
+/// <summary>A declaration's own usages, those of what implements or overrides it left out, and how many implement, override
+/// or derive from it; null where it was not asked, or nothing may. Asked for, the places its usages count, as many as they.</summary>
+public sealed record SignpostCount([property: JsonPropertyName("usages")] int? Usages, [property: JsonPropertyName("inheriting")] int? Inheriting,
+    [property: JsonPropertyName("places")] IReadOnlyList<UriSpan>? Places = null);
+
+/// <summary>Code clones asked for, among the documents under <paramref name="Within"/>'s paths (files, folders or project
+/// files; every C# document where it is empty): runs of whole statements of at least <paramref name="Tokens"/> tokens that
+/// are the same, or the same but for names and literals. With a <paramref name="Selection"/>, the runs alike to the
+/// statements it covers, of any size.</summary>
+public sealed record ClonesAsked(
+    [property: JsonPropertyName("within")] IReadOnlyList<string> Within,
+    [property: JsonPropertyName("tokens")] int Tokens,
+    [property: JsonPropertyName("selection")] CloneRun? Selection = null);
+
+/// <summary>The groups of clones found, the largest first, how many documents were read, and why none could be looked for
+/// (a selection covering no statement), null where they were.</summary>
+public sealed record ClonesFound(
+    [property: JsonPropertyName("groups")] IReadOnlyList<CloneGroup> Groups,
+    [property: JsonPropertyName("documents")] int Documents,
+    [property: JsonPropertyName("problem")] string? Problem = null);
+
+/// <summary>Runs of statements alike: the same text (<paramref name="Exact"/>, trivia aside) or the same but for names and
+/// literals, the share of their tokens written alike in every one of them (<paramref name="Alike"/>, a percent), and how many
+/// statements and tokens each holds. A selection's group has the selection first.</summary>
+public sealed record CloneGroup(
+    [property: JsonPropertyName("exact")] bool Exact,
+    [property: JsonPropertyName("alike")] int Alike,
+    [property: JsonPropertyName("statements")] int Statements,
+    [property: JsonPropertyName("tokens")] int Tokens,
+    [property: JsonPropertyName("clones")] IReadOnlyList<CloneRun> Clones);
+
+/// <summary>A run of statements in a file, from its first statement's start to its last's end, and the member it is in
+/// ("Order.Add"); a selection to check has none.</summary>
+public sealed record CloneRun(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("start")] Place Start,
+    [property: JsonPropertyName("end")] Place End,
+    [property: JsonPropertyName("member")] string? Member = null);
+
+/// <summary>A group's clones to share one method: one Extract Method over the first, every other replaced by a call of it,
+/// named <paramref name="Name"/>; with <paramref name="Apply"/> false only whether it can be, its problem said where not.</summary>
+public sealed record ClonesExtraction(
+    [property: JsonPropertyName("clones")] IReadOnlyList<CloneRun> Clones,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("apply")] bool Apply);
+
 /// <summary>Where the caret is: what a describing message asks about.</summary>
 public sealed record Caret([property: JsonPropertyName("at")] Place At);
+
+/// <summary>The aliases a parameter list names (<see cref="ParameterAliases"/>).</summary>
+public sealed record AliasesFound([property: JsonPropertyName("aliases")] IReadOnlyList<AliasFound> Aliases);
+
+/// <summary>An alias by its name, and the type it stands for written whole (<c>global::System.Guid</c>).</summary>
+public sealed record AliasFound([property: JsonPropertyName("name")] string Name, [property: JsonPropertyName("target")] string Target);
+
+/// <summary>The type of the expression at a caret as C# writes it there (<see cref="Handlers.ExpressionType"/>); null for none.</summary>
+public sealed record ExpressionTyped([property: JsonPropertyName("type")] string? Type);
+
+/// <summary>What Inspect This offers of the symbol at a caret (<see cref="Handlers.InspectAt"/>): its name, its value's place
+/// to follow where it comes from and goes to (a variable, a parameter, a field, a property or what a method returns), and
+/// whether it has callers and callees, or supertypes and subtypes; no name where no symbol is there.</summary>
+public sealed record Inspected(
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("value")] ValueFlowItem? Value,
+    [property: JsonPropertyName("calls")] bool Calls,
+    [property: JsonPropertyName("types")] bool Types);
+
+/// <summary>A place a value comes from or goes to: the code there (its line), what holds the value there, its kind as the
+/// language server protocol numbers a symbol's, its file and place, its span in the file and its symbol's key to follow it
+/// on, the place it was found from (<see cref="Parent"/>, its own parent left out) and whether it is the caret's own.</summary>
+public sealed record ValueFlowItem(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("detail")] string Detail,
+    [property: JsonPropertyName("kind")] int Kind,
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("from")] Place From,
+    [property: JsonPropertyName("to")] Place To,
+    [property: JsonPropertyName("start")] int Start,
+    [property: JsonPropertyName("length")] int Length,
+    [property: JsonPropertyName("symbol")] string Symbol,
+    [property: JsonPropertyName("root")] bool Root,
+    [property: JsonPropertyName("parent")] ValueFlowItem? Parent);
+
+/// <summary>Where a place's value comes from (<paramref name="Origins"/>), or where it goes (<see cref="Handlers.ValueFlow"/>).</summary>
+public sealed record ValueFlowAsked([property: JsonPropertyName("item")] ValueFlowItem Item, [property: JsonPropertyName("origins")] bool Origins);
+
+/// <summary>The places a value comes from or goes to, one level of them.</summary>
+public sealed record ValueFlowFound([property: JsonPropertyName("items")] IReadOnlyList<ValueFlowItem> Items);
+
+/// <summary>Every rule the solution's and its projects' analyzers report, to run one by name (<see cref="Handlers.Inspections"/>).</summary>
+public sealed record InspectionsAsked;
+
+/// <summary>The rules, each once, by id.</summary>
+public sealed record InspectionsFound([property: JsonPropertyName("rules")] IReadOnlyList<EditorConfigDiagnostic> Rules);
+
+/// <summary>One rule run over every C# project, whatever its severity (<see cref="Handlers.RunInspection"/>).</summary>
+public sealed record InspectionAsked([property: JsonPropertyName("id")] string Id);
+
+/// <summary>A place a rule reports: its file and place in the server's lines, what it says there, its severity there as
+/// .editorconfig writes it (none or silent where it is turned off), and its project.</summary>
+public sealed record InspectionPlace(
+    [property: JsonPropertyName("path")] string Path,
+    [property: JsonPropertyName("at")] Place At,
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("severity")] string Severity,
+    [property: JsonPropertyName("project")] string Project);
+
+/// <summary>Where a rule reports, each place once, and how many projects run an analyzer of it.</summary>
+public sealed record InspectionFound(
+    [property: JsonPropertyName("places")] IReadOnlyList<InspectionPlace> Places,
+    [property: JsonPropertyName("projects")] int Projects);
+
+/// <summary>The symbol at a caret named whole, its namespace and the types it is in before it (<see cref="Handlers.SymbolReference"/>):
+/// <c>Shop.Pet.Describe</c>; null where the caret stands on no symbol named apart from its method (a local, a parameter).</summary>
+public sealed record SymbolReferenced([property: JsonPropertyName("reference")] string? Reference);
+
+/// <summary>The type C# expects at a caret, as written there, and the names in reach there whose type fits it (<see
+/// cref="Handlers.TypeFits"/>): locals, parameters, fields, properties, methods by what they return, an enum's type for its
+/// members; no type where none is expected.</summary>
+public sealed record FittingNames(
+    [property: JsonPropertyName("expected")] string? Expected,
+    [property: JsonPropertyName("names")] IReadOnlyList<string> Names);
 
 /// <summary>Where Go to Declaration goes in Aspire's code: an AddProject call's project file, or the AppHost's file and the
 /// place (<paramref name="At"/>) its Add call names a resource a service reads; a null path when neither can be proven.</summary>

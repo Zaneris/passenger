@@ -187,13 +187,24 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         Assert.Equal(kept, File.ReadAllText(file));
     }
 
+    /// <summary>An agent's Passenger on a new state finds text in each scope, reverts a file through Local History and reads
+    /// Problems and the Build window; solution-wide analysis is on from its start, as a new state has it, listing the error of
+    /// a file nobody opened, and settings_set turning it off stops it, Problems answering no Solution tab.</summary>
     private async Task An_agent_finds_text_in_the_windows_scopes_reverts_a_file_through_local_history_and_reads_problems_and_the_build_window()
     {
         await TakeFolderAsync();
         const string helper = "static class Helper\n{\n    public static int Twice(int value)\n    {\n        int unused = 1;\n        return value * 2;\n    }\n}\n";
         Write("Bad.cs", "class Bad\n{\n    public int Count = \"none\";\n}\n");
         Write("Notes.txt", "one two\ntwo three\n");
-        await using McpClient client = await Start(["--mcp", Folder]);
+        // An earlier version wrote off whether or not the person turned it off, so off is left to the default, and on kept.
+        foreach ((bool kept, bool stays) in new[] { (true, true), (false, false) })
+        {
+            System.Text.Json.Nodes.JsonObject earlier = new() { ["solutionWideAnalysis"] = kept };
+            global::Passenger.App.Settings.AppSettings.Upgrades[5](earlier);
+            Assert.True(earlier.ContainsKey("solutionWideAnalysis") == stays, $"Version 5's solutionWideAnalysis {kept} was {(stays ? "dropped" : "kept")} as it was read");
+        }
+        // The default as a person's new state has it, not the test run's.
+        await using McpClient client = await Start(["--mcp", Folder], environment: new() { [global::Passenger.App.CSharp.CSharpService.SolutionWideVariable] = null });
 
         JsonElement found = await Call(client, McpTools.FindInFiles, new() { ["text"] = "Twice" });
         Assert.Equal(["Helper.cs:3", "Program.cs:4"], Places(found));
@@ -242,7 +253,11 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
         string[] build = [.. problems.GetProperty("build").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
         Assert.True(build.Contains("CS0029 Bad.cs:3") && build.Contains("CS0219 Helper.cs:5"), $"Problems' Build tab, for an agent: {string.Join("; ", build)}");
         Assert.Equal(JsonValueKind.Array, problems.GetProperty("toolset").ValueKind);
-        Assert.False(problems.TryGetProperty("solution", out _), "Problems' solution tab was answered with solution-wide analysis off");
+        string[] analysed = [.. problems.GetProperty("solution").EnumerateArray().Select(p => $"{p.GetProperty("code").GetString()} {p.GetProperty("path").GetString()}:{p.GetProperty("line").GetInt32()}")];
+        Assert.True(analysed.Contains("CS0029 Bad.cs:3"), $"Solution-wide analysis, on from a new state's start, listed: {string.Join("; ", analysed)}");
+        JsonElement turnedOff = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["solutionWideAnalysis"] = false } })).EnumerateArray());
+        Assert.Equal((true, false), (turnedOff.GetProperty("before").GetBoolean(), turnedOff.GetProperty("after").GetBoolean()));
+        Assert.False((await Call(client, McpTools.Diagnostics)).TryGetProperty("solution", out _), "Problems' solution tab was answered with solution-wide analysis turned off");
         string output = (await Call(client, McpTools.Output, new() { ["of"] = "build" })).GetString()!;
         Assert.True(output.Contains("CS0029", StringComparison.Ordinal), $"The Build window's console, for an agent, lacks the build's error:\n{output}");
         // A run refused for a failed build names its errors, so the agent fixes them without a second call to find them.
@@ -342,7 +357,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
             {
                 ["changes"] = new Dictionary<string, object> { ["editorFontSize"] = 99, ["showBuildResults"] = "always" },
             }));
-            Press(Question(window, "the question for the agent's settings change"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's settings change"), McpWords.AllowForSession.English);
             JsonElement[] changed = [.. Await(changing, "the agent's settings change").EnumerateArray()];
             JsonElement size = Assert.Single(changed, c => c.GetProperty("name").GetString() == "editorFontSize");
             Assert.Equal((13.0, 48.0), (size.GetProperty("before").GetDouble(), size.GetProperty("after").GetDouble()));
@@ -417,7 +432,7 @@ public sealed class McpIdeTests : McpRig, IClassFixture<RestoredFolders>
 
         ProcessStartInfo editing = ChildProcesses.Command("git", ["rebase", "-i", "HEAD~1"], repository);
         // The list's one step, the commit's pick, made an edit, as a person's editor would.
-        editing.Environment["GIT_SEQUENCE_EDITOR"] = "sed -i.bak -e 1s/^pick/edit/";
+        editing.Environment[GitVariables.SequenceEditor] = "sed -i.bak -e 1s/^pick/edit/";
         ChildResult stopping = await ChildProcesses.RunAsync(editing, limit: TimeSpan.FromMinutes(1), cancel: Cancel);
         Assert.True(File.Exists(Path.Combine(repository, ".git", "rebase-merge", "amend")), $"The rebase was to stop to edit: {stopping.Error}{stopping.Output}");
         Assert.Equal("Rebase successful", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ContinueRebase })).GetString());

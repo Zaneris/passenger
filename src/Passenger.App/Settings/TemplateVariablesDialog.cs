@@ -36,7 +36,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
         down.Click += (_, _) => Move(1);
         names.SelectionChanged += (_, _) => ShowChosen();
         ParameterBox = new TextBox();
-        ParameterBox.TextChanged += (_, _) => Edit(v => v with { Parameter = ParameterBox.Text ?? string.Empty });
+        TypedText.Hear(ParameterBox, () => Edit(v => v with { Parameter = ParameterBox.Text ?? string.Empty }));
         EditableBox = new CheckBox { Content = "Editable" };
         EditableBox.IsCheckedChanged += (_, _) => Edit(v => v with { Editable = EditableBox.IsChecked == true });
         ChangeMacroButton = new Button { Content = "Change macro" };
@@ -139,7 +139,7 @@ public sealed class TemplateVariablesDialog : IdeWindow
             macro.Text = its?.Description ?? "No macro selected";
             parameterRow.IsVisible = its?.Parameter is not null;
             parameterName.Text = its?.Parameter is { } named ? char.ToUpperInvariant(named[0]) + named[1..] : string.Empty;
-            ParameterBox.Text = shown?.Parameter ?? string.Empty;
+            TypedText.Set(ParameterBox, shown?.Parameter ?? string.Empty);
             EditableBox.IsChecked = shown?.Editable ?? true;
         }
         finally

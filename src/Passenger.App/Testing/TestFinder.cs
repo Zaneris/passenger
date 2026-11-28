@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text;
 using Microsoft.CodeAnalysis.CSharp;
 using Passenger.App.CSharp;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Text;
 using Passenger.Workspace;
 
 namespace Passenger.App.Testing;
@@ -510,7 +510,7 @@ public sealed class TestFinder
         IReadOnlySet<string> attributes = reading.Project is { } project && own.TryGetValue(project, out IReadOnlySet<string>? derived) ? derived : reading.Attributes;
         if (reading.Gut is { } gut)
         {
-            return GutScripts.Read(File.ReadAllText(file), gut, file, attributes, GutScripts.ConfigOf(gut)).Tests;
+            return GutScripts.Read(FileText.Decoded(File.ReadAllBytes(file)), gut, file, attributes, GutScripts.ConfigOf(gut)).Tests;
         }
         return Parse(file, reading.Project is { } its && readWith.TryGetValue(its, out CSharpParseOptions? symbols) ? symbols : reading.Symbols, attributes, kept);
     });
@@ -527,8 +527,7 @@ public sealed class TestFinder
             return read;
         }
         Interlocked.Increment(ref parsed);
-        using StreamReader text = new(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        FileTests tests = TestsAtCaret.Read(text.ReadToEnd(), symbols, attributes);
+        FileTests tests = TestsAtCaret.Read(FileText.Decoded(bytes), symbols, attributes);
         kept?.Keep(file, stamp, with, tests);
         return tests;
     }

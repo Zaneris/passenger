@@ -78,7 +78,7 @@ public sealed class TemplateOptions
                     break;
                 default:
                     TextBox text = new() { Text = value, MaxWidth = 360, HorizontalAlignment = HorizontalAlignment.Left, MinWidth = 240 };
-                    text.TextChanged += (_, _) => Set(option, text.Text ?? string.Empty);
+                    TypedText.Hear(text, () => Set(option, text.Text ?? string.Empty));
                     editor = text;
                     row = Row(label, text, said);
                     break;
@@ -131,6 +131,9 @@ public sealed class TemplateOptions
             }
         }
     }
+
+    /// <summary>An option's value as it stands: what the person chose, else its default.</summary>
+    public string ValueOf(TemplateOption option) => values.GetValueOrDefault(option.Name, option.Default);
 
     /// <summary>Why the options would be refused: one needed left empty, a number that does not read; null when none.</summary>
     public string? WhyNot()

@@ -28,6 +28,7 @@ internal static class ScopeColours
         ("entity.other.inherited-class", TokenKind.Class),
         ("support.class", TokenKind.Class),
         ("support.type.primitive", TokenKind.Keyword),
+        ("storage.type.proto", TokenKind.Class),
         ("variable.other.property", TokenKind.Field),
         ("variable.other.object.property", TokenKind.Field),
         ("meta.object-literal.key", TokenKind.Field),
@@ -58,6 +59,9 @@ internal static class ScopeColours
         ("string.unquoted.html", TokenKind.AttributeValue),
         ("constant.character.entity", TokenKind.Entity),
         ("string.unquoted.cdata", TokenKind.Text),
+
+        // .NET's date and time formats: a specifier in an escape's colour, the text between them the string's.
+        ("constant.other.placeholder.datetime-format", TokenKind.StringEscape),
 
         // JSON: keys apart from values.
         ("support.type.property-name.json", TokenKind.JsonKey),

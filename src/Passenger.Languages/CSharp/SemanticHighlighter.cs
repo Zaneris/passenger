@@ -1,5 +1,6 @@
 using Passenger.Core;
 using Passenger.Editor;
+using Passenger.Languages.TextMate;
 using Passenger.Lsp;
 using Passenger.Text;
 
@@ -49,7 +50,7 @@ public sealed class SemanticHighlighter : CarriedColours
     private SentRequest? outAfter;
 
     public SemanticHighlighter(IHighlighter syntax, LspDocument document, SemanticTokensLegend legend)
-        : base(syntax, document.Text)
+        : base(syntax, document.Text, KeepsCSharpName)
     {
         this.document = document;
         kinds = legend.TokenTypes.Select(SemanticKinds.Of).ToArray();
@@ -238,7 +239,13 @@ public sealed class SemanticHighlighter : CarriedColours
     private async Task<bool> Land(SemanticTokens answer, TextSnapshot snapshot, int version, TextRange? covered, int request, CancellationToken cancel)
     {
         TokenKind?[] types = kinds;
-        SyntaxSpan[] spans = await BackgroundWork.Run(() => Decode(answer.Data, snapshot, types), cancel);
+        SyntaxSpan[] spans = await BackgroundWork.Run(() =>
+        {
+            SyntaxSpan[] semantic = Decode(answer.Data, snapshot, types);
+            return answer.EmbeddedTexts is { Length: > 0 } embedded
+                ? [.. Over(semantic, DecodeEmbedded(embedded, covered ?? new TextRange(0, snapshot.Length), cancel))]
+                : semantic;
+        }, cancel);
         if (request != asked || disposed)
         {
             return false;
@@ -267,6 +274,20 @@ public sealed class SemanticHighlighter : CarriedColours
     /// <summary>The protocol's relative encoding (each token as line and column deltas, length, type, modifiers) turned
     /// into offsets in the snapshot it was asked for, in order. Off the UI thread: a long file has hundreds of thousands
     /// of tokens, read once to count those with a colour and once to place them, each line found once.</summary>
+    /// <summary>Whether text typed inside a coloured name keeps it one C# name: every character one Roslyn reads as carrying
+    /// a name on.</summary>
+    private static bool KeepsCSharpName(string typed)
+    {
+        foreach (char c in typed)
+        {
+            if (!Microsoft.CodeAnalysis.CSharp.SyntaxFacts.IsIdentifierPartCharacter(c))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static SyntaxSpan[] Decode(int[] data, TextSnapshot snapshot, TokenKind?[] kinds)
     {
         ServerLines lines = ServerLines.Of(snapshot);
@@ -305,6 +326,50 @@ public sealed class SemanticHighlighter : CarriedColours
             spans[placed++] = new SyntaxSpan(lineStart + Math.Min(column, lineLength), data[i + 2], kind);
         }
         return spans;
+    }
+
+    /// <summary>The colours of the strings that hold another language, each coloured by that language's grammar as its files
+    /// are (<see cref="Language.GrammarOfEmbedded"/>), laid back on the C# characters each of its characters came from, within
+    /// <paramref name="range"/>; a string of a language with no grammar left as the server's.</summary>
+    private static List<SyntaxSpan> DecodeEmbedded(EmbeddedText[] strings, TextRange range, CancellationToken cancel)
+    {
+        List<SyntaxSpan> result = [];
+        foreach (EmbeddedText embedded in strings)
+        {
+            if (Language.GrammarOfEmbedded(embedded.Language) is not { } grammar)
+            {
+                continue;
+            }
+            List<SyntaxSpan> colours = TextMateHighlighter.Fragment(grammar, embedded.Text, cancel);
+            int token = 0;
+            int part = 0;
+            while (token < colours.Count && part < embedded.Parts.Length)
+            {
+                SyntaxSpan colour = colours[token];
+                EmbeddedTextPart source = embedded.Parts[part];
+                int from = Math.Max(source.Offset, colour.Start);
+                int to = Math.Min(source.End, colour.End);
+                if (from < to)
+                {
+                    int start = Math.Max(range.Start, source.SourceOffset(from));
+                    int end = Math.Min(range.End, source.SourceOffset(to));
+                    if (start < end)
+                    {
+                        result.Add(new SyntaxSpan(start, end - start, colour.Kind));
+                    }
+                }
+                if (colour.End <= source.End)
+                {
+                    token++;
+                }
+                else
+                {
+                    part++;
+                }
+            }
+        }
+        result.Sort(static (a, b) => a.Start.CompareTo(b.Start));
+        return result;
     }
 
     /// <summary>The server's colours over a range of the current text: the screen's where they reach, the whole

@@ -156,7 +156,8 @@
                 <GradientStop Offset="1" Color="#0B7D72" />
             </LinearGradientBrush>
 
-            <!-- Running and testing: run, debug and Hot Reload's icons; a test's mark by its outcome. -->
+            <!-- Running and testing: run, debug and Hot Reload's icons; a test's mark by its outcome; a byte a debugged
+                 program changed since its last stop. -->
             <SolidColorBrush x:Key="Passenger.Run" Color="#34D399" read:Mark="Panel Frame" />
             <SolidColorBrush x:Key="Passenger.HotReload" Color="#FF9D5C" read:Mark="Panel Frame" />
             <SolidColorBrush x:Key="Passenger.Debug" Color="#B69CFF" read:Mark="Panel Frame" />
@@ -165,6 +166,7 @@
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#8C97AC" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.Test.Running" Color="#80A8FF" read:Mark="Panel" />
             <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#6B7690" read:Mark="Panel" />
+            <SolidColorBrush x:Key="Passenger.Memory.Changed" Color="#FF7A87" read:Text="Panel" />
 
             <!-- Version control: the gutter's change bars, a file's name by how it changed, the log's lanes, a ref's tag
                  and words, a favourite branch's star, a signed commit's mark by what its signature is worth. -->
@@ -257,6 +259,7 @@
             <SolidColorBrush x:Key="Passenger.Editor.Error" Color="#FF6B7A" read:Mark="Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Editor.Warning" Color="#F2B84B" read:Mark="Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Editor.Info" Color="#8C97AC" read:Mark="Editor.Background" />
+            <SolidColorBrush x:Key="Passenger.Editor.Fine" Color="#34D399" read:Mark="Editor.Background" />
             <SolidColorBrush x:Key="Passenger.Editor.Breakpoint" Color="#F2506A" read:Mark="Editor.Gutter" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointLine" Color="#2D1A25" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointMuted" Color="#B9C3D7" read:None="a breakpoint turned off, as what cannot be used now" />
@@ -296,6 +299,11 @@
             <SolidColorBrush x:Key="Passenger.Syntax.ControlKeyword" Color="#7EA7FF" read:Text="Editor.Background Editor.CurrentLine" />
             <SolidColorBrush x:Key="Passenger.Syntax.Comment" Color="#8290AA" read:Text="Editor.Background Editor.CurrentLine" />
             <SolidColorBrush x:Key="Passenger.Syntax.DocComment" Color="#72B3A8" read:Text="Editor.Background Editor.CurrentLine" />
+            <!-- A documentation comment's markup quiet beside its words: its tags in the comments' slate, its attributes'
+                 names toward the members' sky blue, their values toward the strings' peach. -->
+            <SolidColorBrush x:Key="Passenger.Syntax.DocCommentTag" Color="#8290AA" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.DocCommentAttributeName" Color="#98BAE5" read:Text="Editor.Background Editor.CurrentLine" />
+            <SolidColorBrush x:Key="Passenger.Syntax.DocCommentAttributeValue" Color="#D1A397" read:Text="Editor.Background Editor.CurrentLine" />
             <SolidColorBrush x:Key="Passenger.Syntax.String" Color="#F2AA8C" read:Text="Editor.Background Editor.CurrentLine" />
             <SolidColorBrush x:Key="Passenger.Syntax.StringEscape" Color="#FFD08A" read:Text="Editor.Background Editor.CurrentLine" />
             <SolidColorBrush x:Key="Passenger.Syntax.Number" Color="#DDA5FF" read:Text="Editor.Background Editor.CurrentLine" />
@@ -438,6 +446,7 @@
             <SolidColorBrush x:Key="Passenger.Test.Skipped" Color="#7A8499" />
             <SolidColorBrush x:Key="Passenger.Test.Running" Color="#2F6BF2" />
             <SolidColorBrush x:Key="Passenger.Test.NotRun" Color="#828DA2" />
+            <SolidColorBrush x:Key="Passenger.Memory.Changed" Color="#C21F38" />
 
             <SolidColorBrush x:Key="Passenger.Vcs.Added" Color="#2BA676" />
             <SolidColorBrush x:Key="Passenger.Vcs.Modified" Color="#2F6BF2" />
@@ -518,6 +527,7 @@
             <SolidColorBrush x:Key="Passenger.Editor.Error" Color="#D12F45" />
             <SolidColorBrush x:Key="Passenger.Editor.Warning" Color="#A35E00" />
             <SolidColorBrush x:Key="Passenger.Editor.Info" Color="#6B7488" />
+            <SolidColorBrush x:Key="Passenger.Editor.Fine" Color="#0E8A5A" />
             <SolidColorBrush x:Key="Passenger.Editor.Breakpoint" Color="#E0405A" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointLine" Color="#FCE6EA" />
             <SolidColorBrush x:Key="Passenger.Editor.BreakpointMuted" Color="#6B7488" />
@@ -552,6 +562,9 @@
             <SolidColorBrush x:Key="Passenger.Syntax.ControlKeyword" Color="#1F55D6" />
             <SolidColorBrush x:Key="Passenger.Syntax.Comment" Color="#5F6C85" />
             <SolidColorBrush x:Key="Passenger.Syntax.DocComment" Color="#2C756B" />
+            <SolidColorBrush x:Key="Passenger.Syntax.DocCommentTag" Color="#5F6C85" />
+            <SolidColorBrush x:Key="Passenger.Syntax.DocCommentAttributeName" Color="#31659A" />
+            <SolidColorBrush x:Key="Passenger.Syntax.DocCommentAttributeValue" Color="#9A5447" />
             <SolidColorBrush x:Key="Passenger.Syntax.String" Color="#AE4320" />
             <SolidColorBrush x:Key="Passenger.Syntax.StringEscape" Color="#8F4A00" />
             <SolidColorBrush x:Key="Passenger.Syntax.Number" Color="#8A3DBD" />

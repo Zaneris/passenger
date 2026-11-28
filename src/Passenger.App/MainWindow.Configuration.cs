@@ -30,7 +30,7 @@ public partial class MainWindow
             return Task.CompletedTask;
         });
         Closed += (_, _) => configurationTyped.Stop();
-        actions!.Add(new IdeAction(A.ManageUserSecrets, "Manage User Secrets", ExplorerGroup, c => IdeErrors.Observe(ManageUserSecretsAsync(SecretsProjectOf(c)!.Path)))
+        actions!.Add(new IdeAction(A.ManageUserSecrets, ActionTitles.ManageUserSecrets, ActionGroups.Explorer, c => IdeErrors.Observe(ManageUserSecretsAsync(SecretsProjectOf(c)!.Path)))
         {
             WhyNot = c => SecretsProjectOf(c) is not null ? null
                 : RowOf(c) is { } row ? Refusals.NotAProject(row.Name)
@@ -46,6 +46,10 @@ public partial class MainWindow
             else if (Passenger.Xaml.Localization.ResourceFiles.Holds(document.Path))
             {
                 document.Saved += (_, _) => session.CSharp?.LocalizationChanged();
+            }
+            else if (Path.GetFileName(document.Path) == Roslyn.Extension.LayerRules.FileName)
+            {
+                document.Saved += (_, _) => ReadLayers();
             }
         };
     }
@@ -64,7 +68,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model)
         {
-            return SecretsSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
+            return SecretsSaid(Refusals.NotOfFolder(Path.GetFileName(project)).Shown);
         }
         string name = Path.GetFileNameWithoutExtension(model.Path);
         (UserSecretsFile? secrets, string? problem) = UserSecrets.Ensure(model.Path, model.Property(Passenger.Host.CarriedProperties.UserSecretsId),

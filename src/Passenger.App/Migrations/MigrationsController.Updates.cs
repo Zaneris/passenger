@@ -11,7 +11,7 @@ namespace Passenger.App.Migrations;
 /// goes on as asked (<paramref name="AsAsked"/>), else the change made in its place (<paramref name="Outcome"/>, null where
 /// it was declined or the folder changed meanwhile); the packages that moved with the one asked, each with its version;
 /// and what was said of it, the status's words or the provider it leaves behind.</summary>
-public sealed record EfUpdate(bool AsAsked, PackageOutcome? Outcome, IReadOnlyList<string> With, string? Said)
+public sealed record EfUpdate(bool AsAsked, PackageOutcome? Outcome, IReadOnlyList<string> With, Words? Said)
 {
     /// <summary>The change asked goes on, nothing weighed or moved with it.</summary>
     public static readonly EfUpdate Asked = new(true, null, [], null);
@@ -21,8 +21,6 @@ public sealed record EfUpdate(bool AsAsked, PackageOutcome? Outcome, IReadOnlyLi
 /// goes, as EF Core's packages move together and another maker's provider moves only when asked.</summary>
 public sealed partial class MigrationsController
 {
-    private const string Anyway = "Update Anyway";
-
     /// <summary>Asked before the NuGet window's own Install or Update and each of Update All's (<see cref="UpdateAsync"/>):
     /// whether that change goes on as asked.</summary>
     public async Task<bool> WeighUpdateAsync(ProjectModel project, string id, string version, CommandHistory.Recording? within = null, CancellationToken cancel = default) =>
@@ -71,25 +69,30 @@ public sealed partial class MigrationsController
         {
             return new EfUpdate(false, null, [], Refusals.SolutionClosed);
         }
-        string named = $"{(InstalledVersion.Move(version, await FolderPackages.VersionsInAsync(project, id)) == PackageMove.Downgrade ? "Downgrade" : "Update")} {id} to {version} in {project.Name}";
+        Words named = MigrationsWords.PackageMove(InstalledVersion.Move(version, await FolderPackages.VersionsInAsync(project, id)) == PackageMove.Downgrade ? "downgrade" : "update",
+            id, version, project.Name);
         if (left is null)
         {
             EfSet set = await SetAsync(owning, project, id, version, feed, cancel);
             return set.Own.Count + set.Alongside.Count == 0 ? EfUpdate.Asked
                 : await MoveAsync(project, named, [(id, version), .. set.Own.Select(o => (o, version))], set, version, null, null);
         }
-        string together = $"Update the Set to {version}";
-        string? back = offer.Core is { } core ? $"Update the Set to {core}" : null;
-        string said = $"{left.Id} {left.Version} supports {EfRestore.Supports(left.Range)}; {id} {version} leaves it behind. "
-            + (offer.Up is { } up ? $"{left.Id} {up} supports it: {together} moves EF Core's packages to {version} and {left.Id} to {up} together."
-                : $"No version of {left.Id} in the feeds supports EF Core {version} yet"
-                    + (offer is { Core: { } newest, Fits: { } fits } ? $"; {back} moves EF Core's packages to {newest}, the newest it supports"
-                        + (fits == left.Version ? "." : $", and {left.Id} to {fits}.") : "."))
-            + (moves ? $" {Anyway} moves EF Core's packages to {version} and leaves {left.Id} as it is." : string.Empty);
-        string? offered = offer.Up is null ? back : together;
-        string? answer = !parts.AsksNoOne() && Mcp.AgentCall.Current is null
-            ? await parts.Choose($"Update {id}", said, offered is null ? [Anyway] : [offered, Anyway], offered)
-            : Anyway;
+        Words anyway = MigrationsWords.UpdateAnyway;
+        Words together = MigrationsWords.UpdateSet(version);
+        Words? back = offer.Core is { } core ? MigrationsWords.UpdateSet(core) : null;
+        Words offering = offer.Up is { } up ? MigrationsWords.OfferUp(left.Id, up, together, version)
+            : offer is { Core: { } newest, Fits: { } fits } ? (fits == left.Version ? MigrationsWords.OfferBack(left.Id, version, back!, newest)
+                : MigrationsWords.OfferBackWith(left.Id, version, back!, newest, fits))
+            : MigrationsWords.OfferNone(left.Id, version);
+        Words said = MigrationsWords.Sentences(MigrationsWords.LeavesBehind(left.Id, left.Version, EfGaps.Supports(left.Range), id, version), offering);
+        if (moves)
+        {
+            said = MigrationsWords.Sentences(said, MigrationsWords.AnywayNote(anyway, version, left.Id));
+        }
+        Words? offered = offer.Up is null ? back : together;
+        Words? answer = !parts.AsksNoOne() && Mcp.AgentCall.Current is null
+            ? await parts.Choose(MigrationsWords.UpdateTitle(id), said, offered is null ? [anyway] : [offered, anyway], offered)
+            : anyway;
         cancel.ThrowIfCancellationRequested();
         if (parts.Session() != owning)
         {
@@ -99,16 +102,16 @@ public sealed partial class MigrationsController
         {
             return new EfUpdate(false, null, [], null);
         }
-        if (answer == Anyway)
+        if (answer.Equals(anyway))
         {
-            string behind = Behind(left, version, offer);
+            Words behind = Behind(left, version, offer);
             EfSet set = moves ? await SetAsync(owning, project, id, version, feed, cancel) : EfSet.None;
             return set.Own.Count + set.Alongside.Count == 0 ? new EfUpdate(true, null, [], behind)
                 : await MoveAsync(project, named, [(id, version), .. set.Own.Select(o => (o, version))], set, version, behind, null);
         }
-        string to = answer == together ? version : offer.Core!;
+        string to = answer.Equals(together) ? version : offer.Core!;
         EfSet moved = await SetAsync(owning, project, id, to, feed, cancel);
-        string provider = answer == together ? offer.Up! : offer.Fits!;
+        string provider = answer.Equals(together) ? offer.Up! : offer.Fits!;
         List<(string Id, string Version)> packages = [(id, to), .. moved.Own.Select(o => (o, to))];
         if (provider != left.Version)
         {
@@ -173,31 +176,35 @@ public sealed partial class MigrationsController
     /// <summary>Packages moved in one project as one change, the first the one asked, as one step of global undo (or of
     /// <paramref name="within"/>): the status names what moved with it, under central package management as Passenger's
     /// writes moved it (a property's sharers among them), then what was left as it was.</summary>
-    private async Task<EfUpdate> MoveAsync(ProjectModel project, string name, IReadOnlyList<(string Id, string Version)> packages, EfSet set, string version,
-        string? behind, CommandHistory.Recording? within)
+    private async Task<EfUpdate> MoveAsync(ProjectModel project, Words name, IReadOnlyList<(string Id, string Version)> packages, EfSet set, string version,
+        Words? behind, CommandHistory.Recording? within)
     {
-        using CommandHistory.Recording? recorded = within is null ? parts.Editors.Commands.RecordWrites(name) : null;
+        using CommandHistory.Recording? recorded = within is null ? parts.Editors.Commands.RecordWrites(name.English) : null;
         PackageOutcome outcome = await parts.InstallSet(project, packages, within ?? recorded!, [.. set.Alongside.Select(a => (a, version))]);
         IEnumerable<string> central = outcome.Moved?.Where(m => !packages.Any(p => p.Id.Equals(m, StringComparison.OrdinalIgnoreCase))) ?? set.Alongside;
         IReadOnlyList<string> with = [.. packages.Skip(1).Select(p => $"{p.Id} {p.Version}"), .. central.Order(StringComparer.OrdinalIgnoreCase).Select(c => $"{c} {version}")];
-        string[] left = [.. new[] { behind, Lacking(set.Lacking, version) }.OfType<string>()];
-        string said = !outcome.Done ? (outcome.Refused ?? $"{name} failed: the NuGet window's log says why") + (outcome.Left is { } kept ? $"; {kept}" : string.Empty)
-            : string.Join("; ", [with.Count == 0 ? $"{name}: done" : $"{name}: {Plural.Listed(with)} moved with it", .. left]);
+        Words said = !outcome.Done ? (outcome.Refused is { } refused ? Words.Verbatim(refused) : MigrationsWords.MoveFailed(name))
+            : with.Count == 0 ? MigrationsWords.MoveDone(name) : MigrationsWords.MovedWith(name, Plural.Listed(Words.Names(with)));
+        // The NuGet window's own words of what it kept as it was, then what the move left behind.
+        foreach (Words more in new[] { outcome.Done ? null : outcome.Left is { } kept ? Words.Verbatim(kept) : null, outcome.Done ? behind : null,
+            outcome.Done ? Lacking(set.Lacking, version) : null }.OfType<Words>())
+        {
+            said = Clauses.Then(said, more);
+        }
         parts.Say(said);
         return new EfUpdate(false, outcome, outcome.Done ? with : [], said);
     }
 
     /// <summary>A provider an update left behind, with what the feeds offer it.</summary>
-    private static string Behind(EfProvider left, string version, EfOffer offer) =>
-        $"{left.Id} {left.Version} left behind, supporting {EfRestore.Supports(left.Range)}: " + offer switch
-        {
-            { Up: { } up } => $"{left.Id} {up} supports EF Core {version}",
-            { Core: { } core, Fits: { } fits } when fits == left.Version => $"none of its versions in the feeds supports EF Core {version} yet; it supports EF Core {core}",
-            { Core: { } core, Fits: { } fits } => $"none of its versions in the feeds supports EF Core {version} yet; {left.Id} {fits} supports EF Core {core}",
-            _ => $"none of its versions in the feeds supports EF Core {version} yet",
-        };
+    private static Words Behind(EfProvider left, string version, EfOffer offer) => offer switch
+    {
+        { Up: { } up } => MigrationsWords.BehindUp(left.Id, left.Version, EfGaps.Supports(left.Range), up, version),
+        { Core: { } core, Fits: { } fits } when fits == left.Version => MigrationsWords.BehindOlder(left.Id, left.Version, EfGaps.Supports(left.Range), version, core),
+        { Core: { } core, Fits: { } fits } => MigrationsWords.BehindOlderOther(left.Id, left.Version, EfGaps.Supports(left.Range), version, fits, core),
+        _ => MigrationsWords.BehindNone(left.Id, left.Version, EfGaps.Supports(left.Range), version),
+    };
 
     /// <summary>Those of EF Core's packages the feeds have no such version of, left as they were; null for none.</summary>
-    private static string? Lacking(IReadOnlyList<string> lacking, string version) => lacking.Count == 0 ? null
-        : $"{Plural.Listed(lacking)} {Plural.Agreeing(lacking.Count, "has", "have")} no {version} in the feeds, left as {Plural.Agreeing(lacking.Count, "it was", "they were")}";
+    private static Words? Lacking(IReadOnlyList<string> lacking, string version) => lacking.Count == 0 ? null
+        : MigrationsWords.Lacking(lacking.Count, Plural.Listed(Words.Names(lacking)), version);
 }

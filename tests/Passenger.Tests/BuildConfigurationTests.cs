@@ -96,7 +96,7 @@ public sealed class BuildConfigurationTests
         {
             Ui.WaitFor(() => Offered(window) == "Debug, Release", () => $"Debug and Release offered, where the widget offers {Offered(window)}");
             Choose(window, "Release");
-            string? refused = Ui.Await(window.RunAsync(), "the run", TimeSpan.FromMinutes(2));
+            string? refused = Ui.Await(window.RunAsync(), "the run", TimeSpan.FromMinutes(2))?.English;
             Assert.True(refused is null, $"Run under Release did not start: {refused}");
             Ui.WaitFor(() => !window.Runner.IsRunning, "the program to end");
             string output = window.BottomPanel.Run.Document.Snapshot.ToString();
@@ -213,7 +213,7 @@ public sealed class BuildConfigurationTests
         {
             if (window.IsRunning)
             {
-                Assert.Null(window.Actions.Run(AppActions.StopAll));
+                Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
                 Ui.WaitFor(() => !window.IsRunning, "the profile's programs to end");
             }
             window.Close();

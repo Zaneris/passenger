@@ -34,11 +34,12 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
     private static readonly int ChildIdRead = Line("int id = child.Id;");
     private static readonly int FirstSet = Line("int first = which;");
     private static readonly int SecondSet = Line("int second = first * 10;");
+    private static readonly int TripledWritten = Line("Console.WriteLine($\"tripled {tripled}\");");
 
     /// <summary>Runtime-async awaits (.NET 11): a step over one that suspends or completes at once stops on the next
     /// line, as in a method the runtime called and when another run of the method goes on first; Step Into an awaited
     /// method then over its await and out stops where its run goes; a step out before it suspends and past the end of
-    /// a method that went on after an await stop in the caller.</summary>
+    /// a method that went on after an await stop in the caller; and a recording keeps each call's value where it completes.</summary>
     [Fact]
     public async Task A_step_over_into_or_out_of_a_runtime_async_await_stops_where_its_own_run_goes_on()
     {
@@ -49,6 +50,7 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step past the end of a method that went on after an await stops in the caller that awaits it", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_past_the_end_of_a_method_that_went_on_after_an_await_stops_in_the_caller_that_awaits_it());
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await in a method the runtime called stops on the next line once the method goes on", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_in_a_method_the_runtime_called_stops_on_the_next_line_once_the_method_goes_on());
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a step over an await stops in its own run when another run of the method goes on first", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_step_over_an_await_stops_in_its_own_run_when_another_run_of_the_method_goes_on_first());
+        await Flow.StepApartAsync<RuntimeAsyncStepTests>("a recording keeps each runtime-async calls value where it completes in the run that called it", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_recording_keeps_each_runtime_async_calls_value_where_it_completes_in_the_run_that_called_it());
         await Flow.StepApartAsync<RuntimeAsyncStepTests>("a stop in a method gone on after its await lists the methods awaiting it as the state machine build does (#2339)", () => new RuntimeAsyncStepTests(testOutputHelper), t => t.A_stop_in_a_method_gone_on_after_its_await_lists_the_methods_awaiting_it_as_the_state_machine_build_does());
     }
 
@@ -189,6 +191,31 @@ public class RuntimeAsyncStepTests(ITestOutputHelper testOutputHelper)
             $"The state-machine build stopped at lines {string.Join(", ", stateMachines)}, not {string.Join(", ", steps.Select(step => step.Line))}");
         Assert.True(stateMachines.SequenceEqual(runtimeAsync),
             $"The runtime-async build stopped at lines {string.Join(", ", runtimeAsync)}, where the state-machine build stopped at {string.Join(", ", stateMachines)}");
+    }
+
+    /// <summary>A recording of the runtime-async program stopped where TripleAsync's value is written: InnerAsync's returns
+    /// are 0, 2 and 4, each read where it completes after its await and none where it suspended, OuterAsync's 10 and
+    /// TripleAsync's 12, all in the stop's run, and of TwiceAsync's two runs at once, the one that returned 20 was called
+    /// with 2.</summary>
+    private async Task A_recording_keeps_each_runtime_async_calls_value_where_it_completes_in_the_run_that_called_it()
+    {
+        string source = Debuggees.Source(RuntimeAsync, "Program.cs");
+        await using DebugSession host = DebugSession.ForLaunch(testOutputHelper);
+        await host.InitializeAsync().LaunchAsync(Debuggees.Program(RuntimeAsync), stopAtEntry: false, justMyCode: true).WaitForInitializedEvent();
+        await host.RequestAsync(DapCommands.Record, new RecordArguments(true));
+        await host.BreakpointsAsync(TripledWritten, source).ConfigurationDoneAsync();
+        StoppedEvent stop = await host.WaitForStoppedEvent();
+        TimelineResponse timeline = await host.RequestAsync<TimelineResponse>(DapCommands.Timeline, new TimelineArguments(stop.ThreadId));
+        string[] said = [.. timeline.Moments.Select(m => m.Said)];
+        Assert.True(said.Where(each => each.StartsWith("InnerAsync() returned", StringComparison.Ordinal)).SequenceEqual(["InnerAsync() returned 0", "InnerAsync() returned 2", "InnerAsync() returned 4"])
+            && said.Contains("OuterAsync() returned 10") && said.Contains("TripleAsync() returned 12"),
+            $"The stop's run held {string.Join(" · ", said)}, where InnerAsync returned 0, 2 and 4 and nothing where it suspended, OuterAsync 10 and TripleAsync 12");
+        DapMoment? twenty = timeline.Moments.LastOrDefault(m => m.Said == "TwiceAsync() returned 20");
+        SnapshotEvent? back = twenty is null ? null : await host.RequestAsync<SnapshotEvent>(DapCommands.Moment, new MomentArguments(twenty.Index));
+        string? which = back?.Values[back.Frames[0].Locals].FirstOrDefault(v => v.Name == "which")?.Value;
+        Assert.True(which == "2" && said.Contains("TwiceAsync() returned 10"),
+            $"The stop's run held {string.Join(" · ", said)}, where TwiceAsync returned 10 and 20, the 20 called with 2 (it shows which = {which})");
+        testOutputHelper.WriteLine($"Recording held the program {timeline.HeldMilliseconds / timeline.Recorded:F3} ms a moment over {timeline.Recorded} moments");
     }
 
     private async Task<IReadOnlyList<int>> Stops(string debuggee, int breakpoint, IReadOnlyList<(Step Step, int Line)> steps)

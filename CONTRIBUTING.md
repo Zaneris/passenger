@@ -82,6 +82,25 @@ work on Passenger. Passenger can't tell you how those terms apply to you, so if 
 - **Code style:** four spaces, file-scoped namespaces, braces on every block, explicit types over `var`; `.editorconfig`
   makes the build fail on the namespaces, braces, `var` and accessibility. Comments say why, never what the next lines do.
 
+## Translating Passenger
+
+Passenger's words are English `.resx` files beside the code that says them (keys named for what they mean, each a
+message as ICU's MessageFormat writes it: `{name}` for a name, `{count, plural, one {# file} other {# files}}` for a
+count), and each language's translation is an XLIFF 1.2 file beside them, `xlf/Name.<language>.xlf`, which any
+translation tool reads. The languages besides English were first translated by machine: their units carry
+`state-qualifier="leveraged-mt"` until a person reads them.
+
+- **Improve a translation** by editing its `<target>` and setting `state="translated"` (dropping the qualifier). Keep
+  every `{argument}` the English names, spelled as it is; a plural's cases are your language's own (CLDR's: `zero`,
+  `one`, `two`, `few`, `many`, `other`), whichever it needs.
+- **Change English words** in the `.resx`, then run `just words`, in the same change: it brings every translation in
+  step, marking each whose English changed `needs-review-translation` (shown until reviewed, while its arguments still
+  match) and saying how many each language has waiting. The build refuses a translation out of step with its English.
+- **Add a language** with `just words --add TAG` (a neutral tag where one text serves the language: `de`, `fr`, `es`),
+  then translate its units.
+- **See it** with `--language TAG` on a screenshot run, or `--language qps-ploc`, the pseudo-locale, which shows every
+  word accented, longer and bracketed, so a word left in the code or cut short by a layout shows itself.
+
 ## Pull requests
 
 - **One change a pull request,** with no unrelated edits or reformatting.

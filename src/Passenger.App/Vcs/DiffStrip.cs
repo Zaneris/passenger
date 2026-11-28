@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Rendering;
 using Passenger.Editor;
 using Passenger.Text;
 using Passenger.Vcs;
@@ -17,8 +18,9 @@ public readonly record struct DiffBand(int Index, double LeftTop, double LeftBot
 /// it the one whose X ignores it, or whose plus stages it and minus unstages it, while what made the strip allows them,
 /// each named by its tip, which names the keys of the action doing its work at the caret where one does. Only the changes
 /// in view have buttons, so a diff of thousands scrolls as lightly as one of a few; <see cref="Refresh"/> follows a scroll
-/// or a change of the bands.</summary>
-public sealed class DiffStrip : Control
+/// or a change of the bands. It takes no press but on its buttons, so a drag anywhere else on it moves the divider it
+/// stands over (<see cref="DiffLines.Divide"/>).</summary>
+public sealed class DiffStrip : Control, ICustomHitTest
 {
     private const double IconSize = 9;
 
@@ -62,6 +64,8 @@ public sealed class DiffStrip : Control
         ClipToBounds = true;
         SizeChanged += (_, _) => Place();
     }
+
+    public bool HitTest(Point point) => false;
 
     /// <summary>The bands drawn again and their buttons put beside them, after a scroll or a change of the bands.</summary>
     public void Refresh()

@@ -58,8 +58,8 @@ public static partial class McpHost
         "Lines and columns count from 1; relative paths are the open folder's; a file outside it, but in a project a trusted solution or AppHost names beside it, is read only where definition and usages lead (a package's file, generated or decompiled code) and never changed. Parameters several tools share: configuration, a run " +
         "configuration (the chosen one by default); arguments, a command line in place of its own; waitSeconds, how long a call " +
         "waits for the program to stop, end or show its UI; session, a debugged program as debug_state's sessions name it (by " +
-        "default the one paused, else the only one); resource, an Aspire resource (name or AppHostPath::name) or a compose " +
-        "service of the run, as workspace lists them; terminal, true to start it in a Terminal tab from now on (false: the Run " +
+        "default the one paused, else the only one); resource, an Aspire resource (name or AppHostPath::name), a compose " +
+        "service of the run, or a part of a run of several parts by its Run window tab's name, as workspace lists them; terminal, true to start it in a Terminal tab from now on (false: the Run " +
         "and Debug windows), as Edit Configurations' Use external console; symbol, in place of path, line and column, a C# symbol of the solution's " +
         "own code by name: Name, Type.Member or Namespace.Type, an overload as Member(string, int), or its documentation id " +
         "(M:Namespace.Type.Member(System.String)); within, a folder or file whose places alone usages or hierarchy lists, or whose projects, run configurations, open files and routes workspace; from, the line " +
@@ -79,13 +79,14 @@ public static partial class McpHost
         "options to send back, changing nothing. Each change is one step of the IDE's Undo.\n\n" +
         "build, run, tests_list and tests_run build (and publish), run and test. To debug: breakpoint_set, then debug_start (or debug_attach), debug_step, " +
         "debug_evaluate, debug_state and debug_continue, each waiting for the program to stop and saying where, with the locals " +
-        "where it stopped. An Avalonia, WPF or MAUI app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
+        "where it stopped. An Avalonia, WPF, WinUI, Windows Forms or MAUI app that run or debug_start starts is looked at and used as a person tests it: app_windows, app_tree, " +
         "app_screenshot, app_click, app_type, app_key, app_scroll, app_binding_errors. A Godot game the same, Passenger its remote debugger: its " +
         "nodes are the elements, input reaching it through a helper node Passenger adds under its root; ide_action app.godot.pauseLoop " +
         "and app.godot.nextFrame pause its loop and step it a frame, and with app.liveTree.selectElement on, app_click picks the node at " +
         "a point. Also version control (vcs_status, " +
         "vcs_commit), NuGet (nuget_search, nuget_install), Problems and Local History (diagnostics with no path, local_history), the settings (settings, " +
-        "settings_set), the container engine (containers, container_exec, container_action) and Passenger's own " +
+        "settings_set), the container engine (containers, container_exec, container_action), the Database window's connections, read " +
+        "alone (database), and Passenger's own " +
         "window (the app_ tools with app ide, ide_action).\n\n" +
         "Attached to a person's Passenger (--mcp-attach), the first call joins the Passenger window open on the agent's folder (the folder " +
         "after --mcp-attach, else the agent's working folder). With none open, it has the running Passenger open that folder, or starts " +

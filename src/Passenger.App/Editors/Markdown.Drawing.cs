@@ -2,7 +2,6 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
@@ -226,10 +225,7 @@ internal static partial class Markdown
 /// in the link colour, the hand over them and a click opening one (when it selected nothing), through the window.</summary>
 public sealed class MarkdownText : SelectableWords
 {
-    /// <summary>The pointer over a link, made once for every block: a move over one makes none.</summary>
-    private static Cursor? hand;
-
-    private readonly List<(int Start, int End, Uri Target)> links = [];
+    private readonly List<WordsLink> links = [];
     private readonly StringBuilder shown = new();
     private readonly MarkdownPage page;
 
@@ -238,18 +234,20 @@ public sealed class MarkdownText : SelectableWords
         this.page = page;
         TextWrapping = TextWrapping.Wrap;
         Inlines ??= [];
+        Follow = link => page.Follow((Uri)link.Target);
     }
 
     /// <summary>The words as drawn.</summary>
     public string Shown => shown.ToString();
 
     /// <summary>Each link's words and address.</summary>
-    public IEnumerable<(string Words, Uri Target)> Links => links.Select(l => (Shown[l.Start..l.End], l.Target));
+    public IEnumerable<(string Words, Uri Target)> Links => WordLinks.Select(l => (Shown[l.Start..l.End], (Uri)l.Target));
 
     internal static MarkdownText Of(IReadOnlyList<Markdown.Inline> parts, MarkdownPage page, [IdentifierOf(typeof(StyleClasses))] string kind)
     {
         MarkdownText block = new(page) { Classes = { kind } };
         block.Add(parts, bold: false, italic: false, link: null);
+        block.WordLinks = block.links;
         return block;
     }
 
@@ -282,7 +280,7 @@ public sealed class MarkdownText : SelectableWords
                 case Markdown.Link linked when page.LinkOf(linked.Target) is { } target:
                     int start = shown.Length;
                     Add(linked.Parts, bold, italic, target);
-                    links.Add((start, shown.Length, target));
+                    links.Add(new WordsLink(start, shown.Length, target));
                     break;
                 case Markdown.Link unlinked:
                     // A link the page opens nothing of (the notes' to a file) is its words.
@@ -328,43 +326,7 @@ public sealed class MarkdownText : SelectableWords
         shown.Append(text);
     }
 
-    /// <summary>The link drawn at a point of the block, or null: the one whose words are drawn there, on any of its lines.</summary>
-    public Uri? LinkAt(Point point)
-    {
-        // Not the hit's IsInside, which is false below a block's first line.
-        int at = TextLayout.HitTestPoint(point).TextPosition;
-        (int start, int end, Uri? target) = links.FirstOrDefault(l => at >= l.Start && at < l.End);
-        return target is not null && TextLayout.HitTestTextRange(start, end - start).Any(drawn => drawn.Contains(point)) ? target : null;
-    }
-
     /// <summary>Where a link's first word is drawn in the block, for a click on it.</summary>
-    public Point PointOf(Uri target)
-    {
-        (int start, int end, _) = links.First(l => l.Target == target);
-        Rect first = TextLayout.HitTestTextRange(start, end - start).First();
-        return first.Center;
-    }
+    public Point PointOf(Uri target) => PointOf(WordLinks.First(l => Equals(l.Target, target)));
 
-    protected override void OnPointerMoved(PointerEventArgs e)
-    {
-        base.OnPointerMoved(e);
-        if (LinkAt(e.GetPosition(this)) is null)
-        {
-            ClearValue(CursorProperty);
-        }
-        else
-        {
-            Cursor = hand ??= new Cursor(StandardCursorType.Hand);
-        }
-    }
-
-    protected override void OnPointerReleased(PointerReleasedEventArgs e)
-    {
-        base.OnPointerReleased(e);
-        if (e.InitialPressMouseButton == MouseButton.Left && SelectionStart == SelectionEnd && LinkAt(e.GetPosition(this)) is { } target)
-        {
-            e.Handled = true;
-            page.Follow(target);
-        }
-    }
 }

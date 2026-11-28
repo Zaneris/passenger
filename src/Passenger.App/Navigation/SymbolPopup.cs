@@ -39,6 +39,35 @@ public sealed record SymbolRow(string Name, string? Detail, string? Where, Symbo
     /// <summary>A heading of a Markdown file, a kind of Passenger's own as <see cref="NodeKind"/> is: a JSON or YAML string's
     /// key is the protocol's String.</summary>
     public const SymbolKind HeadingKind = (SymbolKind)102;
+
+    /// <summary>A component of a Windows Forms form's design, a kind of Passenger's own as <see cref="NodeKind"/> is.</summary>
+    public const SymbolKind ComponentKind = (SymbolKind)103;
+
+    /// <summary>An object element of a XAML file, a kind of Passenger's own as <see cref="NodeKind"/> is.</summary>
+    public const SymbolKind ElementKind = (SymbolKind)104;
+
+    /// <summary>A kind in words: its name first, as a screen reader says it after a row's name, then the shorter words a
+    /// person types for it in an outline's search (<c>ctor</c>, <c>prop</c>), Passenger's own kinds by what they are.</summary>
+    public static IReadOnlyList<string> KindWords(SymbolKind kind) => kind switch
+    {
+        FileKind => ["file"],
+        NodeKind => ["node"],
+        HeadingKind => ["heading"],
+        ComponentKind => ["component"],
+        ElementKind => ["element"],
+        SymbolKind.Constructor => ["constructor", "ctor"],
+        SymbolKind.Property => ["property", "prop"],
+        SymbolKind.Constant => ["constant", "const"],
+        SymbolKind.Function => ["function", "func"],
+        SymbolKind.Variable => ["variable", "var"],
+        SymbolKind.TypeParameter => ["type parameter", "typeparam"],
+        _ => [SymbolKinds.Name(kind)],
+    };
+
+    /// <summary>Whether a word typed names a kind: one of its words (<see cref="KindWords"/>) whole, or the start of one
+    /// three letters on (<c>meth</c>).</summary>
+    public static bool KindNamed(SymbolKind kind, string word) =>
+        KindWords(kind).Any(w => w.Equals(word, StringComparison.OrdinalIgnoreCase) || word.Length >= 3 && w.StartsWith(word, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>A query over symbols, answered as it is typed (a moment after the last key, the previous answer given
@@ -57,8 +86,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// a search that answers at once chooses it too.</param>
     /// <param name="width">How wide it is, a step of the popups' scale: wide for the files and places of a solution, less for
     /// a file's own few (a navigation bar's list).</param>
-    public SymbolPopup(string title, string placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search, string? initialQuery = null,
-        (string Label, bool Checked)? option = null, Func<IReadOnlyList<SymbolRow>, int>? initial = null, double width = PopupFrame.Wide)
+    public SymbolPopup(Words title, Words placeholder, Func<string, CancellationToken, Task<IReadOnlyList<SymbolRow>>> search, string? initialQuery = null,
+        (Words Label, bool Checked)? option = null, Func<IReadOnlyList<SymbolRow>, int>? initial = null, double width = PopupFrame.Wide)
         : base(title, placeholder, width, initialQuery, option)
     {
         this.search = search;
@@ -99,7 +128,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             {
                 return;
             }
-            Show(found, "Nothing matches", Initial is { } initial && Query.Length == 0 ? initial(found) : 0);
+            Show(found, SharedWords.NothingMatches, Initial is { } initial && Query.Length == 0 ? initial(found) : 0);
             IsSettled = true;
         }
         catch (OperationCanceledException)
@@ -107,7 +136,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         }
         catch (LanguageServerFailed failed)
         {
-            Say(failed.Message);
+            Say(Words.Verbatim(failed.Message));
             IsSettled = true;
         }
         finally
@@ -125,7 +154,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
         badge.Margin = new Thickness(0, 0, Gaps.Small, 0);
         TextBlock where = ListRow.DetailText();
         where.MaxWidth = 260;
-        TextBlock name = new() { [DockPanel.DockProperty] = Dock.Left, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { [DockPanel.DockProperty] = Dock.Left, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         // A member's type follows its name close, as "Sum(int): decimal"; a container stands apart.
         TextBlock detail = new()
         {
@@ -145,8 +174,8 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
             badge.IsVisible = !file;
             if (file)
             {
-                icon.Data = Explorer.FileIcons.ForFile(symbol.Path);
-                icon.ForegroundKey = Explorer.FileIcons.TintForFile(symbol.Path);
+                icon.DataKey = Explorer.FileIcons.FileKey(symbol.Path);
+                icon.ForegroundKey = Explorer.FileIcons.FileBrushKey(symbol.Path);
             }
             else
             {
@@ -177,7 +206,7 @@ public sealed class SymbolPopup : SearchPopup<SymbolRow>
     /// heading's their own, as every badge has them (<see cref="KindBadges"/>).</summary>
     public static (string Letter, string Brush) Badge(SymbolKind kind) => KindBadges.Of(kind switch
     {
-        SymbolRow.NodeKind => BadgeKind.Node,
+        SymbolRow.NodeKind or SymbolRow.ComponentKind or SymbolRow.ElementKind => BadgeKind.Node,
         SymbolRow.HeadingKind => BadgeKind.Heading,
         _ => KindBadges.Of(kind),
     });

@@ -20,8 +20,9 @@ public enum AspireRole
 }
 
 /// <summary>The folder's AppHosts and what each C# file is to them, for one session (<see cref="ProjectSession.AspireFiles"/>).
-/// Single-file AppHosts are found among the files of the folder's one walk (<see cref="FileIndex.Walked"/>): a C# file's
-/// head is read as a walk first lists it, and again only as the folder watcher says it changed; each AppHost's sources are
+/// Single-file AppHosts, and those of another language an aspire.config.json names, are found among the files of the
+/// folder's one walk (<see cref="FileIndex.Walked"/>): a C# file's head, or the config, is read as a walk first lists it, and
+/// again only as the folder watcher says it changed; each C# AppHost's sources are
 /// read for the services they name by path (<see cref="AspireServices"/>) as it comes and as the watcher says one changed. A
 /// file's role comes from the projects as MSBuild evaluated them and those services, kept until the run configurations are
 /// made again (an evaluation landed, a project unloaded, a single-file AppHost found or gone) or the services named change,
@@ -50,8 +51,19 @@ public sealed class AspireFiles
     /// costs no path of its own: touched only by the reads, which run one at a time on a worker.</summary>
     private HashSet<string> read = new(PathNames.Comparer);
 
-    /// <summary>The single-file AppHosts among the files read, by their paths; touched only by the reads.</summary>
+    /// <summary>The files read that make an AppHost, by their paths: a single-file AppHost, or an aspire.config.json naming
+    /// one the CLI runs (<see cref="cliHosts"/>); touched only by the reads.</summary>
     private readonly HashSet<string> appHosts = new(PathNames.Comparer);
+
+    /// <summary>The AppHost each aspire.config.json among <see cref="appHosts"/> names, by the file; touched only by the reads.</summary>
+    private readonly Dictionary<string, string> cliHosts = new(PathNames.Comparer);
+
+    /// <summary>The aspire.config.json naming each AppHost of another language, there or not yet, by the AppHost's file, so its
+    /// coming or going reads the config again; touched only by the reads.</summary>
+    private readonly Dictionary<string, string> namingConfigs = new(PathNames.Comparer);
+
+    /// <summary>The AppHost files of <see cref="namingConfigs"/> as the last read left them; on the UI thread.</summary>
+    private IReadOnlySet<string> namedHosts = new HashSet<string>();
 
     /// <summary>Whether the next walk reads every C# file it lists again, the watcher having lost changes; the reads' alone too.</summary>
     private bool again;
@@ -119,6 +131,14 @@ public sealed class AspireFiles
             touched.UnionWith(read.Where(relative => !listed.Contains(relative)).Select(relative => Path.Join(root, relative)));
             read = listed;
             appHosts.IntersectWith(hostsListed);
+            foreach (string gone in cliHosts.Keys.Where(file => !appHosts.Contains(file)).ToArray())
+            {
+                cliHosts.Remove(gone);
+            }
+            foreach (KeyValuePair<string, string> gone in namingConfigs.Where(n => !listed.Contains(PathNames.Below(n.Value, root).ToString())).ToArray())
+            {
+                namingConfigs.Remove(gone.Key);
+            }
         });
     }
 
@@ -128,7 +148,8 @@ public sealed class AspireFiles
     {
         UiThread.Check();
         List<string> sources = [.. gone.Where(relative => IsSource(root, relative))];
-        if (sources.Count > 0)
+        string[] named = [.. came.Concat(gone).Select(relative => Path.Join(root, relative)).Where(namedHosts.Contains)];
+        if (sources.Count > 0 || named.Length > 0)
         {
             Then(walk: false, () =>
             {
@@ -136,8 +157,14 @@ public sealed class AspireFiles
                 {
                     read.Remove(relative);
                     appHosts.Remove(Path.Join(root, relative));
+                    cliHosts.Remove(Path.Join(root, relative));
                     touched.Add(Path.Join(root, relative));
+                    foreach (string config in namingConfigs.Where(n => PathNames.Same(n.Value, Path.Join(root, relative))).Select(n => n.Key).ToArray())
+                    {
+                        namingConfigs.Remove(config);
+                    }
                 }
+                ReadNaming(named);
             });
         }
         arrivals.Came(came.Where(relative => IsSource(root, relative)).Select(relative => Path.Join(root, relative)));
@@ -179,7 +206,8 @@ public sealed class AspireFiles
         arrivals.Heard(paths);
         string[] sources = [.. paths.Where(path => !came.Contains(path) && IsSource(root, PathNames.Below(path, root)))];
         arrivals.Came(paths.Where(path => came.Contains(path) && IsSource(root, PathNames.Below(path, root))));
-        if (sources.Length == 0 && !every)
+        string[] named = [.. paths.Where(namedHosts.Contains)];
+        if (sources.Length == 0 && named.Length == 0 && !every)
         {
             return;
         }
@@ -196,7 +224,22 @@ public sealed class AspireFiles
                     Found(path, appHost);
                 }
             }
+            ReadNaming(named);
         });
+    }
+
+    /// <summary>Reads again the aspire.config.json naming each AppHost file that came, went or changed, which makes an AppHost
+    /// only while the file is there.</summary>
+    private void ReadNaming(IEnumerable<string> hosts)
+    {
+        foreach (string host in hosts)
+        {
+            if (namingConfigs.GetValueOrDefault(host) is { } config && File.Exists(config))
+            {
+                touched.Add(config);
+                Found(config, IsAppHost(config));
+            }
+        }
     }
 
     /// <summary>The C# file's role, as its project and the folder's AppHosts make it now.</summary>
@@ -264,16 +307,20 @@ public sealed class AspireFiles
                 {
                     return;
                 }
-                (IReadOnlyList<string> found, IReadOnlyDictionary<string, NamedServices>? services) = await BackgroundWork.Run(() =>
+                (IReadOnlyList<string> found, IReadOnlyDictionary<string, NamedServices>? services, HashSet<string> awaited) = await BackgroundWork.Run(() =>
                 {
                     work();
-                    IReadOnlyList<string> offered = [.. appHosts.Order(StringComparer.Ordinal).Take(AppHostLimit)];
-                    return (offered, ReadNamed(given, offered) ? new Dictionary<string, NamedServices>(namedBy, PathNames.Comparer) : null);
+                    IReadOnlyList<string> offered = [.. appHosts.Select(file => cliHosts.GetValueOrDefault(file) ?? file).Distinct(PathNames.Comparer)
+                        .Order(StringComparer.Ordinal).Take(AppHostLimit)];
+                    // Only a C# AppHost's source names services by path for the reads to follow.
+                    return (offered, ReadNamed(given, [.. offered.Where(host => !AspireAppHosts.RunsThroughCli(host))])
+                        ? new Dictionary<string, NamedServices>(namedBy, PathNames.Comparer) : null, new HashSet<string>(namingConfigs.Keys, PathNames.Comparer));
                 });
                 if (session.IsEnded)
                 {
                     return;
                 }
+                namedHosts = awaited;
                 if (services is not null)
                 {
                     named = services;
@@ -375,7 +422,8 @@ public sealed class AspireFiles
     /// folder or one every walk passes over.</summary>
     private static bool IsSource(string root, ReadOnlySpan<char> relative)
     {
-        if (!relative.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(relative))
+        if (!(relative.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(relative).Equals(AspireAppHosts.ConfigFile, StringComparison.OrdinalIgnoreCase))
+            || Path.IsPathRooted(relative))
         {
             return false;
         }
@@ -393,14 +441,33 @@ public sealed class AspireFiles
         else if (appHost == false)
         {
             appHosts.Remove(path);
+            cliHosts.Remove(path);
         }
     }
 
-    /// <summary>Whether a file is a single-file AppHost; null when it could not be read, which keeps what was read before.</summary>
-    private static bool? IsAppHost(string path)
+    /// <summary>Whether a file makes an AppHost: a single-file AppHost, or an aspire.config.json naming one the CLI runs, which
+    /// it keeps (<see cref="cliHosts"/>); null when it could not be read, which keeps what was read before.</summary>
+    private bool? IsAppHost(string path)
     {
         try
         {
+            if (Path.GetFileName(path).Equals(AspireAppHosts.ConfigFile, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string before in namingConfigs.Where(n => PathNames.Same(n.Value, path)).Select(n => n.Key).ToArray())
+                {
+                    namingConfigs.Remove(before);
+                }
+                if (File.Exists(path) && AspireAppHosts.WrittenIn(path) is { } named)
+                {
+                    namingConfigs[named] = path;
+                    if (File.Exists(named))
+                    {
+                        cliHosts[path] = named;
+                        return true;
+                    }
+                }
+                return false;
+            }
             return File.Exists(path) && AspireAppHosts.IsSingleFile(path);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

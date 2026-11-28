@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Passenger.App;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -30,13 +31,17 @@ public sealed class RefusalsTests
         new(@"(?:^|: )\{\} changed as it was read$"),
         new(@"(?i:a) (?:file|folder) of the package \{\}, as NuGet restored it"),
         new(@"(?:\b(?:it was|they were)|\{\} was|,) edited meanwhile(?:$|,)"),
+        new(@"(?:^|: )Debugging \{\} has ended: "),
+        new(@"(?:^|: )\{\} is no address(?:$|\W)"),
+        new(@"(?:^|: )The debugger could not read memory at "),
     ];
 
     [Fact]
     public void A_refusals_words_are_written_only_in_Refusals()
     {
-        HashSet<string> words = [.. typeof(Refusals).GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue()!)];
+        // Each refusal that takes nothing, in English: Refusals.resx's words and those its members give whole.
+        HashSet<string> words = [.. typeof(Refusals).GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(property => property.PropertyType == typeof(Words)).Select(property => ((Words?)property.GetValue(null))?.English).OfType<string>()];
         // A constant's words, more after them or not, alone or after what it stopped, its first letter in either case.
         Regex[] said = [.. words.Select(word => new Regex($@"(?:^|: )(?i:{Regex.Escape(word[..1])}){Regex.Escape(word[1..])}(?:$|\W)"))];
         List<string> found = [];

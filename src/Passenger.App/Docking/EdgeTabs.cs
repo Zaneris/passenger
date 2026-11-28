@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Docking;
@@ -28,7 +29,7 @@ internal sealed class EdgeTabs : Border
     private readonly StackPanel secondTabs;
     private readonly Dictionary<ToolWindow, Border> tabs = [];
 
-    public EdgeTabs(DockHost host, ToolAnchor first, ToolAnchor second, bool down, string said)
+    public EdgeTabs(DockHost host, ToolAnchor first, ToolAnchor second, bool down, Words said)
     {
         this.host = host;
         Said = said;
@@ -52,7 +53,7 @@ internal sealed class EdgeTabs : Border
     protected override Type StyleKeyOverride => typeof(Border);
 
     /// <summary>What the edge is told as, entered as one of the window's regions.</summary>
-    public string Said { get; }
+    public Words Said { get; }
 
     /// <summary>Gives the keys, as by Tab, to the edge's first tab; false with none.</summary>
     public bool TakeKeys() => firstTabs.Children.Concat(secondTabs.Children).FirstOrDefault() is { } tab && tab.Focus(NavigationMethod.Tab);
@@ -88,7 +89,7 @@ internal sealed class EdgeTabs : Border
         foreach ((ToolWindow window, Border tab) in tabs)
         {
             tab.Classes.Set(StyleClasses.Active, window == peeked);
-            ToolTip.SetTip(tab, ActionTips.Named(window.Title, window.Action is { } action ? KeyWords.Of(keymap, action) : null));
+            ShownWords.Set(tab, ToolTip.TipProperty, ActionTips.Named(window.Title, window.Action is { } action ? KeyWords.Of(keymap, action) : null));
         }
     }
 
@@ -103,13 +104,12 @@ internal sealed class EdgeTabs : Border
             return made;
         }
         RowIcon icon = new() { DataKey = window.Icon };
-        TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
+        TextBlock name = new() { Classes = { StyleClasses.TabName }, [ShownWords.TextProperty] = window.Title, VerticalAlignment = VerticalAlignment.Center };
         Control content = down
             ? new StackPanel { Spacing = Gaps.Small, HorizontalAlignment = HorizontalAlignment.Center, Children = { icon, new LayoutTransformControl { LayoutTransform = new RotateTransform(90), Child = name } } }
             : new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } };
-        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
+        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true, [ShownWords.NameProperty] = window.Title };
         ChosenMark.Hold(tab, content);
-        AutomationProperties.SetName(tab, window.Title);
         AutomationProperties.SetControlTypeOverride(tab, AutomationControlType.Button);
         tab.KeyDown += (_, e) =>
         {
@@ -124,8 +124,8 @@ internal sealed class EdgeTabs : Border
         {
             if (e.PropertyName == nameof(ToolWindow.Title))
             {
-                name.Text = window.Title;
-                AutomationProperties.SetName(tab, window.Title);
+                ShownWords.Set(name, TextBlock.TextProperty, window.Title);
+                ShownWords.Set(tab, AutomationProperties.NameProperty, window.Title);
             }
         };
         tab.PointerEntered += (_, _) => host.EdgeTabEntered(window);

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Media;
 using Passenger.Core;
 using Passenger.Host;
+using Passenger.Packages;
 using Passenger.Vcs;
 using Passenger.Workspace;
 
@@ -22,6 +23,12 @@ public enum NodeKind
 
     /// <summary>A shared project a project imports the items of, under its Dependencies.</summary>
     SharedProject,
+
+    /// <summary>Under a project's Dependencies (a framework's, where it has several), what its source generators make now:
+    /// each generator, and under it each document it makes by its hint name.</summary>
+    Generators,
+    Generator,
+    GeneratedFile,
 }
 
 /// <summary>A folder at a project's top that the .NET SDK reads by its name, in the order the Explorer lists them before
@@ -50,6 +57,22 @@ public sealed class ExplorerTree
 
     public TreeRows<ExplorerNode> Rows { get; } = [];
 
+    private ErrorFiles? errors;
+
+    /// <summary>Marks the files with errors and what holds them, as <paramref name="files"/> has them from now on: the rows
+    /// shown marked again only where a file came to have errors or no longer has.</summary>
+    public void FollowErrors(ErrorFiles files)
+    {
+        errors = files;
+        files.Changed += (_, _) =>
+        {
+            foreach (ExplorerNode row in Rows)
+            {
+                Mark(row);
+            }
+        };
+    }
+
     /// <summary>Colours the files version control says changed.</summary>
     public void SetChanges(IReadOnlyDictionary<string, ChangeKind> changed)
     {
@@ -63,6 +86,7 @@ public sealed class ExplorerTree
     private void Mark(ExplorerNode node)
     {
         node.Change = node.IsFile && node.Path is { } path && changes.TryGetValue(path, out ChangeKind kind) ? kind : null;
+        node.HasErrors = errors?.Marks(node) == true;
         node.IsCut = cut.Count > 0 && node.Kind is NodeKind.File or NodeKind.Folder && node.Path is { } at && IsCut(at);
     }
 
@@ -123,8 +147,8 @@ public sealed class ExplorerTree
         int count = solution.Projects.Count() + beside.Count;
         ExplorerNode root = new(NodeKind.Solution, solution.Name, solution.Path, 0, false,
             node => [.. Entries(solution.Entries, node.Depth + 1, null),
-                .. beside.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).Select(p => Project(p, node.Depth + 1))],
-            Plural.Of(count, "project"));
+                .. beside.OrderBy(p => p.Name, NameOrder.Instance).Select(p => Project(p, node.Depth + 1))],
+            ExplorerWords.Projects(count));
         Show(root);
     }
 
@@ -148,18 +172,94 @@ public sealed class ExplorerTree
     /// the projects importing that file, which their Dependencies name it by.</summary>
     private readonly Dictionary<string, string> shared = new(PathNames.Comparer);
 
+    /// <summary>What each project's source generators make, as last heard (<see cref="ShowGenerated"/>), by its path.</summary>
+    private readonly Dictionary<string, IReadOnlyList<Roslyn.Extension.GeneratedFile>> generated = new(PathNames.Comparer);
+
+    /// <summary>A project's Dependencies were opened while what its source generators make is not known: the window lists
+    /// it, then says it through <see cref="ShowGenerated"/>, and again as it changes.</summary>
+    public event Action<string>? GeneratedAsked;
+
+    /// <summary>What each project's restore resolved, as last read (<see cref="ShowRestored"/>), by its path.</summary>
+    private readonly Dictionary<string, RestoredVersions> restored = new(PathNames.Comparer);
+
+    /// <summary>A project's Dependencies were opened while its restore is not read: the window reads it off its thread,
+    /// then says it through <see cref="ShowRestored"/>, and again as a restore writes it.</summary>
+    public event Action<string>? RestoreAsked;
+
+    /// <summary>The projects whose restores the tree shows, which the window reads again as a restore writes one.</summary>
+    public IReadOnlyCollection<string> RestoresShown => restored.Keys;
+
+    /// <summary>What a project's restore resolved now: its packages under its Dependencies, opened or not, open to the
+    /// packages each brings, rows made anew only where what one brings changed, every other row kept as it was. A restore
+    /// that does not read (<see cref="RestoredVersions.None"/>) leaves the last one read shown, as one being written
+    /// reads so for a moment, until the watcher hears it written.</summary>
+    public void ShowRestored(string project, RestoredVersions read)
+    {
+        if (restored.TryGetValue(project, out RestoredVersions? shown) && (ReferenceEquals(shown, read) || ReferenceEquals(read, RestoredVersions.None)))
+        {
+            return;
+        }
+        restored[project] = read;
+        if (Root is null)
+        {
+            return;
+        }
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind is NodeKind.Dependencies or NodeKind.Framework or NodeKind.Package
+            && n.Owner is { } owner && PathNames.Same(owner, project)))
+        {
+            if (node.Reload())
+            {
+                reloaded.Add(node);
+            }
+        }
+        ShowAgain(reloaded);
+    }
+
+    /// <summary>What a project's source generators make now: its Dependencies' Source Generators, opened or not, show it,
+    /// their documents' rows made anew where it changed, every other row kept as it was.</summary>
+    public void ShowGenerated(string project, IReadOnlyList<Roslyn.Extension.GeneratedFile> made)
+    {
+        generated[project] = made;
+        if (Root is null)
+        {
+            return;
+        }
+        List<ExplorerNode> reloaded = [];
+        foreach (ExplorerNode node in Loaded(Root, n => n.Kind is NodeKind.Dependencies or NodeKind.Framework or NodeKind.Generators or NodeKind.Generator
+            && n.Owner is { } owner && PathNames.Same(owner, project)))
+        {
+            if (node.Reload(n => n.Kind == NodeKind.GeneratedFile))
+            {
+                reloaded.Add(node);
+            }
+        }
+        ShowAgain(reloaded);
+    }
+
     private void Take(IEnumerable<ProjectModel> shown)
     {
         projects.Clear();
         files.Clear();
         shared.Clear();
+        HashSet<string> kept = new(PathNames.Comparer);
         foreach (ProjectModel project in shown)
         {
+            kept.Add(project.Path);
             projects[project.Path] = project;
             if (SharedProjects.Is(project.Path))
             {
                 shared.TryAdd(SharedProjects.ItemsFileOf(project.Path), project.Path);
             }
+        }
+        // Kept with a project shown again, as neither is told again unchanged, so a refresh opens their rows again too.
+        foreach (string gone in generated.Keys.Where(p => !kept.Contains(p)).ToList())
+        {
+            generated.Remove(gone);
+        }
+        foreach (string gone in restored.Keys.Where(p => !kept.Contains(p)).ToList())
+        {
+            restored.Remove(gone);
         }
     }
 
@@ -194,15 +294,15 @@ public sealed class ExplorerTree
 
     /// <summary>What a package's folder row says beside its name (its package manager, its own name where the folder's
     /// differs, a workspace's root as one) and on hover (what said its manager, and its scripts the run configurations).</summary>
-    internal static (string Detail, string Tip) PackageWords(NodePackage package, string folder, IReadOnlyList<NodePackage> all)
+    internal static (Words Detail, Words Tip) PackageWords(NodePackage package, string folder, IReadOnlyList<NodePackage> all)
     {
-        string manager = NodeProjects.ProgramOf(package.Manager);
+        Words manager = Words.Verbatim(NodeProjects.ProgramOf(package.Manager));
         int members = all.Count(p => p.Root is { } root && PathNames.Same(root, package.Manifest));
-        string kind = members > 0 ? $"{manager} workspace of {Plural.Of(members, "package")}" : manager;
-        string detail = package.Name == folder ? kind : $"{package.Name} · {kind}";
+        Words kind = members > 0 ? ExplorerWords.PackageWorkspace(manager, members) : manager;
+        Words detail = package.Name == folder ? kind : ExplorerWords.NamedPackage(Words.Verbatim(package.Name), kind);
         string[] scripts = [.. package.Runnable.Select(s => s.Name)];
-        string runs = scripts.Length == 0 ? "it has no scripts" : $"{Plural.Agreeing(scripts.Length, "its script", "its scripts")} {Plural.Listed(scripts)} {Plural.Agreeing(scripts.Length, "runs", "run")} from the run configurations";
-        return (detail, $"Node package {package.Name}, run with {manager} ({package.ManagerSource}): {runs}");
+        Words runs = scripts.Length == 0 ? ExplorerWords.NoScripts : ExplorerWords.ScriptsRun(scripts.Length, Plural.Listed(Words.Names(scripts)));
+        return (detail, ExplorerWords.PackageTip(Words.Verbatim(package.Name), manager, Words.Verbatim(package.ManagerSource), runs));
     }
 
     private ProjectFiles? FilesOf(ProjectModel project)
@@ -276,7 +376,7 @@ public sealed class ExplorerTree
         foreach (ExplorerNode node in Loaded(Root, n => n.Kind == NodeKind.Project && n.Path is { } path && changed.Contains(path)))
         {
             ProjectModel project = projects[node.Path!];
-            node.Detail = Unloaded.Contains(project.Path) ? "(unloaded)" : DetailOf(project);
+            node.Detail = Unloaded.Contains(project.Path) ? ExplorerWords.Unloaded : DetailOf(project);
             node.Tip = Unloaded.Contains(project.Path) ? null : TipOf(project);
             node.ProjectKind = KindOf(project);
             foreach (ExplorerNode below in Loaded(node, _ => true))
@@ -614,11 +714,11 @@ public sealed class ExplorerTree
 
     /// <summary>Why the folder has no .NET SDK to evaluate its projects with, which hovering a project's row says; null
     /// while it has one.</summary>
-    private string? noSdk;
+    private Words? noSdk;
 
     /// <summary>The folder came to have no .NET SDK (<paramref name="why"/>), or has one again (null): each project's
     /// row says "(no SDK)" meanwhile, and once it has one, what it said before.</summary>
-    public void ShowSdk(string? why)
+    public void ShowSdk(Words? why)
     {
         if (why == noSdk)
         {
@@ -642,17 +742,21 @@ public sealed class ExplorerTree
     private List<ExplorerNode> Entries(IEnumerable<SolutionEntry> entries, int depth, string? folder) =>
         [.. entries
             .OrderBy(e => e switch { SolutionFolder => 0, ProjectModel => 1, _ => 2 })
-            .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.Name, NameOrder.Instance)
             .Select(e => Entry(e, depth, folder))];
 
     private ExplorerNode Entry(SolutionEntry entry, int depth, string? parent) => entry switch
     {
         SolutionFolder folder => new ExplorerNode(NodeKind.SolutionFolder, folder.Name, null, depth, false,
-            node => Entries(folder.Children, node.Depth + 1, folder.Path)) { SolutionPath = folder.Path },
+            node => Entries(folder.Children, node.Depth + 1, folder.Path)) { SolutionPath = folder.Path, Projects = [.. ProjectsIn(folder)] },
         ProjectModel project => Project(project, depth),
         SolutionItem item => new ExplorerNode(NodeKind.File, item.Name, item.Path, depth, !File.Exists(item.Path), null) { SolutionPath = parent },
         _ => throw new InvalidOperationException($"Unknown solution entry {entry}"),
     };
+
+    /// <summary>The projects a solution folder holds, at any depth, by their files.</summary>
+    private static IEnumerable<string> ProjectsIn(SolutionFolder folder) =>
+        folder.Children.SelectMany(IEnumerable<string> (child) => child switch { ProjectModel project => [project.Path], SolutionFolder inner => ProjectsIn(inner), _ => [] });
 
     /// <summary>The projects a row stands for: a project, or the loaded ones anywhere under a solution folder; never a shared
     /// project, which builds nothing of its own.</summary>
@@ -687,7 +791,7 @@ public sealed class ExplorerTree
     /// (<see cref="ProjectFiles"/>); until then, or when it could not be, the files in its folder; a Docker Compose
     /// project's, the files its text names.</summary>
     private ExplorerNode Project(ProjectModel given, int depth) => Unloaded.Contains(given.Path)
-        ? new(NodeKind.Project, given.Name, given.Path, depth, dimmed: true, null, "(unloaded)")
+        ? new(NodeKind.Project, given.Name, given.Path, depth, dimmed: true, null, ExplorerWords.Unloaded)
         : new(NodeKind.Project, given.Name, given.Path, depth, !given.Exists, node =>
         {
             // A Docker Compose project and a shared project reference nothing: they hold files alone.
@@ -706,47 +810,47 @@ public sealed class ExplorerTree
     /// <summary>What a project's row says beside its name: its frameworks, and off Windows those that run only on
     /// Windows (a WPF or Windows Forms app's); or that the folder has no SDK to evaluate it with, or MSBuild could
     /// not.</summary>
-    private string? DetailOf(ProjectModel project)
+    private Words? DetailOf(ProjectModel project)
     {
         if (SharedProjects.Is(project.Path))
         {
-            return "shared";
+            return ExplorerWords.Shared;
         }
         if (noSdk is not null)
         {
-            return "(no SDK)";
+            return ExplorerWords.NoSdk;
         }
         if (project.Problem is not null)
         {
-            return "(load failed)";
+            return ExplorerWords.LoadFailed;
         }
         if (project.TargetFrameworks.Count == 0)
         {
             return null;
         }
-        string frameworks = string.Join(", ", project.TargetFrameworks);
+        Words frameworks = Words.Verbatim(string.Join(", ", project.TargetFrameworks));
         IReadOnlyList<(string Framework, string Desktop)> windowsOnly = project.WindowsOnly;
         // The mark first, so a narrow Solution view still shows it.
         return windowsOnly.Count == 0 ? frameworks
-            : windowsOnly.Count >= project.TargetFrameworks.Count ? $"Windows only · {frameworks}"
-            : $"{frameworks} · {string.Join(", ", windowsOnly.Select(w => w.Framework))} Windows only";
+            : windowsOnly.Count >= project.TargetFrameworks.Count ? ExplorerWords.WindowsOnly(frameworks)
+            : ExplorerWords.SomeWindowsOnly(frameworks, Words.Verbatim(string.Join(", ", windowsOnly.Select(w => w.Framework))));
     }
 
     /// <summary>What hovering a project's row says: why the folder has no SDK; else, for a Windows-only one, why, and
     /// what Passenger still does with it here.</summary>
-    private string? TipOf(ProjectModel project) => SharedProjects.Is(project.Path) ? SharedTip(project)
+    private Words? TipOf(ProjectModel project) => SharedProjects.Is(project.Path) ? SharedTip(project)
         : noSdk ?? (project.WindowsOnly is [(string framework, _), ..] && project.RunsOnlyOnWindows(framework) is { } why
-            ? $"{why}: Passenger builds {project.Name} here for its code help (EnableWindowsTargeting), and Run, Debug and Profile need Windows"
+            ? ExplorerWords.WindowsOnlyTip(Words.Verbatim(why), Words.Verbatim(project.Name))
             : null);
 
     /// <summary>What hovering a shared project's row says: whose code its files are, as the projects shown import its items.</summary>
-    private string SharedTip(ProjectModel project)
+    private Words SharedTip(ProjectModel project)
     {
         List<string> importing = [.. projects.Values.Where(p => SharedImports(p).Any(s => s.Project == project.Path)).Select(p => p.Name)
-            .Order(StringComparer.OrdinalIgnoreCase)];
-        string items = Path.GetFileName(SharedProjects.ItemsFileOf(project.Path));
-        return importing.Count == 0 ? $"Shared project: no project imports {items}, so none compiles its files"
-            : $"Shared project: its files are compiled into {Plural.Listed(importing)}, which {Plural.Agreeing(importing.Count, "imports", "import")} {items}";
+            .Order(NameOrder.Instance)];
+        Words items = Words.Verbatim(Path.GetFileName(SharedProjects.ItemsFileOf(project.Path)));
+        return importing.Count == 0 ? ExplorerWords.SharedUnimported(items)
+            : ExplorerWords.SharedImported(Plural.Listed(Words.Names(importing)), importing.Count, items);
     }
 
     /// <summary>The shared projects' items files a project imports, as evaluated, each with the shared project shown for it
@@ -762,7 +866,7 @@ public sealed class ExplorerTree
         string named = project ?? Beside(items) ?? items;
         string name = Path.GetFileNameWithoutExtension(named);
         ProjectModel holder = ProjectModel.Unevaluated(named);
-        return new(NodeKind.SharedProject, name, null, depth, false, project is null ? node => HeldIn(holder, string.Empty, node.Depth + 1) : null, "shared")
+        return new(NodeKind.SharedProject, name, null, depth, false, project is null ? node => HeldIn(holder, string.Empty, node.Depth + 1) : null, ExplorerWords.Shared)
         {
             Owner = owner.Path,
             Referenced = named,
@@ -788,7 +892,7 @@ public sealed class ExplorerTree
     /// projects and packages it references; for a multi-targeted one, each framework with its own; then the shared
     /// projects it imports the items of.</summary>
     private ExplorerNode Dependencies(ProjectModel given, int depth) =>
-        new(NodeKind.Dependencies, "Dependencies", null, depth, false, node =>
+        new(NodeKind.Dependencies, DependenciesName, null, depth, false, node =>
         {
             ProjectModel project = Current(given);
             int below = node.Depth + 1;
@@ -801,7 +905,8 @@ public sealed class ExplorerTree
                     // Read when opened, so one evaluated again shows its packages as they are now.
                     ProjectModel now = Current(given);
                     FrameworkDependencies? its = now.Evaluated?.Dependencies.FirstOrDefault(d => d.Framework == framework.Name);
-                    return [.. Referenced(now, (its?.Projects ?? []).Select(PathNames.Canonical), its?.Packages ?? [], framework.Depth + 1)];
+                    return [.. Referenced(now, (its?.Projects ?? []).Select(PathNames.Canonical), its?.Packages ?? [], framework.Depth + 1, framework.Name),
+                        .. Generators(now.Path, framework.Name, framework.Depth + 1)];
                 })
                 {
                     Owner = given.Path,
@@ -810,21 +915,92 @@ public sealed class ExplorerTree
             else
             {
                 children.AddRange(project.TargetFrameworks.Select(f => Leaf(NodeKind.Framework, f, null, below, project)));
-                children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below));
+                children.AddRange(Referenced(project, project.ProjectReferences, frameworks is [{ } one] ? one.Packages : [], below, null));
             }
-            children.AddRange(SharedImports(project).OrderBy(s => Path.GetFileName(s.Items), StringComparer.OrdinalIgnoreCase)
+            if (frameworks is not [{ Framework: not null }, ..])
+            {
+                children.AddRange(Generators(project.Path, null, below));
+            }
+            children.AddRange(SharedImports(project).OrderBy(s => Path.GetFileName(s.Items), NameOrder.Instance)
                 .Select(s => SharedLeaf(project, s.Items, s.Project, below)));
+            if (!generated.ContainsKey(project.Path))
+            {
+                GeneratedAsked?.Invoke(project.Path);
+            }
+            if (!restored.ContainsKey(project.Path))
+            {
+                RestoreAsked?.Invoke(project.Path);
+            }
             return children;
-        }) { Owner = given.Path };
+        }) { Owner = given.Path, Shown = ExplorerWords.Dependencies };
 
-    /// <summary>The projects and packages a project (or one framework of it) references, each project by its kind; packages
-    /// the SDK adds of itself are left out.</summary>
-    private IEnumerable<ExplorerNode> Referenced(ProjectModel project, IEnumerable<string> referenced, IReadOnlyList<PackageDependency> packages, int depth) =>
+    /// <summary>The Dependencies row's name, which its words show in the person's language.</summary>
+    public const string DependenciesName = "Dependencies";
+
+    /// <summary>The Source Generators row's name, which its words show in the person's language.</summary>
+    public const string GeneratorsName = "Source Generators";
+
+    /// <summary>A project's Source Generators, of one target framework's build where it has several: each generator by its
+    /// type's name, its assembly beside it, the documents it makes under it by their hint names; none where its generators
+    /// make nothing, or what they make is not known yet. Each row reads what is known as it is made, so one read again
+    /// shows it as it is now.</summary>
+    private IEnumerable<ExplorerNode> Generators(string project, string? framework, int depth)
+    {
+        if (!Made(project, framework).Any())
+        {
+            yield break;
+        }
+        yield return new ExplorerNode(NodeKind.Generators, GeneratorsName, null, depth, false, node =>
+            [.. Made(project, framework).GroupBy(f => (f.Generator, f.Assembly)).OrderBy(g => TypeNames.Short(g.Key.Generator), NameOrder.Instance)
+                .Select(g => new ExplorerNode(NodeKind.Generator, TypeNames.Short(g.Key.Generator), null, node.Depth + 1, false, generator =>
+                    [.. Made(project, framework).Where(f => (f.Generator, f.Assembly) == g.Key).OrderBy(f => f.Hint, NameOrder.Instance)
+                        .Select(f => new ExplorerNode(NodeKind.GeneratedFile, f.Hint, null, generator.Depth + 1, false, null) { Owner = project, Referenced = f.Uri })],
+                    Words.Verbatim(g.Key.Assembly))
+                {
+                    Owner = project,
+                    Referenced = g.Key.Generator,
+                    Tip = ExplorerWords.GeneratorTip(Words.Verbatim(g.Key.Generator), Words.Verbatim(g.Key.Assembly)),
+                })])
+        {
+            Owner = project,
+            Shown = ExplorerWords.SourceGenerators,
+        };
+    }
+
+    /// <summary>What a project's source generators make, of one framework's build where one is named.</summary>
+    private IEnumerable<Roslyn.Extension.GeneratedFile> Made(string project, string? framework) =>
+        (generated.GetValueOrDefault(project) ?? []).Where(f => framework is null || string.Equals(f.Framework, framework, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The projects and packages a project (or one framework of it, <paramref name="framework"/>) references, each
+    /// project by its kind; packages the SDK adds of itself are left out.</summary>
+    private IEnumerable<ExplorerNode> Referenced(ProjectModel project, IEnumerable<string> referenced, IReadOnlyList<PackageDependency> packages, int depth, string? framework) =>
         referenced.Select(r => Leaf(NodeKind.ProjectReference, Path.GetFileNameWithoutExtension(r), null, depth, project, r, KindOf(r)))
             .Concat((packages.Count > 0 ? packages.Where(p => !p.Implicit).Select(p => (p.Name, p.Version)) : project.Packages)
-                .Select(p => Leaf(NodeKind.Package, p.Name, p.Version, depth, project)));
+                .Select(p => PackageNode(project.Path, framework, p.Name, p.Version is { } version ? Words.Verbatim(version) : null, depth, [])));
 
-    private static ExplorerNode Leaf(NodeKind kind, string name, string? detail, int depth, ProjectModel owner, string? referenced = null, ProjectKind built = ProjectKind.Other) =>
+    /// <summary>A package a project gets: one it references by the version it gives, or one a package brings, by the version
+    /// its restore resolved, a newer one than asked said so. Once the restore is read, the packages it brings are under it
+    /// as their own rows, opened in turn, a package reached twice shown each time; one it is brought through again
+    /// (<paramref name="through"/>, the packages above it) stands alone.</summary>
+    private ExplorerNode PackageNode(string project, string? framework, string id, Words? detail, int depth, IReadOnlyList<string> through, Words? tip = null)
+    {
+        IReadOnlyList<RestoredDependency> brings = Brings(project, framework, id, through);
+        return new ExplorerNode(NodeKind.Package, id, null, depth, false, brings.Count == 0 ? null : node =>
+            [.. Brings(project, framework, id, through).Select(d => PackageNode(project, framework, d.Id,
+                d.Differs ? ExplorerWords.AskedVersion(Words.Verbatim(d.Version), Words.Verbatim(d.AskedBriefly)) : Words.Verbatim(d.Version), node.Depth + 1, [.. through, id],
+                d.Differs ? ExplorerWords.AsksForResolved(Words.Verbatim(id), Words.Verbatim(d.AskedSaid), Words.Verbatim(d.Version)) : ExplorerWords.AsksFor(Words.Verbatim(id), Words.Verbatim(d.AskedSaid))))], detail)
+        {
+            Owner = project,
+            Nested = brings.Count == 0 ? null : string.Join('/', brings.Select(d => d.Id)),
+            Tip = tip,
+        };
+    }
+
+    /// <summary>What a package brings in a project's restore as last read, none where it is reached through itself.</summary>
+    private IReadOnlyList<RestoredDependency> Brings(string project, string? framework, string id, IReadOnlyList<string> through) =>
+        restored.TryGetValue(project, out RestoredVersions? read) && !through.Contains(id, StringComparer.OrdinalIgnoreCase) ? read.DependenciesOf(framework, id) : [];
+
+    private static ExplorerNode Leaf(NodeKind kind, string name, Words? detail, int depth, ProjectModel owner, string? referenced = null, ProjectKind built = ProjectKind.Other) =>
         new(kind, name, null, depth, false, null, detail) { Owner = owner.Path, Referenced = referenced, ProjectKind = built };
 
     private ExplorerNode Folder(string path, int depth, bool dimmed, Nesting? nesting = null) => Packaged(
@@ -908,13 +1084,13 @@ public sealed class ExplorerTree
     private List<ExplorerNode> Held(ProjectModel given, ProjectFiles files, string relative, int depth, Nesting nesting, bool dimmed)
     {
         List<ExplorerNode> nodes = [.. files.FoldersIn(relative)
-            .Order(StringComparer.OrdinalIgnoreCase)
+            .Order(NameOrder.Instance)
             .Select(name => relative.Length == 0 ? name : $"{relative}/{name}")
             .Select(inner => HeldFolder(given, files.PathOf(inner), inner, depth, dimmed, HoldsAny(files, inner)))
             .OrderBy(Listed)];
         List<(string Name, string Path)> held = [.. files.FilesIn(relative)
             .Where(f => !FolderWalk.IsMomentary(f.Name))
-            .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)];
+            .OrderBy(f => f.Name, NameOrder.Instance)];
         IReadOnlyDictionary<string, string> parents = FileNesting.Parents([.. held.Select(f => f.Path)], files.DependentUpon, nesting.ByName);
         ILookup<string, string> nestedUnder = NestedUnder(held.Select(f => f.Path), parents);
         List<ExplorerNode> shown = [];
@@ -935,9 +1111,9 @@ public sealed class ExplorerTree
         {
             Shared = files.Items,
             Unlisted = true,
-            Tip = $"{Path.GetFileName(files.Items)} leaves it out of the shared project: Include in Project takes it in",
+            Tip = ExplorerWords.Unlisted(Words.Verbatim(Path.GetFileName(files.Items!))),
         }));
-        nodes.AddRange(files.Items is null ? shown : shown.OrderBy(n => n.Name, StringComparer.OrdinalIgnoreCase));
+        nodes.AddRange(files.Items is null ? shown : shown.OrderBy(n => n.Name, NameOrder.Instance));
         return nodes;
     }
 
@@ -953,7 +1129,7 @@ public sealed class ExplorerTree
                 .Where(ShownEntry)
                 .Where(e => skip is null || (e.FullName != skip && !(e is DirectoryInfo && e.Name is "bin" or "obj")))
                 .OrderBy(e => e is FileInfo)
-                .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)];
+                .ThenBy(e => e.Name, NameOrder.Instance)];
         }
         catch (Exception error) when (error is UnauthorizedAccessException or IOException)
         {
@@ -1025,7 +1201,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
     private List<ExplorerNode>? children;
     private bool isExpanded;
 
-    public ExplorerNode(NodeKind kind, string name, string? path, int depth, bool dimmed, Func<ExplorerNode, List<ExplorerNode>>? load, string? detail = null)
+    public ExplorerNode(NodeKind kind, string name, string? path, int depth, bool dimmed, Func<ExplorerNode, List<ExplorerNode>>? load, Words? detail = null)
     {
         Kind = kind;
         Name = name;
@@ -1038,21 +1214,32 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     public NodeKind Kind { get; }
     public string Name { get; }
+
+    /// <summary>What the row shows for its name: words of its own where it names no file or project (Dependencies, Source
+    /// Generators), else its name as written.</summary>
+    public Words Shown
+    {
+        get => shown ??= Words.Verbatim(Name);
+        init => shown = value;
+    }
+
+    private Words? shown;
+
     public string? Path { get; }
     public int Depth { get; }
     public bool IsDimmed { get; }
 
     /// <summary>A quieter word beside the name: a package's version, a project's frameworks (which an evaluation changes).</summary>
-    public string? Detail
+    public Words? Detail
     {
         get => detail;
         set => Set(ref detail, value);
     }
 
-    private string? detail;
+    private Words? detail;
 
     /// <summary>What hovering the row says, when it says anything: why a project runs only on Windows.</summary>
-    public string? Tip
+    public Words? Tip
     {
         get => tip;
         set
@@ -1064,7 +1251,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
         }
     }
 
-    private string? tip;
+    private Words? tip;
 
     /// <summary>What the project a row stands for or names (a reference, a shared project's import) builds, which its icon
     /// shows and its <see cref="Said"/> and <see cref="Hover"/> say (an evaluation changes it).</summary>
@@ -1075,7 +1262,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
         {
             if (Set(ref projectKind, value))
             {
-                Raise(nameof(Icon));
+                Raise(nameof(IconKey));
                 Raise(nameof(Said));
                 Raise(nameof(Hover));
             }
@@ -1088,8 +1275,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
     public string? Said => ProjectKind == ProjectKind.Other ? null : ProjectKinds.Said(Name, ProjectKind);
 
     /// <summary>What hovering the row shows: a project's kind, then its <see cref="Tip"/>, which a shared project's names.</summary>
-    public string? Hover => ProjectKinds.Words(ProjectKind) is not { } words || (ProjectKind == ProjectKind.Shared && Tip is not null) ? Tip
-        : Tip is null ? Refusals.Sentence(words) : $"{Refusals.Sentence(words)}\n{Tip}";
+    public Words? Hover => ProjectKinds.Words(ProjectKind) is not { } words || (ProjectKind == ProjectKind.Shared && Tip is not null) ? Tip
+        : Tip is null ? Words.Verbatim(Refusals.Sentence(words)) : Clauses.Below(Words.Verbatim(Refusals.Sentence(words)), Tip);
 
     /// <summary>Where the row is among the solution's own folders: a solution folder's path in the solution ("/src/tools/"),
     /// or for a file one holds, that folder's; null for every other row.</summary>
@@ -1101,7 +1288,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>The project a dependency (the Dependencies row and each one under it) belongs to.</summary>
     public string? Owner { get; init; }
 
-    /// <summary>The project a project reference names, or the shared project (else its items file) a shared import names.</summary>
+    /// <summary>The project a project reference names, or the shared project (else its items file) a shared import names;
+    /// for a source generator's row its type's whole name, and for a generated document's its address.</summary>
     public string? Referenced { get; init; }
 
     /// <summary>For a file in a shared project's folder, its items file; null for every other row.</summary>
@@ -1110,7 +1298,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
     /// <summary>A file in a shared project's folder that its items file leaves out, shown dimmed for Include in Project.</summary>
     public bool Unlisted { get; init; }
 
-    /// <summary>The names of the files nested under a file, which make it another row when they change.</summary>
+    /// <summary>The names of the files nested under a file, or of the packages a package brings, which make it another row
+    /// when they change.</summary>
     internal string? Nested { get; init; }
 
     /// <summary>What the SDK reads a folder at a project's top as, which lists it first and keeps it where it is; null for
@@ -1119,14 +1308,14 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     /// <summary>Why Rename, Delete, Cut and a drag leave the row where it is: a folder the SDK reads by its name, or a file
     /// or folder of a NuGet package, every project's copy; null for every other row.</summary>
-    public string? Kept => SdkFolder is { } read ? Refusals.ReadBySdk(read, Name)
+    public Words? Kept => SdkFolder is { } read ? Refusals.ReadBySdk(read, Name)
         : Kind is NodeKind.File or NodeKind.Folder && Path is { } path && Packages.PackageFolders.PackageOf(path) is { } package
             ? Refusals.OfPackage(Name, package, Kind == NodeKind.Folder)
         : null;
 
     /// <summary>Why nothing is pasted, dropped or made new in a folder on disk: a NuGet package's, every project's copy;
     /// null where it may be.</summary>
-    public static string? KeptOut(string folder) => Packages.PackageFolders.PackageIn(folder) is { } package
+    public static Words? KeptOut(string folder) => Packages.PackageFolders.PackageIn(folder) is { } package
         ? Refusals.OfPackage(System.IO.Path.GetFileName(folder), package, folder: true)
         : null;
 
@@ -1299,9 +1488,11 @@ public sealed class ExplorerNode : Observable, ITreeRow
     }
 
     /// <summary>What makes a row the same row when its parent is read again: its name is part of it, so a linked file
-    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, what the SDK
-    /// reads a folder as, so a web root found shows as one, and whether a shared project leaves a file out.</summary>
-    private static string Identity(ExplorerNode node) => $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail : null)}/{node.SdkFolder}/{node.Unlisted}";
+    /// whose Link changes shows its new name, a package's version, so one updated shows its new version, and what it
+    /// brings, so one restored again opens to them, what the SDK reads a folder as, so a web root found shows as one,
+    /// whether a shared project leaves a file out, and a source generator's whole type, as two of one short name differ.</summary>
+    private static string Identity(ExplorerNode node) =>
+        $"{node.Kind}/{node.Name}/{node.Path}/{node.Nested}/{(node.Path is null ? node.Detail?.English : null)}/{node.SdkFolder}/{node.Unlisted}/{(node.Kind == NodeKind.Generator ? node.Referenced : null)}";
 
     public bool IsExpanded
     {
@@ -1310,7 +1501,7 @@ public sealed class ExplorerNode : Observable, ITreeRow
         {
             if (Set(ref isExpanded, value))
             {
-                Raise(nameof(Icon));
+                Raise(nameof(IconKey));
             }
         }
     }
@@ -1333,6 +1524,18 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     private ChangeKind? change;
 
+    /// <summary>Whether the row stands for a file with errors or what holds one (<see cref="ErrorFiles.Marks"/>).</summary>
+    public bool HasErrors
+    {
+        get => hasErrors;
+        set => Set(ref hasErrors, value);
+    }
+
+    private bool hasErrors;
+
+    /// <summary>A solution folder's projects at any depth, by their files; none for any other row.</summary>
+    public IReadOnlyList<string> Projects { get; init; } = [];
+
     public bool IsVcsModified => change is ChangeKind.Modified or ChangeKind.Renamed;
     public bool IsVcsAdded => change is ChangeKind.Added;
     public bool IsVcsUnversioned => change is ChangeKind.Unversioned;
@@ -1340,8 +1543,8 @@ public sealed class ExplorerNode : Observable, ITreeRow
 
     public Thickness Indent => new(Depth * Gaps.Indent, 0, 0, 0);
     public double Opacity => IsDimmed || IsCut ? ListRow.Dimmed : 1;
-    public Geometry Icon => FileIcons.For(this);
-    public string IconTint => FileIcons.TintFor(this);
+    public string IconKey => FileIcons.KeyFor(this);
+    public string IconBrushKey => FileIcons.BrushKeyFor(this);
 
     /// <summary>Whether a path lies under this node: inside its folder, or its project's folder, or nested under its file.</summary>
     public bool Contains(string path)

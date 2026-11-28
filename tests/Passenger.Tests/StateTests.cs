@@ -60,6 +60,7 @@ public sealed class StateTests : IDisposable
         Flow.StepApart<StateTests>("a change lands at once while another program reads the file sharing its deletion", t => t.A_change_lands_at_once_while_another_program_reads_the_file_sharing_its_deletion());
         Flow.StepApart<StateTests>("a change refused as Passenger closes lands as it ends once the file is let go", t => t.A_change_refused_as_Passenger_closes_lands_as_it_ends_once_the_file_is_let_go());
         Flow.StepApart<StateTests>("what a person kept before the store is there on the first run", t => t.What_a_person_kept_before_the_store_is_there_on_the_first_run());
+        Flow.StepApart<StateTests>("two passengers asking different first time questions of one folder each keep the other's asked", t => t.Two_passengers_asking_different_first_time_questions_of_one_folder_each_keep_the_others_asked());
     }
 
     /// <summary>A folder's tabs, splits and carets come back as it opens again, its documents read off the window's
@@ -140,8 +141,8 @@ public sealed class StateTests : IDisposable
         Assert.Contains("set aside as settings.json.bad", log, StringComparison.Ordinal);
         Assert.True(window.Status?.Contains($"settings.json did not read, so its defaults stand: what it held is kept as {file}.bad", StringComparison.Ordinal) == true,
             $"Only the log says the settings were set aside, so the person finds them gone with nothing saying where they went: '{window.Status}'");
-        Assert.True(window.StatusPlace?.Name == $"show settings.json.bad in {Passenger.App.FileManager.Name}",
-            $"The status bar's word on the settings set aside goes to '{window.StatusPlace?.Name}', not to the file they are kept in");
+        Assert.True(window.StatusPlace?.Name.English == $"show settings.json.bad in {Passenger.App.FileManager.Name.English}",
+            $"The status bar's word on the settings set aside goes to '{window.StatusPlace?.Name.English}', not to the file they are kept in");
 
         window.ApplySettings(window.Settings with { EditorFontSize = 15 });
         window.Close();
@@ -187,8 +188,8 @@ public sealed class StateTests : IDisposable
         Assert.False(File.Exists(file + ".bad"), "settings.json was set aside for one value of the wrong kind");
         Assert.True(window.Status == "settings.json's editorFontSize is \"16\", where a number goes: its default stands",
             $"The status bar says \"{window.Status}\", not which value was passed over and why");
-        Assert.True(window.StatusPlace?.Name == $"show settings.json in {Passenger.App.FileManager.Name}",
-            $"The status bar's word on the value passed over goes to '{window.StatusPlace?.Name}', not to settings.json");
+        Assert.True(window.StatusPlace?.Name.English == $"show settings.json in {Passenger.App.FileManager.Name.English}",
+            $"The status bar's word on the value passed over goes to '{window.StatusPlace?.Name.English}', not to settings.json");
 
         // Edited by hand while the window is open, a comma left out: the window keeps what it has, and says why.
         string broken = "{\n  \"version\": 1,\n  \"terminalFontSize\": 17\n  \"editorLineSpacing\": 1.5\n}\n";
@@ -364,6 +365,26 @@ public sealed class StateTests : IDisposable
         finally
         {
             held.Dispose();
+        }
+    }
+
+    /// <summary>The first-time questions asked are a set: a question another Passenger on the same state asked meanwhile
+    /// stays beside the one this one asks, so neither is asked again.</summary>
+    private void Two_passengers_asking_different_first_time_questions_of_one_folder_each_keep_the_others_asked()
+    {
+        StateStore store = StateStore.Open(settings);
+        try
+        {
+            StateDocument<FirstTimeAnswersState> answers = store.FirstTimeAnswers;
+            Assert.Empty(answers.Value.Asked);
+            File.WriteAllText(answers.Path, "{\n  \"version\": 1,\n  \"answers\": {},\n  \"asked\": [\"lfs\"]\n}\n");
+            answers.Set(answers.Value with { Asked = [.. answers.Value.Asked, "gitignore"] });
+            answers.Flush();
+            Assert.Equal(["gitignore", "lfs"], answers.Peek().Asked.Order(StringComparer.Ordinal));
+        }
+        finally
+        {
+            store.Release();
         }
     }
 

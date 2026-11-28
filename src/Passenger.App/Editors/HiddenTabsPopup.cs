@@ -28,8 +28,8 @@ public sealed class HiddenTabsPopup : SearchPopup<HiddenTab>
     /// <summary>A tab's row: its icon, its title and its file's folder, muted.</summary>
     protected override Control Row() => TabRow<HiddenTab>((tab, icon, name, folder) =>
     {
-        icon.Data = tab.Icon;
-        icon.ForegroundKey = tab.IconTint;
+        icon.DataKey = tab.IconKey;
+        icon.ForegroundKey = tab.IconBrushKey;
         name.Text = tab.Name;
         folder.Text = tab.Folder;
     });
@@ -51,6 +51,6 @@ public sealed class HiddenTabsPopup : SearchPopup<HiddenTab>
 public sealed record HiddenTab(OpenDocument Document, string Folder)
 {
     public string Name => Document.Title;
-    public Geometry Icon => Document.Icon;
-    public string IconTint => Document.IconTint;
+    public string IconKey => Document.IconKey;
+    public string IconBrushKey => Document.IconBrushKey;
 }

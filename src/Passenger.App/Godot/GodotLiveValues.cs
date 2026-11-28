@@ -60,7 +60,7 @@ public sealed class GodotLiveValues
         editors.ForEachEditor(editor => editor.ScrollChanged += (_, _) => Scrolled(editor));
     }
 
-    /// <summary>Whether values are shown (Settings › Godot); off, those shown go at once.</summary>
+    /// <summary>Whether values are shown (the Godot page's Show a running game's values in the code); off, those shown go at once.</summary>
     public bool On
     {
         get => on;

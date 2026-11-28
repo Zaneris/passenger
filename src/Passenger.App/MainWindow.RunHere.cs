@@ -12,17 +12,17 @@ public partial class MainWindow
 {
     private void AddRunHere()
     {
-        Here(A.RunHere, "Run", A.RunProgram);
-        Here(A.DebugHere, "Debug", A.Debug);
-        Here(A.ProfileHere, "Profile", A.Profile);
+        Here(A.RunHere, "Run", ActionTitles.RunHere, ActionTitles.RunHereNamed, A.RunProgram);
+        Here(A.DebugHere, "Debug", ActionTitles.DebugHere, ActionTitles.DebugHereNamed, A.Debug);
+        Here(A.ProfileHere, "Profile", ActionTitles.ProfileHere, ActionTitles.ProfileHereNamed, A.Profile);
 
-        void Here(string id, string verb, string launch) => actions!.Add(new IdeAction(id, $"{verb} This Program", "Run", c => LaunchHere(c, launch))
+        void Here(string id, string verb, Words title, Func<Words, Words> named, string launch) => actions!.Add(new IdeAction(id, title, ActionGroups.Run, c => LaunchHere(c, launch))
         {
             WhyNot = c => ConfigurationHere(c) is { } here
                 ? here.IsScript && launch != A.RunProgram ? Refusals.ScriptOnlyRuns(here.Name)
                 : WhyNotHere(here) is { } why ? $"{here.Name} cannot {verb.ToLowerInvariant()} here: {why}" : null
                 : WhyNoProgram(c),
-            TitleIn = c => ConfigurationHere(c) is { } here ? $"{verb} '{here.Name}'" : $"{verb} This Program",
+            TitleIn = c => ConfigurationHere(c) is { } here ? named(here.Name) : title,
             Works = launch,
         });
     }
@@ -37,7 +37,7 @@ public partial class MainWindow
         }
         if (actions!.Run(launch, context) is { } why)
         {
-            status.Text = why;
+            status.Text = why.Shown;
         }
     }
 
@@ -80,8 +80,8 @@ public partial class MainWindow
         return first;
     }
 
-    private string WhyNoProgram(ActionContext context) => RowOf(context) is { } row ? $"{row.Name} is no program"
+    private string WhyNoProgram(ActionContext context) => (RowOf(context) is { } row ? $"{row.Name} is no program"
         : ExplorerHasKeys(context) ? NoRow
         : context.File is { } file ? $"{file.Name} is in no program"
-        : Refusals.NoFile;
+        : Refusals.NoFile).Shown;
 }

@@ -20,10 +20,25 @@ public partial class MainWindow
     {
         panel.Favorites = branchFavorites;
         panel.NewBranchRequested += (_, branch) => ShowNewBranchFrom(branch);
+        panel.CheckoutRequested += (_, asked) => IdeErrors.Observe(CheckoutAsync(asked.Branch, asked.All));
         panel.RenameRequested += (_, branch) => ShowRenameBranch(branch);
+        panel.PushRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch, elsewhere: false));
         panel.DeleteRequested += (_, branch) => IdeErrors.Observe(DeleteBranchAsync(branch));
         panel.CompareRequested += (_, branch) => CompareWithCurrent(branch);
         panel.WorkingTreeDiffRequested += (_, branch) => ShowWorkingTreeDiff(WorkingTreeComparison.Of(branch));
+        panel.NewTagRequested += (_, branch) => IdeErrors.Observe(ShowNewTagAsync(branch.Ref.GitName ?? branch.Ref.FullName));
+        panel.MoveTagRequested += (_, tag) => IdeErrors.Observe(ShowNewTagAsync("HEAD", tag.Name));
+        panel.PushTagRequested += (_, tag) => IdeErrors.Observe(PushTagAsync(tag));
+        panel.DeleteRemoteTagRequested += (_, tag) => IdeErrors.Observe(DeleteRemoteTagAsync(tag));
+        panel.NewWorktreeRequested += (_, branch) => IdeErrors.Observe(ShowNewWorktreeAsync(branch));
+        panel.OpenWorktreeRequested += (_, asked) => OpenWorktree(asked.Worktree, asked.NewWindow);
+        panel.RemoveWorktreeRequested += (_, worktree) => IdeErrors.Observe(RemoveWorktreeAsync(worktree));
+        panel.WhyNotRemoveWorktree = WhyNotRemoveWorktree;
+        panel.PushToRequested += (_, branch) => IdeErrors.Observe(ShowPushAsync(branch, elsewhere: true));
+        panel.AddRemoteRequested += (_, _) => IdeErrors.Observe(EditRemoteAsync(null));
+        panel.ManageRemotesRequested += (_, _) => ShowRemotes();
+        panel.EditRemoteRequested += (_, name) => IdeErrors.Observe(EditRemoteNamedAsync(name, EditRemoteAsync));
+        panel.RemoveRemoteRequested += (_, name) => IdeErrors.Observe(EditRemoteNamedAsync(name, AskRemoveRemoteAsync));
         panel.FavoritesChanged += (_, favorites) => session.State?.GitBranches.Set(favorites);
     }
 
@@ -49,7 +64,8 @@ public partial class MainWindow
             RefKind.Remote => from.Name[(from.Name.IndexOf('/', StringComparison.Ordinal) + 1)..],
             _ => string.Empty,
         };
-        NamePopup popup = new($"Create Branch from {from.Name}", initial, async name => (await session.Vcs.NewBranchFromAsync(name.Trim(), from)).Problem);
+        NamePopup popup = new($"Create Branch from {from.Name}", initial,
+            async name => (await SwitchWithChangesAsync(name.Trim(), from.Ref.FullName, () => session.Vcs.NewBranchFromAsync(name.Trim(), from)))?.Problem);
         popups.Show(popup, _ => { });
         return popup;
     }

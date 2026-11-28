@@ -268,7 +268,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
         editor.Hovered += heard;
         try
         {
-            window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, RawInputModifiers.None);
+            Ui.RestOn(editor, at);
             Ui.WaitFor(() => rested, $"the pointer to rest on {text} in {where}");
             Ui.Settle();
         }
@@ -301,7 +301,7 @@ public sealed class DebuggerHoverTests : IClassFixture<DebuggerHoverTests.People
     {
         CodeEditor editor = window.EditorArea.CodeEditor;
         int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverValues is not null, $"the card of the value of {text}, not \"{window.Assist.HoverText}\"");
         return window.Assist.HoverValues!;
     }

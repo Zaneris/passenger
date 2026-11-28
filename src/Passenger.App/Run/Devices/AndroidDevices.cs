@@ -32,7 +32,7 @@ public static class AndroidDevices
     {
         if (await AndroidHosts.UnbuiltAsync(Path.GetDirectoryName(project)!) is { } host)
         {
-            return ([], null, Refusals.AndroidBuiltElsewhere(host));
+            return ([], null, Refusals.AndroidBuiltElsewhere(host).Shown);
         }
         MSBuildAnswer listed = await MSBuildQuestions.AskAsync(project, null, globals, new MSBuildQuestion([MSBuildNames.Restore]), cancel);
         if (listed.Succeeded)
@@ -94,8 +94,8 @@ public static class AndroidDevices
     {
         if (!listed.Succeeded)
         {
-            return ([], null, DeviceTargets.AndroidPlatformLacked(listed.Said.Output + "\n" + listed.Said.Error) is { } package
-                ? Refusals.NoAndroidPlatform(package) : Refusals.NoAndroid(ProblemOf(listed.Said)));
+            return ([], null, (DeviceTargets.AndroidPlatformLacked(listed.Said.Output + "\n" + listed.Said.Error) is { } package
+                ? Refusals.NoAndroidPlatform(package) : Refusals.NoAndroid(ProblemOf(listed.Said))).Shown);
         }
         if (!listed.Answered)
         {

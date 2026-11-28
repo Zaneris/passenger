@@ -4,11 +4,12 @@ using System.Text.Json.Serialization;
 
 namespace Passenger.Core;
 
-/// <summary>Names many messages share (a collection's elements' type, the file, type and method of a theory's rows) read
-/// as one string: each kept by its bytes' hash in one of a fixed number of pairs of places, the pair's name read last in
-/// its first, and handed out again while it holds either; a name its pair lacks is read anew, the one it displaces from
-/// the first place moving to the second. The hash is seeded anew in each process, so in some runs two names read in turn
-/// meet in one pair, where both are kept. Any thread: a place holds a whole string or none.</summary>
+/// <summary>Names many messages share (a collection's elements' type, the file, type and method of a theory's rows), and
+/// many folders' listings (a build's output in each project), read as one string: each kept by its bytes' hash in one of
+/// a fixed number of pairs of places, the pair's name read last in its first, and handed out again while it holds either;
+/// a name its pair lacks is read anew, the one it displaces from the first place moving to the second. The hash is seeded
+/// anew in each process, so in some runs two names read in turn meet in one pair, where both are kept. Any thread: a place
+/// holds a whole string or none.</summary>
 public sealed class SharedNames : JsonConverter<string>
 {
     private const int Pairs = 512;
@@ -34,6 +35,24 @@ public sealed class SharedNames : JsonConverter<string>
         {
             return reader.GetString();
         }
+        return Shared(name);
+    }
+
+    /// <summary>A name as characters (a folder's entry's), the one kept for it when there is one.</summary>
+    public static string Of(ReadOnlySpan<char> name)
+    {
+        if (name.Length > Longest || !Ascii.IsValid(name))
+        {
+            return name.ToString();
+        }
+        Span<byte> ascii = stackalloc byte[Longest];
+        Ascii.FromUtf16(name, ascii, out int written);
+        return Shared(ascii[..written]);
+    }
+
+    /// <summary>The string kept for an ASCII name, read anew where its pair holds none.</summary>
+    private static string Shared(ReadOnlySpan<byte> name)
+    {
         int pair = PairOf(name) * 2;
         ref string? first = ref Kept[pair];
         ref string? second = ref Kept[pair + 1];

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Passenger.Core;
 using Passenger.Host;
@@ -67,8 +68,9 @@ public static class BuildConfigurations
     }
 
     /// <summary>The one of projects' configurations a build given none takes, as the .NET SDK takes it: Debug and AnyCPU
-    /// where offered, else the first offered of each.</summary>
-    public static BuildConfiguration? DefaultOf(IReadOnlyList<BuildConfiguration> offered)
+    /// where offered, else the first offered of each, the platform of this machine's processor first where one is
+    /// (<see cref="Here"/>).</summary>
+    public static BuildConfiguration? DefaultOf(IReadOnlyList<BuildConfiguration> offered, Architecture machine)
     {
         if (offered.Count == 0)
         {
@@ -76,8 +78,25 @@ public static class BuildConfigurations
         }
         string configuration = offered.FirstOrDefault(o => o.Configuration.Equals("Debug", StringComparison.OrdinalIgnoreCase))?.Configuration ?? offered[0].Configuration;
         string platform = offered.FirstOrDefault(o => o.Platform.Equals(AnyCpu, StringComparison.OrdinalIgnoreCase))?.Platform ?? offered[0].Platform;
-        return offered.FirstOrDefault(o => o.Is(new BuildConfiguration(configuration, platform))) ?? offered[0];
+        return Here(offered, offered.FirstOrDefault(o => o.Is(new BuildConfiguration(configuration, platform))) ?? offered[0], machine);
     }
+
+    /// <summary>A default that builds for one processor (a WinUI app's x86, x64 and ARM64 offered alone) taken for this
+    /// machine's where the same configuration is offered for it, so it runs here as it is; else as it is.</summary>
+    public static BuildConfiguration? Here(IReadOnlyList<BuildConfiguration> offered, BuildConfiguration? fallback, Architecture machine) =>
+        fallback is null || ProcessorOf(fallback.Platform) is null || ProcessorOf(fallback.Platform) == machine ? fallback
+        : offered.FirstOrDefault(o => o.Configuration.Equals(fallback.Configuration, StringComparison.OrdinalIgnoreCase) && ProcessorOf(o.Platform) == machine) ?? fallback;
+
+    /// <summary>The processor a platform builds for, as MSBuild's and a solution's platforms name them; null for AnyCPU or one
+    /// of no processor known.</summary>
+    public static Architecture? ProcessorOf(string platform) => platform.ToUpperInvariant() switch
+    {
+        "X64" or "AMD64" => Architecture.X64,
+        "ARM64" => Architecture.Arm64,
+        "X86" or "WIN32" => Architecture.X86,
+        "ARM" => Architecture.Arm,
+        _ => null,
+    };
 
     /// <summary>The configuration and platform a project's build given none takes: the .NET SDK's Debug and AnyCPU.</summary>
     public static readonly BuildConfiguration GivenNone = new("Debug", AnyCpu);

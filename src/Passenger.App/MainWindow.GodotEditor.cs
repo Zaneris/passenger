@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Passenger.App.Run;
+using Passenger.App.Settings;
 using Passenger.Core;
 using Passenger.Workspace;
 
@@ -9,79 +10,64 @@ namespace Passenger.App;
 /// told, in its version's editor settings file, to open its C# scripts and its other scripts in this Passenger at their
 /// line, which a launch then hands to the window on the project (<see cref="LaunchHandOff"/>). It asks first, showing
 /// what it writes and where, then says what it changed; where the file cannot be read or written, it shows the values to
-/// set in Godot's Editor Settings instead. A Godot project's first opening in a person's window offers it in the banner
-/// over the editor, once: taken or dismissed, never again for that folder (<see cref="Workspace.WorkspaceState.GodotEditorOffered"/>).</summary>
+/// set in Godot's Editor Settings instead. The first Godot project opened asks it once, a first-time question of
+/// Passenger's state (<see cref="Declared.GodotScriptEditor"/>), never while Godot's editor is open on the project, whose
+/// own settings it writes as it quits.</summary>
 public partial class MainWindow
 {
-    /// <summary>Whether the open folder's offer of Passenger as Godot's script editor was taken or dismissed.</summary>
-    private bool godotEditorOffered;
-
-    /// <summary>The folder whether to offer it was last looked at for, so a folder is looked at once a window.</summary>
+    /// <summary>The folder whether to ask was last looked at for, so a folder is looked at once a window.</summary>
     private string? godotOfferLooked;
 
     private void AddGodotEditor()
     {
-        actions!.Add(new IdeAction(AppActions.GodotScriptEditor, "Make Passenger Godot's Script Editor…", "Godot", _ => IdeErrors.Observe(MakeGodotScriptEditorAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotScriptEditor, ActionTitles.GodotScriptEditor, ActionGroups.Godot, _ => IdeErrors.Observe(MakeGodotScriptEditorAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 6)],
             Words = ["Godot", "External Editor", "Exec Path"],
             Works = AppActions.GodotScriptEditor,
         });
-        GodotBanner.Link(actions[AppActions.GodotScriptEditor]!.Title, () =>
-        {
-            GodotEditorOffered();
-            Request(AppActions.GodotScriptEditor);
-        });
         AddGodotAddon();
         AddGodotOpenInEditor();
         AddGodotTemplates();
-        GodotBanner.Link(actions[AppActions.GodotAddon]!.Title, () =>
-        {
-            GodotEditorOffered();
-            Request(AppActions.GodotAddon);
-        });
-        GodotBanner.Link("Dismiss", GodotEditorOffered);
     }
 
-    /// <summary>What the banner over the editor says of Godot's script editor, null while it says nothing.</summary>
-    public string? GodotSaid => GodotBanner.Said;
-
-    /// <summary>The offer taken or dismissed: gone, and kept with the folder so it never comes again.</summary>
-    private void GodotEditorOffered()
-    {
-        godotEditorOffered = true;
-        GodotBanner.Say(null);
-        KeepWorkspace();
-    }
-
-    /// <summary>Offers Passenger as Godot's script editor in the banner where the folder is a Godot project a person's window
-    /// keeps, not yet offered, and the Godot found can take it and does not open its scripts here already; looked at off
-    /// the window's thread, once a folder.</summary>
+    /// <summary>Asks whether Passenger is to be Godot's script editor where the folder is a Godot project, the question not yet
+    /// answered, and the Godot found can take it and does not open its scripts here already; looked at off the window's
+    /// thread, once a folder.</summary>
     private void OfferGodotEditor()
     {
         UiThread.Check();
-        if (!keepsWorkspace || godotEditorOffered || Folder is not { } folder || godotOfferLooked == folder || GodotAtHand() is null)
+        if (Folder is not { } folder || godotOfferLooked == folder || GodotAtHand() is not { } project || !Questions.WouldAsk(Declared.GodotScriptEditor))
         {
             return;
         }
         godotOfferLooked = folder;
-        IdeErrors.Observe(OfferGodotEditorAsync(folder));
+        IdeErrors.Observe(OfferGodotEditorAsync(folder, project));
     }
 
-    private async Task OfferGodotEditorAsync(string folder)
+    private async Task OfferGodotEditorAsync(string folder, string project)
     {
         string? setting = settings.GodotExecutable;
         bool scripts = !Projects.Any(p => p.GodotFolder is not null);
         IReadOnlyDictionary<string, string>? folders = GodotFolders;
         IReadOnlyList<KeyValuePair<string, object>> values = GodotEditorSettings.ForPassenger(Product.Program);
         GodotSetUp found = await BackgroundWork.Run(() => GodotSetUp.Of(GodotLaunch.Found(setting), scripts, folders));
-        if (Folder != folder || godotEditorOffered || found.Problem is not null
-            || found.Values is { } now && values.All(v => now.TryGetValue(v.Key, out object? had) && Equals(had, v.Value)))
+        if (Folder != folder || found.Problem is not null || found.Written is not { } written
+            || found.Values is { } now && values.All(v => now.TryGetValue(v.Key, out object? had) && Equals(had, v.Value))
+            || await session.GodotIde.IsOpenAsync(project))
         {
             return;
         }
-        GodotBanner.Say($"Godot {found.Version}'s editor can open this project's scripts in Passenger, at their line");
+        string listed = string.Join(Environment.NewLine, values.Select(v => $"{v.Key} = {GodotEditorSettings.Written(v.Value)}"));
+        Questions.Ask(Declared.GodotScriptEditor, this, new QuestionMoment
+        {
+            Asked = $"Godot {found.Version}'s editor can open its C# scripts and its other scripts in Passenger, at their line, in the window on "
+                + $"their project. Write Settings writes these into {PathNames.Shown(written, null)}, keeping the rest; Godot's editor takes them as "
+                + $"it next starts. {actions?[AppActions.GodotScriptEditor]?.Title} in the Tools menu does it later.",
+            Detail = Copyable(listed),
+            Yes = () => MakeGodotScriptEditorAsync(asked: true),
+        });
     }
 
     /// <summary>The open folder's Godot projects: those its projects build on Godot.NET.Sdk, those of GDScript alone, else the
@@ -105,8 +91,9 @@ public partial class MainWindow
     private string? GodotAtHand() =>
         Editors.Active?.Path is { } shown && GodotOfFile(shown) is { } game ? game : GodotProjectFolders().FirstOrDefault();
 
-    /// <summary>Finds the Godot, reads its settings, asks, and writes Passenger's values; says what it came to.</summary>
-    private async Task MakeGodotScriptEditorAsync()
+    /// <summary>Finds the Godot, reads its settings, asks unless <paramref name="asked"/> (its first-time question's Yes), and
+    /// writes Passenger's values; says what it came to.</summary>
+    private async Task MakeGodotScriptEditorAsync(bool asked = false)
     {
         UiThread.Check();
         if (this.work.Begin(AppActions.GodotScriptEditor, "Finding Godot and its editor settings", stoppable: false) is not { } work)
@@ -137,6 +124,17 @@ public partial class MainWindow
                 await SetByHandAsync(work, $"Godot's editor settings cannot be read ({unreadable})", values);
                 return;
             }
+            if (asked && GodotAtHand() is { } project && await session.GodotIde.IsOpenAsync(project))
+            {
+                Told(work, false, $"Godot's editor is open on {PathNames.Shown(project, Folder)}, and writes its own settings as it quits: close it, then "
+                    + $"{actions?[AppActions.GodotScriptEditor]?.Title} in the Tools menu writes them");
+                return;
+            }
+            if (asked)
+            {
+                await WriteGodotScriptEditorAsync(work, found, values, addon: false);
+                return;
+            }
             work.Say("Asking to write Godot's editor settings");
             CheckBox addon = new()
             {
@@ -153,22 +151,29 @@ public partial class MainWindow
                 Told(work, false, "Godot's editor settings were left as they were");
                 return;
             }
-            string? failed = await BackgroundWork.Run(() => found.Write(values));
-            if (failed is not null)
-            {
-                await SetByHandAsync(work, $"{PathNames.Shown(found.Written!, null)} could not be written ({failed})", values);
-                return;
-            }
-            string[] changed = [.. values.Where(v => found.Values?.TryGetValue(v.Key, out object? had) != true || !Equals(had, v.Value)).Select(v => v.Key)];
-            string said = $"Godot {found.Version}'s editor now opens its scripts in Passenger: {Plural.Listed(changed)} set in {PathNames.Shown(found.Written!, null)}; "
-                + "restart Godot's editor if it is open, which takes them as it starts";
-            if (addon.IsChecked == true && await InstallGodotAddonAsync(work, ask: false) is { } notInstalled)
-            {
-                Told(work, false, $"{said}; {notInstalled}");
-                return;
-            }
-            Told(work, true, addon.IsChecked == true ? $"{said}; Passenger's addon is installed in this project" : said);
+            await WriteGodotScriptEditorAsync(work, found, values, addon.IsChecked == true);
         }
+    }
+
+    /// <summary>Writes Passenger's values into the Godot's settings file, then Passenger's addon into the project where asked;
+    /// says what it changed, or shows the values to set by hand where the file cannot be written.</summary>
+    private async Task WriteGodotScriptEditorAsync(Working work, GodotSetUp found, IReadOnlyList<KeyValuePair<string, object>> values, bool addon)
+    {
+        string? failed = await BackgroundWork.Run(() => found.Write(values));
+        if (failed is not null)
+        {
+            await SetByHandAsync(work, $"{PathNames.Shown(found.Written!, null)} could not be written ({failed})", values);
+            return;
+        }
+        string[] changed = [.. values.Where(v => found.Values?.TryGetValue(v.Key, out object? had) != true || !Equals(had, v.Value)).Select(v => v.Key)];
+        string said = $"Godot {found.Version}'s editor now opens its scripts in Passenger: {Plural.Listed(changed)} set in {PathNames.Shown(found.Written!, null)}; "
+            + "restart Godot's editor if it is open, which takes them as it starts";
+        if (addon && await InstallGodotAddonAsync(work, ask: false) is { } notInstalled)
+        {
+            Told(work, false, $"{said}; {notInstalled}");
+            return;
+        }
+        Told(work, true, addon ? $"{said}; Passenger's addon is installed in this project" : said);
     }
 
     /// <summary>Where the file cannot be had: the values shown to set in Godot's own Editor Settings, copied on the person's word.</summary>

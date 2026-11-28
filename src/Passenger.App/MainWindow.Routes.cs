@@ -387,7 +387,7 @@ public partial class MainWindow
             {
                 if (document.ReadOnlyWhy is { } readOnly)
                 {
-                    return (null, string.Empty, readOnly);
+                    return (null, string.Empty, readOnly.Shown);
                 }
                 string before = document.Text.Snapshot.ToString();
                 TextEdit[] edits = [new TextEdit(before.Length, 0, LineEndings.In(added(before.Replace("\r\n", "\n", StringComparison.Ordinal)), document.Text.LineEnding))];

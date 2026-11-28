@@ -38,12 +38,12 @@ public partial class MainWindow
         Editors.Closed += (_, document) => tabsUsed.Went(document);
         Editors.TabsGone += (_, document) => tabsUsed.Went(document);
         // In no menu: macOS's menu bar would take its keys as a key equivalent, never telling how long they are held.
-        Add(A.Switcher, "Switcher", "IDE", c => Switch(c, 1), _ => NothingToSwitchTo());
-        Add(A.SwitcherBackward, "Switcher Backward", "IDE", c => Switch(c, -1), _ => NothingToSwitchTo());
+        Add(A.Switcher, ActionTitles.Switcher, ActionGroups.Ide, c => Switch(c, 1), _ => NothingToSwitchTo());
+        Add(A.SwitcherBackward, ActionTitles.SwitcherBackward, ActionGroups.Ide, c => Switch(c, -1), _ => NothingToSwitchTo());
     }
 
     private string? NothingToSwitchTo() =>
-        Editors.Groups.Any(g => g.Tabs.Count > 0) || Dock.Windows.Any(w => w.Unserved is null && w.Action is not null) ? null : Refusals.NothingToSwitchTo;
+        (Editors.Groups.Any(g => g.Tabs.Count > 0) || Dock.Windows.Any(w => w.Unserved is null && w.Action is not null) ? null : Refusals.NothingToSwitchTo)?.Shown;
 
     /// <summary>The Switcher's rows as they stand: the tabs open (a file's or a diff's; a tool window's is among the
     /// windows), the latest used first, those not used since the window opened in Recent Files' order, then the tool
@@ -55,8 +55,8 @@ public partial class MainWindow
         List<OpenDocument> tabs = [.. Editors.Groups.SelectMany(g => g.Tabs).Select(t => t.Document).Where(d => d.Tool is null).Distinct()
             .OrderBy(d => RankIn(recent, d))];
         List<SwitcherRow> rows = [.. tabsUsed.Of(tabs).Select(d => new SwitcherRow(d.Title, d.Diff is null && root is not null ? Path.GetDirectoryName(PathNames.Shown(d.Path, root)) ?? string.Empty : string.Empty, d, null))];
-        rows.AddRange(Dock.Windows.Where(w => w.Unserved is null && w.Action is not null).OrderBy(w => w.Title, StringComparer.CurrentCultureIgnoreCase)
-            .Select(w => new SwitcherRow(w.Title, actions!.Shortcut(w.Action!) ?? string.Empty, null, w)));
+        rows.AddRange(Dock.Windows.Where(w => w.Unserved is null && w.Action is not null).OrderBy(w => w.Title.Shown, StringComparer.CurrentCultureIgnoreCase)
+            .Select(w => new SwitcherRow(w.Title.Shown, actions!.Shortcut(w.Action!) ?? string.Empty, null, w)));
         return rows;
 
         static int RankIn(IReadOnlyList<string> recent, OpenDocument document)

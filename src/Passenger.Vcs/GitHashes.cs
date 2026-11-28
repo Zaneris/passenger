@@ -9,4 +9,7 @@ public static class GitHashes
     /// title; null for none.</summary>
     [return: NotNullIfNotNull(nameof(hash))]
     public static string? Short(string? hash) => hash?[..Math.Min(8, hash.Length)];
+
+    /// <summary>Whether a word is an object's whole hash: 40 hex digits in a SHA-1 repository, 64 in a SHA-256 one.</summary>
+    public static bool IsWhole(string word) => word.Length is 40 or 64 && word.All(char.IsAsciiHexDigit);
 }

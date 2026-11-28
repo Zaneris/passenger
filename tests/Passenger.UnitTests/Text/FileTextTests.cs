@@ -4,7 +4,8 @@ using Passenger.Text;
 namespace Passenger.UnitTests.Text;
 
 /// <summary>A file's bytes read by the byte-order mark they start with, and the bytes a save writes of what was read; a
-/// file on disk read into one array of its length, whole or on after its first bytes.</summary>
+/// file on disk read into one array of its length, whole or on after its first bytes, and its bytes decoded into one
+/// string of their length.</summary>
 public sealed class FileTextTests
 {
     private const string Code = "class Café\r\n{\r\n    // 🚀 ü\r\n}\r\n";
@@ -14,7 +15,8 @@ public sealed class FileTextTests
         ("A UTF 32 file with its mark reads as its text and saves back byte for byte", A_UTF_32_file_with_its_mark_reads_as_its_text_and_saves_back_byte_for_byte),
         ("A UTF 16 file with its mark still reads as UTF 16", A_UTF_16_file_with_its_mark_still_reads_as_UTF_16),
         ("A file is read into one array of its length", A_file_is_read_into_one_array_of_its_length),
-        ("A file read on after its probe is read into one array of its length", A_file_read_on_after_its_probe_is_read_into_one_array_of_its_length));
+        ("A file read on after its probe is read into one array of its length", A_file_read_on_after_its_probe_is_read_into_one_array_of_its_length),
+        ("A file's bytes decode as a reader looking for their mark reads them, into one string of their length", A_files_bytes_decode_as_a_reader_looking_for_their_mark_reads_them_into_one_string_of_their_length));
 
     private void A_UTF_32_file_with_its_mark_reads_as_its_text_and_saves_back_byte_for_byte() => Cases.Each<bool>(
     [
@@ -93,6 +95,39 @@ public sealed class FileTextTests
         Assert.True(allocated <= file.Length + 1024,
             $"Reading a {file.Length:N0}-byte file on after its probe allocated {allocated:N0} bytes, so each file Local History keeps costs its size again and again");
         Assert.Equal(file, FileText.ReadRest(new Unsized(file.AsSpan(4).ToArray()), file.AsSpan(0, 4)));
+    }
+
+    /// <summary>A file's bytes as text, as test discovery reads each file it parses: what a reader that looks for a BOM reads
+    /// of each mark, none and bytes that are no UTF-8, and of 2 MB the string alone, where reading it to its end grew a
+    /// buffer of its length on the way.</summary>
+    private void A_files_bytes_decode_as_a_reader_looking_for_their_mark_reads_them_into_one_string_of_their_length()
+    {
+        byte[][] files =
+        [
+            Encoding.UTF8.GetBytes(Code),
+            [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(Code)],
+            [0xFF, 0xFE, .. Encoding.Unicode.GetBytes(Code)],
+            [0xFE, 0xFF, .. Encoding.BigEndianUnicode.GetBytes(Code)],
+            [.. new UTF32Encoding(bigEndian: false, byteOrderMark: true).GetPreamble(), .. new UTF32Encoding(bigEndian: false, byteOrderMark: false).GetBytes(Code)],
+            [.. Encoding.UTF8.GetBytes("class A"), 0xC3, 0x28, 0xFF, .. Encoding.UTF8.GetBytes(" { }\n")],
+            [],
+        ];
+        foreach (byte[] file in files)
+        {
+            using StreamReader reader = new(new MemoryStream(file), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            string read = reader.ReadToEnd();
+            Assert.True(FileText.Decoded(file) == read, $"Bytes beginning {Convert.ToHexString(file.AsSpan(0, Math.Min(4, file.Length)))} decoded as '{FileText.Decoded(file)}', where a reader reads '{read}'");
+        }
+
+        byte[] large = [.. Enumerable.Range(0, 2_000_000).Select(i => (byte)(i % 64 == 63 ? '\n' : 'a' + i % 26))];
+        FileText.Decoded(large);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        string text = FileText.Decoded(large);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(large.Length, text.Length);
+        Assert.True(allocated <= 2L * large.Length + 1024,
+            $"Decoding a {large.Length:N0}-byte file allocated {allocated:N0} bytes beside its string's {2L * large.Length:N0}, so every file test discovery reads costs its size again");
     }
 
     /// <summary>A stream that says nothing of its length, as a pipe's does.</summary>

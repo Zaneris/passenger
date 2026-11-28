@@ -40,7 +40,7 @@ public partial class ExplorerView : UserControl
     /// <summary>How long typing in the filter pauses before the rows follow it.</summary>
     private static readonly TimeSpan FilterPause = TimeSpan.FromMilliseconds(150);
 
-    private readonly TextBox filter = SearchBox.Finding("Filter files");
+    private readonly TextBox filter = SearchBox.Finding(ExplorerWords.FilterFiles);
     private readonly Border filterBar;
     private readonly Debounce filtering;
 
@@ -63,6 +63,10 @@ public partial class ExplorerView : UserControl
     public ExplorerView()
     {
         InitializeComponent();
+        ShownWords.Set(ViewSwitch, ToolTip.TipProperty, ExplorerWords.SwitchView);
+        ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.SolutionView);
+        ShownWords.Set(OwnTitle, TextBlock.TextProperty, ToolWindowTitles.Explorer);
+        Hint.Say(ExplorerWords.NothingOpen);
         filter.Margin = new Thickness(Gaps.Small, 0, Gaps.Tight, 0);
         filterBar = ToolWindows.ToolBars.Top(filter);
         filterBar.IsVisible = false;
@@ -87,15 +91,7 @@ public partial class ExplorerView : UserControl
         Rows.ItemsSource = Tree.Rows;
         ReusedRows.Use(Rows, Row);
         // Every key the keymap gives an action (Rename, Delete, the clipboard's) is the window's, run on the chosen row.
-        TreeKeys.Attach<ExplorerNode>(Rows, Tree.Toggle, node =>
-        {
-            if (!node.IsFile || node.Path is not { } path)
-            {
-                return false;
-            }
-            FileOpened?.Invoke(this, path);
-            return true;
-        });
+        TreeKeys.Attach<ExplorerNode>(Rows, Tree.Toggle, Open);
         Surface.Children.Add(drop);
         drag = new DragGesture<IReadOnlyList<ExplorerNode>>(Surface, drop, DropZoneAt, (items, at) =>
         {
@@ -133,8 +129,38 @@ public partial class ExplorerView : UserControl
     /// <summary>The row's right-click menu while it is open.</summary>
     public ContextMenu? OpenMenu { get; private set; }
 
-    /// <summary>A file chosen with a double-click or Enter.</summary>
+    /// <summary>A file chosen with a double-click or Enter, or a project's file where <see cref="OpensProjectFiles"/>.</summary>
     public event EventHandler<string>? FileOpened;
+
+    /// <summary>Whether a double-click or Enter on a project's row opens its project file, its arrow left to expand it;
+    /// otherwise either expands or collapses the row.</summary>
+    public bool OpensProjectFiles { get; set; } = true;
+
+    /// <summary>A source generator's document chosen with a double-click or Enter, or clicked once while <see
+    /// cref="OpensOnClick"/>, by the URI the C# language server names it by.</summary>
+    public event EventHandler<string>? GeneratedOpened;
+
+    /// <summary>Opens a row that opens: a file on disk, a document a source generator makes, or a project's file where
+    /// <see cref="OpensProjectFiles"/>; false for any other.</summary>
+    private bool Open(ExplorerNode node)
+    {
+        if (OpensProjectFiles && node is { Kind: NodeKind.Project, Path: { } project } && File.Exists(project))
+        {
+            FileOpened?.Invoke(this, project);
+            return true;
+        }
+        if (node is { Kind: NodeKind.GeneratedFile, Referenced: { } made })
+        {
+            GeneratedOpened?.Invoke(this, made);
+            return true;
+        }
+        if (!node.IsFile || node.Path is not { } path)
+        {
+            return false;
+        }
+        FileOpened?.Invoke(this, path);
+        return true;
+    }
 
     /// <summary>A file clicked once while <see cref="OpensOnClick"/>: to be shown, the keys left on its row.</summary>
     public event EventHandler<string>? FileClicked;
@@ -335,17 +361,17 @@ public partial class ExplorerView : UserControl
         if (solutionView && solution is not null)
         {
             Tree.LoadSolution(solution, programs);
-            ViewName.Text = "Solution";
+            ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.SolutionView);
         }
         else if (solutionView && project is not null)
         {
             Tree.LoadProject(project);
-            ViewName.Text = "Solution";
+            ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.SolutionView);
         }
         else if (folder is not null)
         {
             Tree.LoadFileSystem(folder, projects);
-            ViewName.Text = "Files";
+            ShownWords.Set(ViewName, TextBlock.TextProperty, ExplorerWords.FilesView);
         }
     }
 
@@ -416,7 +442,7 @@ public partial class ExplorerView : UserControl
         {
             return [];
         }
-        return [ToolWindows.ListMenus.Sub("Appearance", ToolWindows.ListMenus.Item("File Nesting…", () => NestingAsked?.Invoke(this, EventArgs.Empty)))];
+        return [ToolWindows.ListMenus.Sub(MenuTitles.Appearance, ToolWindows.ListMenus.Item(ExplorerWords.FileNesting, () => NestingAsked?.Invoke(this, EventArgs.Empty)))];
     }
 
     /// <summary>Gives the tree the keys on its chosen row (the first when none is): the view itself cannot take the
@@ -508,7 +534,7 @@ public partial class ExplorerView : UserControl
             return;
         }
         Tree.Filter(found.Files);
-        more.Text = $"{Numbers.Said(found.More)} more {Plural.Noun(found.More, "file")} {Plural.Agreeing(found.More, "matches", "match")}: a longer filter narrows them";
+        more.Say(ExplorerWords.MoreMatch(found.More));
         more.IsVisible = found.More > 0;
         ShowHint();
     }
@@ -547,7 +573,7 @@ public partial class ExplorerView : UserControl
     private void ShowHint()
     {
         bool none = Rows.IsVisible && Tree.IsFiltered && !Tree.Rows.Any(r => r.IsFile);
-        Hint.Text = none ? "No file matches" : "Nothing open";
+        Hint.Say(none ? ExplorerWords.NoFileMatches : ExplorerWords.NothingOpen);
         Hint.IsVisible = none || !Rows.IsVisible;
     }
 
@@ -631,27 +657,32 @@ public partial class ExplorerView : UserControl
         }
     }
 
-    /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name and detail.</summary>
+    /// <summary>A row for whichever file or folder the list hands its container: its chevron, icon, name (waved where it
+    /// has errors) and detail.</summary>
     private Control Row()
     {
         RowGlyphs glyphs = new();
         glyphs.ChevronPressed += OnChevronPressed;
-        TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };
+        ErrorName name = new() { VerticalAlignment = VerticalAlignment.Center };
         // How version control says the file changed, as its name's colour does (ChangedFileRow's letter).
         TextBlock change = new() { Classes = { StyleClasses.Caption, StyleClasses.Strong }, Margin = new Thickness(Gaps.Small, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         TextBlock detail = new() { Classes = { StyleClasses.Muted, StyleClasses.Caption }, Margin = new Thickness(Gaps.Normal, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        StackPanel row = new() { Orientation = Orientation.Horizontal, Height = ListRow.Height, Children = { glyphs, name, change, detail } };
+        ShrinkingRow.SetKeepsWidth(glyphs, true);
+        ShrinkingRow.SetKeepsWidth(change, true);
+        ShrinkingRow row = new() { Height = ListRow.Height, Children = { glyphs, name, change, detail } };
         return row.Showing<ExplorerNode>(node =>
         {
             row.Margin = node.Indent;
             row.Opacity = node.Opacity;
-            ToolTip.SetTip(row, node.Hover);
+            ShownWords.Set(row, ToolTip.TipProperty, node.Hover);
             AutomationProperties.SetName(row, node.Said);
             glyphs.HasChevron = node.HasChildren;
             glyphs.Turned = node.IsExpanded;
-            glyphs.Icon = node.Icon;
-            glyphs.IconTint = node.IconTint;
-            name.Text = node.Name;
+            glyphs.IconKey = node.IconKey;
+            glyphs.IconBrushKey = node.IconBrushKey;
+            ShownWords.Set(name, TextBlock.TextProperty, node.Shown);
+            name.HasErrors = node.HasErrors;
+            ShownWords.Set(name, AutomationProperties.HelpTextProperty, node.HasErrors ? ExplorerWords.HasErrors : null);
             foreach (TextBlock coloured in (TextBlock[])[name, change])
             {
                 coloured.Classes.Set(StyleClasses.VcsModified, node.IsVcsModified);
@@ -663,7 +694,7 @@ public partial class ExplorerView : UserControl
             change.IsVisible = node.Change is not null;
             ToolTip.SetTip(change, node.Change is { } said ? Vcs.ChangedFileRow.WordOf(said) : null);
             AutomationProperties.SetName(change, node.Change is { } named ? Vcs.ChangedFileRow.WordOf(named) : null);
-            detail.Text = node.Detail;
+            ShownWords.Set(detail, TextBlock.TextProperty, node.Detail);
         });
     }
 
@@ -675,7 +706,7 @@ public partial class ExplorerView : UserControl
         ExplorerNode? pressed = (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext as ExplorerNode;
         PointerPoint point = e.GetCurrentPoint(Rows);
         // Shift and Cmd (Ctrl) choose rows, and a second press is a double-click's.
-        clicked = OpensOnClick && pressed is { IsFile: true, Path: not null } && point.Properties.IsLeftButtonPressed
+        clicked = OpensOnClick && pressed is { IsFile: true, Path: not null } or { Kind: NodeKind.GeneratedFile } && point.Properties.IsLeftButtonPressed
             && e.KeyModifiers == KeyModifiers.None && e.ClickCount == 1 ? (pressed, point.Position) : null;
         if (pressed is { IsMovable: true } row)
         {
@@ -720,9 +751,16 @@ public partial class ExplorerView : UserControl
         if (clicked is { } press)
         {
             clicked = null;
-            if (!dragged && e.InitialPressMouseButton == MouseButton.Left && RowAt(e.GetPosition(Rows)) == press.Row && press.Row.Path is { } path)
+            if (!dragged && e.InitialPressMouseButton == MouseButton.Left && RowAt(e.GetPosition(Rows)) == press.Row)
             {
-                FileClicked?.Invoke(this, path);
+                if (press.Row.Path is { } path)
+                {
+                    FileClicked?.Invoke(this, path);
+                }
+                else if (press.Row.Referenced is { } made)
+                {
+                    GeneratedOpened?.Invoke(this, made);
+                }
             }
         }
     }

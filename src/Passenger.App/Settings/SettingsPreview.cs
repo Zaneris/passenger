@@ -52,21 +52,24 @@ public sealed class SettingsPreview : IDisposable
         store.EndPreview(this);
     }
 
-    /// <summary>The settings in force with the looks this dialog changed put over them: the Appearance page's, the
-    /// Editor page's but its behaviour, and the terminal's font and cursor.</summary>
+    /// <summary>The settings in force with the looks this dialog changed put over them: the window's, the code's and what
+    /// is drawn over it, the terminal's font and cursor, and the consoles' size.</summary>
     internal AppSettings Over(AppSettings saved) => saved with
     {
         Theme = Shown(from.Theme, to.Theme, saved.Theme),
         Look = Shown(from.Look, to.Look, saved.Look),
         WindowFontFamily = Shown(from.WindowFontFamily, to.WindowFontFamily, saved.WindowFontFamily),
+        DisplayLanguage = Shown(from.DisplayLanguage, to.DisplayLanguage, saved.DisplayLanguage),
         DisplayScale = Shown(from.DisplayScale, to.DisplayScale, saved.DisplayScale),
         EditorTabs = Shown(from.EditorTabs, to.EditorTabs, saved.EditorTabs),
         ToolWindowLook = Shown(from.ToolWindowLook, to.ToolWindowLook, saved.ToolWindowLook),
+        WideLayout = Shown(from.WideLayout, to.WideLayout, saved.WideLayout),
         MainMenuBar = Shown(from.MainMenuBar, to.MainMenuBar, saved.MainMenuBar),
         MergeMainMenuWithWindowTitle = Shown(from.MergeMainMenuWithWindowTitle, to.MergeMainMenuWithWindowTitle, saved.MergeMainMenuWithWindowTitle),
         ColourScheme = Shown(from.ColourScheme, to.ColourScheme, saved.ColourScheme),
         FollowSystemContrast = Shown(from.FollowSystemContrast, to.FollowSystemContrast, saved.FollowSystemContrast),
         StatePalette = Shown(from.StatePalette, to.StatePalette, saved.StatePalette),
+        PlainFolderIcons = Shown(from.PlainFolderIcons, to.PlainFolderIcons, saved.PlainFolderIcons),
         EditorFontFamily = Shown(from.EditorFontFamily, to.EditorFontFamily, saved.EditorFontFamily),
         EditorFontSize = Shown(from.EditorFontSize, to.EditorFontSize, saved.EditorFontSize),
         EditorLineSpacing = Shown(from.EditorLineSpacing, to.EditorLineSpacing, saved.EditorLineSpacing),
@@ -77,11 +80,22 @@ public sealed class SettingsPreview : IDisposable
         RainbowBraces = Shown(from.RainbowBraces, to.RainbowBraces, saved.RainbowBraces),
         ParameterHints = Shown(from.ParameterHints, to.ParameterHints, saved.ParameterHints),
         TypeHints = Shown(from.TypeHints, to.TypeHints, saved.TypeHints),
+        Signposts = Shown(from.Signposts, to.Signposts, saved.Signposts),
+        SignpostUsages = Shown(from.SignpostUsages, to.SignpostUsages, saved.SignpostUsages),
+        SignpostInheriting = Shown(from.SignpostInheriting, to.SignpostInheriting, saved.SignpostInheriting),
+        SignpostAuthors = Shown(from.SignpostAuthors, to.SignpostAuthors, saved.SignpostAuthors),
+        SignpostComplexity = Shown(from.SignpostComplexity, to.SignpostComplexity, saved.SignpostComplexity),
+        SignpostComplexityMinimum = Shown(from.SignpostComplexityMinimum, to.SignpostComplexityMinimum, saved.SignpostComplexityMinimum),
+        SignpostComplexityYellowFrom = Shown(from.SignpostComplexityYellowFrom, to.SignpostComplexityYellowFrom, saved.SignpostComplexityYellowFrom),
+        SignpostComplexityRedFrom = Shown(from.SignpostComplexityRedFrom, to.SignpostComplexityRedFrom, saved.SignpostComplexityRedFrom),
+        ShowElapsedAtStops = Shown(from.ShowElapsedAtStops, to.ShowElapsedAtStops, saved.ShowElapsedAtStops),
+        GreyCodeAhead = Shown(from.GreyCodeAhead, to.GreyCodeAhead, saved.GreyCodeAhead),
         SoftWrap = Shown(from.SoftWrap, to.SoftWrap, saved.SoftWrap),
         SoftWrapFiles = Shown(from.SoftWrapFiles, to.SoftWrapFiles, saved.SoftWrapFiles),
         SoftWrapIndent = Shown(from.SoftWrapIndent, to.SoftWrapIndent, saved.SoftWrapIndent),
         ShowWhitespaces = Shown(from.ShowWhitespaces, to.ShowWhitespaces, saved.ShowWhitespaces),
         TerminalFontSize = Shown(from.TerminalFontSize, to.TerminalFontSize, saved.TerminalFontSize),
+        ConsoleFontSize = Shown(from.ConsoleFontSize, to.ConsoleFontSize, saved.ConsoleFontSize),
         TerminalFontFamily = Shown(from.TerminalFontFamily, to.TerminalFontFamily, saved.TerminalFontFamily),
         TerminalCursorStyle = Shown(from.TerminalCursorStyle, to.TerminalCursorStyle, saved.TerminalCursorStyle),
         TerminalCursorBlinking = Shown(from.TerminalCursorBlinking, to.TerminalCursorBlinking, saved.TerminalCursorBlinking),

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using Passenger.App.Database;
 using Passenger.App.Endpoints;
 using Passenger.App.Run;
 using Passenger.Core;
@@ -54,11 +55,20 @@ public partial class MainWindow
     private void AddRequests()
     {
         requestLog = new RequestLog(RouteReached);
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, "Requests", IconKeys.Requests, MakeRequests, Docking.ToolAnchor.BottomRight)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Requests, ToolWindowTitles.Requests, IconKeys.Requests, MakeRequests, Docking.ToolAnchor.BottomRight)
         {
             Serves = ToolWindowServes.WebApps,
             Action = AppActions.ShowRequests,
             Menus = [new MenuPlace("Tools", 0, 4)],
+            Chosen = () => requestsView?.Chosen,
+        });
+        actions!.Add(new IdeAction(AppActions.RequestsCommandConsole, ActionTitles.RequestsCommandConsole, ActionGroups.Requests,
+            _ => IdeErrors.Observe(CommandIntoConsoleAsync((RequestsView.CommandRow)requestsView!.Chosen!)))
+        {
+            WhyNot = _ => requestsView?.Chosen is not RequestsView.CommandRow chosen ? Refusals.NoRequestCommand
+                : chosen.Command.Database is null || DatabaseKinds.OfConnection(chosen.Command.Database.Connection) is null ? Refusals.NoCommandDatabase
+                : Mcp.AgentCall.Current is not null || AgentsOwn ? Refusals.AsksThePerson : null,
+            Words = [Languages.Language.Sql.Name, "EF Core", "Database"],
         });
         Closed += (_, _) => IdeErrors.Observe(LetGoOfRequestsAsync());
     }
@@ -78,6 +88,7 @@ public partial class MainWindow
         };
         view.RequestOpened += (_, request) => OpenRequest(request);
         view.CommandOpened += (_, command) => OpenCommand(command);
+        view.ActionRequested += (_, action) => Request(action);
         return view;
     }
 
@@ -414,6 +425,53 @@ public partial class MainWindow
     private void OpenCommand(LiveCommand command) =>
         OpenSql($"command-{(command.Id.Length > 0 ? command.Id : Guid.NewGuid().ToString("N"))}",
             command.Parameters is { Length: > 0 } parameters ? $"-- {parameters}\n{command.Text}" : command.Text, "The command");
+
+    /// <summary>A command's text, its parameters as a comment over it, in a SQL console of the Database window's connection
+    /// to the database it ran on: the one reaching it, else a SQLite file's own, listed beside those found. Its work is held
+    /// from its first moment, through finding the connections, and tells what it came to.</summary>
+    private async Task CommandIntoConsoleAsync(RequestsView.CommandRow chosen)
+    {
+        if (chosen.Command.Database is not { } told || DatabaseKinds.OfConnection(told.Connection) is not { } kind)
+        {
+            Refuse(Refusals.NoCommandDatabase);
+            return;
+        }
+        string named = told.Name.Length > 0 ? told.Name : told.Source;
+        if (actions!.Work.Begin(AppActions.RequestsCommandConsole, $"Opening the command in a SQL console of {named}…") is not { } work)
+        {
+            return;
+        }
+        using (work)
+        {
+            ProjectSession asked = session;
+            string? folder = chosen.Request.Project is { } project ? Path.GetDirectoryName(project) : null;
+            string place = DatabaseKinds.IsFile(kind) ? await BackgroundWork.Run(() => PathNames.Canonical(told.Source)) : told.Source;
+            if (session != asked)
+            {
+                work.Tell(false, Refusals.SolutionClosed);
+                return;
+            }
+            ShowToolWindow(ToolWindowIds.Database);
+            await DatabasesFoundAsync();
+            DatabaseSource? reaching = Database.Reaching(kind, place, told.Name, folder);
+            if (reaching is null && DatabaseKinds.IsFile(kind)
+                && DatabaseDiscovery.Source(Path.GetFileNameWithoutExtension(place), $"used by {chosen.Request.From}'s requests", $"Data Source={place}", folder ?? Path.GetDirectoryName(place)!,
+                    kind == DatabaseKind.DuckDb ? ["DuckDB.NET.Data"] : []) is { } file)
+            {
+                reaching = (await ShowDatabaseOfAsync(file, lasting: true)).Used;
+            }
+            if ((reaching is null ? Refusals.NoConnectionReaching(told.Name, told.Source) : WhyNotOpened(reaching)) is { } why)
+            {
+                Refuse(why);
+                work.Tell(false, why);
+                return;
+            }
+            LiveCommand command = chosen.Command;
+            await IntoConsoleAsync(reaching!, told.Name.Length > 0 ? told.Name : reaching!.Database,
+                (command.Parameters is { Length: > 0 } parameters ? $"-- {parameters}\n" : string.Empty) + command.Text.TrimEnd() + (command.Text.TrimEnd().EndsWith(';') ? "\n" : ";\n"));
+            work.Tell(true, $"Opened the command in a SQL console of {named}");
+        }
+    }
 
     /// <summary>An EF Core query's SQL the debugger read (#420) in a read-only tab, as a command's opens: one copy for each
     /// text, so the same SQL opened again shows the tab it has.</summary>

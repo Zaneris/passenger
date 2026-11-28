@@ -27,8 +27,8 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
 
     /// <summary>WPF's XAML as a person writes it: completion of controls, properties, events, values, resources and a
     /// design-time binding's path; marks where its compiler would refuse it and after a build; Go to Declaration into
-    /// the C#; and renames from the C# and of an x:Name reaching it, a user control of no code-behind a class of its
-    /// own.</summary>
+    /// the C#; renames from the C# and of an x:Name reaching it, a user control of no code-behind a class of its own; and
+    /// an x:Code block's C# served as C#.</summary>
     [AvaloniaFact]
     public void WPF_xaml_completes_checks_goes_to_and_renames_as_its_compiler_and_the_csharp_read_it()
     {
@@ -40,6 +40,7 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         Flow.StepApart("renaming a bound property, a command and a handler in C# renames the WPF XAML using them", () => new WpfXamlTests(app), t => t.Renaming_a_property_bound_under_a_design_time_data_context_a_command_and_a_handler_in_csharp_renames_the_wpf_xaml_using_them());
         Flow.StepApart("an element's x:Name renames with its code-behind's uses, and Go to Declaration from the code lands on it", () => new WpfXamlTests(app), t => t.An_elements_x_name_renames_with_its_code_behinds_uses_and_go_to_declaration_from_the_code_lands_on_it());
         Flow.StepApart("a user control with no code-behind is a class, its uses unmarked, and Go to Declaration reaches its XAML", () => new WpfXamlTests(app), t => t.A_user_control_with_no_code_behind_is_a_class_its_x_class_and_its_uses_are_not_marked_and_go_to_declaration_reaches_its_xaml());
+        Flow.StepApart("an x:Code block's C# completes the window's members, is checked where it is written and leads to its declarations", () => new WpfXamlTests(app), t => t.An_x_code_blocks_csharp_completes_the_windows_members_is_checked_where_it_is_written_and_leads_to_its_declarations());
     }
 
     private void Typing_a_tag_offers_wpfs_controls_then_a_controls_properties_and_events_and_then_the_values_of_the_one_chosen()
@@ -414,6 +415,50 @@ public sealed class WpfXamlTests : IClassFixture<WpfXamlTests.Gallery>
         </Window>
 
         """;
+
+    /// <summary>An x:Code block's C#, which WPF's markup compiler puts in the window's class, served as C# at its places in
+    /// the XAML: completion offers the window's members, a member it names that is not there is marked where it is written,
+    /// and Go to Declaration leads to a method the block declares, in the block, and to the code-behind's handler.</summary>
+    private void An_x_code_blocks_csharp_completes_the_windows_members_is_checked_where_it_is_written_and_leads_to_its_declarations()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.xaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument document = window.EditorArea.Active!;
+        Replace(editor, "Title=\"Gallery\" Height=\"450\" Width=\"800\">\n", """
+            Title="Gallery" Height="450" Width="800">
+                <x:Code><![CDATA[
+                    private string Shout() => Title.ToUpperInvariant();
+
+                    private int Twice() => Shout().Length * 2 + Missing;
+
+                    private void Again() => OnGo(this, new System.Windows.RoutedEventArgs());
+                ]]></x:Code>
+
+            """);
+        Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("Missing", StringComparison.Ordinal)),
+            () => $"C#'s error for a name the window lacks, marked in the x:Code: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        string text = editor.Document.Snapshot.ToString();
+        Marker missing = document.Markers.First(m => m.Message.Contains("Missing", StringComparison.Ordinal));
+        Assert.True(text[missing.Range.Start..missing.Range.End] == "Missing", $"The error is marked on \"{text[missing.Range.Start..missing.Range.End]}\", not the name it is for");
+
+        Ui.PlaceAfter(editor, "=> OnG");
+        Ui.Run(window, AppActions.Complete);
+        Ui.WaitFor(() => window.Assist.CompletionLabels.Contains("OnGo"),
+            () => $"the window's code-behind's handler offered in the x:Code: {string.Join(", ", window.Assist.CompletionLabels.Take(30))}");
+        Ui.Press(window, "ESCAPE");
+
+        Ui.PlaceAfter(editor, "=> Sho");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active?.Name == "MainWindow.xaml" && CaretLine(editor).Contains("private string |Shout()", StringComparison.Ordinal),
+            $"Go to Declaration from a call of the x:Code's own method went to {window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}");
+        Ui.PlaceAfter(editor, "=> OnG");
+        Ui.Run(window, AppActions.GoToDeclaration);
+        Ui.Settle();
+        Assert.True(window.EditorArea.Active?.Name == "MainWindow.xaml.cs" && CaretLine(window.EditorArea.CodeEditor).Contains("private void |OnGo(", StringComparison.Ordinal),
+            $"Go to Declaration from the code-behind's handler went to {window.EditorArea.Active?.Name}: {CaretLine(window.EditorArea.CodeEditor)}");
+        window.Close();
+    }
 
     /// <summary>The app: WPF's template with a view model its window names through <c>d:DataContext</c>, brushes merged in
     /// by App.xaml, and a button style whose template's triggers set its parts.</summary>

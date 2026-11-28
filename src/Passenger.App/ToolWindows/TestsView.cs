@@ -16,11 +16,12 @@ using Passenger.Text;
 namespace Passenger.App.ToolWindows;
 
 /// <summary>The Unit Tests window: the tests grouped as its Group By chooses (by project and namespace at first), then by
-/// class and method, a theory's data rows under it, each marked with how it last ran and how long it took; the chosen
-/// one's message, stack trace (its frames links to their lines), output and attachments beside the tree, the pictures
-/// among them (a failing headless test's windows) as thumbnails over it; above it the toolbar (Expand All, Collapse All,
-/// Group By, a filter for each outcome with how many tests have it, the search) and the run's tally; and while there are
-/// none, why. Double-click or F4 goes to a test's source.</summary>
+/// class and method, a theory's data rows under it, each marked with how it last ran and how long it took, each group and
+/// class with how many tests under it its filters and search let through; the chosen one's message, stack trace (its
+/// frames links to their lines), output and attachments beside the tree, the pictures among them (a failing headless
+/// test's windows) as thumbnails over it; above it the test sessions' tabs while there are any (every test's, then each
+/// session's), the toolbar (Group By, a filter for each outcome with how many tests have it, the search) and the run's
+/// tally; and while there are none, why. Double-click or F4 goes to a test's source.</summary>
 public sealed class TestsView : DockPanel
 {
     /// <summary>The column a test's state mark is centred in, an icon's width.</summary>
@@ -40,8 +41,18 @@ public sealed class TestsView : DockPanel
         (TestState.Running, "Running Tests", IconKeys.TestRunning, TokenKeys.Test_Running),
     ];
 
+    /// <summary>The key of the tab of every test, beside the sessions' tabs.</summary>
+    private static readonly object AllTests = new();
+
     private readonly TreeList tree;
     private readonly TextDocument detailsText = new();
+
+    /// <summary>The sessions' tabs, shown while there is a session.</summary>
+    private readonly ToolTabs.Strip<object> sessionTabs = new() { Name = "TestSessions" };
+    private readonly Border sessionBar;
+
+    /// <summary>The sessions the tabs were last drawn for, each with its name then, in their order.</summary>
+    private (TestSession Session, string Name)[] drawnSessions = [];
     private readonly DockPanel result;
 
     /// <summary>The details' editor, made as the window is first shown or they are asked for (<see cref="Details"/>).</summary>
@@ -74,6 +85,7 @@ public sealed class TestsView : DockPanel
         // A double click and Enter open or close a row with rows under it but a method's, and go to any other.
         TreeKeys.Attach<TestNode>(tree, model.Toggle, GoTo, new ListActs
         {
+            Remove = TakeOutChosen,
             Open = () =>
             {
                 if (tree.SelectedItem is not TestNode node)
@@ -95,6 +107,12 @@ public sealed class TestsView : DockPanel
             ListMenus.Keyed("Run", AppActions.RunTests, () => RunRequested?.Invoke(this, false)),
             ListMenus.Keyed("Debug", AppActions.DebugTests, () => RunRequested?.Invoke(this, true)),
             ListMenus.Keyed("Run Until Failure", AppActions.RunTestsUntilFailure, () => UntilFailureRequested?.Invoke(this, EventArgs.Empty)),
+            ListMenus.Keyed("Run with Coverage", AppActions.CoverTests, () => Request(AppActions.CoverTests)),
+            new Separator(),
+            ListMenus.Keyed("New Session", AppActions.NewTestSession, () => Request(AppActions.NewTestSession)),
+            ListMenus.Keyed("Append to Session", AppActions.AppendToTestSession, () => Request(AppActions.AppendToTestSession)),
+            ListMenus.Remove(model.Shown is { } session ? $"Remove from {session.Name}" : "Remove from Session", TakeOutChosen,
+                model.Shown is null ? Refusals.NoSessionShown : null),
             new Separator(),
             ListMenus.Source(() => GoToRequested?.Invoke(this, chosen), chosen.Path is null ? Refusals.TestUnplaced : null),
         ]);
@@ -109,10 +127,15 @@ public sealed class TestsView : DockPanel
             QueueDetails();
             QueueCounts();
         };
-        model.ViewChanged += (_, _) => ShowFilters();
+        model.ViewChanged += (_, _) =>
+        {
+            ShowFilters();
+            ShowSessions();
+            ShowPlaceholder();
+        };
         status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Normal, 0), TextTrimming = TextTrimming.CharacterEllipsis };
         status.Classes.Add(StyleClasses.Muted);
-        placeholder = new EmptyState { Text = model.EmptyText };
+        placeholder = new EmptyState(model.EmptyText);
         model.Rows.CollectionChanged += (_, _) => ShowPlaceholder();
         model.EmptyTextChanged += (_, _) => ShowPlaceholder();
 
@@ -161,11 +184,51 @@ public sealed class TestsView : DockPanel
             ToolButtons.Of(AppActions.RunAllTests, IconKeys.Run, "Run All Tests", Request),
             ToolButtons.Of(AppActions.RunTests, IconKeys.RunOutline, "Run Selected Tests", Request),
             ToolButtons.Of(AppActions.DebugTests, IconKeys.Debug, "Debug Selected Tests", Request),
+            ToolButtons.Of(AppActions.CoverAllTests, IconKeys.Coverage, "Run All Tests with Coverage", Request),
             ToolButtons.Of(AppActions.RerunFailedTests, IconKeys.Rerun, "Rerun Failed Tests", Request),
             stop);
+        sessionTabs.Chosen += (_, key) => model.ShowSession(key as TestSession);
+        Button runSession = ToolButtons.Of(AppActions.RunTestSession, IconKeys.Run, "Run Current Session", Request);
+        DockPanel.SetDock(runSession, Dock.Right);
+        sessionBar = ToolBars.Top(new DockPanel
+        {
+            Margin = new Thickness(Gaps.Normal, 0),
+            Children = { runSession, TabStrips.ScrollingAcross(sessionTabs) },
+        });
+        ShowSessions();
+        // The sessions' tabs over the whole window, its side bar beneath them.
+        Children.Add(sessionBar);
         Children.Add(leftBar);
         Children.Add(topBar);
         Children.Add(split);
+    }
+
+    /// <summary>The sessions' tabs as the model has them, the one shown chosen; drawn again only where the sessions changed,
+    /// a session restored in another's place of its name among them.</summary>
+    private void ShowSessions()
+    {
+        (TestSession Session, string Name)[] sessions = [.. Model.Sessions.Select(s => (s, s.Name))];
+        if (!sessions.SequenceEqual(drawnSessions))
+        {
+            drawnSessions = sessions;
+            sessionTabs.Clear();
+            sessionTabs.Add(AllTests, "All Tests");
+            foreach (TestSession session in Model.Sessions)
+            {
+                sessionTabs.Add(session, session.Name, () => Model.CloseSession(session), "Close Session");
+            }
+        }
+        sessionTabs.Choice = (object?)Model.Shown ?? AllTests;
+        sessionBar.IsVisible = sessions.Length > 0;
+    }
+
+    /// <summary>Takes the chosen rows' tests out of the session shown, as Delete does there.</summary>
+    private void TakeOutChosen()
+    {
+        if (Model.Shown is { } session && Selected.Count > 0)
+        {
+            Model.TakeOut(session, Selected.SelectMany(TestSession.Of));
+        }
     }
 
     public TestTree Model { get; }
@@ -189,15 +252,15 @@ public sealed class TestsView : DockPanel
         {
             Document = detailsText,
             IsReadOnly = true,
-            ReadOnlyWhy = Refusals.OutputReadOnly,
+            ReadOnlyWhy = Refusals.OutputReadOnly.Shown,
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
-            FontSize = TypeRamp.Code,
             Highlighter = Links,
             Links = Links.On,
             Margin = new Thickness(Gaps.Small, Gaps.Tight, 0, 0),
         };
+        OutputView.FollowSize(details);
         details.LinkClicked += (_, link) => LinkClicked?.Invoke(this, (LinkTarget)link.Target);
         result.Children.Add(details);
         return details;
@@ -240,14 +303,13 @@ public sealed class TestsView : DockPanel
     public bool HasFocus => tree.IsKeyboardFocusWithin;
 
     /// <summary>What the window says of the tests last found or run, whole in its tip where the line trims it.</summary>
-    public string Status
+    public string Status => status.Text ?? string.Empty;
+
+    /// <summary>Says what the window says of the tests, in the language in force and again as it changes.</summary>
+    public void Tell(Words said)
     {
-        get => status.Text ?? string.Empty;
-        set
-        {
-            status.Text = value;
-            ToolTip.SetTip(status, value.Length > 0 ? value : null);
-        }
+        ShownWords.Set(status, TextBlock.TextProperty, said);
+        ShownWords.Set(status, ToolTip.TipProperty, said.IsEmpty ? null : said);
     }
 
     /// <summary>Tests are being found or run: Stop has something to end, and is disabled while it has not.</summary>
@@ -419,11 +481,21 @@ public sealed class TestsView : DockPanel
         }, DispatcherPriority.Background);
     }
 
-    /// <summary>Why the tree has no rows: none yet, or none the filters and search let through.</summary>
+    /// <summary>Why the tree has no rows: none yet, none of the session shown found, or none the filters and search let through.</summary>
     private void ShowPlaceholder()
     {
         placeholder.IsVisible = Model.Rows.Count == 0;
-        placeholder.Text = Model.Roots.Count > 0 ? "No matching tests" : Model.EmptyText;
+        placeholder.Say(Model.Roots.Count == 0 ? Model.EmptyText
+            : Model is { Shown: not null, Outcomes.Count: 0, Search.Length: 0 } ? TestingWords.NoneOfSession
+            : TestingWords.NoneMatching);
+    }
+
+    /// <summary>Shows the tests of a session (every test for none) and gives the tree's chosen row the keys, its first where
+    /// none is chosen; false where it shows no row to take them.</summary>
+    public bool FocusSession(TestSession? session)
+    {
+        Model.ShowSession(session);
+        return ListKeys.Hold(tree, chooseFirst: true);
     }
 
     /// <summary>Group By: the predefined groupings, the one in use ticked, then each level, ticked while it is on.</summary>
@@ -477,6 +549,7 @@ public sealed class TestsView : DockPanel
         private readonly RowExpander chevron;
         private readonly RowIcon state;
         private readonly TextBlock label;
+        private readonly TextBlock count;
         private readonly TextBlock duration;
         private readonly TextBlock earlier;
         private TestNode? followed;
@@ -489,6 +562,8 @@ public sealed class TestsView : DockPanel
             chevron = RowExpander.Of<TestNode>(model.Toggle);
             state = new RowIcon { VerticalAlignment = VerticalAlignment.Center };
             label = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+            count = MutedText.Caption(string.Empty);
+            count.Margin = new Thickness(Gaps.Wide, 0, 0, 0);
             duration = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
             duration.Classes.Add(StyleClasses.Muted);
             earlier = new TextBlock { Classes = { StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Gaps.Wide, 0, 0, 0) };
@@ -496,6 +571,7 @@ public sealed class TestsView : DockPanel
             Children.Add(chevron);
             Children.Add(state);
             Children.Add(label);
+            Children.Add(count);
             Children.Add(duration);
             Children.Add(earlier);
         }
@@ -545,6 +621,7 @@ public sealed class TestsView : DockPanel
             chevron.Expands = node.HasChildren;
             ShowExpanded(node);
             ShowState(node);
+            ShowCount(node);
         }
 
         private void OnChanged(object? sender, PropertyChangedEventArgs e)
@@ -567,10 +644,17 @@ public sealed class TestsView : DockPanel
                 case nameof(TestNode.Depth):
                     Margin = node.Indent;
                     break;
+                case nameof(TestNode.ShownTests):
+                    ShowCount(node);
+                    break;
             }
         }
 
         private void ShowExpanded(TestNode node) => chevron.IsOpen = node.IsExpanded;
+
+        /// <summary>A group's or class's tests, as many as the tree shows under it; a test's row has none.</summary>
+        private void ShowCount(TestNode node) =>
+            count.Text = node.Kind is TestNodeKind.Method or TestNodeKind.Row ? string.Empty : Plural.Of(node.ShownTests, "test");
 
         /// <summary>A test's mark, a grey ring not run, a blue dot running, a green tick passed, a red cross failed, a grey
         /// dash skipped, how long it took once it ran, and when, where that was an earlier session's run, and whether its

@@ -24,7 +24,7 @@ public partial class MainWindow
 
     private void AddWhatsNew()
     {
-        actions!.Add(new IdeAction(AppActions.WhatsNew, "What's New", "Help", _ => ShowWhatsNew())
+        actions!.Add(new IdeAction(AppActions.WhatsNew, ActionTitles.WhatsNew, ActionGroups.Help, _ => ShowWhatsNew())
         {
             WhyNot = _ => Notes.Exists ? null : $"Passenger {Notes.Version} carries no release notes",
             Menus = [new MenuPlace("Help", 3, 0)],

@@ -19,13 +19,15 @@ public sealed class RowGlyphs : Control
     public static readonly StyledProperty<bool> HasChevronProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(HasChevron));
     public static readonly StyledProperty<bool> TurnedProperty = AvaloniaProperty.Register<RowGlyphs, bool>(nameof(Turned));
     public static readonly StyledProperty<Geometry?> IconProperty = AvaloniaProperty.Register<RowGlyphs, Geometry?>(nameof(Icon));
-    public static readonly StyledProperty<string?> IconTintProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconTint));
+    public static readonly StyledProperty<IBrush?> IconBrushProperty = AvaloniaProperty.Register<RowGlyphs, IBrush?>(nameof(IconBrush));
+    public static readonly StyledProperty<string?> IconKeyProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconKey));
+    public static readonly StyledProperty<string?> IconBrushKeyProperty = AvaloniaProperty.Register<RowGlyphs, string?>(nameof(IconBrushKey));
 
     static RowGlyphs()
     {
         WidthProperty.OverrideDefaultValue<RowGlyphs>(Column + IconSize + Gap);
         HeightProperty.OverrideDefaultValue<RowGlyphs>(ListRow.Height);
-        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconTintProperty);
+        AffectsRender<RowGlyphs>(HasChevronProperty, TurnedProperty, IconProperty, IconBrushProperty, IconKeyProperty, IconBrushKeyProperty);
     }
 
     public RowGlyphs()
@@ -58,12 +60,25 @@ public sealed class RowGlyphs : Control
         set => SetValue(IconProperty, value);
     }
 
-    /// <summary>The theme key of the icon's brush, looked up as it is drawn so it follows the theme; the theme's icon colour
-    /// when none is given.</summary>
-    public string? IconTint
+    /// <summary>The icon's brush; the theme's of <see cref="IconBrushKey"/>, else its icon colour, when none is given.</summary>
+    public IBrush? IconBrush
     {
-        get => GetValue(IconTintProperty);
-        set => SetValue(IconTintProperty, value);
+        get => GetValue(IconBrushProperty);
+        set => SetValue(IconBrushProperty, value);
+    }
+
+    /// <summary>The theme's key of the icon, drawn when <see cref="Icon"/> is null, so it follows a theme laid since.</summary>
+    public string? IconKey
+    {
+        get => GetValue(IconKeyProperty);
+        set => SetValue(IconKeyProperty, value);
+    }
+
+    /// <summary>The theme's key of the icon's brush, used when <see cref="IconBrush"/> is null.</summary>
+    public string? IconBrushKey
+    {
+        get => GetValue(IconBrushKeyProperty);
+        set => SetValue(IconBrushKeyProperty, value);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -83,23 +98,24 @@ public sealed class RowGlyphs : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         double scale = LayoutHelper.GetLayoutScale(this);
         IBrush? themed = Resource(TokenKeys.Icon) as IBrush;
+        IconLook look = IconLook.Of(this, ActualThemeVariant);
         if (HasChevron && Resource(IconKeys.ChevronRight) is Geometry chevron)
         {
-            Glyph(context, chevron, themed, new Point((Column - ChevronSize) / 2, (Bounds.Height - ChevronSize) / 2), ChevronSize, Turned, scale);
+            Glyph(context, chevron, themed, look, new Point((Column - ChevronSize) / 2, (Bounds.Height - ChevronSize) / 2), ChevronSize, Turned, scale);
         }
-        if (Icon is { } icon)
+        if ((Icon ?? (IconKey is { } key ? Resource(key) as Geometry : null)) is { } icon)
         {
-            Glyph(context, icon, (IconTint is { } tint ? Resource(tint) as IBrush : null) ?? themed, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
+            Glyph(context, icon, IconBrush ?? (IconBrushKey is { } tint ? Resource(tint) as IBrush : null) ?? themed, look, new Point(Column, (Bounds.Height - IconSize) / 2), IconSize, turned: false, scale);
         }
     }
 
     /// <summary>A glyph of a size where layout would put a RowIcon of it, its place rounded to whole device pixels.</summary>
-    private static void Glyph(DrawingContext context, Geometry geometry, IBrush? brush, Point place, double size, bool turned, double scale)
+    private static void Glyph(DrawingContext context, Geometry geometry, IBrush? brush, IconLook look, Point place, double size, bool turned, double scale)
     {
         Point at = LayoutHelper.RoundLayoutPoint(place, scale);
         using (context.PushTransform(Matrix.CreateTranslation(at.X, at.Y)))
         {
-            RowIcon.Draw(context, geometry, brush, new Size(size, size), new Size(size, size), turned, scale);
+            RowIcon.Draw(context, geometry, brush, look, new Size(size, size), new Size(size, size), turned, scale);
         }
     }
 

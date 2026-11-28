@@ -25,10 +25,11 @@ public sealed record TestAssembly(ProjectModel Project, string Framework, string
 /// (GetTargetFrameworks, GetTargetPath).</summary>
 public static class TestAssemblies
 {
-    /// <summary>The assemblies, built or not, the projects' in their order, as a build of each alone builds them; a project
+    /// <summary>The assemblies, built or not, the projects' in their order, as a build of each alone builds them, given
+    /// <paramref name="also"/> beside the properties their build is given (continuous testing's own output folder); a project
     /// MSBuild cannot evaluate is logged and left out.</summary>
     public static async Task<IReadOnlyList<TestAssembly>> ResolveAsync(IReadOnlyList<ProjectModel> projects, string folder, WorkspaceModel? workspace,
-        Action<string> log, CancellationToken cancel)
+        Action<string> log, CancellationToken cancel, IReadOnlyDictionary<string, string>? also = null)
     {
         if (projects.Count == 0)
         {
@@ -44,7 +45,7 @@ public static class TestAssemblies
             throw new InvalidOperationException($"MSBuild could not say where the test projects build: {failed.Reason}", failed);
         }
         (IReadOnlyList<TestAssembly> Assemblies, string? Problem)[] each = await Task.WhenAll(projects.Select(p =>
-            OfAsync(host, p, ProjectModels.Properties(workspace, p), cancel)));
+            OfAsync(host, p, With(ProjectModels.Properties(workspace, p), also), cancel)));
         List<string> problems = [.. each.Select(e => e.Problem).OfType<string>()];
         foreach (string problem in problems)
         {
@@ -56,6 +57,15 @@ public static class TestAssemblies
             throw new InvalidOperationException($"MSBuild could not say where the test projects build: {string.Join("; ", problems)}");
         }
         return found;
+    }
+
+    private static Dictionary<string, string> With(Dictionary<string, string> properties, IReadOnlyDictionary<string, string>? also)
+    {
+        foreach ((string name, string value) in also ?? new Dictionary<string, string>())
+        {
+            properties[name] = value;
+        }
+        return properties;
     }
 
     /// <summary>One project's assemblies, a framework's at a time in the order its TargetFrameworks gives them, or why MSBuild

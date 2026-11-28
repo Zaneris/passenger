@@ -44,7 +44,7 @@ public sealed class AndroidDeviceTests
             An_androidtest_projects_tests_debugged_from_the_tests_window_stop_at_a_breakpoint_in_one_on_the_emulator_then_each_test_is_told_and_nothing_of_it_is_left_there);
         Flow.Step("an Avalonia app's Android head runs and stops at a breakpoint in its shared code on an emulator",
             AvaloniaAndroidTests.An_avalonia_apps_android_head_runs_and_stops_at_a_breakpoint_in_its_shared_code_on_an_emulator);
-        Flow.Step("a MAUI app's Android head debugged on an emulator shows its main page's label and button in the live tree",
+        Flow.Step("a MAUI app's Android head debugged on an emulator shows its main page's label and button in the live tree and takes its XAML's edits",
             MauiAndroidTests.A_maui_apps_android_head_debugged_on_an_emulator_shows_its_main_pages_label_and_button_in_the_live_tree);
         Flow.Step("an Android app runs and stops at a breakpoint on an emulator chosen beside its configuration",
             An_android_app_runs_and_stops_at_a_breakpoint_on_an_emulator_chosen_beside_its_configuration);
@@ -375,7 +375,7 @@ public sealed class AndroidDeviceTests
                 reached.TrySetResult();
                 return go.Task;
             };
-            Task<string?> debugging = window.DebugAsync();
+            Task<Words?> debugging = window.DebugAsync();
             Ui.PumpUntil(() => reached.Task.IsCompleted || debugging.IsCompleted, "the build, the install and the relay put in the app", Slow);
             if (!reached.Task.IsCompleted)
             {
@@ -467,7 +467,7 @@ public sealed class AndroidDeviceTests
                 reached.TrySetResult();
                 return go.Task;
             };
-            Task<string?> running = window.RunAsync();
+            Task<Words?> running = window.RunAsync();
             Ui.PumpUntil(() => reached.Task.IsCompleted || running.IsCompleted, "the build, the install and the relay put in the app", Slow);
             if (!reached.Task.IsCompleted)
             {
@@ -482,7 +482,7 @@ public sealed class AndroidDeviceTests
             string pid = Pid(tools, serial);
             Assert.True(pid.Length == 0, $"The run Stop stopped once its relay was in the app started the app all the same, which runs as {pid}: "
                 + $"{(running.IsCompletedSuccessfully ? running.Result : running.Exception?.Message) ?? "it said it runs"}\n{Output(window)}");
-            Assert.Equal(Passenger.App.Run.BuildRunController.StoppedStarting("AndroidApp"), Ui.AwaitPumped(running, "the stopped run's answer"));
+            Assert.Equal(Passenger.App.Run.BuildRunController.StoppedStarting("AndroidApp").English, Ui.AwaitPumped(running, "the stopped run's answer")?.English);
             Ui.WaitFor(() => Left(tools, serial).Length == 0, () => $"what the stopped run put on the emulator to be taken out; it still has {Left(tools, serial)}",
                 TimeSpan.FromSeconds(30));
         }
@@ -662,7 +662,7 @@ public sealed class AndroidDeviceTests
         }
         if (tools.Lacks is { } lacks)
         {
-            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks)}");
+            Assert.Skip($"No Android app can be built here: {Refusals.NoAndroidPlatform(lacks).Shown}");
         }
         DeviceTarget? target = MauiApp.Target(targets);
         if (target is null)

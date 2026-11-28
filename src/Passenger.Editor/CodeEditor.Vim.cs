@@ -522,7 +522,8 @@ public sealed partial class CodeEditor
         public int RowsAway(TextSnapshot text, int offset, int rows)
         {
             (int row, double x) = editor.Place(text, offset, editor.LeansBack(offset));
-            int target = Math.Clamp(row + rows, 0, Math.Max(0, editor.RowCount - 1));
+            RowMap map = editor.Rows;
+            int target = map.RowOfText(Math.Clamp(map.TextRowOf(row) + rows, 0, Math.Max(0, map.TextCount - 1)));
             return target == row ? offset : editor.OffsetAtRow(text, target, x, out _);
         }
 

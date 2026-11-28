@@ -158,7 +158,7 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
         {
             if (attached is not null)
             {
-                await Docker.RunAsync("rm", "-f", attached);
+                await Docker.RemoveAsync(attached);
             }
             await Call(client, McpTools.Stop);
             // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
@@ -306,7 +306,7 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.True(refused.IsError == true && Text(refused).Contains($"would replace {project}-cache-1 of {project}, which Passenger did not make", StringComparison.Ordinal),
                 $"run answered: {Text(refused)}");
             Assert.Equal(theirs, await ContainerRunsTests.ContainerAsync(project, "cache"));
-            await Docker.RunAsync("rm", "-f", theirs);
+            await Docker.RemoveAsync(theirs);
 
             Task<ModelContextProtocol.Protocol.CallToolResult> running = Result(client, McpTools.Run, new() { ["configuration"] = "Compose: compose.yaml" });
             Assert.True(await Waiting.UntilAsync(async () => await Up() || running.IsCompleted, TimeSpan.FromMinutes(5), test), "run never brought a container up");
@@ -337,7 +337,7 @@ public sealed class McpContainerDebuggingTests(ContainerRunDebuggingTests.Tools 
         bool gone = await Waiting.UntilAsync(async () => !await Up(), TimeSpan.FromMinutes(2), test);
         foreach (string left in (await Docker.RunAsync("ps", "-aq", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            await Docker.RunAsync("rm", "-f", left);
+            await Docker.RemoveAsync(left);
         }
         // The headless IDE's state is not the run's, whose end removes only its own images: these go here.
         foreach (string image in (await Docker.RunAsync("images", "-q", "--filter", $"label=com.docker.compose.project={project}")).Split('\n', StringSplitOptions.RemoveEmptyEntries))

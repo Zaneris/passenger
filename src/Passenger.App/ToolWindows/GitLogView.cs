@@ -88,11 +88,13 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             } : [],
             ListMenus.Item("Copy Revision Number", () => IdeErrors.Observe(ListMenus.CopyAsync(this, commit.Hash))),
             new Separator(),
-            ListMenus.Item("Checkout Revision", () => IdeErrors.Observe(vcs.CheckoutRevisionAsync(commit.Hash))),
+            ListMenus.Item("Checkout Revision", () => CheckoutRequested?.Invoke(this, commit)),
             ListMenus.Item("New Branch…", () => NewBranchRequested?.Invoke(this, commit)),
+            ListMenus.Item("New Tag…", () => NewTagRequested?.Invoke(this, commit)),
             new Separator(),
             ListMenus.Item("Cherry-Pick", () => IdeErrors.Observe(vcs.CherryPickAsync(commit.Hash))),
             ListMenus.Item("Revert Commit", () => IdeErrors.Observe(vcs.RevertAsync(commit.Hash))),
+            ListMenus.Item("Interactively Rebase from Here…", () => InteractiveRebaseRequested?.Invoke(this, commit), vcs.WhyNotInteractiveRebase),
             ListMenus.Sub("Reset Current Branch to Here",
                 ListMenus.Item("Soft: the changes since kept staged", () => ResetRequested?.Invoke(this, (commit, ResetMode.Soft))),
                 ListMenus.Item("Mixed: the changes since kept in the files", () => ResetRequested?.Invoke(this, (commit, ResetMode.Mixed))),
@@ -243,6 +245,15 @@ public sealed class GitLogView : DockPanel, IOwnKeys
     /// <summary>A branch to make at a commit, its name to be asked for.</summary>
     public event EventHandler<CommitInfo>? NewBranchRequested;
 
+    /// <summary>A commit to check out on its own, which the window asks of where changes are not yet committed.</summary>
+    public event EventHandler<CommitInfo>? CheckoutRequested;
+
+    /// <summary>The commits from one up to HEAD to plan an interactive rebase of.</summary>
+    public event EventHandler<CommitInfo>? InteractiveRebaseRequested;
+
+    /// <summary>A tag to make at a commit, asked for in the New Tag dialog.</summary>
+    public event EventHandler<CommitInfo>? NewTagRequested;
+
     /// <summary>The current branch to move to a commit, in a mode (a hard reset to be agreed to first).</summary>
     public event EventHandler<(CommitInfo Commit, ResetMode Mode)>? ResetRequested;
 
@@ -360,7 +371,7 @@ public sealed class GitLogView : DockPanel, IOwnKeys
             : Scope.IsLines ? $"No commit changed these lines of {name}"
             : $"Git has no history of {name}";
         bool creates = repository is null && Scope is null && Range is null && vcs.WhyNotCreate is null;
-        placeholder.Offer(creates ? AppActions.CreateRepository : null, VcsController.CreateRepository);
+        placeholder.Offer(creates ? AppActions.CreateRepository : null, ActionTitles.CreateRepository);
         placeholder.IsVisible = rows.Count == 0;
         if (Scope is not null && list.SelectedIndex < 0 && rows.Count > 0)
         {

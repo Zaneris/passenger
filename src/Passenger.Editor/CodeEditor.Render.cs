@@ -20,6 +20,10 @@ public sealed partial class CodeEditor
     private readonly FrameKept<(string Text, int Style), TextLine> labels = new();
     private readonly FrameKept<(int Number, bool Current), TextLine> numbers = new();
     private readonly Dictionary<TokenKind, TextRunProperties> runProperties = [];
+
+    /// <summary>The look control characters' marks are drawn in, upright in the comments' quiet colour, which every theme
+    /// gives readable on the editor's ground, made once per theme.</summary>
+    private TextRunProperties? controlMarks;
     private (TextRunProperties Current, TextRunProperties Other) numberRuns;
 
     /// <summary>The diff tints of the lines on screen, found again for each frame.</summary>
@@ -114,7 +118,7 @@ public sealed partial class CodeEditor
                 continue;
             }
             double y = (row * metrics.LineHeight) - scroll.Y;
-            if (vim is { Mode: VimMode.Normal } && items[i].IsEmpty)
+            if ((vim is { Mode: VimMode.Normal } || (overwrite && vim is null)) && items[i].IsEmpty)
             {
                 DrawBlockCaret(context, text, items[i].Caret, row, x, y, left);
                 continue;
@@ -264,8 +268,30 @@ public sealed partial class CodeEditor
         DrawShape(context, null, palette.PenOf(palette.SoftWrapSign, 1), sign, left, top);
     }
 
+    /// <summary>The ranges the document's owner fades (<see cref="DocumentDecorations.Faded"/>), drawn as unnecessary code is:
+    /// the background laid over them, half see-through.</summary>
+    private void DrawFaded(DrawingContext context, LineView view, Gap[] gaps, double left, double y)
+    {
+        RowSpan span = view.Span;
+        foreach (TextRange range in decorations.Faded)
+        {
+            if (range.Start > span.End || (!span.IsLast && range.Start == span.End))
+            {
+                break;
+            }
+            if (range.End <= span.Start)
+            {
+                continue;
+            }
+            double x1 = left + XWith(view, gaps, Math.Max(range.Start, span.Start) - span.Start);
+            double x2 = left + XWith(view, gaps, Math.Min(range.End, span.End) - span.Start, afterHints: false);
+            context.FillRectangle(palette.Faded, new Rect(x1, y, Math.Max(0, x2 - x1), metrics.LineHeight));
+        }
+    }
+
     /// <summary>The line under an error, a warning or a suggestion, each its own shape as well as its colour
-    /// (<see cref="Underlines"/>); unnecessary code is faded by laying the background over it, half see-through.</summary>
+    /// (<see cref="Underlines"/>); unnecessary code is faded by laying the background over it, half see-through, and so is
+    /// a marker's own <see cref="Marker.Faded"/> text under its line.</summary>
     private void DrawMarkers(DrawingContext context, LineView view, Gap[] gaps, double left, double y, double clipLeft, double clipRight)
     {
         RowSpan span = view.Span;
@@ -291,10 +317,13 @@ public sealed partial class CodeEditor
                 // A zero-width diagnostic (a missing semicolon) still needs something to see.
                 x2 = x1 + metrics.CharWidth;
             }
-            if (marker.Kind == MarkerKind.Unnecessary)
+            if (marker.Kind == MarkerKind.Unnecessary || marker.Faded)
             {
                 context.FillRectangle(palette.Faded, new Rect(x1, y, x2 - x1, metrics.LineHeight));
-                continue;
+                if (marker.Kind == MarkerKind.Unnecessary)
+                {
+                    continue;
+                }
             }
             IBrush brush = marker.Kind switch
             {
@@ -314,15 +343,22 @@ public sealed partial class CodeEditor
         {
             LineAnnotation annotation = annotations[i];
             bool ground = annotation.Look == LineAnnotationLook.ErrorOnGround;
+            bool chip = annotation.Look == LineAnnotationLook.Chip;
             bool error = ground || annotation.Look == LineAnnotationLook.Error;
-            if (!labels.TryGet((annotation.Text, error ? -4 : -3), out TextLine? text))
+            // A chip's label is a folded placeholder's, in its colour upright.
+            int style = chip ? -8 : error ? -4 : -3;
+            if (!labels.TryGet((annotation.Text, style), out TextLine? text))
             {
-                text = labels.Add((annotation.Text, error ? -4 : -3), Format(annotation.Text, [], error ? annotationRuns.Error : annotationRuns.Value));
+                text = labels.Add((annotation.Text, style), Format(annotation.Text, [], chip ? RunWith(palette.Annotation) : error ? annotationRuns.Error : annotationRuns.Value));
             }
             double top = y + (metrics.LineHeight - text.Height) / 2;
             if (ground)
             {
                 context.FillRectangle(palette.ErrorGround, new Rect(x - metrics.CharWidth / 2, y + 1, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 2), 3);
+            }
+            else if (chip)
+            {
+                context.FillRectangle(palette.InlayHintBack, new Rect(x - metrics.CharWidth / 2, y + 2, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight - 4), 3);
             }
             text.Draw(context, new Point(x, top));
             slot.Annotations.Add((annotation, new Rect(x - metrics.CharWidth / 2, (slot.Row * metrics.LineHeight) + y, text.WidthIncludingTrailingWhitespace + metrics.CharWidth, metrics.LineHeight)));
@@ -477,7 +513,7 @@ public sealed partial class CodeEditor
                 return runProperties[kind] = OwnRun(own);
             }
             IBrush brush = palette.Syntax(kind);
-            SyntaxStyle? style = palette.Style(kind);
+            SyntaxStyle? style = palette.Style(TokenKinds.StyledAs(kind));
             int set = style is not null ? 0 : kind switch
             {
                 TokenKind.UserInput or TokenKind.Italic => 1,

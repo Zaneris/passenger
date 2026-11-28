@@ -28,11 +28,11 @@ public sealed class CommitSigningTests : IDisposable
         }
     }
 
-    /// <summary>Signing with an SSH key as one flow, every step needing ssh-keygen, each the check one test made in an
-    /// instance of its own: the Commit window signing with the key git's config names, signing turned off for one
-    /// commit and sign-off kept, the key's passphrase asked in Passenger's dialog with a wrong one saying why, quitting
-    /// while git waits for it leaving no index lock, a cherry-pick signed, a key that is not there failing the commit
-    /// naming the way to mend it, and Commit Signing setting SSH up in the repository's config alone.</summary>
+    /// <summary>Signing with an SSH key as one flow, every step needing ssh-keygen: the Commit window signing with the key
+    /// git's config names, signing turned off for one commit and sign-off kept, the key's passphrase asked in Passenger's
+    /// dialog with a wrong one saying why, quitting while git waits for it leaving no index lock, a cherry-pick signed, a
+    /// key that is not there failing the commit naming the way to mend it, and the first commit git signs nothing of
+    /// asking whether to sign, then Commit Signing setting SSH up in the repository's config alone.</summary>
     [AvaloniaFact]
     public void A_commit_is_signed_with_the_SSH_key_gits_config_names_asking_its_passphrase_in_Passengers_dialog()
     {
@@ -376,11 +376,35 @@ public sealed class CommitSigningTests : IDisposable
         File.WriteAllText(Path.Combine(root, "Shop.cs"), "class Shop\n{\n}\n");
         TestGit.Init(root);
         string key = Ui.AwaitPumped(Waiting.Apart(() => TestSshKeys.MakeAsync(keys, "mine")), "the test's key", TimeSpan.FromMinutes(1));
-        string global = File.ReadAllText(Environment.GetEnvironmentVariable("GIT_CONFIG_GLOBAL")!);
+        string global = Environment.GetEnvironmentVariable(GitVariables.ConfigGlobal)!;
+        string globalText = File.ReadAllText(global);
 
-        MainWindow window = Open(root);
+        // Seen, and on a state of its own, as only a window the person sees asks them, once a state.
+        string state = TestFolders.Create("signing-asked-state-");
+        folders.Add(state);
+        MainWindow window = new() { Width = 1200, Height = 800, StartsLanguageServer = false, StateFolder = state, Unseen = false };
+        window.Show();
+        window.OpenFolder(root);
+        Ui.Settle();
+        window.Perform(AppActions.ShowCommit);
         CommitView commit = window.CommitView;
         Ui.Landed(() => commit.SignWith == "Sign: not set up" && !commit.CanSign, $"the Commit window with no key to sign with, where it says \"{commit.SignWith}\"");
+
+        // The first commit git signs nothing of asks, without taking the keys, whether to sign commits, naming where it may be set; Set Up… opens Commit Signing….
+        Commit(window, root, "Before signing");
+        Ui.WaitFor(() => window.Questions.Showing(Passenger.App.Settings.Declared.CommitSigning) is not null, "the question whether to sign commits, at the first commit git signs nothing of");
+        ConfirmDialog asked = window.Questions.Showing(Passenger.App.Settings.Declared.CommitSigning)!;
+        Assert.False(asked.IsActive, "The question took the keys from what the person was doing");
+        Assert.DoesNotContain(asked.GetVisualDescendants().OfType<Button>(), b => b.IsDefault);
+        string words = string.Join(" ", asked.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text));
+        Assert.True(words.Contains("Git signs none of your commits", StringComparison.Ordinal) && words.Contains(PathNames.Shown(global, null), StringComparison.Ordinal)
+            && words.Contains(".git/config", StringComparison.Ordinal), $"The question did not say what it asks and which git configs it may set: {words}");
+        Ui.ClickButton(asked, "Set Up…");
+        Ui.PumpUntil(() => window.CommitSigning is { IsVisible: true }, "Commit Signing's dialog, from the question");
+        Assert.True(window.Questions.WasAsked(Passenger.App.Settings.Declared.CommitSigning), "Set Up… was not kept as the state's answer");
+        Ui.ClickButton(window.CommitSigning!, "Cancel");
+        Ui.PumpUntil(() => window.CommitSigning is null, "Commit Signing's dialog to close");
+
         Assert.True(window.Perform(AppActions.CommitSigning), window.Status);
         Ui.PumpUntil(() => window.CommitSigning is { IsVisible: true }, "Commit Signing's dialog");
         CommitSigningDialog dialog = DialogButtonsTests.Check(window.CommitSigning!);
@@ -401,10 +425,11 @@ public sealed class CommitSigningTests : IDisposable
         string publicKey = string.Join(' ', TestSshKeys.Public(key).Split(' ')[..2]);
         Assert.True(File.ReadAllText(signers) == $"tests@passenger.invalid namespaces=\"git\" {publicKey}\n",
             $"The repository's allowed signers file holds\n{File.ReadAllText(signers)}\nnot the committer's email and key");
-        Assert.True(File.ReadAllText(Environment.GetEnvironmentVariable("GIT_CONFIG_GLOBAL")!) == global, "Commit Signing set in this repository changed the global git config");
+        Assert.True(File.ReadAllText(global) == globalText, "Commit Signing set in this repository changed the global git config");
 
         Commit(window, root, "Signed as set up");
         Assert.True(Show(root, "%G? %GS") == "G tests@passenger.invalid", $"The commit after Commit Signing is signed \"{Show(root, "%G? %GS")}\", not good by its committer");
+        Assert.Null(window.Questions.Showing(Passenger.App.Settings.Declared.CommitSigning));
         window.Close();
     }
 

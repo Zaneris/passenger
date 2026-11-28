@@ -1,3 +1,4 @@
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Xaml.Dialects;
 using Passenger.Xaml.Localization;
@@ -197,6 +198,10 @@ public static class XamlDiagnostics
             case XamlAttributeKind.Directive:
                 Directive(file, attribute, found);
                 return;
+            case XamlAttributeKind.Event when MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is { } handler:
+                // WinUI's x:Bind to a method, compiled as a handler.
+                Extension(file, attribute, handler, found);
+                return;
             case XamlAttributeKind.Event:
                 Handler(file, attribute, found);
                 return;
@@ -257,6 +262,7 @@ public static class XamlDiagnostics
         }
         string value = attribute.Value.Trim();
         bool named = value.StartsWith("avares://", StringComparison.Ordinal) || value.StartsWith("pack://application:", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith(WinUIDialect.AppScheme, StringComparison.OrdinalIgnoreCase)
             || (attribute.Name is "Source" or "Icon" && value.Length > 0 && !value.Contains("://", StringComparison.Ordinal));
         if (!named)
         {
@@ -289,7 +295,7 @@ public static class XamlDiagnostics
     private static void Directive(XamlFile file, XmlAttribute attribute, List<XamlDiagnostic> found)
     {
         XmlElement element = attribute.Owner;
-        if (!KnownDirectives.Contains(attribute.LocalName))
+        if (!KnownDirectives.Contains(attribute.LocalName) && !file.Dialect.OwnDirectives.Any(d => d.Name == attribute.LocalName))
         {
             found.Add(new XamlDiagnostic(attribute.NameRange, XamlSeverity.Error, $"Cannot resolve directive '{attribute.Name}'"));
             return;
@@ -308,8 +314,34 @@ public static class XamlDiagnostics
             case "CompileBindings" or "Shared" when !bool.TryParse(attribute.Value, out _):
                 found.Add(new XamlDiagnostic(attribute.ValueRange, XamlSeverity.Error, $"'{attribute.Value}' is not True or False"));
                 break;
+            // WinUI's: whether an element is made as it loads, which an x:Bind may say as the app runs.
+            case "Load" when !bool.TryParse(attribute.Value, out _) && MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is null:
+                found.Add(new XamlDiagnostic(attribute.ValueRange, XamlSeverity.Error, $"'{attribute.Value}' is not True or False"));
+                break;
+            case "Load" when MarkupExtension.Parse(file.Text, attribute.ValueStart, attribute.ValueEnd) is { } loaded:
+                Extension(file, attribute, loaded, found);
+                break;
+            // An element made later is found by its name, as WinUI's compiler requires (WMC0907).
+            case "Load" when XamlFile.NameAttribute(element) is not { Value.Length: > 0 }:
+                found.Add(new XamlDiagnostic(attribute.NameRange, XamlSeverity.Error, "x:Load needs the element's x:Name, by which it is made later"));
+                break;
+            case "Phase" when !int.TryParse(attribute.Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _):
+                found.Add(new XamlDiagnostic(attribute.ValueRange, XamlSeverity.Error, $"'{attribute.Value}' is not a phase, a whole number from 0"));
+                break;
+            case "Phase" when !InDataTemplate(element):
+                found.Add(new XamlDiagnostic(attribute.NameRange, XamlSeverity.Warning, "x:Phase is read only in a data template"));
+                break;
+            case "DefaultBindMode" when XBind.Modes(file).Count > 0 && !XBind.Modes(file).Contains(attribute.Value.Trim(), StringComparer.Ordinal):
+                found.Add(new XamlDiagnostic(attribute.ValueRange, XamlSeverity.Error, $"'{attribute.Value}' is not one of {Plural.Either(XBind.Modes(file))}"));
+                break;
+            case "DeferLoadStrategy" when attribute.Value.Trim() != "Lazy":
+                found.Add(new XamlDiagnostic(attribute.ValueRange, XamlSeverity.Error, $"'{attribute.Value}' is not Lazy"));
+                break;
         }
     }
+
+    /// <summary>Whether an element is inside a data template, whose items' elements x:Phase draws in turn.</summary>
+    private static bool InDataTemplate(XmlElement element) => element.Ancestors().Any(a => !a.IsPropertyElement && a.LocalName == "DataTemplate");
 
     /// <summary>An event's handler: a method of the code-behind's class, private ones included.</summary>
     private static void Handler(XamlFile file, XmlAttribute attribute, List<XamlDiagnostic> found)
@@ -386,7 +418,9 @@ public static class XamlDiagnostics
         }
         ClrType? type = file.ResolveType(element, extension.Name, extension: true);
         bool language = extension.Prefix.Length > 0 && file.KindOf(file.UriOf(element, extension.Prefix)) == XamlNamespaceKind.Language;
-        if (type is null && !(language && extension.LocalName is "Static" or "Type" or "Null" or "True" or "False" or "Reference" or "Array"))
+        bool intrinsic = !language && file.Dialect.IntrinsicExtensions.Contains(extension.LocalName) && file.UriOf(element, extension.Prefix) == file.Dialect.PresentationUri;
+        if (type is null && !intrinsic && !(language && (extension.LocalName is "Static" or "Type" or "Null" or "True" or "False" or "Reference" or "Array"
+            || file.Dialect.LanguageExtensions.Contains(extension.LocalName))))
         {
             found.Add(new XamlDiagnostic(extension.NameRange, XamlSeverity.Error, $"Cannot resolve markup extension '{extension.Name}'"));
             return;
@@ -400,11 +434,14 @@ public static class XamlDiagnostics
         }
         switch (extension.LocalName)
         {
-            case "StaticResource" or "DynamicResource" when extension.Argument(null) is { Nested: null, Value.Length: > 0 } key:
+            case "StaticResource" or "DynamicResource" or "ThemeResource" when extension.Argument(null) is { Nested: null, Value.Length: > 0 } key:
                 Resource(file, key, dynamic: extension.LocalName == "DynamicResource", found, converter: within == "Converter");
                 break;
             case "Binding" or "CompiledBinding" when !language:
                 Binding(file, attribute, extension, found, nested: within is not null);
+                break;
+            case WinUIDialect.Bind when XBind.Is(file, element, extension):
+                Bind(file, attribute, extension, found);
                 break;
             case "Type" when language && extension.Argument(null) is { Nested: null, Value.Length: > 0 } named && file.ResolveType(element, named.Value) is null:
                 found.Add(new XamlDiagnostic(named.ValueRange, XamlSeverity.Error, $"Cannot resolve symbol '{named.Value}'"));
@@ -500,6 +537,37 @@ public static class XamlDiagnostics
             return;
         }
         Steps(file, element, type, path.Value, path.ValueStart, compiled, attribute, binding.Argument("Converter") is not null, found);
+    }
+
+    /// <summary>WinUI's <c>{x:Bind}</c>, compiled into the page's class: one where nothing gives it a start (a data template
+    /// with no <c>x:DataType</c>, a file with no class) is refused, and its path is read from where it starts (<see cref="XBind"/>),
+    /// the step its start lacks marked, with a fix creating it where it is the path's last.</summary>
+    private static void Bind(XamlFile file, XmlAttribute attribute, MarkupExtension bind, List<XamlDiagnostic> found)
+    {
+        (XBindRoot? root, string? why) = XBind.RootAt(file, attribute.Owner);
+        if (why is not null)
+        {
+            found.Add(new XamlDiagnostic(bind.NameRange, XamlSeverity.Error, why));
+            return;
+        }
+        if (root is null || XBind.PathOf(bind) is not { Nested: null } path)
+        {
+            return;
+        }
+        BindingPath read = XBind.Read(file, attribute.Owner, root, path.Value, path.ValueStart);
+        if (read.Stop is not { } stop)
+        {
+            return;
+        }
+        if (read.End == PathEnd.UnknownCast)
+        {
+            found.Add(new XamlDiagnostic(stop.Range, XamlSeverity.Error, $"Cannot resolve symbol '{stop.Name}'"));
+            return;
+        }
+        found.Add(new XamlDiagnostic(stop.Range, XamlSeverity.Error, $"Cannot resolve property '{stop.Name}' on {stop.On.Name}")
+        {
+            Fixes = CreateFromUsage.Property(file, stop.On, stop.Name, attribute, last: read.StopsLast && bind.Argument("Converter") is null) is { } create ? [create] : [],
+        });
     }
 
     /// <summary>A <c>&lt;Binding&gt;</c> element, which compiles as a <c>{Binding}</c> does where bindings compile: one

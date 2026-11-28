@@ -17,10 +17,12 @@ public static class McpTools
     public const string ApplyCodeAction = "apply_code_action";
     public const string BreakpointSet = "breakpoint_set";
     public const string Build = "build";
+    public const string Clones = "clones";
     public const string CodeActions = "code_actions";
     public const string ContainerAction = "container_action";
     public const string ContainerExec = "container_exec";
     public const string Containers = "containers";
+    public const string Database = "database";
     public const string DebugAttach = "debug_attach";
     public const string DebugContinue = "debug_continue";
     public const string DebugEvaluate = "debug_evaluate";
@@ -31,6 +33,7 @@ public static class McpTools
     public const string DebugState = "debug_state";
     public const string DebugStep = "debug_step";
     public const string Definition = "definition";
+    public const string Dependencies = "dependencies";
     public const string Diagnostics = "diagnostics";
     public const string Edit = "edit";
     public const string EditorText = "editor_text";
@@ -80,13 +83,13 @@ public static class McpTools
     /// (<see cref="Refusals.UntrustedFeeds"/>).</summary>
     public static IReadOnlyDictionary<string, string> Untrusted { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        [Build] = Refusals.Untrusted,
-        [Run] = Refusals.Untrusted,
-        [DebugStart] = Refusals.Untrusted,
-        [TestsRun] = Refusals.Untrusted,
-        [Profile] = Refusals.Untrusted,
-        [HotReload] = Refusals.Untrusted,
-        [NugetInstall] = Refusals.Untrusted,
-        [NugetSearch] = Refusals.UntrustedFeeds,
+        [Build] = Refusals.Untrusted.English,
+        [Run] = Refusals.Untrusted.English,
+        [DebugStart] = Refusals.Untrusted.English,
+        [TestsRun] = Refusals.Untrusted.English,
+        [Profile] = Refusals.Untrusted.English,
+        [HotReload] = Refusals.Untrusted.English,
+        [NugetInstall] = Refusals.Untrusted.English,
+        [NugetSearch] = Refusals.UntrustedFeeds.English,
     };
 }

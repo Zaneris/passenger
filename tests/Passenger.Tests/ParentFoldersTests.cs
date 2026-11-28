@@ -193,13 +193,13 @@ public sealed class ParentFoldersTests : IDisposable
         MainWindow window = Open(app, Path.Combine("Views", "Card.axaml"));
         try
         {
-            Assert.NotNull(window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context()));
+            Assert.NotNull(window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context())?.Shown);
             // The project comes after its file is open, as a person makes one beside the XAML they have.
             TestFolders.Write(app, "App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
             Ui.WaitFor(() => window.Session.Projects.Any(p => Path.GetFileName(p.Path) == "App.csproj"), "the window to list App.csproj once it was written");
-            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context()) is null,
+            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context())?.Shown is null,
                 () => $"XAML Preview to be offered for Card.axaml of App.csproj, which the window lists in a folder another user owns, so the person's own "
-                    + $"project gets its XAML read and previewed; it says {window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context())}");
+                    + $"project gets its XAML read and previewed; it says {window.Actions.WhyNot(AppActions.XamlPreview, window.Actions.Context())?.Shown}");
         }
         finally
         {

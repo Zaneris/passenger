@@ -13,7 +13,7 @@ public sealed class FilterMenu
 
     /// <param name="tip">What the button's tip and accessible name say.</param>
     /// <param name="items">The menu's items as the list now stands: <see cref="MenuChoice"/>s and <see cref="ListMenus.Toggle"/>s.</param>
-    public FilterMenu(string tip, Func<IReadOnlyList<Control>> items)
+    public FilterMenu(Passenger.Core.Words tip, Func<IReadOnlyList<Control>> items)
     {
         this.items = items;
         Button = ToolButtons.Toggle(IconKeys.Filter, tip);

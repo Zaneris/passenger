@@ -50,7 +50,7 @@ public sealed class ErrorsPopup : UserControl
             IdeErrors.Clear();
             Done?.Invoke(this, EventArgs.Empty);
         };
-        Button log = new() { Content = $"Show Log in {FileManager.Name}" };
+        Button log = new() { [ShownWords.ContentProperty] = ActionTitles.ShowLog(FileManager.Name) };
         log.Click += (_, _) => LogAsked?.Invoke(this, EventArgs.Empty);
         Button close = new() { Content = "Close", Classes = { StyleClasses.Primary }, IsDefault = true };
         close.Click += (_, _) => Done?.Invoke(this, EventArgs.Empty);

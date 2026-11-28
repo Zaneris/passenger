@@ -40,6 +40,7 @@ public static class Program
 			myLambdaClass.VariableShadowingMethod();
 			myClassWithGenericMethod.Test(4);
 			AsyncStackTraceClass.TestAsync().GetAwaiter().GetResult();
+			RecordedReturnsClass.Test();
 			Thread.Sleep(100);
 			//await Task.Delay(500);
 		}

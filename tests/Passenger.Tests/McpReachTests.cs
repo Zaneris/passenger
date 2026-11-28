@@ -81,14 +81,14 @@ public sealed class McpReachTests : McpRig
         {
             CallToolResult refused = await Result(client, tool, arguments);
             // edit, which changes the file, is refused as a change is.
-            string refusal = Refusals.OutOfReach(secret, folder, changes: tool == McpTools.Edit);
+            string refusal = Refusals.OutOfReach(secret, folder, changes: tool == McpTools.Edit).English;
             if (refused.IsError != true || !Text(refused).Contains(refusal, StringComparison.Ordinal))
             {
                 answered.Add($"{tool} {JsonSerializer.Serialize(arguments)}: {Text(refused)}");
             }
         }
         CallToolResult searched = await Result(client, McpTools.FindInFiles, new() { ["text"] = "STAND-IN", ["scope"] = "directory", ["directory"] = elsewhere });
-        if (searched.IsError != true || !Text(searched).Contains(Refusals.OutOfReach(elsewhere, folder, changes: false), StringComparison.Ordinal))
+        if (searched.IsError != true || !Text(searched).Contains(Refusals.OutOfReach(elsewhere, folder, changes: false).English, StringComparison.Ordinal))
         {
             answered.Add($"find_in_files in {elsewhere}: {Text(searched)}");
         }
@@ -97,7 +97,7 @@ public sealed class McpReachTests : McpRig
         foreach (string tool in new[] { McpTools.EditorText, McpTools.Open })
         {
             CallToolResult refused = await Result(client, tool, new() { ["path"] = Share });
-            if (refused.IsError != true || !Text(refused).Contains(Refusals.NeverAsked(Share), StringComparison.Ordinal))
+            if (refused.IsError != true || !Text(refused).Contains(Refusals.NeverAsked(Share).English, StringComparison.Ordinal))
             {
                 answered.Add($"{tool} {Share}: {Text(refused)}");
             }
@@ -154,7 +154,7 @@ public sealed class McpReachTests : McpRig
             })
             {
                 CallToolResult refused = await Result(client, tool, arguments);
-                string refusal = Refusals.OutOfReach(secret, folder, changes: tool == McpTools.Edit);
+                string refusal = Refusals.OutOfReach(secret, folder, changes: tool == McpTools.Edit).English;
                 if (refused.IsError != true || !Text(refused).Contains(refusal, StringComparison.Ordinal))
                 {
                     answered.Add($"{tool} {link}: {Text(refused)}");
@@ -168,7 +168,7 @@ public sealed class McpReachTests : McpRig
         Assert.True(found.GetProperty("count").GetInt32() == 1 && Assert.Single(found.GetProperty("matches").EnumerateArray()).GetProperty("path").GetString() == "Notes.txt",
             $"find_in_files answered more than the folder's own file, a link's leading out of it: {found}");
         string replaced = (await Call(client, McpTools.ReplaceInFiles, new() { ["text"] = "STAND-IN", ["replacement"] = "replaced" })).GetString()!;
-        Assert.True(replaced.Contains($"not replaced: {Refusals.OutOfReach(secret, folder, changes: true)}", StringComparison.Ordinal),
+        Assert.True(replaced.Contains($"not replaced: {Refusals.OutOfReach(secret, folder, changes: true).English}", StringComparison.Ordinal),
             $"replace_in_files did not say it left the file a link leads to as it was: {replaced}");
         Assert.Equal(Key, File.ReadAllText(secret));
         Assert.Equal("notes on the replaced\n", File.ReadAllText(Path.Combine(folder, "Notes.txt")));
@@ -200,7 +200,7 @@ public sealed class McpReachTests : McpRig
         await Call(client, McpTools.Edit, new() { ["path"] = library, ["oldText"] = "\"Hello\"", ["newText"] = "\"Hello, beside\"" });
         Assert.Contains("\"Hello, beside\"", File.ReadAllText(library), StringComparison.Ordinal);
         CallToolResult refused = await Result(client, McpTools.EditorText, new() { ["path"] = Path.Combine("..", "Notes", "notes.txt") });
-        Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.OutOfReach(beside, folder, changes: false), StringComparison.Ordinal),
+        Assert.True(refused.IsError == true && Text(refused).Contains(Refusals.OutOfReach(beside, folder, changes: false).English, StringComparison.Ordinal),
             $"editor_text of a file beside the solution's projects that none holds answered: {Text(refused)}");
     }
 
@@ -220,13 +220,13 @@ public sealed class McpReachTests : McpRig
         {
             Assert.Contains("Greeter", Text(Await(Waiting.Apart(() => Call(client, McpTools.EditorText, new() { ["path"] = "Program.cs" })), "the folder's own file")),
                 StringComparison.Ordinal);
-            string refusal = Refusals.OutOfReach(library, folder, changes: false);
+            string refusal = Refusals.OutOfReach(library, folder, changes: false).English;
             CallToolResult read = Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = Path.Combine("..", "Lib", "Greeter.cs") })), "the read beside");
             Assert.True(read.IsError == true && Text(read).Contains(refusal, StringComparison.Ordinal), $"editor_text beside an untrusted folder answered: {Text(read)}");
             Task<CallToolResult> editing = Waiting.Apart(() => Result(client, McpTools.Edit, new() { ["path"] = library, ["oldText"] = "\"Hello\"", ["newText"] = "\"written\"" }));
-            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's edit"), McpWords.AllowForSession.English);
             CallToolResult edited = Await(editing, "the edit beside");
-            Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(library, folder, changes: true), StringComparison.Ordinal),
+            Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(library, folder, changes: true).English, StringComparison.Ordinal),
                 $"edit beside an untrusted folder answered: {Text(edited)}");
             Assert.Equal(written, File.ReadAllText(library));
         }
@@ -262,7 +262,7 @@ public sealed class McpReachTests : McpRig
                 ["oldText"] = "</Solution>",
                 ["newText"] = "  <Project Path=\"/x.csproj\" />\n  <Project Path=\"../../x.csproj\" />\n  <Project Path=\"../Other/Other.csproj\" />\n</Solution>",
             }));
-            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's edit"), McpWords.AllowForSession.English);
             CallToolResult edited = Await(editing, "the agent's edit of the solution");
             Assert.True(edited.IsError != true, $"The agent's edit of the solution answered: {Text(edited)}");
             Ui.WaitFor(() => window.Projects.Any(p => p.Name == "Other"), () => $"the solution read again as the agent wrote it: {string.Join(", ", window.Projects.Select(p => p.Name))}");
@@ -270,7 +270,7 @@ public sealed class McpReachTests : McpRig
             foreach (string file in (string[])[beside, kept])
             {
                 CallToolResult read = Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = file })), $"the read of {file}");
-                Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(file, folder, changes: false), StringComparison.Ordinal),
+                Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(file, folder, changes: false).English, StringComparison.Ordinal),
                     $"editor_text of {file}, which the agent's edit of the solution named the way to, answered: {Text(read)}");
             }
             Assert.Contains("public string Greet()", Text(Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = library })), "the library's read")),
@@ -326,17 +326,17 @@ public sealed class McpReachTests : McpRig
                 ["oldText"] = "builder.Build().Run();",
                 ["newText"] = "builder.AddDotnetProject(\"other\", \"../Other/Other.csproj\");\nbuilder.Build().Run();",
             }));
-            Press(Question(window, "the question for the agent's edit"), AgentToolDialog.AllowForSession);
+            Press(Question(window, "the question for the agent's edit"), McpWords.AllowForSession.English);
             CallToolResult edited = Await(editing, "the agent's edit of the AppHost");
             Assert.True(edited.IsError != true, $"The agent's edit of the AppHost answered: {Text(edited)}");
             Ui.WaitFor(() => window.Session.AspireFiles.AppHostsRunning(PathNames.Canonical(other)).Count > 0, "the AppHost read again as the agent wrote it");
 
             CallToolResult read = Await(Waiting.Apart(() => Result(client, McpTools.EditorText, new() { ["path"] = kept })), "the read of the project the agent named");
-            Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(kept, folder, changes: false), StringComparison.Ordinal),
+            Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(kept, folder, changes: false).English, StringComparison.Ordinal),
                 $"editor_text of {kept}, which the agent's edit of the AppHost named the way to, answered: {Text(read)}");
             Assert.Equal([service], window.Session.Reached);
             Assert.False(WorkspaceTrust.Trusts(kept), "The project the agent's edit of the AppHost named beside the folder was trusted with it");
-            Assert.Equal(Refusals.NamedByAgent("Other"), window.Session.WhyNotReached(PathNames.Canonical(other)));
+            Assert.Equal(Refusals.NamedByAgent("Other").English, window.Session.WhyNotReached(PathNames.Canonical(other)));
             Assert.True(WorkspaceTrust.Trusts(greeter), "The service the AppHost named before the agent's edit was no longer trusted with it");
 
             window.OpenFile(appHost);
@@ -385,7 +385,7 @@ public sealed class McpReachTests : McpRig
         Assert.True(PathNames.IsUnder(brought, PathNames.Canonical(packages)), $"definition of the package's class led to {brought}, not its file in {packages}");
         (string Path, int Line, int Column, string Text) copied = Used(await Call(client, McpTools.Usages, new() { ["path"] = "Words.cs", ["line"] = 6, ["column"] = 34 }))[^1];
         Assert.EndsWith($"{Path.DirectorySeparatorChar}RegexGenerator.g.cs", copied.Path, StringComparison.Ordinal);
-        string ofPackage = $" is {Refusals.PackagesOwn("Passenger.Sample 1.0.0")}, so nothing changed";
+        string ofPackage = $" is {Refusals.PackagesOwn("Passenger.Sample 1.0.0").English}, so nothing changed";
         foreach ((string file, string text, string changed, string refused) in new[]
         {
             (brought, "public static string Say()", "\"brought\"", ofPackage), (copied.Path, "Regex Word()", "Word", " is read-only, so nothing changed"),
@@ -428,10 +428,10 @@ public sealed class McpReachTests : McpRig
         {
             string through = Path.Combine(linked, "MetadataAsSource", "id_stand_in");
             CallToolResult read = await Result(client, McpTools.EditorText, new() { ["path"] = through });
-            Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(secret, folder, changes: false), StringComparison.Ordinal),
+            Assert.True(read.IsError == true && Text(read).Contains(Refusals.OutOfReach(secret, folder, changes: false).English, StringComparison.Ordinal),
                 $"editor_text through a link in the server's place answered: {Text(read)}");
             CallToolResult edited = await Result(client, McpTools.Edit, new() { ["path"] = through, ["oldText"] = "not a key", ["newText"] = "written" });
-            Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(secret, folder, changes: true), StringComparison.Ordinal),
+            Assert.True(edited.IsError == true && Text(edited).Contains(Refusals.OutOfReach(secret, folder, changes: true).English, StringComparison.Ordinal),
                 $"edit through a link in the server's place answered: {Text(edited)}");
         }
         Assert.Equal(Key, File.ReadAllText(secret));

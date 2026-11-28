@@ -26,6 +26,15 @@ public enum ClosedToolWindows
     LeaveStripe,
 }
 
+/// <summary>When the side tool windows run the window's whole height, the bottom ones between them: once the window is
+/// wide for its height, and back once it is not, always, or never.</summary>
+public enum WideLayout
+{
+    OnceWide,
+    Always,
+    Never,
+}
+
 /// <summary>Where Find in Files' results stay once a match is gone to: in its popup alone, closed with it, or kept in the
 /// Find window as well, to go back to.</summary>
 public enum FindResults

@@ -108,12 +108,12 @@ public partial class MainWindow
 
     private void AddUpdates()
     {
-        actions!.Add(new IdeAction(AppActions.CheckForUpdates, "Check for Updates…", "Help",
+        actions!.Add(new IdeAction(AppActions.CheckForUpdates, ActionTitles.CheckForUpdates, ActionGroups.Help,
             context => IdeErrors.Observe(CheckForUpdatesAskedAsync()))
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 1)],
         });
-        actions.Add(new IdeAction(AppActions.RestartToUpdate, "Restart to Update", "Help", _ => RestartToUpdate())
+        actions.Add(new IdeAction(AppActions.RestartToUpdate, ActionTitles.RestartToUpdate, ActionGroups.Help, _ => RestartToUpdate())
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.RestartIsThePersons
                 : UpdatesOwner.readyRelease is null ? "No update is downloaded and ready to install"
@@ -468,7 +468,7 @@ public partial class MainWindow
     /// refused to an agent's input (<see cref="RefusedToAgentsInput"/>), else the window watching for updates restarts.</summary>
     private void RestartToUpdate()
     {
-        if (!RefusedToAgentsInput(Refusals.RestartIsThePersons))
+        if (!RefusedToAgentsInput(Refusals.RestartIsThePersons.Shown))
         {
             IdeErrors.Observe(UpdatesOwner.RestartToUpdateAsync());
         }

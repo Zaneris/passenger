@@ -27,7 +27,7 @@ public partial class MainWindow
         Action<string, byte[]?, byte[]> wrote = (path, _, _) => WroteForGodot(path);
         Text.FileText.Wrote += wrote;
         Closed += (_, _) => Text.FileText.Wrote -= wrote;
-        actions!.Add(new IdeAction(AppActions.GodotAddon, "Install Passenger's Godot Addon…", "Godot", _ => IdeErrors.Observe(InstallGodotAddonAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotAddon, ActionTitles.GodotAddon, ActionGroups.Godot, _ => IdeErrors.Observe(InstallGodotAddonAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 7)],
@@ -59,7 +59,7 @@ public partial class MainWindow
     {
         if (GodotAtHand() is not { } folder)
         {
-            return Said(working, false, Refusals.NoGodotProject);
+            return Said(working, false, Refusals.NoGodotProject.Shown);
         }
         string file = Path.Combine(folder, GodotProject.FileName);
         if (SaveBeforeWriting([file]) is { } unsaved)
@@ -182,7 +182,7 @@ public partial class MainWindow
                     : "Godot's editor let go of this window";
             }
         };
-        link.Handle("build", (peer, _) => session == next ? GodotPlayBuildAsync(peer) : throw new GodotEditorRefused(Refusals.SolutionClosed));
+        link.Handle("build", (peer, _) => session == next ? GodotPlayBuildAsync(peer) : throw new GodotEditorRefused(Refusals.SolutionClosed.Shown));
         link.Hear("started", (peer, told) =>
         {
             if (session == next && JsonMembers.Number(told, "session") is int id)
@@ -293,8 +293,8 @@ public partial class MainWindow
         if (!built.Succeeded)
         {
             edits?.Dispose();
-            status.Text = $"Godot's Play stopped: {built.Message}";
-            return new JsonObject { ["built"] = false, ["said"] = built.Message };
+            status.Text = $"Godot's Play stopped: {built.Message.Shown}";
+            return new JsonObject { ["built"] = false, ["said"] = built.Message.Shown };
         }
         JsonObject variables = [];
         bool debugs = peer.Debugs ?? settings.GodotDebugPlays;
@@ -311,7 +311,7 @@ public partial class MainWindow
         {
             edits?.Dispose();
         }
-        return new JsonObject { ["built"] = true, ["said"] = built.Message, ["variables"] = variables };
+        return new JsonObject { ["built"] = true, ["said"] = built.Message.Shown, ["variables"] = variables };
     }
 
     /// <summary>A game the editor's session began with, relayed into the window's session as a game of its own, named after
@@ -359,7 +359,7 @@ public partial class MainWindow
             else if (await into.Debug.AttachAsync(process, game.Name, hotReload: true, edits: peer.Kept is { } kept ? into.Debug.Copied(kept) : null,
                 startedElsewhere: $"{game.Name} is played by Godot's editor, whose Output shows what it prints; Stop here lets it go on in Godot") is { } refused)
             {
-                undebugged = refused;
+                undebugged = refused.Shown;
             }
             else
             {

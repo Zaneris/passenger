@@ -47,7 +47,7 @@ public static class FunctionsHost
     private static readonly TimeSpan WorkerLimit = TimeSpan.FromMinutes(1);
 
     /// <summary>Why a debugged Functions app runs undebugged: func started no worker within its time.</summary>
-    public static string NoWorker => Refusals.NoFunctionsWorker(Waits.Of(WorkerLimit));
+    public static Words NoWorker => Refusals.NoFunctionsWorker(Waits.Of(WorkerLimit));
 
     /// <summary>The worker func started for a Functions app, off the window's thread, while func runs and within its limit;
     /// null where none came.</summary>

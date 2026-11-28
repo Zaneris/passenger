@@ -95,6 +95,8 @@ public sealed class ToolHeaderTests : IDisposable
             List<string> wrong = [];
             foreach (ToolWindow tool in dock.Windows.ToList())
             {
+                // A window that starts among the editors has its header once docked.
+                dock.SetMode(tool, ToolMode.Docked);
                 // Another side's window, whose menu lies over none of this one's header (the Explorer's covers the one below).
                 string beside = tool.Anchor is ToolAnchor.LeftTop or ToolAnchor.LeftBottom ? ToolWindowIds.Run : ToolWindowIds.Explorer;
                 dock.Show(tool.Id);

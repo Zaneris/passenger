@@ -308,7 +308,7 @@ public sealed partial class CodeEditor
     private RowSpan? RowSpanAt(TextSnapshot text, Point point)
     {
         (int line, int row) = Rows.LineOfRow(RowAtY(point.Y));
-        return line < 0 || line >= text.LineCount ? null : RowSpanOf(text, line, row);
+        return line < 0 || line >= text.LineCount || row < 0 ? null : RowSpanOf(text, line, row);
     }
 
     /// <summary>The carets for a click at an offset, standing on the side of the hints there that the click was nearer.</summary>

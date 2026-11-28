@@ -7,6 +7,8 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Docking;
 
@@ -64,14 +66,14 @@ internal sealed class ToolPane : DockPanel
     public ToolPane(DockHost host)
     {
         this.host = host;
-        expandAll = ToolButtons.Of(AppActions.ExpandAll, IconKeys.ExpandAll, "Expand All", Ask);
-        collapseAll = ToolButtons.Of(AppActions.CollapseAll, IconKeys.CollapseAll, "Collapse All", Ask);
-        Button options = HeaderButton(IconKeys.More, "Options");
-        hide = HeaderButton(IconKeys.Minimize, "Hide");
+        expandAll = ToolButtons.Of(AppActions.ExpandAll, IconKeys.ExpandAll, DockingWords.ExpandAll, Ask);
+        collapseAll = ToolButtons.Of(AppActions.CollapseAll, IconKeys.CollapseAll, DockingWords.CollapseAll, Ask);
+        Button options = HeaderButton(IconKeys.More, DockingWords.Options);
+        hide = HeaderButton(IconKeys.Minimize, DockingWords.Hide);
         hideGlyph = (PathIcon)hide.Content!;
         pinGlyph = Pin(standing: true);
-        close = HeaderButton(IconKeys.Close, "Close");
-        dock = HeaderButton(IconKeys.Pin, "Dock");
+        close = HeaderButton(IconKeys.Close, DockingWords.Close);
+        dock = HeaderButton(IconKeys.Pin, DockingWords.Dock);
         dock.Content = Pin(standing: false);
         dock.IsVisible = false;
         dock.Click += (_, _) =>
@@ -82,7 +84,7 @@ internal sealed class ToolPane : DockPanel
             }
         };
         close.Name = AppActions.CloseToolWindow;
-        ActionTips.Set(close, AppActions.CloseToolWindow, "Close");
+        ActionTips.Set(close, AppActions.CloseToolWindow, DockingWords.Close);
         close.IsVisible = false;
         close.Click += (_, _) =>
         {
@@ -92,7 +94,7 @@ internal sealed class ToolPane : DockPanel
             }
         };
         hide.Name = AppActions.HideToolWindow;
-        ActionTips.Set(hide, AppActions.HideToolWindow, "Hide");
+        ActionTips.Set(hide, AppActions.HideToolWindow, DockingWords.Hide);
         // Read before the open menu's light dismiss closes it, which then passes the press on to Options.
         options.AddHandler(PointerPressedEvent, (_, _) => pressedOpen = optionsMenu is { IsOpen: true }, RoutingStrategies.Tunnel, handledEventsToo: true);
         options.AddHandler(PointerReleasedEvent, (_, _) => pressedOpen = false, handledEventsToo: true);
@@ -174,7 +176,7 @@ internal sealed class ToolPane : DockPanel
         header.PointerMoved += (_, e) => host.Drag.Continue(e);
         header.PointerReleased += (_, e) => host.Drag.End(e);
         Children.Add(header);
-        hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, "Hidden Tool Windows", ShowHiddenTabs);
+        hiddenTabs = ToolButtons.Of(IconKeys.ChevronDown, DockingWords.HiddenToolWindows, ShowHiddenTabs);
         // Unlike a toolbar's button, it takes the keys: it lists windows to go to, as the tabs beside it do.
         hiddenTabs.Focusable = true;
         hiddenTabs.VerticalAlignment = VerticalAlignment.Center;
@@ -269,7 +271,7 @@ internal sealed class ToolPane : DockPanel
             if (value != AutoHides)
             {
                 hide.Content = value ? pinGlyph : hideGlyph;
-                ActionTips.Set(hide, AppActions.HideToolWindow, value ? "Auto Hide" : "Hide");
+                ActionTips.Set(hide, AppActions.HideToolWindow, value ? DockingWords.AutoHide : DockingWords.Hide);
             }
         }
     }
@@ -304,7 +306,7 @@ internal sealed class ToolPane : DockPanel
                 old.Content = null;
             }
             body.Content = window.Content;
-            title.Text = window.Title;
+            ShownWords.Set(title, TextBlock.TextProperty, window.Title);
             if (window.HeaderTools?.Parent is ContentControl holder)
             {
                 holder.Content = null;
@@ -382,10 +384,9 @@ internal sealed class ToolPane : DockPanel
             return made;
         }
         RowIcon icon = new() { DataKey = window.Icon };
-        TextBlock name = new() { Classes = { StyleClasses.TabName }, Text = window.Title, VerticalAlignment = VerticalAlignment.Center };
-        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true };
+        TextBlock name = new() { Classes = { StyleClasses.TabName }, [ShownWords.TextProperty] = window.Title, VerticalAlignment = VerticalAlignment.Center };
+        Border tab = new() { Classes = { StyleClasses.Tab }, Tag = window.Id, Focusable = true, [ShownWords.NameProperty] = window.Title };
         ChosenMark.Hold(tab, new StackPanel { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, VerticalAlignment = VerticalAlignment.Center, Children = { icon, name } });
-        Avalonia.Automation.AutomationProperties.SetName(tab, window.Title);
         Avalonia.Automation.AutomationProperties.SetControlTypeOverride(tab, Avalonia.Automation.Peers.AutomationControlType.Button);
         tab.KeyDown += (_, e) =>
         {
@@ -400,7 +401,7 @@ internal sealed class ToolPane : DockPanel
         {
             if (e.PropertyName == nameof(ToolWindow.Title))
             {
-                name.Text = window.Title;
+                ShownWords.Set(name, TextBlock.TextProperty, window.Title);
             }
         };
         tab.PointerPressed += (_, e) =>
@@ -435,7 +436,7 @@ internal sealed class ToolPane : DockPanel
     {
         if (e.PropertyName == nameof(ToolWindow.Title) && Window is { } window)
         {
-            title.Text = window.Title;
+            ShownWords.Set(title, TextBlock.TextProperty, window.Title);
         }
     }
 
@@ -443,14 +444,14 @@ internal sealed class ToolPane : DockPanel
     {
         MenuFlyout menu = new();
         // Where the window stands and how it is shown are each one value among several, the one in force ticked.
-        MenuItem move = ToolWindows.ListMenus.Sub("Move to", Enum.GetValues<ToolAnchor>().Select(anchor => MenuChoice.Of(ToolWindow.Name(anchor), Window?.Anchor == anchor, () =>
+        MenuItem move = ToolWindows.ListMenus.Sub(DockingWords.MoveTo, Enum.GetValues<ToolAnchor>().Select(anchor => MenuChoice.Of(ToolWindow.Name(anchor), Window?.Anchor == anchor, () =>
         {
             if (Window is { } window)
             {
                 host.Move(window, anchor);
             }
         })));
-        MenuItem mode = ToolWindows.ListMenus.Sub("View Mode", new[] { (ToolMode.Docked, "Dock"), (ToolMode.Floating, "Float"), (ToolMode.Windowed, "Window"), (ToolMode.Editor, "Editor Tab") }
+        MenuItem mode = ToolWindows.ListMenus.Sub(DockingWords.ViewMode, new[] { (ToolMode.Docked, DockingWords.Docked), (ToolMode.Floating, DockingWords.Floating), (ToolMode.Windowed, DockingWords.Windowed), (ToolMode.Editor, DockingWords.InEditor) }
             .Select(each => MenuChoice.Of(each.Item2, Window?.Mode == each.Item1, () =>
             {
                 if (Window is { } window)
@@ -458,8 +459,8 @@ internal sealed class ToolPane : DockPanel
                     host.SetMode(window, each.Item1);
                 }
             })));
-        MenuItem maximize = ToolWindows.ListMenus.Item(host.IsMaximized ? "Restore Size" : "Maximize", () => host.ToggleMaximize(Window), Floating is null && !Peeking ? null : Refusals.Unmaximized);
-        MenuItem hide = ToolWindows.ListMenus.Item("Hide", () =>
+        MenuItem maximize = ToolWindows.ListMenus.Item(host.IsMaximized ? DockingWords.RestoreSize : DockingWords.Maximize, () => host.ToggleMaximize(Window), Floating is null && !Peeking ? null : Refusals.Unmaximized);
+        MenuItem hide = ToolWindows.ListMenus.Item(DockingWords.Hide, () =>
         {
             if (Window is { } window)
             {
@@ -480,7 +481,7 @@ internal sealed class ToolPane : DockPanel
         menu.Items.Add(new Separator());
         if (Peeking)
         {
-            menu.Items.Add(ToolWindows.ListMenus.Item("Dock", () =>
+            menu.Items.Add(ToolWindows.ListMenus.Item(DockingWords.Dock, () =>
             {
                 if (Window is { } window)
                 {
@@ -491,7 +492,7 @@ internal sealed class ToolPane : DockPanel
         menu.Items.Add(hide);
         if (Closes)
         {
-            menu.Items.Add(ToolWindows.ListMenus.Item("Close", () =>
+            menu.Items.Add(ToolWindows.ListMenus.Item(DockingWords.Close, () =>
             {
                 if (Window is { } window)
                 {
@@ -502,5 +503,5 @@ internal sealed class ToolPane : DockPanel
         return menu;
     }
 
-    private static Button HeaderButton(string icon, string tip) => ToolButtons.Glyph(icon, tip);
+    private static Button HeaderButton(string icon, Words tip) => ToolButtons.Glyph(icon, tip);
 }

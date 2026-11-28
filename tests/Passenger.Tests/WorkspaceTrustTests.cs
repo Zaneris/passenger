@@ -82,7 +82,7 @@ public sealed class WorkspaceTrustTests
             Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
             Ui.Settle();
 
-            Assert.Equal(Refusals.UntrustedSaid, window.TrustSaid);
+            Assert.Equal(Refusals.UntrustedSaid.Shown, window.TrustSaid);
             Assert.True(window.Vcs.Branch is { Length: > 0 }, "Git's status was not read in the folder not trusted, where it runs without the repository's programs");
             Assert.False(File.Exists(monitored), "Git ran the repository's fsmonitor in a folder not trusted");
             Assert.Null(window.Session.CSharp);
@@ -93,19 +93,19 @@ public sealed class WorkspaceTrustTests
             foreach (string action in (string[])[AppActions.Build, AppActions.RunProgram, AppActions.Debug, AppActions.RunAllTests, AppActions.Profile,
                 AppActions.Push, AppActions.Fetch, AppActions.UpdateProject, AppActions.ChooseBuildConfiguration])
             {
-                Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(action, window.Actions.Context()));
+                Assert.Equal(Refusals.Untrusted.Shown, window.Actions.WhyNot(action, window.Actions.Context())?.Shown);
             }
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.WaitFor(() => File.Exists(monitored), "Git's status to run the repository's fsmonitor once the folder is trusted");
             Ui.WaitFor(() => File.Exists(built), () => $"a design-time build to run Directory.Build.targets' Exec once the folder is trusted (the C# server {window.Session.CSharp?.State ?? "never started"})",
                 TimeSpan.FromMinutes(3));
             Assert.Null(window.TrustSaid);
             Assert.True(window.Session.Models.Evaluations > 0, "The projects were not evaluated once the folder was trusted");
-            Assert.Null(window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
-            Assert.Null(window.Actions.WhyNot(AppActions.Fetch, window.Actions.Context()));
-            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.ChooseBuildConfiguration, window.Actions.Context()) is null,
-                () => $"the build configurations offered once the folder is trusted, where Choose Build Configuration says {window.Actions.WhyNot(AppActions.ChooseBuildConfiguration, window.Actions.Context())}");
+            Assert.Null(window.Actions.WhyNot(AppActions.Build, window.Actions.Context())?.Shown);
+            Assert.Null(window.Actions.WhyNot(AppActions.Fetch, window.Actions.Context())?.Shown);
+            Ui.WaitFor(() => window.Actions.WhyNot(AppActions.ChooseBuildConfiguration, window.Actions.Context())?.Shown is null,
+                () => $"the build configurations offered once the folder is trusted, where Choose Build Configuration says {window.Actions.WhyNot(AppActions.ChooseBuildConfiguration, window.Actions.Context())?.Shown}");
         }
         finally
         {
@@ -136,13 +136,13 @@ public sealed class WorkspaceTrustTests
             Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
             Ui.Settle();
             Assert.False(window.Session.Trusted);
-            Assert.Equal(Refusals.UntrustedSaid, window.TrustSaid);
+            Assert.Equal(Refusals.UntrustedSaid.Shown, window.TrustSaid);
 
             Open(window, elsewhere);
             Ui.ClickButton(Asked(window), WorkspaceTrustDialog.Untrusted);
             Open(window, first);
             Assert.Null(window.AskingTrust);
-            Assert.Equal(Refusals.UntrustedSaid, window.TrustSaid);
+            Assert.Equal(Refusals.UntrustedSaid.Shown, window.TrustSaid);
 
             Open(window, second);
             Ui.ClickButton(Asked(window), WorkspaceTrustDialog.TrustParent);
@@ -196,7 +196,7 @@ public sealed class WorkspaceTrustTests
             Assert.Contains(WorkspaceTrustDialog.InRepository(app, repository), Avalonia.Automation.AutomationProperties.GetHelpText(question), StringComparison.Ordinal);
             Ui.ClickButton(question, WorkspaceTrustDialog.Untrusted);
             Ui.Settle();
-            Assert.Equal(Refusals.UntrustedInRepository(repository), window.TrustSaid);
+            Assert.Equal(Refusals.UntrustedInRepository(repository).Shown, window.TrustSaid);
 
             SettingsDialog settings = window.ShowSettings();
             Ui.Settle();
@@ -217,9 +217,9 @@ public sealed class WorkspaceTrustTests
             Ui.Settle();
             Assert.False(window.Session.Trusted, "The folder's window stayed trusted once its repository's trust was taken back");
             Assert.False(WorkspaceTrust.Trusts(app) || WorkspaceTrust.Trusts(tools), "A folder in the repository stayed trusted once the repository's trust was taken back");
-            Assert.Equal(Refusals.UntrustedInRepository(repository), window.TrustSaid);
+            Assert.Equal(Refusals.UntrustedInRepository(repository).Shown, window.TrustSaid);
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Settle();
             Assert.True(window.Session.Trusted && WorkspaceTrust.Trusts(tools), "The banner's Trust Folder did not trust the folder's Git repository");
         }
@@ -323,7 +323,7 @@ public sealed class WorkspaceTrustTests
                 () => $"the status bar to name Passenger's TypeScript in the folder not trusted ({window.LanguageShown})");
             Assert.False(File.Exists(ran), "The folder's own tsserver ran before the folder was trusted");
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.WaitFor(() => File.Exists(ran), () => $"the folder's own tsserver to run once it is trusted ({window.LanguageShown})");
         }
         finally
@@ -369,12 +369,12 @@ public sealed class WorkspaceTrustTests
 
             Assert.False(window.Session.Trusted, "The folder's window stayed trusted once its trust was taken back");
             Assert.Null(window.Session.CSharp);
-            Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(AppActions.Build, window.Actions.Context()));
+            Assert.Equal(Refusals.Untrusted.Shown, window.Actions.WhyNot(AppActions.Build, window.Actions.Context())?.Shown);
             Assert.True(window.Runner.IsRunning, "Taking the trust back ended the program the person started");
-            Assert.Equal(Refusals.UntrustedRunsOn(["the program"]), window.TrustSaid);
+            Assert.Equal(Refusals.UntrustedRunsOn(["the program"]).Shown, window.TrustSaid);
             window.Perform(AppActions.Stop);
             Ui.WaitFor(() => !window.Runner.IsRunning, "the program to stop");
-            Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid, () => $"the banner to say only that the folder is not trusted once the program ended ({window.TrustSaid})");
+            Ui.WaitFor(() => window.TrustSaid == Refusals.UntrustedSaid.Shown, () => $"the banner to say only that the folder is not trusted once the program ended ({window.TrustSaid})");
 
             Ui.Click(row.Forget);
             Assert.Null(settings.TrustedFolders.Of(folder));
@@ -417,7 +417,7 @@ public sealed class WorkspaceTrustTests
             dialog.Framework = TestProjects.Framework;
             NewServiceSetupTests.Created(dialog, "the class library");
 
-            Assert.Equal($"Lib did not restore: {Refusals.Untrusted}", NewServiceSetupTests.SetUp(window));
+            Assert.Equal($"Lib did not restore: {Refusals.Untrusted.Shown}", NewServiceSetupTests.SetUp(window));
             Assert.True(File.Exists(Path.Combine(folder, "Lib", "Lib.csproj")), $"No Lib.csproj was made: {window.Status}");
             Assert.Contains("Lib/Lib.csproj", File.ReadAllText(Path.Combine(folder, "Shop.slnx")), StringComparison.Ordinal);
             Assert.False(File.Exists(Path.Combine(folder, "Lib", "obj", "project.assets.json")), "The project made in the folder not trusted was restored");
@@ -478,9 +478,9 @@ public sealed class WorkspaceTrustTests
             Assert.NotNull(window.Session.Configurations.Chosen);
             Assert.Equal(0, window.Session.Models.Evaluations);
             Assert.False(File.Exists(asked), "MSBuild ran the mobile project's target in the folder not trusted, from what its cache kept");
-            Assert.Equal(Refusals.Untrusted, window.Actions.WhyNot(AppActions.ChooseRunTarget, window.Actions.Context()));
+            Assert.Equal(Refusals.Untrusted.Shown, window.Actions.WhyNot(AppActions.ChooseRunTarget, window.Actions.Context())?.Shown);
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.WaitFor(() => File.Exists(asked), () => $"the workload's question to run once the folder is trusted: {Ui.Said(window)}", TimeSpan.FromMinutes(2));
         }
         finally
@@ -528,7 +528,7 @@ public sealed class WorkspaceTrustTests
             Assert.True(File.Exists(Path.Combine(folder, "Lib", "Lib.csproj")), $"No Lib.csproj was made: {window.Status}");
             Assert.False(File.Exists(ran), $"The SDK the folder's global.json names ran in the folder not trusted, asked {(File.Exists(ran) ? File.ReadAllText(ran) : null)}");
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Settle();
             Ui.Run(window, AppActions.NewProject);
             Ui.WaitFor(() => File.Exists(ran), () => $"New Project's read of the templates to run the SDK the folder's global.json names once it is trusted: {Ui.Said(window)}",
@@ -647,7 +647,7 @@ public sealed class WorkspaceTrustTests
             CommitResult refused = Ui.Landed(window.Vcs.CommitAsync([picture.Change], "The picture", amend: false, push: false), "the commit's answer");
             Assert.Equal(Why, refused.Commit.Message);
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
             Ui.Landed(() => commit.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Picture.bin" && r.CanChoose), "Picture.bin offered for commit once the folder is trusted");
         }
         finally
@@ -692,7 +692,7 @@ public sealed class WorkspaceTrustTests
             Ui.Settle();
             Assert.False(rollback.IsEnabled, "Rollback of Picture.bin is offered in a folder not trusted, where git would write it out as it keeps it");
             Assert.Equal($"Rollback: {Why}", ToolTip.GetTip(rollback));
-            Assert.Equal(Why, window.Actions.WhyNot(AppActions.Stash, window.Actions.Context()));
+            Assert.Equal(Why, window.Actions.WhyNot(AppActions.Stash, window.Actions.Context())?.Shown);
             VcsOutcome refused = Ui.Landed(window.Vcs.RollbackAsync([.. commit.Rows.OfType<CommitRow>().Select(r => r.Change)]), "the rollback's answer");
             Assert.Equal((false, Why), (refused.Succeeded, refused.Message));
             Assert.Equal("two\n", File.ReadAllText(picture));
@@ -711,8 +711,8 @@ public sealed class WorkspaceTrustTests
             Assert.Equal((false, Why), (switched.Succeeded, switched.Message));
             Assert.Equal(("main", "two\n"), (window.Vcs.Branch, File.ReadAllText(picture)));
 
-            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title);
-            Ui.Landed(() => window.Actions.WhyNot(AppActions.Stash, window.Actions.Context()) is null, "Stash Changes offered once the folder is trusted");
+            Ui.ClickButton(window, window.Actions[AppActions.TrustFolder]!.Title.English);
+            Ui.Landed(() => window.Actions.WhyNot(AppActions.Stash, window.Actions.Context())?.Shown is null, "Stash Changes offered once the folder is trusted");
             MenuItem trusted = window.GitBranches.Menu(pictured).OfType<MenuItem>().Single(i => (string?)i.Header == "Checkout");
             Ui.Settle();
             Assert.True(trusted.IsEnabled, "Checkout of pictured is still greyed once the folder is trusted");

@@ -16,6 +16,7 @@
     "net11.0/osx-arm64": {},
     "net11.0/osx-x64": {},
     "net11.0/win-arm64": {},
-    "net11.0/win-x64": {}
+    "net11.0/win-x64": {},
+    "net11.0/win-x86": {}
   }
 }

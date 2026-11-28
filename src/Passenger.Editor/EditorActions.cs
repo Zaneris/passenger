@@ -1,3 +1,5 @@
+using Passenger.Core;
+
 namespace Passenger.Editor;
 
 /// <summary>The editor's actions, by the name a keymap binds. Movements extend the selection when
@@ -40,11 +42,27 @@ public static class EditorActions
     public const string JoinLines = "editor.joinLines";
     public const string ToggleCase = "editor.toggleCase";
     public const string CutToLineEnd = "editor.cutToLineEnd";
+
+    // Rider's EditorSplitLine (a line break the caret stays before), EditorDeleteToLineStart and EditorDeleteToLineEnd,
+    // EditorTranspose (the characters around the caret swapped), EditorToggleInsertState (typing over the text, a block
+    // caret) and EditorToggleColumnMode (Shift's moves and a plain drag selecting a column), as its keymaps bind them.
+    public const string SplitLine = "editor.splitLine";
+    public const string DeleteToLineStart = "editor.deleteToLineStart";
+    public const string DeleteToLineEnd = "editor.deleteToLineEnd";
+    public const string Transpose = "editor.transpose";
+    public const string ToggleOverwrite = "editor.toggleOverwrite";
+    public const string ToggleColumnMode = "editor.toggleColumnMode";
     public const string Undo = "editor.undo";
     public const string Redo = "editor.redo";
     public const string Cut = "editor.cut";
     public const string Copy = "editor.copy";
     public const string Paste = "editor.paste";
+
+    // Rider's EditorPasteSimple, the clipboard's text pasted as it is, indented as nothing else; and HippieCompletion and
+    // HippieBackwardCompletion, a word begun at the caret finished as a word the text has, a press stepping to the next.
+    public const string PasteAsPlainText = "editor.pasteAsPlainText";
+    public const string ExpandWord = "editor.expandWord";
+    public const string ExpandWordBackward = "editor.expandWordBackward";
     public const string SelectAll = "editor.selectAll";
     public const string SelectNextOccurrence = "editor.selectNextOccurrence";
     public const string UnselectOccurrence = "editor.unselectOccurrence";
@@ -92,36 +110,49 @@ public static class EditorActions
     public const string ColumnSelectionDrag = "editor.columnSelectionDrag";
     public const string AddColumnSelectionDrag = "editor.addColumnSelectionDrag";
 
-    /// <summary>Every editor action and its name for people (Rider's where it has one), which the IDE lists and runs.</summary>
-    public static IReadOnlyList<(string Id, string Title)> All { get; } =
+    /// <summary>Every editor action and its name for people (Rider's where it has one), which the IDE lists and runs: its words
+    /// in EditorActionTitles, keyed by its name here.</summary>
+    public static IReadOnlyList<(string Id, Words Title)> All { get; } =
     [
-        (Left, "Left"), (Right, "Right"), (Up, "Up"), (Down, "Down"), (WordLeft, "Word Left"), (WordRight, "Word Right"),
-        (LineStart, "Line Start"), (LineEnd, "Line End"), (TextStart, "Text Start"), (TextEnd, "Text End"), (PageUp, "Page Up"),
-        (PageDown, "Page Down"), (ScrollUp, "Scroll Up"), (ScrollDown, "Scroll Down"), (Backspace, "Backspace"), (Delete, "Delete"),
-        (DeleteWordLeft, "Delete Word Left"), (DeleteWordRight, "Delete Word Right"), (NewLine, "New Line"),
-        (StartNewLine, "Start New Line"), (StartNewLineBefore, "Start New Line Before"), (Indent, "Indent"), (Outdent, "Outdent"),
-        (Duplicate, "Duplicate"), (DeleteLine, "Delete Line"), (MoveLineUp, "Move Line Up"), (MoveLineDown, "Move Line Down"),
-        (ToggleLineComment, "Comment with Line Comment"), (ToggleBlockComment, "Comment with Block Comment"), (Comment, "Comment"), (Uncomment, "Uncomment"), (JoinLines, "Join Lines"),
-        (ToggleCase, "Toggle Case"), (CutToLineEnd, "Cut to Line End"), (Undo, "Undo"), (Redo, "Redo"), (Cut, "Cut"), (Copy, "Copy"),
-        (Paste, "Paste"), (SelectAll, "Select All"), (SelectNextOccurrence, "Select Next Occurrence"),
-        (UnselectOccurrence, "Unselect Occurrence"), (SelectAllOccurrences, "Select All Occurrences"), (CaretPerLine, "Caret Per Line"),
-        (CloneCaretAbove, "Clone Caret Above"), (CloneCaretBelow, "Clone Caret Below"), (Escape, "Escape"),
-        (ToggleFold, "Toggle Folding"), (Fold, "Collapse"), (Unfold, "Expand"), (FoldAll, "Collapse All"), (UnfoldAll, "Expand All"),
-        (FoldToDefinitions, "Collapse to Definitions"), (UnfoldDocComments, "Expand Doc Comments"), (FoldDocComments, "Collapse Doc Comments"),
-        (UnfoldRecursively, "Expand Recursively"), (FoldRecursively, "Collapse Recursively"),
-        (UnfoldToLevel1, "Expand to Level 1"), (UnfoldToLevel2, "Expand to Level 2"), (UnfoldToLevel3, "Expand to Level 3"),
-        (UnfoldToLevel4, "Expand to Level 4"), (UnfoldToLevel5, "Expand to Level 5"),
-        (UnfoldAllToLevel1, "Expand All to Level 1"), (UnfoldAllToLevel2, "Expand All to Level 2"), (UnfoldAllToLevel3, "Expand All to Level 3"),
-        (UnfoldAllToLevel4, "Expand All to Level 4"), (UnfoldAllToLevel5, "Expand All to Level 5"),
-        (MatchBrace, "Move Caret to Matching Brace"),
+        (Left, EditorActionTitles.Left), (Right, EditorActionTitles.Right), (Up, EditorActionTitles.Up), (Down, EditorActionTitles.Down),
+        (WordLeft, EditorActionTitles.WordLeft), (WordRight, EditorActionTitles.WordRight), (LineStart, EditorActionTitles.LineStart),
+        (LineEnd, EditorActionTitles.LineEnd), (TextStart, EditorActionTitles.TextStart), (TextEnd, EditorActionTitles.TextEnd),
+        (PageUp, EditorActionTitles.PageUp), (PageDown, EditorActionTitles.PageDown), (ScrollUp, EditorActionTitles.ScrollUp),
+        (ScrollDown, EditorActionTitles.ScrollDown), (Backspace, EditorActionTitles.Backspace), (Delete, EditorActionTitles.Delete),
+        (DeleteWordLeft, EditorActionTitles.DeleteWordLeft), (DeleteWordRight, EditorActionTitles.DeleteWordRight),
+        (NewLine, EditorActionTitles.NewLine), (StartNewLine, EditorActionTitles.StartNewLine),
+        (StartNewLineBefore, EditorActionTitles.StartNewLineBefore), (Indent, EditorActionTitles.Indent), (Outdent, EditorActionTitles.Outdent),
+        (Duplicate, EditorActionTitles.Duplicate), (DeleteLine, EditorActionTitles.DeleteLine), (MoveLineUp, EditorActionTitles.MoveLineUp),
+        (MoveLineDown, EditorActionTitles.MoveLineDown), (ToggleLineComment, EditorActionTitles.ToggleLineComment),
+        (ToggleBlockComment, EditorActionTitles.ToggleBlockComment), (Comment, EditorActionTitles.Comment), (Uncomment, EditorActionTitles.Uncomment),
+        (JoinLines, EditorActionTitles.JoinLines), (ToggleCase, EditorActionTitles.ToggleCase), (CutToLineEnd, EditorActionTitles.CutToLineEnd),
+        (SplitLine, EditorActionTitles.SplitLine), (DeleteToLineStart, EditorActionTitles.DeleteToLineStart),
+        (DeleteToLineEnd, EditorActionTitles.DeleteToLineEnd), (Transpose, EditorActionTitles.Transpose),
+        (ToggleOverwrite, EditorActionTitles.ToggleOverwrite), (ToggleColumnMode, EditorActionTitles.ToggleColumnMode),
+        (Undo, EditorActionTitles.Undo), (Redo, EditorActionTitles.Redo), (Cut, EditorActionTitles.Cut), (Copy, EditorActionTitles.Copy),
+        (Paste, EditorActionTitles.Paste), (PasteAsPlainText, EditorActionTitles.PasteAsPlainText), (ExpandWord, EditorActionTitles.ExpandWord),
+        (ExpandWordBackward, EditorActionTitles.ExpandWordBackward), (SelectAll, EditorActionTitles.SelectAll),
+        (SelectNextOccurrence, EditorActionTitles.SelectNextOccurrence), (UnselectOccurrence, EditorActionTitles.UnselectOccurrence),
+        (SelectAllOccurrences, EditorActionTitles.SelectAllOccurrences), (CaretPerLine, EditorActionTitles.CaretPerLine),
+        (CloneCaretAbove, EditorActionTitles.CloneCaretAbove), (CloneCaretBelow, EditorActionTitles.CloneCaretBelow),
+        (Escape, EditorActionTitles.Escape), (ToggleFold, EditorActionTitles.ToggleFold), (Fold, EditorActionTitles.Fold),
+        (Unfold, EditorActionTitles.Unfold), (FoldAll, EditorActionTitles.FoldAll), (UnfoldAll, EditorActionTitles.UnfoldAll),
+        (FoldToDefinitions, EditorActionTitles.FoldToDefinitions), (UnfoldDocComments, EditorActionTitles.UnfoldDocComments),
+        (FoldDocComments, EditorActionTitles.FoldDocComments), (UnfoldRecursively, EditorActionTitles.UnfoldRecursively),
+        (FoldRecursively, EditorActionTitles.FoldRecursively), (UnfoldToLevel1, EditorActionTitles.UnfoldToLevel1),
+        (UnfoldToLevel2, EditorActionTitles.UnfoldToLevel2), (UnfoldToLevel3, EditorActionTitles.UnfoldToLevel3),
+        (UnfoldToLevel4, EditorActionTitles.UnfoldToLevel4), (UnfoldToLevel5, EditorActionTitles.UnfoldToLevel5),
+        (UnfoldAllToLevel1, EditorActionTitles.UnfoldAllToLevel1), (UnfoldAllToLevel2, EditorActionTitles.UnfoldAllToLevel2),
+        (UnfoldAllToLevel3, EditorActionTitles.UnfoldAllToLevel3), (UnfoldAllToLevel4, EditorActionTitles.UnfoldAllToLevel4),
+        (UnfoldAllToLevel5, EditorActionTitles.UnfoldAllToLevel5), (MatchBrace, EditorActionTitles.MatchBrace),
     ];
 
     /// <summary>The mouse's own actions and their names for people, which no list of actions holds but a gesture's
     /// conflict names.</summary>
-    public static IReadOnlyList<(string Id, string Title)> Gestures { get; } =
+    public static IReadOnlyList<(string Id, Words Title)> Gestures { get; } =
     [
-        (AddOrRemoveCaret, "Add or Remove Caret"), (ColumnSelectionFromCaret, "Column Selection from Caret"),
-        (ColumnSelectionDrag, "Column Selection"), (AddColumnSelectionDrag, "Add Column Selection"),
+        (AddOrRemoveCaret, EditorActionTitles.AddOrRemoveCaret), (ColumnSelectionFromCaret, EditorActionTitles.ColumnSelectionFromCaret),
+        (ColumnSelectionDrag, EditorActionTitles.ColumnSelectionDrag), (AddColumnSelectionDrag, EditorActionTitles.AddColumnSelectionDrag),
     ];
 
     private static readonly HashSet<string> Movements =
@@ -131,7 +162,8 @@ public static class EditorActions
     [
         Backspace, Delete, DeleteWordLeft, DeleteWordRight, NewLine, StartNewLine, StartNewLineBefore, Indent, Outdent, Duplicate,
         DeleteLine, MoveLineUp, MoveLineDown, ToggleLineComment, ToggleBlockComment, Comment, Uncomment, JoinLines, ToggleCase,
-        CutToLineEnd, Undo, Redo, Cut, Paste,
+        CutToLineEnd, Undo, Redo, Cut, Paste, PasteAsPlainText, ExpandWord, ExpandWordBackward, SplitLine, DeleteToLineStart,
+        DeleteToLineEnd, Transpose,
     ];
 
     public static bool IsMovement(string action) => Movements.Contains(action);
@@ -157,13 +189,16 @@ public enum KeymapPreset
 
     /// <summary>IntelliJ IDEA's keymaps as Rider carries them: $default on Windows and Linux, Mac OS X 10.5+ on macOS.</summary>
     IntelliJ,
+
+    /// <summary>Rider's Emacs keymap, over $default on every system.</summary>
+    Emacs,
 }
 
 /// <summary>The keymaps Passenger has, for the actions it has: Rider's Visual Studio keymap on Windows and its Visual
 /// Studio OSX keymap on macOS, plus the few platform staples those leave out (Cmd+/ to comment, with the keypad's / as
-/// $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); Rider's VSCode and VSCode OSX keymaps; and
-/// IntelliJ IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too. A key IntelliJ gives two actions told
-/// apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
+/// $default has it, Cmd+W to close, Cmd+Up and Down to the text's ends); Rider's VSCode and VSCode OSX keymaps; IntelliJ
+/// IDEA's $default and Mac OS X 10.5+, the Mac's with Cmd+Up and Down too; Rider's Emacs, the Mac's with its Cmd+C, V, X,
+/// Z and A. A key IntelliJ gives two actions told apart by where it is pressed is given to one (the editor's own). The keypad's keys (DIVIDE, SUBTRACT) are bound where
 /// Rider binds them, beside the main keys'. The mouse's gestures are theirs too, the Mac's from $default with its Ctrl as
 /// Cmd; Shift+Alt-click, which they give a column from the caret and a column drag both, is the first, a drag going on with
 /// it, and Linux's middle-click paste is left out. A click a drag shares (Alt-click's Quick Evaluate Expression beside
@@ -177,6 +212,7 @@ public static class DefaultKeymaps
     {
         KeymapPreset.VSCode => OperatingSystem.IsMacOS() ? VSCodeMac() : VSCode(),
         KeymapPreset.IntelliJ => OperatingSystem.IsMacOS() ? IntelliJMac() : IntelliJ(),
+        KeymapPreset.Emacs => Emacs(),
         _ => ForPlatform(),
     };
 
@@ -187,6 +223,7 @@ public static class DefaultKeymaps
         (KeymapPreset.VSCode, false) => "VS Code",
         (KeymapPreset.IntelliJ, true) => "IntelliJ IDEA (macOS)",
         (KeymapPreset.IntelliJ, false) => "IntelliJ IDEA",
+        (KeymapPreset.Emacs, _) => "Emacs",
         (_, true) => "Visual Studio (macOS)",
         _ => "Visual Studio",
     };
@@ -220,6 +257,7 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "meta shift L")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
         .Bind(EditorActions.ToggleLineComment, "meta SLASH", "meta DIVIDE", "meta alt SLASH", "meta alt DIVIDE", "meta K , meta SLASH")
         // Its keypad key is Shift+Cmd+/, not Ctrl+Cmd+/, as Rider's Visual Studio OSX has it.
         .Bind(EditorActions.ToggleBlockComment, "control meta SLASH", "meta shift DIVIDE")
@@ -233,6 +271,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "meta X", "shift DELETE", "meta L")
         .Bind(EditorActions.Copy, "meta C", "meta INSERT")
         .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "meta alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "meta A")
         .Bind(EditorActions.SelectNextOccurrence, "alt shift PERIOD")
         .Bind(EditorActions.UnselectOccurrence, "alt shift COMMA")
@@ -293,6 +334,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "control L", "control shift L")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "alt shift INSERT")
         .Bind(EditorActions.ToggleLineComment, "control SLASH", "control DIVIDE", "control alt SLASH", "control alt DIVIDE", "control K , control SLASH")
         .Bind(EditorActions.ToggleBlockComment, "control shift SLASH", "control shift DIVIDE")
         .Bind(EditorActions.Comment, "control K , C", "control K , control C")
@@ -304,6 +347,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "control X", "shift DELETE")
         .Bind(EditorActions.Copy, "control C", "control INSERT")
         .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "control alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
         .Bind(EditorActions.SelectAll, "control A")
         .Bind(EditorActions.SelectNextOccurrence, "alt shift PERIOD")
         .Bind(EditorActions.UnselectOccurrence, "alt shift COMMA")
@@ -367,6 +412,11 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "meta shift K")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.SplitLine, "control O")
+        .Bind(EditorActions.DeleteToLineStart, "meta BACK_SPACE")
+        .Bind(EditorActions.DeleteToLineEnd, "control K", "meta DELETE")
+        .Bind(EditorActions.Transpose, "control T")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
         .Bind(EditorActions.ToggleLineComment, "meta SLASH")
         .Bind(EditorActions.ToggleBlockComment, "alt shift A")
         .Bind(EditorActions.Comment, "meta K , meta C")
@@ -377,6 +427,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "meta X", "shift DELETE")
         .Bind(EditorActions.Copy, "meta C", "meta INSERT")
         .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "meta alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "meta A")
         .Bind(EditorActions.SelectNextOccurrence, "meta D", "meta F3")
         .Bind(EditorActions.UnselectOccurrence, "meta U")
@@ -434,6 +487,8 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "control shift K")
         .Bind(EditorActions.MoveLineUp, "alt UP")
         .Bind(EditorActions.MoveLineDown, "alt DOWN")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "alt shift INSERT")
         .Bind(EditorActions.ToggleLineComment, "control SLASH")
         .Bind(EditorActions.ToggleBlockComment, "alt shift A")
         .Bind(EditorActions.Comment, "control K , control C")
@@ -444,6 +499,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "control X", "shift DELETE")
         .Bind(EditorActions.Copy, "control C", "control INSERT")
         .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "control alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "control A")
         .Bind(EditorActions.SelectNextOccurrence, "control D", "control F3")
         .Bind(EditorActions.UnselectOccurrence, "control U")
@@ -503,6 +561,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "meta BACK_SPACE")
         .Bind(EditorActions.MoveLineUp, "alt shift UP")
         .Bind(EditorActions.MoveLineDown, "alt shift DOWN")
+        .Bind(EditorActions.SplitLine, "meta ENTER")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "meta shift 8")
         .Bind(EditorActions.ToggleLineComment, "meta SLASH", "meta DIVIDE")
         .Bind(EditorActions.ToggleBlockComment, "meta alt SLASH", "meta alt DIVIDE", "control shift SLASH", "control shift DIVIDE", "meta shift SLASH", "meta shift DIVIDE")
         .Bind(EditorActions.JoinLines, "control shift J")
@@ -513,6 +574,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "meta X", "shift DELETE")
         .Bind(EditorActions.Copy, "meta C", "meta INSERT")
         .Bind(EditorActions.Paste, "meta V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "meta alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "meta A")
         .Bind(EditorActions.SelectNextOccurrence, "control G")
         .Bind(EditorActions.UnselectOccurrence, "control shift G")
@@ -543,7 +607,66 @@ public static class DefaultKeymaps
 
     // IntelliJ IDEA's $default keymap, which gives Clone Caret, Toggle Folding, Collapse to Definitions and the doc
     // comments' folds no keys (on macOS either).
-    public static Keymap IntelliJ() => new Keymap(NameOf(KeymapPreset.IntelliJ))
+    public static Keymap IntelliJ() => IntelliJ(NameOf(KeymapPreset.IntelliJ));
+
+    /// <summary>The editor's part of Rider's Emacs keymap, on every system alike: $default's with Emacs's own lists over it
+    /// (<see cref="Emacs(Keymap)"/>).</summary>
+    public static Keymap Emacs() => Emacs(IntelliJ(NameOf(KeymapPreset.Emacs)));
+
+    /// <summary>Rider's Emacs keymap's own lists of the editor's actions put over a keymap of $default's, each in place of
+    /// what $default gives that action and taken from any other that had a key of it, as the keymap's own list goes before
+    /// its parent's: Undo's Ctrl+/ from Comment with Line Comment, Delete's Ctrl+D from Duplicate (Cmd+D, as Rider's own).
+    /// The kill ring's Kill Region and Kill Ring Save are Cut and Copy, Kill to Word Start and End Delete Word Left and Right,
+    /// leaving the text as they do, Emacs's own keys first; Escape begins Meta's chords and is Esc, Esc and Ctrl+G.</summary>
+    public static Keymap Emacs(Keymap over)
+    {
+        Keymap emacs = EmacsOwn(over);
+        // The Mac's Cmd+C, V, X, Z, Shift+Z and A, which Rider's Emacs leaves out, given as Visual Studio OSX's staples are.
+        return !OperatingSystem.IsMacOS() ? emacs : emacs
+            .Bind(EditorActions.Copy, "meta C")
+            .Bind(EditorActions.Paste, "meta V")
+            .Bind(EditorActions.Cut, "meta X")
+            .Bind(EditorActions.Undo, "meta Z")
+            .Bind(EditorActions.Redo, "meta shift Z")
+            .Bind(EditorActions.SelectAll, "meta A");
+    }
+
+    private static Keymap EmacsOwn(Keymap over) => over
+        .Own(EditorActions.Left, "LEFT", "control B")
+        .Own(EditorActions.Right, "RIGHT", "control F")
+        .Own(EditorActions.Up, "UP", "control P")
+        .Own(EditorActions.Down, "DOWN", "control N")
+        .Own(EditorActions.WordLeft, "control LEFT", "alt B", "ESCAPE , control B")
+        .Own(EditorActions.WordRight, "control RIGHT", "alt F", "ESCAPE , control F")
+        .Own(EditorActions.LineStart, "HOME", "control A", "alt M")
+        .Own(EditorActions.LineEnd, "END", "control E")
+        .Own(EditorActions.TextStart, "control HOME", "shift alt COMMA", "ESCAPE , COMMA")
+        .Own(EditorActions.TextEnd, "control END", "shift alt PERIOD")
+        .Own(EditorActions.PageUp, "PAGE_UP", "control Z", "alt V")
+        .Own(EditorActions.PageDown, "PAGE_DOWN", "control V")
+        .Own(EditorActions.ScrollUp)
+        .Own(EditorActions.ScrollDown)
+        .Own(EditorActions.Delete, "DELETE", "control D")
+        .Own(EditorActions.DeleteWordLeft, "control BACK_SPACE", "alt BACK_SPACE", "ESCAPE , BACK_SPACE", "alt DELETE")
+        .Own(EditorActions.DeleteWordRight, "control DELETE", "alt D")
+        .Own(EditorActions.NewLine, "ENTER", "control M")
+        .Own(EditorActions.Duplicate, "meta D")
+        .Own(EditorActions.DeleteLine)
+        .Own(EditorActions.ToggleLineComment, "alt SEMICOLON")
+        .Own(EditorActions.CutToLineEnd, "control K")
+        .Own(EditorActions.SplitLine, "control O")
+        .Own(EditorActions.Undo, "control SLASH", "shift control MINUS")
+        .Own(EditorActions.Redo, "shift control Z", "shift alt MINUS")
+        .Own(EditorActions.Cut, "control W", "shift DELETE")
+        .Own(EditorActions.Copy, "alt W", "control INSERT", "alt C", "ESCAPE , W")
+        .Own(EditorActions.Paste, "control Y", "shift INSERT")
+        .Own(EditorActions.SelectAll, "control X , H")
+        .Own(EditorActions.CaretPerLine)
+        .Own(EditorActions.FoldAll)
+        .Own(EditorActions.Escape, "ESCAPE , ESCAPE", "control G");
+
+    /// <summary>IntelliJ IDEA's $default keymap under another keymap's name, the parent of Rider's Emacs.</summary>
+    public static Keymap IntelliJ(string name) => new Keymap(name)
         .Bind(EditorActions.Left, "LEFT")
         .Bind(EditorActions.Right, "RIGHT")
         .Bind(EditorActions.Up, "UP")
@@ -571,6 +694,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.DeleteLine, "control Y")
         .Bind(EditorActions.MoveLineUp, "alt shift UP")
         .Bind(EditorActions.MoveLineDown, "alt shift DOWN")
+        .Bind(EditorActions.SplitLine, "control ENTER")
+        .Bind(EditorActions.ToggleOverwrite, "INSERT")
+        .Bind(EditorActions.ToggleColumnMode, "alt shift INSERT")
         .Bind(EditorActions.ToggleLineComment, "control SLASH", "control DIVIDE")
         .Bind(EditorActions.ToggleBlockComment, "control shift SLASH", "control shift DIVIDE")
         .Bind(EditorActions.JoinLines, "control shift J")
@@ -580,6 +706,9 @@ public static class DefaultKeymaps
         .Bind(EditorActions.Cut, "control X", "shift DELETE")
         .Bind(EditorActions.Copy, "control C", "control INSERT")
         .Bind(EditorActions.Paste, "control V", "shift INSERT")
+        .Bind(EditorActions.PasteAsPlainText, "control alt shift V")
+        .Bind(EditorActions.ExpandWord, "alt SLASH")
+        .Bind(EditorActions.ExpandWordBackward, "alt shift SLASH")
         .Bind(EditorActions.SelectAll, "control A")
         .Bind(EditorActions.SelectNextOccurrence, "alt J")
         .Bind(EditorActions.UnselectOccurrence, "alt shift J")

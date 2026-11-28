@@ -83,24 +83,25 @@ public sealed class SolutionFoldersTests : IDisposable
     private void A_solution_folder_has_its_own_icon_lists_its_files_and_sorts_before_the_projects_by_name(string format)
     {
         string solution = WriteSolution(format);
+        // A folder named to lead the list, declared last (#2396).
+        File.WriteAllBytes(solution, new UTF8Encoding(false).GetBytes(File.ReadAllText(solution).Replace("</Solution>", "  <Folder Name=\"/_shared/\" />\n</Solution>", StringComparison.Ordinal)));
         MainWindow window = Open();
         ExplorerTree tree = window.ExplorerView.Tree;
         ExplorerNode items = Row(window, NodeKind.SolutionFolder, "Solution Items");
-        Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolder), items.Icon), "A closed solution folder is drawn as a folder on disk is, so it passes for one");
-        Assert.NotEqual(TokenKeys.File_Folder, items.IconTint);
-        Assert.Equal(TokenKeys.File_SolutionFolder, items.IconTint);
+        Assert.True(items.IconKey == IconKeys.SolutionFolder, "A closed solution folder is drawn as a folder on disk is, so it passes for one");
+        Assert.Equal(TokenKeys.File_SolutionFolder, items.IconBrushKey);
 
         Ui.ClickRow(window, items);
         Ui.Press(window, "RIGHT");
         Ui.ClickRow(window, Row(window, NodeKind.SolutionFolder, "src"));
         Ui.Press(window, "RIGHT");
-        Assert.True(ReferenceEquals(Resource(IconKeys.SolutionFolderOpen), items.Icon), "An open solution folder still shows the closed one's icon");
-        // The solution declares the project first and README.md before .editorconfig: the view sorts by kind, then name.
+        Assert.True(items.IconKey == IconKeys.SolutionFolderOpen, "An open solution folder still shows the closed one's icon");
+        // Declared project first, README.md before .editorconfig, _shared last: sorted by kind, then name, punctuation first.
         Assert.Equal(
-            ["Shop", "  Solution Items", "    .editorconfig", "    README.md", "  src", "    Shop.Core", "  Shop.Web"],
+            ["Shop", "  _shared", "  Solution Items", "    .editorconfig", "    README.md", "  src", "    Shop.Core", "  Shop.Web"],
             tree.Rows.Select(r => new string(' ', r.Depth * 2) + r.Name));
         Assert.Equal(
-            [NodeKind.Solution, NodeKind.SolutionFolder, NodeKind.File, NodeKind.File, NodeKind.SolutionFolder, NodeKind.Project, NodeKind.Project],
+            [NodeKind.Solution, NodeKind.SolutionFolder, NodeKind.SolutionFolder, NodeKind.File, NodeKind.File, NodeKind.SolutionFolder, NodeKind.Project, NodeKind.Project],
             tree.Rows.Select(r => r.Kind));
 
         Ui.DoubleClick(Ui.Row(window.ExplorerView, Row(window, NodeKind.File, "README.md")));
@@ -461,12 +462,6 @@ public sealed class SolutionFoldersTests : IDisposable
     private static ExplorerNode Row(MainWindow window, NodeKind kind, string name) =>
         window.ExplorerView.Tree.Rows.FirstOrDefault(r => r.Kind == kind && r.Name == name)
         ?? throw new InvalidOperationException($"The Explorer shows no {kind} {name}: [{string.Join(", ", window.ExplorerView.Tree.Rows.Select(r => r.Name))}]");
-
-    private static object Resource(string key)
-    {
-        Application app = Application.Current!;
-        return app.TryFindResource(key, app.ActualThemeVariant, out object? value) && value is not null ? value : throw new InvalidOperationException($"The theme has no {key}");
-    }
 
     /// <summary>Agrees to every question the window asks, keeping their titles in order.</summary>
     private static List<string> Answer(MainWindow window)

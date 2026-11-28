@@ -103,7 +103,7 @@ public sealed class UnstashPopup : UserControl
 
     /// <summary>Drop, asked first; a no leaves the popup open on the stash.</summary>
     public Task DropAsync() => Use(drop, stash => confirm(
-        $"Remove Stash stash@{{{stash.Index}}}?", $"Do you want to remove stash@{{{stash.Index}}}?\n\"{stash.Message}\"", "Remove"));
+        $"Remove Stash stash@{{{stash.Index}}}?", $"Do you want to remove stash@{{{stash.Index}}}?\n\"{stash.Message}\"\nUndo brings it back while git keeps its commit.", "Remove"));
 
     /// <summary>Runs an action on the chosen stash unless one is running, so a second press waits for the first to end.</summary>
     private async Task Use(Func<StashInfo, Task<bool>> action, Func<StashInfo, Task<bool>>? ask = null)

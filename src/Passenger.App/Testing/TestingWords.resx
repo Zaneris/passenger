@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="RunTheseTests" xml:space="preserve">
+    <value>{tests, plural, one {Run This Test} other {Run These Tests}}</value>
+    <comment>An editor's menu over the tests that cover a line: runs them.</comment>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Tests stopped</value>
+    <comment>What the window says when Stop ends a run before its tests ran.</comment>
+  </data>
+  <data name="AlreadyRunning" xml:space="preserve">
+    <value>Tests are already running</value>
+    <comment>Why a run or a look for the tests cannot begin.</comment>
+  </data>
+  <data name="NotFoundBecause" xml:space="preserve">
+    <value>The tests could not be found: {problem}</value>
+    <comment>A look for the tests that failed, and the system's words why.</comment>
+  </data>
+  <data name="CouldNotRun" xml:space="preserve">
+    <value>The tests could not run: {problem}</value>
+    <comment>A run of tests that failed, and the system's words why.</comment>
+  </data>
+  <data name="FailedOnRun" xml:space="preserve">
+    <value>{test} failed on run {run, number}</value>
+    <comment>Run Until Failure's end: the test that failed and on which of its runs.</comment>
+  </data>
+  <data name="BrokeOff" xml:space="preserve">
+    <value>Run {run, number} broke off</value>
+    <comment>Run Until Failure's end: a run that broke off.</comment>
+  </data>
+  <data name="BrokeOffWhy" xml:space="preserve">
+    <value>Run {run, number} broke off: {why}</value>
+    <comment>Run Until Failure's end: a run that broke off, and the runner's words why.</comment>
+  </data>
+  <data name="StoppedAfter" xml:space="preserve">
+    <value>{runs, plural, one {Stopped after # run; none failed} other {Stopped after # runs; none failed}}</value>
+    <comment>Run Until Failure stopped by the person, none of its runs having failed.</comment>
+  </data>
+  <data name="RunNumbered" xml:space="preserve">
+    <value>Run {run, number}: {said}</value>
+    <comment>What one of Run Until Failure's runs says, with its number.</comment>
+  </data>
+  <data name="BuildingProjects" xml:space="preserve">
+    <value>Building the test projects…</value>
+    <comment>A run's first stage: its test projects built.</comment>
+  </data>
+  <data name="FindingTests" xml:space="preserve">
+    <value>Finding the tests…</value>
+    <comment>A run's stage: the tests looked for in what was built.</comment>
+  </data>
+  <data name="NoTestsToRun" xml:space="preserve">
+    <value>There are no tests to run</value>
+    <comment>A run of every test that found none.</comment>
+  </data>
+  <data name="NoTestsToRunWhy" xml:space="preserve">
+    <value>There are no tests to run: {why}</value>
+    <comment>A run of every test that found none, and why some projects' tests could not be found.</comment>
+  </data>
+  <data name="NoneOfTheseFound" xml:space="preserve">
+    <value>None of these tests was found in the test projects as built</value>
+    <comment>A run of chosen tests none of which the build has.</comment>
+  </data>
+  <data name="NoneOfTheseFoundWhy" xml:space="preserve">
+    <value>None of these tests was found in the test projects as built: {why}</value>
+    <comment>A run of chosen tests none of which the build has, and why some projects' tests could not be found.</comment>
+  </data>
+  <data name="CheckingEngine" xml:space="preserve">
+    <value>Checking the container engine for Testcontainers…</value>
+    <comment>A run's stage: the container engine asked before tests that use Testcontainers.</comment>
+  </data>
+  <data name="EngineProblem" xml:space="preserve">
+    <value>The tests were not run: they use Testcontainers, and {problem}</value>
+    <comment>A run refused as the container engine cannot serve; {problem}, why not.</comment>
+  </data>
+  <data name="RunningTests" xml:space="preserve">
+    <value>{tests, plural, one {Running # test} other {Running # tests}}</value>
+    <comment>A run under way, and how many tests it runs.</comment>
+  </data>
+  <data name="RunningTestsGoing" xml:space="preserve">
+    <value>{tests, plural, one {Running # test…} other {Running # tests…}}</value>
+    <comment>A run's stage: its tests running.</comment>
+  </data>
+  <data name="ReadingCoverage" xml:space="preserve">
+    <value>Reading the tests' coverage…</value>
+    <comment>A run's last stage: the coverage it measured read.</comment>
+  </data>
+  <data name="NoCoverage" xml:space="preserve">
+    <value>no coverage was measured</value>
+    <comment>Said after a run's tally where it measured no coverage.</comment>
+  </data>
+  <data name="Covered" xml:space="preserve">
+    <value>{lines} covered</value>
+    <comment>Said after a run's tally: the share of lines its tests ran ({lines}, as "82% of lines (41 of 50)").</comment>
+  </data>
+  <data name="Lines" xml:space="preserve">
+    <value>{percent} of lines ({run, number} of {lines, number})</value>
+    <comment>Coverage of lines: the share run ({percent}, as 82%), the lines run and the lines measured.</comment>
+  </data>
+  <data name="Tally" xml:space="preserve">
+    <value>{skipped, plural, =0 {Tests passed: {passed, number}, failed: {failed, number} of {total, number} in {elapsed}} other {Tests passed: {passed, number}, failed: {failed, number}, skipped: # of {total, number} in {elapsed}}}</value>
+    <comment>A run's tally: how many tests passed, failed and were skipped, of how many, and how long it took.</comment>
+  </data>
+  <data name="TallyStopped" xml:space="preserve">
+    <value>{tally}, stopped</value>
+    <comment>A run's tally where Stop ended it.</comment>
+  </data>
+  <data name="TallyBrokenOff" xml:space="preserve">
+    <value>{tally}, broken off</value>
+    <comment>A run's tally where it broke off.</comment>
+  </data>
+  <data name="TallyBrokenOffWhy" xml:space="preserve">
+    <value>{tally}, broken off: {why}</value>
+    <comment>A run's tally where it broke off, and the runner's words why.</comment>
+  </data>
+  <data name="NoneFailed" xml:space="preserve">
+    <value>No test failed</value>
+    <comment>What Rerun Failed Tests says with no test failed.</comment>
+  </data>
+  <data name="OpenForTests" xml:space="preserve">
+    <value>Open a folder or solution to see its tests</value>
+    <comment>The Unit Tests window with no folder open.</comment>
+  </data>
+  <data name="LookingForTests" xml:space="preserve">
+    <value>Looking for tests…</value>
+    <comment>The Unit Tests window while it looks for the folder's tests.</comment>
+  </data>
+  <data name="NoTestProjectsYet" xml:space="preserve">
+    <value>No test projects: none references xUnit, NUnit or MSTest</value>
+    <comment>The Unit Tests window over a folder with no test project.</comment>
+  </data>
+  <data name="NoTestsYet" xml:space="preserve">
+    <value>No tests in the test projects yet</value>
+    <comment>The Unit Tests window over test projects with no test.</comment>
+  </data>
+  <data name="NoTestProjects" xml:space="preserve">
+    <value>There are no test projects: none references a test SDK or adapter</value>
+    <comment>A run or a look for the tests in a folder with no test project.</comment>
+  </data>
+  <data name="Found" xml:space="preserve">
+    <value>Found {tests, plural, one {# test} other {# tests}} in {projects, plural, one {# project} other {# projects}}</value>
+    <comment>The tests found, and in how many projects.</comment>
+  </data>
+  <data name="NoneOfSession" xml:space="preserve">
+    <value>None of this session's tests is found</value>
+    <comment>The Unit Tests window showing a session none of whose tests the build has.</comment>
+  </data>
+  <data name="NoneMatching" xml:space="preserve">
+    <value>No matching tests</value>
+    <comment>The Unit Tests window whose filters and search let no test through.</comment>
+  </data>
+  <data name="ProjectsChosen" xml:space="preserve">
+    <value>the projects chosen</value>
+    <comment>What a run of the projects chosen in the Explorer names them, said in "No tests were found in …".</comment>
+  </data>
+  <data name="NoneFoundIn" xml:space="preserve">
+    <value>No tests were found in {what}</value>
+    <comment>A run of the projects chosen in the Explorer that found no test ({what}, the project or folder chosen).</comment>
+  </data>
+  <data name="NoneFoundInWhy" xml:space="preserve">
+    <value>No tests were found in {what}: {why}</value>
+    <comment>A run of the projects chosen that found no test, and why some projects' tests could not be found.</comment>
+  </data>
+  <data name="ContinuousBuildingAll" xml:space="preserve">
+    <value>Testing continuously: building the tests in Passenger's own folder…</value>
+    <comment>A continuous testing round's first stage.</comment>
+  </data>
+  <data name="ContinuousWaits" xml:space="preserve">
+    <value>Continuous testing waits: {why}</value>
+    <comment>A continuous testing round put off for the person's own work ({why}, as "the tests are running").</comment>
+  </data>
+  <data name="ContinuousStopped" xml:space="preserve">
+    <value>Continuous testing stopped</value>
+    <comment>A continuous testing round stopped.</comment>
+  </data>
+  <data name="ContinuousCouldNotRun" xml:space="preserve">
+    <value>Continuous testing could not run the tests: {problem}</value>
+    <comment>A continuous testing round that failed, and the system's words why.</comment>
+  </data>
+  <data name="ContinuousNoProjects" xml:space="preserve">
+    <value>Continuous testing found no test projects</value>
+    <comment>A continuous testing round in a folder with no test project.</comment>
+  </data>
+  <data name="ContinuousBuilding" xml:space="preserve">
+    <value>Testing continuously: building {project} in Passenger's own folder…</value>
+    <comment>A continuous testing round's stage: a test project built in Passenger's own folder.</comment>
+  </data>
+  <data name="ContinuousUnbuilt" xml:space="preserve">
+    <value>Continuous testing could not build {project}: {why}</value>
+    <comment>A continuous testing round whose build failed, and the build's errors or how it ended.</comment>
+  </data>
+  <data name="ContinuousFindingBuilt" xml:space="preserve">
+    <value>Testing continuously: finding what the build made…</value>
+    <comment>A continuous testing round's stage.</comment>
+  </data>
+  <data name="ContinuousInstrumenting" xml:space="preserve">
+    <value>Testing continuously: instrumenting {files} for {project}…</value>
+    <comment>A continuous testing round's stage: assemblies made to tell which lines their tests run.</comment>
+  </data>
+  <data name="ContinuousFinding" xml:space="preserve">
+    <value>Testing continuously: finding the tests…</value>
+    <comment>A continuous testing round's stage.</comment>
+  </data>
+  <data name="ContinuousNoneReached" xml:space="preserve">
+    <value>Testing continuously: no test runs what changed</value>
+    <comment>A continuous testing round with no test to run.</comment>
+  </data>
+  <data name="ContinuousRanOf" xml:space="preserve">
+    <value>Testing continuously: ran {done, number} of {tests, plural, one {# test} other {# tests}}…</value>
+    <comment>A continuous testing round's stage: how many of its tests have run.</comment>
+  </data>
+  <data name="ContinuousRan" xml:space="preserve">
+    <value>Testing continuously: ran {tests, plural, one {# test} other {# tests}}, {passed, number} passed, {failed, number} failed</value>
+    <comment>What a continuous testing round came to.</comment>
+  </data>
+  <data name="TestsRunning" xml:space="preserve">
+    <value>the tests are running</value>
+    <comment>Why continuous testing waits, said after "Continuous testing waits:".</comment>
+  </data>
+  <data name="ProgramDebugged" xml:space="preserve">
+    <value>a program is debugged</value>
+    <comment>Why continuous testing waits, said after "Continuous testing waits:".</comment>
+  </data>
+  <data name="ProgramProfiled" xml:space="preserve">
+    <value>a program is profiled</value>
+    <comment>Why continuous testing waits, said after "Continuous testing waits:".</comment>
+  </data>
+  <data name="NoTestRunsLine" xml:space="preserve">
+    <value>No test runs line {line}</value>
+    <comment>A line's mark's menu where no test runs the line ({line}, its number).</comment>
+  </data>
+  <data name="LineRunBy" xml:space="preserve">
+    <value>Line {line}, run by {tests, plural, one {# test} other {# tests}}</value>
+    <comment>The heading of a line's mark's menu: the tests that run it.</comment>
+  </data>
+  <data name="ReachedTest" xml:space="preserve">
+    <value>{state, select, passed {{name} (passed)} failed {{name} (failed)} skipped {{name} (skipped)} other {{name} (not run)}}</value>
+    <comment>A test in a line's mark's menu, with how it last ended.</comment>
+  </data>
+  <data name="NoneInWindow" xml:space="preserve">
+    <value>None of these tests is in the Unit Tests window</value>
+    <comment>Why Run These Tests cannot run the tests a line's mark names.</comment>
+  </data>
+  <data name="RunNamed" xml:space="preserve">
+    <value>Run ''{name}''</value>
+    <comment>A test's run icon's menu item: runs that test, or every test of its class ({name}).</comment>
+  </data>
+  <data name="DebugNamed" xml:space="preserve">
+    <value>Debug ''{name}''</value>
+    <comment>A test's run icon's menu item: debugs that test, or every test of its class.</comment>
+  </data>
+  <data name="RunNamedUntilFailure" xml:space="preserve">
+    <value>Run ''{name}'' Until Failure</value>
+    <comment>A test's run icon's menu item: runs it again and again until it fails.</comment>
+  </data>
+  <data name="RunNamedWithCoverage" xml:space="preserve">
+    <value>Run ''{name}'' with Coverage</value>
+    <comment>A test's run icon's menu item: runs it measuring the lines it runs.</comment>
+  </data>
+  <data name="TestsProgram" xml:space="preserve">
+    <value>Tests</value>
+    <comment>The name of the program a debugged test run starts, as the debugger names it.</comment>
+  </data>
+  <data name="SessionMade" xml:space="preserve">
+    <value>New unit test session: {name}</value>
+    <comment>A new unit test session made of the tests chosen.</comment>
+  </data>
+  <data name="AppendedTo" xml:space="preserve">
+    <value>Appended to {name}</value>
+    <comment>The tests chosen added to the current unit test session.</comment>
+  </data>
+  <data name="HeldAlready" xml:space="preserve">
+    <value>{name} holds them already</value>
+    <comment>The tests chosen are in the current unit test session already.</comment>
+  </data>
+  <data name="SearchActions" xml:space="preserve">
+    <value>Search unit test actions</value>
+    <comment>The search field's placeholder in Unit Test Operations.</comment>
+  </data>
+  <data name="ContinuousBuiltNone" xml:space="preserve">
+    <value>Continuous testing built no test project in its own folder</value>
+    <comment>A continuous testing round whose builds left nothing to run.</comment>
+  </data>
+</root>

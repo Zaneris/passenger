@@ -23,6 +23,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Dark or light, or as the system is.</summary>
     public ThemeChoice Theme { get; init; } = ThemeChoice.System;
 
+    /// <summary>The language Passenger's words are read in, by its tag ("en", "fr"), or null to follow the system's
+    /// preferred languages (<see cref="LanguageSetting"/>).</summary>
+    public string? DisplayLanguage { get; init; }
+
     /// <summary>The theme, by its source and name, or null for Passenger's own, each in the dark or light <see cref="Theme"/>
     /// says.</summary>
     public SourcedTheme? Look { get; init; }
@@ -36,6 +40,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>The colours of tests', changes' and signatures' states: the theme's own, or the colour-blind safe palette over it.</summary>
     public StatePalette StatePalette { get; init; }
+
+    /// <summary>Whether a plain folder, one Passenger draws nothing apart for, shows a folder's icon beside its chevron, or its
+    /// chevron alone.</summary>
+    public bool PlainFolderIcons { get; init; } = true;
 
     /// <summary>The theme sources the person added, each as <see cref="ThemeSource"/> keeps it, beside Passenger's themes
     /// repository, which every Passenger lists.</summary>
@@ -74,6 +82,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// its popup alone (<see cref="FindResultsIn"/>).</summary>
     public FindResults? FindResults { get; init; }
 
+    /// <summary>When the side tool windows run the window's whole height, the bottom ones between them.</summary>
+    public WideLayout WideLayout { get; init; }
+
     /// <summary>The code font by its family's name, or null for the one Passenger carries.</summary>
     public string? EditorFontFamily { get; init; }
 
@@ -104,6 +115,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the open element's name.</summary>
     public bool CloseTags { get; init; } = true;
 
+    /// <summary>Tab steps over a closing bracket or quote the typing help wrote after the one typed, where the caret
+    /// stands right before it, rather than indenting; on until turned off.</summary>
+    public bool TabStepsOverClosers { get; init; } = true;
+
     /// <summary>In C#, a method chosen from the completion list by Enter, Tab or a click is written called, its parentheses
     /// after it and the caret between them where it takes arguments; off, its name alone.</summary>
     public bool CompletionParentheses { get; init; } = true;
@@ -123,6 +138,28 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Type name hints: the type of a <c>var</c>, a lambda's parameter or a target-typed <c>new</c> shown
     /// after it where the code does not say it.</summary>
     public bool TypeHints { get; init; } = true;
+
+    /// <summary>Signposts: a row above each C# type and member saying how many places use it, what implements, overrides or
+    /// derives from it, who changed it most, and how complex its control flow is. Each word can be pressed for details.</summary>
+    public bool Signposts { get; init; } = true;
+
+    public bool SignpostUsages { get; init; } = true;
+
+    public bool SignpostInheriting { get; init; } = true;
+
+    public bool SignpostAuthors { get; init; } = true;
+
+    /// <summary>Signposts' cognitive complexity of each C# function, in green, yellow or red.</summary>
+    public bool SignpostComplexity { get; init; } = true;
+
+    /// <summary>The least score a function shows its complexity at.</summary>
+    public int SignpostComplexityMinimum { get; init; } = 3;
+
+    /// <summary>The least score shown in yellow, those under it green.</summary>
+    public int SignpostComplexityYellowFrom { get; init; } = 8;
+
+    /// <summary>The least score shown in red, never below <see cref="SignpostComplexityYellowFrom"/>.</summary>
+    public int SignpostComplexityRedFrom { get; init; } = 16;
 
     /// <summary>"Soft-wrap these files": a file whose name matches <see cref="SoftWrapFiles"/> opens with its lines
     /// wrapped at the editor's width (View, Active Editor, Soft-Wrap turns it on and off for one file).</summary>
@@ -147,6 +184,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed file as Reformat Code does, but one
     /// a language's own on-save formatting takes (Prettier's Run on save, GDScript's Reformat on save).</summary>
     public bool ReformatOnSave { get; init; }
+
+    /// <summary>"Optimize imports on save": a save (File, Save All) first removes a changed C# file's unused usings and sorts
+    /// the rest, as Optimize Imports does, before Reformat on save.</summary>
+    public bool OptimizeImportsOnSave { get; init; }
 
     /// <summary>"C# formatter": what lays C# out for Reformat Code, Code Cleanup and Reformat on save, Passenger's own (the
     /// language server's) at first.</summary>
@@ -210,27 +251,34 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// the other in front; only asks for them; or nothing. An agent's debugging never brings it forward.</summary>
     public DebuggerStop WhenDebuggerStops { get; init; } = DebuggerStop.ComeForward;
 
+    /// <summary>Whether each stop's line says how long the program ran to it, since its last continue, step or start. On at
+    /// first; a look, previewed before Apply.</summary>
+    public bool ShowElapsedAtStops { get; init; } = true;
+
+    /// <summary>Whether a stop fades the code ahead of it its values say won't run, and shows the values its locals will take
+    /// after the lines ahead, read with none of the program's code run. On at first; a look, previewed before Apply.</summary>
+    public bool GreyCodeAhead { get; init; } = true;
+
     /// <summary>Whether Run, Debug or Profile of a configuration that runs asks first, rather than stopping what runs of it
     /// and starting it again at once: Stop and Rerun, Stop alone, or Cancel. On at first; an agent's start, and one in a
     /// window nobody sees, never asks.</summary>
     public bool AskBeforeRerun { get; init; } = true;
 
-    /// <summary>"Tool Window: when build is explicitly invoked, open the build progress view in a tool window": the
-    /// Build menu's builds, rebuilds and cleans open the Build window as they start.</summary>
+    /// <summary>"Open the Build window as a build starts": the Build menu's builds, rebuilds and cleans open the Build
+    /// window as they start.</summary>
     public bool OpenBuildWindowOnBuild { get; init; } = true;
 
-    /// <summary>"Tool Window: open the build progress view even when the build is invoked implicitly (i.e. Run/Debug)":
-    /// the build before Run, Debug or Profile opens it too, while the setting above is on. Off at first, so a run's
-    /// build leaves the bottom panel as it was. A test run's build never opens it.</summary>
+    /// <summary>"Open it too for the build before Run, Debug or Profile": that build opens it too, while the setting above
+    /// is on. Off at first, so a run's build leaves the bottom panel as it was. A test run's build never opens it.</summary>
     public bool OpenBuildWindowOnImplicitBuild { get; init; }
 
-    /// <summary>"Showing build results after build completed": which builds bring the Build window forward as they end,
+    /// <summary>"Bring the Build window forward as a build ends": which builds bring the Build window forward as they end,
     /// whatever started them.</summary>
     public BuildResultsMode ShowBuildResults { get; init; } = BuildResultsMode.ForErrors;
 
-    /// <summary>Solution-wide analysis: every file's errors in Problems as code changes, without a build. Off at first,
-    /// since it analyses the whole solution; the status bar turns it on and off.</summary>
-    public bool SolutionWideAnalysis { get; init; }
+    /// <summary>Solution-wide analysis: every file's errors in Problems as code changes, without a build. On at first
+    /// (<see cref="CSharp.CSharpService.SolutionWideByDefault"/>); Settings and the status bar turn it off and on.</summary>
+    public bool SolutionWideAnalysis { get; init; } = CSharp.CSharpService.SolutionWideByDefault;
 
     /// <summary>Autosave on frame deactivation: every changed file saved when the focus goes to another program or to
     /// the terminal.</summary>
@@ -266,6 +314,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// it.</summary>
     public int ConsoleBufferKb { get; init; } = ToolWindows.OutputView.DefaultLimitKb;
 
+    /// <summary>The consoles' text size in points as the person set it, or null where they set none: the code's
+    /// (<see cref="ConsoleSize"/>).</summary>
+    public double? ConsoleFontSize { get; init; }
+
     /// <summary>The keymap the person's keys follow, Settings' Keymap: Visual Studio's at first, so a settings.json
     /// without one keeps the keys it had.</summary>
     public Passenger.Editor.KeymapPreset Keymap { get; init; } = Passenger.Editor.KeymapPreset.VisualStudio;
@@ -281,11 +333,15 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>The person's shortcuts over the IntelliJ IDEA keymap's, kept apart from the others' as VS Code's are.</summary>
     public Dictionary<string, string[]> IntelliJShortcuts { get; init; } = [];
 
+    /// <summary>The person's shortcuts over the Emacs keymap's, kept apart from the others' as VS Code's are.</summary>
+    public Dictionary<string, string[]> EmacsShortcuts { get; init; } = [];
+
     /// <summary>The person's shortcuts over the keymap they chose (a method, so the settings agents list leave it out).</summary>
     public Dictionary<string, string[]> OwnShortcuts() => Keymap switch
     {
         Passenger.Editor.KeymapPreset.VSCode => VSCodeShortcuts,
         Passenger.Editor.KeymapPreset.IntelliJ => IntelliJShortcuts,
+        Passenger.Editor.KeymapPreset.Emacs => EmacsShortcuts,
         _ => Shortcuts,
     };
 
@@ -294,6 +350,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     {
         Passenger.Editor.KeymapPreset.VSCode => this with { VSCodeShortcuts = shortcuts },
         Passenger.Editor.KeymapPreset.IntelliJ => this with { IntelliJShortcuts = shortcuts },
+        Passenger.Editor.KeymapPreset.Emacs => this with { EmacsShortcuts = shortcuts },
         _ => this with { Shortcuts = shortcuts },
     };
 
@@ -390,6 +447,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// allows it, so a page's links are never fetched unasked.</summary>
     public bool DownloadStylesheets { get; init; }
 
+    /// <summary>"Container engine": the CLI the Containers window, container runs and checks reach the engine through
+    /// (<see cref="Containers.EngineCli"/>); Automatically, Docker's where one is found, else on Windows WSL Containers'.</summary>
+    public Containers.EngineCli ContainerEngine { get; init; }
+
     /// <summary>"Complete image tags from Docker Hub": the Dockerfile server asks Docker Hub for an image's tags, naming the
     /// image, as <c>FROM image:</c> is completed. Off, it asks Docker Hub nothing and offers no tags.</summary>
     public bool DockerHubTags { get; init; } = true;
@@ -406,7 +467,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     public bool McpServer { get; init; }
 
     /// <summary>The folders whose window lets agents in without asking (the question's Always for this folder), whatever
-    /// <see cref="McpServer"/> says; Settings' MCP Server page lists them, each taken back by Remove. The person's alone:
+    /// <see cref="McpServer"/> says; Settings' Agents page lists them, each taken back by Remove. The person's alone:
     /// settings_set refuses it, as it refuses <see cref="McpServer"/>.</summary>
     public IReadOnlyList<string> AgentFolders { get; init; } = [];
 
@@ -441,6 +502,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>Where a diff opens (Show Diff, Compare With, a commit's file in the log, Compare Files): a tab of the
     /// editors at first, or a window of its own over the IDE's.</summary>
     public DiffPlace OpenDiffsIn { get; init; } = DiffPlace.Tab;
+
+    /// <summary>What the person's checkout does with changes not yet committed: asked at first, or brought along as git
+    /// carries them, or stashed (unstashed again on returning, or left in the stash list); asked wherever git cannot bring
+    /// them. The question's Don't ask again sets it to the way chosen.</summary>
+    public CheckoutChanges ChangesAtCheckout { get; init; } = CheckoutChanges.Ask;
 
     /// <summary>Highlight Words in a change bar's popup: the words that changed marked in what the lines were and in
     /// the file while the popup is open; the popup's toggle changes it.</summary>
@@ -493,6 +559,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// row; off until its options turn it on.</summary>
     public bool OpenFilesWithSingleClick { get; init; }
 
+    /// <summary>The Explorer's double-click or Enter on a project's row opens its project file, its arrow expanding it;
+    /// on until turned off, when either expands or collapses the row.</summary>
+    public bool OpenProjectFileOnDoubleClick { get; init; } = true;
+
     /// <summary>The code style for XAML (the XML formatter's options, with an attribute order and empty-element style),
     /// which Reformat Code lays out Avalonia's and WPF's XAML by, a file's .editorconfig over it.</summary>
     public Passenger.Xaml.Features.XamlFormatSettings XamlFormat { get; init; } = new();
@@ -504,7 +574,11 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// <summary>"Reformat on save": a save (File, Save All) first reformats each changed GDScript as Reformat Code does.</summary>
     public bool GDScriptFormatOnSave { get; init; }
 
-    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } = [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository, CodeSizeOwnOnlyWhereSet];
+    /// <summary>How Reformat Code writes a SQL file's keywords: upper-case unless the person chooses otherwise.</summary>
+    public Database.SqlKeywordCase SqlKeywords { get; init; } = Database.SqlKeywordCase.Upper;
+
+    public static IReadOnlyList<Action<JsonObject>> Upgrades { get; } =
+        [StateStore.Unversioned, DiscordKeptAsItWas, MouseShortcutsKept, ThemesFromTheirRepository, CodeSizeOwnOnlyWhereSet, SolutionWideAnalysisOnAtFirst];
 
     /// <summary><see cref="AgentFolders"/> and <see cref="ThemeSources"/> are sets: a folder let in always (a source added)
     /// from one window while another's Settings takes back a different one stays.</summary>
@@ -536,7 +610,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
                 settings[browser] = named;
             }
         }
-        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts) })
+        foreach (string property in new[] { nameof(Shortcuts), nameof(VSCodeShortcuts), nameof(IntelliJShortcuts), nameof(EmacsShortcuts) })
         {
             if (settings[StateFile.Options.PropertyNamingPolicy!.ConvertName(property)] is not JsonObject shortcuts)
             {
@@ -612,8 +686,22 @@ public sealed record AppSettings : IStateDocument<AppSettings>
         }
     }
 
+    /// <summary>Version 5 to 6: solution-wide analysis kept off, which every earlier version wrote whether or not the person
+    /// turned it off, is left unset, so it takes the default, on; kept on, it stays on.</summary>
+    private static void SolutionWideAnalysisOnAtFirst(JsonObject settings)
+    {
+        string name = StateFile.Options.PropertyNamingPolicy!.ConvertName(nameof(SolutionWideAnalysis));
+        if (settings[name] is JsonValue kept && kept.TryGetValue(out bool on) && !on)
+        {
+            settings.Remove(name);
+        }
+    }
+
     /// <summary>The code's size in force: the person's, else the theme's, else Passenger's own.</summary>
     public double CodeSize() => EditorFontSize ?? Themes.Fonts.CodeSize ?? OwnCodeSize;
+
+    /// <summary>The consoles' text size in force: the person's, else the code's.</summary>
+    public double ConsoleSize() => ConsoleFontSize ?? CodeSize();
 
     /// <summary>Where the editor's tabs stand: the person's place, else the theme's, else across the top.</summary>
     public EditorTabsPlace TabsPlace() => EditorTabs ?? Themes.Layout?.EditorTabs ?? EditorTabsPlace.Top;
@@ -637,6 +725,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
             Shortcuts = Readable(Shortcuts),
             VSCodeShortcuts = Readable(VSCodeShortcuts),
             IntelliJShortcuts = Readable(IntelliJShortcuts),
+            EmacsShortcuts = Readable(EmacsShortcuts),
             LiveTemplates = (LiveTemplates ?? []).Where(t => t.Value is not null).ToDictionary(t => t.Key, t => t.Value.Clamped()),
             PostfixTemplates = PostfixTemplates ?? [],
             NodeInterpreter = string.IsNullOrWhiteSpace(NodeInterpreter) ? null : NodeInterpreter.Trim(),
@@ -727,7 +816,7 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     }
 }
 
-/// <summary>The choices for "Showing build results after build completed", in the order Settings lists them.</summary>
+/// <summary>The choices for "Bring the Build window forward as a build ends", in the order Settings lists them.</summary>
 public enum BuildResultsMode
 {
     Always,
@@ -792,6 +881,15 @@ public enum CSharpFormatter
 {
     Passenger,
     DotnetFormat,
+}
+
+/// <summary>What a checkout does with changes not yet committed, in the order Settings lists them.</summary>
+public enum CheckoutChanges
+{
+    Ask,
+    Bring,
+    StashAndReturn,
+    Stash,
 }
 
 /// <summary>Where a diff opens, in the order Settings lists them.</summary>

@@ -83,6 +83,48 @@ public partial class ModuleMetadataReader
         return returns;
     }
 
+    /// <summary>The IL offset of a method's closing brace where it returns there with nothing to return, its last visible
+    /// sequence point on a ret; null where its last line is a statement of its own (a top-level program's).</summary>
+    internal int? ClosingReturn(int methodToken)
+    {
+        if (VisibleSequencePoints(methodToken) is not [.., var last] || MethodIL(methodToken) is not { } il)
+        {
+            return null;
+        }
+        return CilInstructionDecoder.Decode(il).Any(instruction => instruction.Offset == last.Offset && instruction.Code is ILOpCode.Ret) ? last.Offset : null;
+    }
+
+    /// <summary>The one-element signature of what a method returns where a register holds it whole: a primitive's own
+    /// element type, a string's, or object's for any other reference; null for a struct, an enum, a generic parameter or a
+    /// value returned by reference, whose type or place a register alone does not tell.</summary>
+    internal byte? RegisterReturn(int methodToken)
+    {
+        if (MetadataTokens.EntityHandle(methodToken).Kind != HandleKind.MethodDefinition)
+        {
+            return null;
+        }
+        BlobReader signature = _peMetadataReader.GetBlobReader(_peMetadataReader.GetMethodDefinition(MetadataTokens.MethodDefinitionHandle(methodToken)).Signature);
+        if (signature.ReadSignatureHeader().IsGeneric)
+        {
+            signature.ReadCompressedInteger();
+        }
+        signature.ReadCompressedInteger();
+        byte element = signature.ReadByte();
+        // A required or optional modifier comes before the type it modifies.
+        while (element is 0x1F or 0x20)
+        {
+            signature.ReadCompressedInteger();
+            element = signature.ReadByte();
+        }
+        return element switch
+        {
+            >= 0x02 and <= 0x0E or 0x18 or 0x19 => element,
+            0x12 or 0x14 or 0x1C or 0x1D => 0x1C,
+            0x15 when signature.ReadByte() == 0x12 => 0x1C,
+            _ => null,
+        };
+    }
+
     /// <summary>MethodImplAttributes.Async, which the metadata reader's enum does not name.</summary>
     private const int RuntimeAsyncFlag = 0x2000;
 

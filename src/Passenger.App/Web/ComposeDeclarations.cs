@@ -12,9 +12,9 @@ namespace Passenger.App.Web;
 public sealed record ComposePlace(string Path, TextPosition Position, string Name);
 
 /// <summary>What Go to Declaration finds in a compose file: places, or an image's registry page, or neither and why.</summary>
-public sealed record ComposeAnswer(IReadOnlyList<ComposePlace> Places, Uri? Page, string Said)
+public sealed record ComposeAnswer(IReadOnlyList<ComposePlace> Places, Uri? Page, Words Said)
 {
-    public static ComposeAnswer None(string said) => new([], null, said);
+    public static ComposeAnswer None(Words said) => new([], null, said);
 }
 
 /// <summary>Passenger's own Go to Declaration in a compose file, read from the YAML server's outline of it (each key's path

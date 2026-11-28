@@ -25,19 +25,24 @@ public sealed record FindChoices(SearchScope Start, IReadOnlyList<ProjectModel> 
 /// <summary>Find in Files (and Replace in Files): the query with Match case, Words and Regex (Alt+C, Alt+O, Alt+X), the
 /// scope (Solution, Project, Directory with Recursively, or a named Scope: Alt+U, Alt+P, Alt+D, Alt+S, Alt+Y) and the
 /// file mask (Alt+K), the lines with matches as they are found, each once with its file and line and every match on it
-/// bold, the chosen one's file previewed below; Enter or a double-click goes to its first match, Escape closes. In Replace mode a replacement and Replace All.</summary>
+/// bold, the chosen one's file previewed below; Enter or a double-click goes to its first match, Escape closes. Replace
+/// in Files has a replacement and Replace All under the query, a row the open popup takes or gives up in place
+/// (<see cref="Replacing"/>).</summary>
 public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 {
     private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(250);
 
     /// <summary>The scopes for a solution, with the letter of each one's Alt key.</summary>
-    private static readonly (SearchScopeKind Kind, string Name, Key Key)[] Kinds =
+    private static readonly (SearchScopeKind Kind, Words Name, Key Key)[] Kinds =
     [
-        (SearchScopeKind.Solution, "Solution", Key.U),
-        (SearchScopeKind.Project, "Project", Key.P),
-        (SearchScopeKind.Directory, "Directory", Key.D),
-        (SearchScopeKind.Scope, "Scope", Key.S),
+        (SearchScopeKind.Solution, NavigationWords.InSolution, Key.U),
+        (SearchScopeKind.Project, NavigationWords.InProject, Key.P),
+        (SearchScopeKind.Directory, NavigationWords.InDirectory, Key.D),
+        (SearchScopeKind.Scope, NavigationWords.InScope, Key.S),
     ];
+
+    /// <summary>The file mask offered where none was used before.</summary>
+    private const string DefaultMask = "*.cs";
 
     /// <summary>The key that turns the file mask on and off, its field taking the keys as it turns on.</summary>
     private static readonly Keystroke MaskKey = new(Key.K, KeyModifiers.Alt);
@@ -49,7 +54,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     private readonly Func<string, TextSnapshot?> textOf;
     private readonly Func<string, CSharpParseOptions> parseOptions;
     private readonly TextBox query;
-    private readonly TextBox? replacement;
+    private readonly TextBlock title;
+    private readonly TextBox replacement;
+
+    /// <summary>The replacement and Replace All, shown while it is Replace in Files.</summary>
+    private readonly DockPanel replaceRow;
     private readonly ToggleButton matchCase;
     private readonly ToggleButton words;
     private readonly ToggleButton regex;
@@ -86,7 +95,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         this.parseOptions = parseOptions;
         projects = choices.Projects;
         Width = PopupFrame.Widest;
-        query = SearchBox.InPopup(replace ? "Replace in Files" : "Find in Files", "Text to find");
+        query = SearchBox.InPopup(NameOf(replace), NavigationWords.TextToFind);
         query.Text = initial ?? string.Empty;
         matchCase = OptionToggles.Of(OptionToggles.MatchCase);
         words = OptionToggles.Of(OptionToggles.Words);
@@ -97,30 +106,27 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         find.Children.Add(toggles);
         find.Children.Add(query);
 
-        maskOn = PopupFrame.Option("File mask:", choices.Start.Mask is not null, takesKeys: true);
-        ToolTip.SetTip(maskOn, ActionTips.Named("File mask", KeyWords.Of(MaskKey)));
-        maskBox = Field(choices.Masks.Count > 0 ? choices.Masks : ["*.cs"], editable: true);
+        maskOn = PopupFrame.Option(NavigationWords.FileMaskOn, choices.Start.Mask is not null, takesKeys: true);
+        ShownWords.Set(maskOn, ToolTip.TipProperty, ActionTips.Named(NavigationWords.FileMask, KeyWords.Of(MaskKey)));
+        maskBox = Field(choices.Masks.Count > 0 ? choices.Masks : [DefaultMask], editable: true);
         maskBox.Width = 150;
-        maskBox.Text = choices.Start.Mask ?? choices.Masks.FirstOrDefault() ?? "*.cs";
+        maskBox.Text = choices.Start.Mask ?? choices.Masks.FirstOrDefault() ?? DefaultMask;
         maskBox.IsEnabled = maskOn.IsChecked == true;
         StackPanel mask = new() { Orientation = Orientation.Horizontal, Spacing = Gaps.Small, Children = { maskOn, maskBox } };
         DockPanel header = new() { Margin = new Thickness(Gaps.Wide, Gaps.Normal, Gaps.Wide, Gaps.Small) };
         DockPanel.SetDock(mask, Dock.Right);
         header.Children.Add(mask);
-        header.Children.Add(new TextBlock { Classes = { StyleClasses.PaneTitle }, Text = replace ? "Replace in Files" : "Find in Files", VerticalAlignment = VerticalAlignment.Center });
-        StackPanel top = new() { Children = { header, find } };
-        if (replace)
-        {
-            replacement = SearchBox.InPopup("Replacement", "Replacement");
-            Editors.ReplaceBoxes.Take(replacement);
-            Button all = new() { Content = "Replace All", Classes = { StyleClasses.Primary }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
-            all.Click += (_, _) => RequestReplace();
-            DockPanel row = new() { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small) };
-            DockPanel.SetDock(all, Dock.Right);
-            row.Children.Add(all);
-            row.Children.Add(replacement);
-            top.Children.Add(row);
-        }
+        title = new TextBlock { Classes = { StyleClasses.PaneTitle }, [ShownWords.TextProperty] = NameOf(replace), VerticalAlignment = VerticalAlignment.Center };
+        header.Children.Add(title);
+        replacement = SearchBox.InPopup(NavigationWords.Replacement, NavigationWords.Replacement);
+        Editors.ReplaceBoxes.Take(replacement);
+        Button all = new() { [ShownWords.ContentProperty] = NavigationWords.ReplaceAll, Classes = { StyleClasses.Primary }, Margin = new Thickness(Gaps.Small, 0, 0, 0) };
+        all.Click += (_, _) => RequestReplace();
+        replaceRow = new DockPanel { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), IsVisible = replace };
+        DockPanel.SetDock(all, Dock.Right);
+        replaceRow.Children.Add(all);
+        replaceRow.Children.Add(replacement);
+        StackPanel top = new() { Children = { header, find, replaceRow } };
 
         projectBox = Field(choices.Projects, editable: false);
         ReusedRows.Use(projectBox, () =>
@@ -133,7 +139,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         directoryBox.Text = choices.Start.Directory ?? string.Empty;
         recursive = OptionToggles.Of(OptionToggles.Recursively);
         recursive.IsChecked = choices.Start.Recursive;
-        Button browse = ToolButtons.Of(IconKeys.FolderOpen, "Choose a directory", () => IdeErrors.Observe(BrowseAsync()));
+        Button browse = ToolButtons.Of(IconKeys.FolderOpen, NavigationWords.ChooseDirectory, () => IdeErrors.Observe(BrowseAsync()));
         browse.Margin = new Thickness(Gaps.Tight, 0, Gaps.Hair, 0);
         DockPanel directory = new() { Children = { recursive, browse, directoryBox } };
         DockPanel.SetDock(recursive, Dock.Right);
@@ -144,9 +150,9 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         details[SearchScopeKind.Project] = projectBox;
         details[SearchScopeKind.Directory] = directory;
         details[SearchScopeKind.Scope] = scopeBox;
-        foreach ((SearchScopeKind each, string name, Key key) in Kinds)
+        foreach ((SearchScopeKind each, Words name, Key key) in Kinds)
         {
-            ToolTip.SetTip(kinds.Add(each, name), ActionTips.Named(name, KeyWords.Of(key, KeyModifiers.Alt)));
+            ShownWords.Set(kinds.Add(each, name), ToolTip.TipProperty, ActionTips.Named(name, KeyWords.Of(key, KeyModifiers.Alt)));
         }
         kinds.Chosen += (_, each) => ScopeKind = each;
         Panel shown = new();
@@ -160,8 +166,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         Show(choices.Start.Kind);
 
         status = new TextBlock { Classes = { StyleClasses.Muted, StyleClasses.Caption }, VerticalAlignment = VerticalAlignment.Center };
-        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
-        ToolTip.SetTip(FindWindow, ActionTips.Named("Open in Find Window", KeyWords.Of(FindWindowKey)));
+        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, [ShownWords.ContentProperty] = NavigationWords.OpenInFindWindow, IsEnabled = false, [DockPanel.DockProperty] = Dock.Right };
+        ShownWords.Set(FindWindow, ToolTip.TipProperty, ActionTips.Named(NavigationWords.OpenInFindWindow, KeyWords.Of(FindWindowKey)));
         ToolTip.SetShowOnDisabled(FindWindow, true);
         FindWindow.Click += (_, _) => KeepInFindWindow();
         top.Children.Add(new DockPanel { Margin = new Thickness(Gaps.Wide, 0, Gaps.Wide, Gaps.Small), Children = { FindWindow, status } });
@@ -175,11 +181,11 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         ListKeys.Act(results, new ListActs { Open = Choose });
         ToolWindows.ListMenus.Attach(results, () => results.SelectedItem is not SearchLine chosen ? [] :
         [
-            ToolWindows.ListMenus.Open("Go to", Choose),
-            ToolWindows.ListMenus.Item("Copy Path", () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
-            ToolWindows.ListMenus.Item("Copy Line", () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
+            ToolWindows.ListMenus.Open(NavigationWords.GoTo, Choose),
+            ToolWindows.ListMenus.Item(SharedWords.CopyPath, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.Path))),
+            ToolWindows.ListMenus.Item(NavigationWords.CopyLine, () => IdeErrors.Observe(ToolWindows.ListMenus.CopyAsync(this, chosen.LineText.Trim()))),
         ]);
-        preview = new CodeEditor { IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly, ShowErrorStripe = false, Height = PreviewHeight, Focusable = false, Ligatures = ligatures };
+        preview = new CodeEditor { IsReadOnly = true, ReadOnlyWhy = Refusals.PreviewReadOnly.Shown, ShowErrorStripe = false, Height = PreviewHeight, Focusable = false, Ligatures = ligatures };
         // Clear of the frame's rounded foot, which the editor's square corners would cover.
         Border previewFrame = new() { BorderThickness = Hairlines.Above, Padding = new Thickness(0, 0, 0, Gaps.Normal), Child = preview };
         previewFrame.Bind(Border.BorderBrushProperty, previewFrame.GetResourceObservable(TokenKeys.Divider));
@@ -189,7 +195,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             Child = new StackPanel { Children = { top, results, previewFrame } },
         };
         typing = new Debounce(Pause, () => searching = Refresh());
-        query.TextChanged += (_, _) => Retype();
+        TypedText.Hear(query, Retype);
         foreach (ToggleButton option in new[] { matchCase, words, regex })
         {
             option.IsCheckedChanged += (_, _) => Retype();
@@ -205,11 +211,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         directoryBox.PropertyChanged += (_, e) => Retyped(e, ComboBox.TextProperty);
         maskBox.PropertyChanged += (_, e) => Retyped(e, ComboBox.TextProperty);
         AddHandler(KeyDownEvent, OnKey, RoutingStrategies.Tunnel);
-        Dispatcher.UIThread.Post(() =>
-        {
-            query.Focus();
-            query.SelectAll();
-        }, DispatcherPriority.Loaded);
+        Dispatcher.UIThread.Post(TakeKeys, DispatcherPriority.Loaded);
         if (query.Text is { Length: > 0 })
         {
             searching = Refresh();
@@ -218,6 +220,29 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     /// <summary>A match to go to, or null when dismissed.</summary>
     public event EventHandler<SearchMatch?>? Done;
+
+    /// <summary>Whether it is Replace in Files, its replacement row shown, rather than Find in Files. Turned over while it
+    /// is open, the query, its options, the scope, the mask and the matches stay as they are, and the replacement typed
+    /// comes back with its row.</summary>
+    public bool Replacing
+    {
+        get => replaceRow.IsVisible;
+        set
+        {
+            replaceRow.IsVisible = value;
+            ShownWords.Set(title, TextBlock.TextProperty, NameOf(value));
+            ShownWords.Set(query, AutomationProperties.NameProperty, NameOf(value));
+        }
+    }
+
+    private static Words NameOf(bool replacing) => replacing ? NavigationWords.ReplaceInFiles : NavigationWords.FindInFiles;
+
+    /// <summary>Gives the query the keys, all of it chosen, as the popup does as it opens.</summary>
+    public void TakeKeys()
+    {
+        query.Focus();
+        query.SelectAll();
+    }
 
     /// <summary>The link that lists the matches found in the Find window, enabled while there are some.</summary>
     public Button FindWindow { get; }
@@ -313,8 +338,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     }
 
     /// <summary>The matches' number: a thousand and more past the limit.</summary>
-    private static string Count(int found) =>
-        found >= FileSearch.MostMatches ? $"{FileSearch.MostMatches}+ matches" : Plural.Of(found, "match", "matches");
+    private static Words Count(int found) =>
+        found >= FileSearch.MostMatches ? NavigationWords.MostMatches(FileSearch.MostMatches) : NavigationWords.Matches(found);
 
     public string Text
     {
@@ -324,14 +349,8 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
 
     public string Replacement
     {
-        get => replacement?.Text ?? string.Empty;
-        set
-        {
-            if (replacement is not null)
-            {
-                replacement.Text = value;
-            }
-        }
+        get => replacement.Text ?? string.Empty;
+        set => replacement.Text = value;
     }
 
     public bool MatchCase
@@ -420,7 +439,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
     {
         asking?.Cancel();
         SearchQuery asked = Query;
-        Show(FilesFound.None, asked.Text.Length == 0 ? string.Empty : FileSearch.Problem(asked) ?? Scope.Problem() ?? "Searching…", null);
+        Show(FilesFound.None, asked.Text.Length == 0 ? string.Empty : FileSearch.Problem(asked) ?? Scope.Problem() ?? NavigationWords.Searching, null);
         typing.Restart();
     }
 
@@ -457,7 +476,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
         }
         IReadOnlyList<IStorageFolder> picked = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Directory",
+            Title = NavigationWords.Directory.Shown,
             SuggestedStartLocation = System.IO.Directory.Exists(Directory) ? await storage.TryGetFolderFromPathAsync(Directory!) : null,
         });
         if (picked.Count == 1 && picked[0].TryGetLocalPath() is { } path)
@@ -482,7 +501,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             Show(FilesFound.None, problem, (asked, where));
             return;
         }
-        Show(FilesFound.None, "Searching…", null);
+        Show(FilesFound.None, NavigationWords.Searching, null);
         try
         {
             FilesFound searched = await search(asked, where, cancel.Token);
@@ -492,22 +511,22 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
             }
             IReadOnlyList<SearchMatch> each = searched.Matches;
             int files = each.Select(m => m.Path).Distinct().Count();
-            string said = each.Count == 0 ? "Nothing found" : $"{Count(each.Count)} in {Plural.Of(files, "file")}";
-            Show(searched, searched.StoppedIn(System.IO.Path.GetFileName) is { } stopped ? $"{said}: {stopped}" : said, (asked, where));
+            Words said = each.Count == 0 ? NavigationWords.NothingFound : NavigationWords.FoundIn(Count(each.Count), files);
+            Show(searched, searched.StoppedIn(System.IO.Path.GetFileName) is { } stopped ? NavigationWords.FoundStopped(said, stopped) : said, (asked, where));
         }
         catch (OperationCanceledException)
         {
         }
     }
 
-    private void Show(FilesFound shown, string said, (SearchQuery Query, SearchScope Scope)? of)
+    private void Show(FilesFound shown, Words said, (SearchQuery Query, SearchScope Scope)? of)
     {
         found = shown;
         shownFor = of;
         lines = SearchLine.Of(shown.Matches);
         results.ItemsSource = lines;
         results.SelectedIndex = lines.Count > 0 ? 0 : -1;
-        status.Text = said;
+        ShownWords.Set(status, TextBlock.TextProperty, said);
         FindWindow.IsEnabled = shown.Matches.Count > 0;
         ShowPreview();
     }
@@ -573,7 +592,7 @@ public sealed class FindInFilesPopup : UserControl, IAnswers<SearchMatch?>
                 Done?.Invoke(this, null);
                 e.Handled = true;
                 break;
-            case Key.Enter when replacement?.IsFocused != true && !InField():
+            case Key.Enter when !replacement.IsFocused && !InField():
                 Choose();
                 e.Handled = true;
                 break;

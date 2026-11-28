@@ -44,14 +44,15 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Flow.StepApart("a window closed as its preview waits for the previewer is let go", () => new XamlTests(app), t => t.A_window_closed_as_its_preview_waits_for_the_previewer_is_let_go());
     }
 
-    /// <summary>XAML completed and checked as its compiler reads it: a resource's keys and a binding's path; an x:Class
-    /// no C# declares marked; the compiler's error after a build at the editor's line below a lone carriage return; and
-    /// markup nested past a stack, a type its own base or a cycle, or half a surrogate pair leaving the XAML checked
-    /// and the IDE running.</summary>
+    /// <summary>XAML completed and checked as its compiler reads it: a resource's keys and a binding's path; Enter between
+    /// a property's empty quotes writing its element where an event's breaks the line; an x:Class no C# declares marked;
+    /// the compiler's error after a build at the editor's line below a lone carriage return; and markup nested past a
+    /// stack, a type its own base or a cycle, or half a surrogate pair leaving the XAML checked and the IDE running.</summary>
     [AvaloniaFact]
     public void Xaml_is_completed_and_checked_as_its_compiler_reads_it_and_no_text_ends_the_ide()
     {
         Flow.StepApart("a resource reference offers the keys the app merges in, and a binding its data type's properties through a path", () => new XamlTests(app), t => t.A_resource_reference_offers_the_keys_the_app_merges_in_and_a_binding_its_data_types_properties_through_a_path());
+        Flow.StepApart("Enter between a property's empty quotes writes its element, and between an event's, a directive's or an unknown element's breaks the line", () => new XamlTests(app), t => t.Enter_between_a_propertys_empty_quotes_writes_its_element_and_between_an_events_a_directives_or_an_unknown_elements_breaks_the_line());
         Flow.StepApart("an x:Class no C# declares is marked as Avalonia's compiler refuses it", () => new XamlTests(app), t => t.An_x_class_no_csharp_declares_is_marked_as_avalonias_compiler_refuses_it());
         Flow.StepApart("after a build, the XAML compiler's error below a lone carriage return is listed, marked and gone to at the editor's line", () => new XamlTests(app), t => t.After_a_build_the_xaml_compilers_error_below_a_lone_carriage_return_is_listed_marked_and_gone_to_at_the_editors_line());
         Flow.StepApart("a value of markup extensions nested a hundred thousand deep leaves the XAML checked and the IDE running", () => new XamlTests(app), t => t.A_value_of_markup_extensions_nested_a_hundred_thousand_deep_leaves_the_xaml_checked_and_the_ide_running());
@@ -252,6 +253,52 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
         Assert.DoesNotContain("Greeting", window.Assist.CompletionLabels);
         window.Close();
     }
+
+    /// <summary>Enter between the empty quotes of an attribute the project's types read as a property's writes it as a
+    /// property element, the element's first child with the caret inside, one step of Undo, an attached property's in an
+    /// element it opens; an event's (<c>Click</c>) sets no property, and neither does a directive's or one of an element
+    /// whose type nothing names, so Enter there breaks the line as anywhere.</summary>
+    private void Enter_between_a_propertys_empty_quotes_writes_its_element_and_between_an_events_a_directives_or_an_unknown_elements_breaks_the_line()
+    {
+        MainWindow window = app.Open(app.PathOf("MainWindow.axaml"));
+        CodeEditor editor = window.EditorArea.CodeEditor;
+        OpenDocument view = window.EditorArea.Active!;
+        string written = editor.Document.Snapshot.ToString();
+        const string Last = "<TextBlock Text=\"{Binding #Go.Content}\" />\n";
+        string before = written.Replace("<StackPanel Margin=\"12\" Spacing=\"8\">", "<StackPanel Background=\"\" Margin=\"12\" Spacing=\"8\">", StringComparison.Ordinal)
+            .Replace(Last, Last + "        <Button Click=\"\" Grid.Row=\"\" />\n        <TextBlock x:Name=\"\" />\n        <Mystery Width=\"\" />\n", StringComparison.Ordinal);
+        editor.ApplyEdits([new TextEdit(0, written.Length, before)]);
+        Ui.WaitFor(() => window.XamlService.For(view)?.IsLoaded == true, "the project's XAML read");
+
+        Ui.PlaceAfter(editor, "<StackPanel Background=\"");
+        Ui.Press(window, "ENTER");
+        string backed = before.Replace("<StackPanel Background=\"\" Margin=\"12\" Spacing=\"8\">\n",
+            "<StackPanel Margin=\"12\" Spacing=\"8\">\n        <StackPanel.Background></StackPanel.Background>\n", StringComparison.Ordinal);
+        Assert.True(Text(editor) == backed, $"Enter between Background's empty quotes did not write <StackPanel.Background> as the panel's first child:\n{Text(editor)}");
+        Assert.Equal("        <StackPanel.Background>|</StackPanel.Background>", CaretLine(editor));
+        Ui.Run(window, EditorActions.Undo);
+        Assert.True(Text(editor) == before, $"One Undo did not take back Enter and the property element it wrote:\n{Text(editor)}");
+
+        Ui.PlaceAfter(editor, "<Button Click=\"\" Grid.Row=\"");
+        Ui.Press(window, "ENTER");
+        Assert.True(Text(editor).Contains("        <Button Click=\"\">\n            <Grid.Row></Grid.Row>\n        </Button>\n", StringComparison.Ordinal),
+            $"Enter between an attached property's empty quotes did not open the button and write <Grid.Row> inside it:\n{Text(editor)}");
+
+        Ui.PlaceAfter(editor, "<Button Click=\"");
+        Ui.Press(window, "ENTER");
+        Assert.True(!Text(editor).Contains("Button.Click", StringComparison.Ordinal) && Text(editor).Contains("<Button Click=\"\n", StringComparison.Ordinal),
+            $"Enter between an event's empty quotes wrote it as a property element, which XAML has none of for an event:\n{Text(editor)}");
+        Ui.PlaceAfter(editor, "<TextBlock x:Name=\"");
+        Ui.Press(window, "ENTER");
+        Ui.PlaceAfter(editor, "<Mystery Width=\"");
+        Ui.Press(window, "ENTER");
+        Assert.True(Text(editor).Contains("<TextBlock x:Name=\"\n", StringComparison.Ordinal) && Text(editor).Contains("<Mystery Width=\"\n", StringComparison.Ordinal)
+            && !Text(editor).Contains("x:Name>", StringComparison.Ordinal) && !Text(editor).Contains("Mystery.Width", StringComparison.Ordinal),
+            $"Enter between a directive's or an unknown element's empty quotes did more than break the line:\n{Text(editor)}");
+        window.Close();
+    }
+
+    private static string Text(CodeEditor editor) => editor.Document.Snapshot.ToString();
 
     private void A_misspelt_property_enum_value_resource_and_binding_path_are_marked_as_typed_listed_in_problems_and_go_once_put_right()
     {
@@ -2363,7 +2410,7 @@ public sealed class XamlTests : IClassFixture<XamlTests.Gallery>
 
         Ui.Run(window, AppActions.Build);
         Ui.Settle();
-        string uncompiled = Refusals.XamlUncompiled(["Gallery"]);
+        string uncompiled = Refusals.XamlUncompiled(["Gallery"]).Shown;
         Assert.True(window.Status == uncompiled, $"The build after it, nothing changed, said '{window.Status}', not that the app's XAML was never compiled");
         Passenger.App.ToolWindows.OutputView console = window.BottomPanel.Build;
         Assert.True(console.Offered == uncompiled && console.OfferLink == "Rebuild Solution",

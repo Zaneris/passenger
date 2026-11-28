@@ -23,7 +23,7 @@ public sealed partial class SettingsDialog
         }), $"{EslintWords} automatic manual disabled configuration",
             "Automatic: the eslint package installed in the project, found from each file's folder up, with the project's own "
             + "configuration (eslint.config.js, or .eslintrc). Its problems show as you type, and Show Context Actions fixes them. "
-            + "ESLint runs on the Node.js the Node.js page names.");
+            + "ESLint runs on the runtime the Web page names.");
         Add(EslintPage, "ESLint package", eslintPackage, $"{EslintWords} package node_modules path folder manual");
         Add(EslintPage, "Run for files", Text(Working.EslintFiles, AppSettings.DefaultEslintFiles, true,
             text => Change(s => s with { EslintFiles = text.Length == 0 ? AppSettings.DefaultEslintFiles : text })),

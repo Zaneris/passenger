@@ -40,8 +40,18 @@ public class ModuleInfo : IDisposable
     /// <summary>Made as the program runs (System.Reflection.Emit): no file, no image, its metadata the runtime's own.</summary>
     public bool IsDynamic { get; }
 
+    /// <summary>This load of it, in the order the debugger heard of them: another load of the same assembly (another load
+    /// context) is another module with an id of its own.</summary>
+    public int Id { get; }
+
+    private static int lastId;
+
+    /// <summary>Whether the runtime compiles its code optimized, as the module was set up for the debugger.</summary>
+    public bool CompiledOptimized { get; set; }
+
     public ModuleInfo(ICorDebugModule module, string modulePath, ModuleMetadataReader metadataReader, bool isUserCode, CORDB_ADDRESS? emittedKey = null)
     {
+        Id = Interlocked.Increment(ref lastId);
         Module = module;
         ModulePath = modulePath;
         IsUserCode = isUserCode;

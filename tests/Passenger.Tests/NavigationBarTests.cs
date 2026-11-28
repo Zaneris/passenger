@@ -58,7 +58,7 @@ public sealed class NavigationBarTests : IDisposable
             Ui.Click(bar.Buttons[2]);
             SymbolPopup beside = Assert.IsType<SymbolPopup>(window.Popup);
             Ui.WaitFor(() => beside.IsSettled, "Add's fellow members");
-            Assert.Equal("Members of Cart", beside.Title);
+            Assert.Equal("Members of Cart", beside.Title.English);
             Assert.True(beside.Selected?.Name == "Add(string, int)", $"The member's list opened on {beside.Selected?.Name}, not on the member the caret is in");
             Ui.Press(window, "Escape");
 
@@ -71,7 +71,7 @@ public sealed class NavigationBarTests : IDisposable
             Ui.Click(bar.Buttons[1]);
             SymbolPopup types = Assert.IsType<SymbolPopup>(window.Popup);
             Ui.WaitFor(() => types.IsSettled, "the namespace's types");
-            Assert.Equal("In Contoso.Shop", types.Title);
+            Assert.Equal("In Contoso.Shop", types.Title.English);
             Assert.Equal(["Cart", "CartLine", "PaymentMethod"], types.Rows.Select(r => r.Name));
             Assert.True(types.Selected?.Name == "Cart", $"The type's list opened on {types.Selected?.Name}, not on the type the caret is in");
             Ui.Press(window, "Escape");
@@ -81,7 +81,7 @@ public sealed class NavigationBarTests : IDisposable
             Ui.Click(bar.Buttons[^1]);
             SymbolPopup members = Assert.IsType<SymbolPopup>(window.Popup);
             Ui.WaitFor(() => members.IsSettled, "Cart's members");
-            Assert.Equal("Members of Cart", members.Title);
+            Assert.Equal("Members of Cart", members.Title.English);
             Assert.Equal(["lines", "Cart(string)", "Customer", "Add(string, int)", "Remove(string)"], members.Rows.Select(r => r.Name));
             window.KeyTextInput("Rem");
             Ui.WaitFor(() => members.IsSettled && members.Rows.Count == 1, () => $"Cart's members narrowed to Remove, not {string.Join(", ", members.Rows.Select(r => r.Name))}");
@@ -94,8 +94,8 @@ public sealed class NavigationBarTests : IDisposable
             editor.Select(new TextRange(0, editor.Document.Snapshot.Length));
             Ui.Press(window, "BACKSPACE");
             Ui.WaitFor(() => !bar.Bar.IsVisible, "the bar gone once the file declares nothing");
-            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
-            Ui.WaitFor(() => window.Status == Refusals.DeclaresNothing("Cart.cs"), () => $"Jump to Navigation Bar in a file declaring nothing saying why, not '{window.Status}'");
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar)?.Shown);
+            Ui.WaitFor(() => window.Status == Refusals.DeclaresNothing("Cart.cs").Shown, () => $"Jump to Navigation Bar in a file declaring nothing saying why, not '{window.Status}'");
             window.KeyTextInput("record Order;");
             Ui.WaitFor(() => bar.Bar.IsVisible && bar.Shown.SequenceEqual(["Order"]),
                 () => $"the bar back naming the record typed into the emptied file, not {(bar.Bar.IsVisible ? string.Join(" › ", bar.Shown) : "hidden")}");
@@ -111,7 +111,7 @@ public sealed class NavigationBarTests : IDisposable
         (MainWindow window, CodeEditor editor, NavigationBar bar) = OpenCart();
         try
         {
-            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar)?.Shown);
             Ui.Settle();
             Assert.True(bar.Buttons[^1].IsKeyboardFocusWithin, "Jump to Navigation Bar left the bar's last part without the keys");
             Ui.Press(window, "LEFT");
@@ -119,14 +119,14 @@ public sealed class NavigationBarTests : IDisposable
             Ui.Press(window, "DOWN");
             SymbolPopup types = Assert.IsType<SymbolPopup>(window.Popup);
             Ui.WaitFor(() => types.IsSettled, "the namespace's types");
-            Assert.Equal("In Contoso.Shop", types.Title);
+            Assert.Equal("In Contoso.Shop", types.Title.English);
             Ui.Press(window, "Escape");
             Assert.Null(window.Popup);
             Assert.True(bar.Buttons[1].IsKeyboardFocusWithin, "Given up, a list the keys opened did not give the keys back to its part");
             Ui.Press(window, "Escape");
             Assert.True(editor.IsKeyboardFocusWithin, "Escape in the bar did not give the editor the keys back");
 
-            Assert.Null(window.Actions.Run(AppActions.PreviousRegion));
+            Assert.Null(window.Actions.Run(AppActions.PreviousRegion)?.Shown);
             Ui.Settle();
             Assert.True(bar.Bar.IsKeyboardFocusWithin, "Previous Region from the editor passed over the bar above it");
             Ui.Press(window, "Escape");
@@ -134,10 +134,10 @@ public sealed class NavigationBarTests : IDisposable
             window.ApplySettings(window.Settings with { ShowNavigationBar = false });
             Ui.Settle();
             Assert.False(bar.Bar.IsVisible, "With the setting off, the bar still shows over the editor");
-            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar));
+            Assert.Null(window.Actions.Run(AppActions.JumpToNavigationBar)?.Shown);
             Ui.WaitFor(() => window.Popup is SymbolPopup { IsSettled: true }, "the caret's part's list");
             SymbolPopup members = (SymbolPopup)window.Popup!;
-            Assert.Equal("Members of Cart", members.Title);
+            Assert.Equal("Members of Cart", members.Title.English);
             Assert.True(members.Selected?.Name == "Add(string, int)", $"The list of {string.Join(", ", members.Rows.Select(r => r.Name))} opened on {members.Selected?.Name}, not on the member the caret is in, at line {editor.CaretPosition.Line + 1}");
             Ui.Press(window, "Escape");
 

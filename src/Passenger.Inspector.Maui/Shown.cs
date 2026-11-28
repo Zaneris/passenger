@@ -77,7 +77,7 @@ internal static class Shown
         Words.Values(names, name => Bindable(element.GetType(), name) is { } property ? Value(element.GetValue(property)) : Words.Read(element, name, Value));
 
     /// <summary>A bindable property by its name on a type (Owner.Name for one another type declares), or null.</summary>
-    private static BindableProperty? Bindable(Type type, string name)
+    public static BindableProperty? Bindable(Type type, string name)
     {
         int dot = name.LastIndexOf('.');
         if (dot < 0)

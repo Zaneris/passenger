@@ -64,7 +64,7 @@ public sealed class ReadAsTextTests : IDisposable
             Ui.Run(window, AppActions.NextError);
             Assert.Equal("No errors or warnings in this file", window.Status);
             Shortcut key = Shortcut.Parse(Key);
-            foreach (KeymapPreset preset in (KeymapPreset[])[KeymapPreset.VisualStudio, KeymapPreset.VSCode, KeymapPreset.IntelliJ])
+            foreach (KeymapPreset preset in SettingsDialog.KeymapChoices)
             {
                 window.ApplySettings(window.Settings with { Keymap = preset });
                 Keymap keymap = AppActions.Keymap();
@@ -78,7 +78,7 @@ public sealed class ReadAsTextTests : IDisposable
                 Escaped(window, window, () => changes.IsFocused, "the status bar's changed files");
             }
             window.EditorArea.CodeEditor.Focus();
-            Assert.True(window.Actions.WhyNot(AppActions.ReadAsText, window.Actions.Context().ForAgent()) == Refusals.AsksThePerson,
+            Assert.True(window.Actions.WhyNot(AppActions.ReadAsText, window.Actions.Context().ForAgent())?.Shown == Refusals.AsksThePerson.Shown,
                 "An agent's ide_action may open Read as Text's view, which takes the person's keys");
             Assert.True(window.Actions.Find("Read as Text").Any(a => a.Id == AppActions.ReadAsText), "Find Action finds no Read as Text");
         }

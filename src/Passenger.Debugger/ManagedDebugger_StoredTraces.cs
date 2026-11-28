@@ -212,7 +212,7 @@ public partial class ManagedDebugger
                 }
                 ulong offset = storedIp - code.Start;
                 bool adjust = (flags & (FrameAddressAdjusted | FrameContinuation)) == 0 && offset > 0;
-                int? version = code.Code.TryGetVersionNumber(out uint number) is Cor.S_OK ? (int)number : null;
+                int? version = code.Code.TryGetVersionNumber(out uint number) is Cor.S_OK ? module.MetadataReader.VersionOf(token, (int)number, () => code.Start) : null;
                 source = CompiledOffsets.ILAt(code.Code, checked((uint)(adjust ? offset - 1 : offset))) is { } il ? PlaceOf(module, token, il, version) : null;
             }
             frames.Add(new TracedFrame(module.MetadataReader.PeMetadataReader, token, source, lastOfEarlier));

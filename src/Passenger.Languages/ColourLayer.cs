@@ -4,10 +4,11 @@ using Passenger.Text;
 namespace Passenger.Languages;
 
 /// <summary>What a colour layer shows as its text stands: the colours last given it and each change of the text since, in
-/// turn, which it carries them through to draw. A copy, for any thread.</summary>
-public sealed record ShownColours(SyntaxSpan[] Colours, IReadOnlyList<IReadOnlyList<TextEdit>> Since)
+/// turn, which it carries them through to draw by its language's rule for what keeps a name whole. A copy, for any
+/// thread.</summary>
+public sealed record ShownColours(SyntaxSpan[] Colours, IReadOnlyList<IReadOnlyList<TextEdit>> Since, Func<string, bool> KeepsName)
 {
-    public static readonly ShownColours None = new([], []);
+    public static readonly ShownColours None = new([], [], static _ => false);
 }
 
 /// <summary>Colours of what names are (a member, a local, a class), read elsewhere for a version of the text and given
@@ -28,14 +29,14 @@ public sealed class ColourLayer : CarriedColours
     private TextSnapshot? answeredFor;
     private int given;
 
-    public ColourLayer(IHighlighter syntax, TextDocument document)
-        : base(syntax, document)
+    public ColourLayer(IHighlighter syntax, TextDocument document, Func<string, bool> keepsName)
+        : base(syntax, document, keepsName)
     {
         this.document = document;
     }
 
     /// <summary>What the layer shows now, for colours read for this text to be compared with where they are read.</summary>
-    public ShownColours Shown => new(spans, ChangesSince(version));
+    public ShownColours Shown => new(spans, ChangesSince(version), KeepsName);
 
     /// <summary>Colours read for a version of the text, in order of their starts, and where they differ from what was shown
     /// of that version (<see cref="Differing"/>, worked out where they were read; null, the same); ignored where of an older
@@ -64,7 +65,7 @@ public sealed class ColourLayer : CarriedColours
         List<SyntaxSpan> carried = [.. shown.Colours];
         foreach (IReadOnlyList<TextEdit> edits in shown.Since)
         {
-            CarriedSpans.Forward(carried, edits, Word);
+            CarriedSpans.Forward(carried, edits, shown.KeepsName);
         }
         int low = 0;
         while (low < carried.Count && low < after.Length && carried[low] == after[low])

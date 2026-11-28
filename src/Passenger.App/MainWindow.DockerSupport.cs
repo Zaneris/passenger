@@ -23,7 +23,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model)
         {
-            status.Text = Refusals.NotOfFolder(Path.GetFileName(project));
+            status.Text = Refusals.NotOfFolder(Path.GetFileName(project)).Shown;
             return null;
         }
         if (DockerSupportWhyNot(project) is { } refused)
@@ -53,7 +53,7 @@ public partial class MainWindow
     {
         if (SolutionProject(project) is not { } model || DockerContext is not { } context)
         {
-            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
+            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)).Shown);
         }
         if (Unread([model]) is { } unread)
         {
@@ -239,7 +239,7 @@ public partial class MainWindow
         }
         if (SolutionProject(project) is not { } model)
         {
-            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)));
+            return DockerSaid(Refusals.NotOfFolder(Path.GetFileName(project)).Shown);
         }
         if (Unread([model]) is { } unread)
         {

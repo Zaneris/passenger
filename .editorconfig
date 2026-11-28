@@ -28,3 +28,61 @@ dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 # (THIRD_PARTY_NOTICES.md): analyzers and the comment rules pass over them, as over the generators' own output.
 [src/Passenger.Debugger.Interop/**.cs]
 generated_code = true
+
+# The areas whose words are resources', where words a person reads written in the code are refused (#2122).
+[src/Passenger.App/{Refusals.cs,RefusedException.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Debugging/HotReloadOutcome.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Run/{Building.cs,BuildRunController*.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/MainWindow.GodotEditorPlay.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/{Migrations/**.cs,MainWindow.Migrations.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/{Testing/**.cs,MainWindow.Tests.cs,MainWindow.TestSessions.cs,MainWindow.Continuous.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/CSharp/WorkspaceEdits.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/History/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/DependencyMap/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/IlViewer/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Telemetry/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Bdd/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Welcome/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Docking/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+[src/Passenger.App/Navigation/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning
+
+# The code answering agents, whose words are English whatever language the window is in (#2122); its questions to the person
+# are the person's words.
+[src/Passenger.App/Mcp/**.cs]
+dotnet_diagnostic.PSG0014.severity = warning
+
+[src/Passenger.App/Mcp/{AgentAdmissionDialog.cs,AgentToolDialog.cs}]
+dotnet_diagnostic.PSG0012.severity = warning
+dotnet_diagnostic.PSG0014.severity = none
+
+[src/Passenger.App/Explorer/**.cs]
+dotnet_diagnostic.PSG0012.severity = warning

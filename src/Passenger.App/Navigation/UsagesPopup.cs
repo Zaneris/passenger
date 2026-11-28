@@ -20,13 +20,13 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     private readonly IReadOnlyList<Usage> all;
     private readonly string? note;
 
-    public UsagesPopup(string title, IReadOnlyList<Usage> usages, string? note)
-        : base($"{title}  {Core.Plural.Of(usages.Count, "usage")}{(usages.Count(u => u.Generated) is > 0 and int made ? $", {Numbers.Said(made)} in generated code" : string.Empty)}",
-            "A file's name or code", PopupFrame.Wide)
+    public UsagesPopup(Words title, IReadOnlyList<Usage> usages, string? note)
+        : base(usages.Count(u => u.Generated) is > 0 and int made ? NavigationWords.UsagesGenerated(title, usages.Count, made) : NavigationWords.Usages(title, usages.Count),
+            NavigationWords.UsagesPlaceholder, PopupFrame.Wide)
     {
         all = [.. usages.OrderBy(u => u.Generated).ThenBy(u => u.Kind == UsageKind.Declaration ? 0 : 1).ThenBy(u => u.Path, StringComparer.Ordinal).ThenBy(u => u.Line).ThenBy(u => u.Column)];
         this.note = note;
-        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, Content = "Open in Find Window", VerticalAlignment = VerticalAlignment.Center };
+        FindWindow = new Button { Classes = { StyleClasses.Link, StyleClasses.Caption }, [ShownWords.ContentProperty] = NavigationWords.OpenInFindWindow, VerticalAlignment = VerticalAlignment.Center };
         FindWindow.Click += (_, _) => FindWindowRequested?.Invoke(this, EventArgs.Empty);
         AddToHeading(FindWindow);
         QueryChanged();
@@ -42,7 +42,7 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     {
         string typed = Query.Trim();
         Show([.. all.Where(u => typed.Length == 0 || Path.GetFileName(u.Path).Contains(typed, StringComparison.OrdinalIgnoreCase)
-            || u.LineText.Contains(typed, StringComparison.OrdinalIgnoreCase))], "No usages match");
+            || u.LineText.Contains(typed, StringComparison.OrdinalIgnoreCase))], NavigationWords.NoUsagesMatch);
         if (note is not null && Rows.Count > 0)
         {
             Say(note);
@@ -76,10 +76,10 @@ public sealed class UsagesPopup : SearchPopup<Usage>
         row.Children.Add(code);
         return row.Showing<Usage>(usage =>
         {
-            icon.Data = Explorer.FileIcons.ForFile(usage.Path);
-            icon.ForegroundKey = Explorer.FileIcons.TintForFile(usage.Path);
+            icon.DataKey = Explorer.FileIcons.FileKey(usage.Path);
+            icon.ForegroundKey = Explorer.FileIcons.FileBrushKey(usage.Path);
             place.Text = $"{Path.GetFileName(usage.Path)}:{usage.Line + 1}";
-            kind.Text = !usage.Generated ? KindOf(usage.Kind) : KindOf(usage.Kind) is { Length: > 0 } does ? $"{does} in generated code" : "In generated code";
+            ShownWords.Set(kind, TextBlock.TextProperty, !usage.Generated ? KindOf(usage.Kind) : KindOf(usage.Kind) is { IsEmpty: false } does ? NavigationWords.KindInGenerated(does) : NavigationWords.InGenerated);
             ToolTip.SetTip(row, usage.Path);
             code.Inlines = Code(usage);
         });
@@ -102,13 +102,13 @@ public sealed class UsagesPopup : SearchPopup<Usage>
     }
 
     /// <summary>What a usage does where it is, in the Find window's words for its groups.</summary>
-    private static string KindOf(UsageKind kind) => kind switch
+    private static Words KindOf(UsageKind kind) => kind switch
     {
-        UsageKind.Declaration => "Declaration",
-        UsageKind.Write => "Write",
-        UsageKind.Read => "Read",
-        UsageKind.Invocation => "Invocation",
-        UsageKind.Import => "Import",
-        _ => string.Empty,
+        UsageKind.Declaration => SharedWords.UsageDeclaration,
+        UsageKind.Write => SharedWords.UsageWrite,
+        UsageKind.Read => SharedWords.UsageRead,
+        UsageKind.Invocation => SharedWords.UsageInvocation,
+        UsageKind.Import => SharedWords.UsageImport,
+        _ => Words.Verbatim(string.Empty),
     };
 }

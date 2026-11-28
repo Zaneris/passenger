@@ -19,6 +19,7 @@ public sealed record InitializeArguments
     public string? PathFormat { get; init; }
     public bool? SupportsVariableType { get; init; }
     public bool? SupportsVariablePaging { get; init; }
+    public bool? SupportsMemoryReferences { get; init; }
     public bool? SupportsRunInTerminalRequest { get; init; }
 }
 
@@ -41,9 +42,17 @@ public sealed record DapCapabilities
     public bool? SupportsStepInTargetsRequest { get; init; }
     public bool? SupportsGotoTargetsRequest { get; init; }
     public bool? SupportsDataBreakpoints { get; init; }
+    public bool? SupportsReadMemoryRequest { get; init; }
 
     /// <summary>Passenger's own: why the debugger can set no data breakpoint where it runs, when it cannot.</summary>
     public string? DataBreakpointsUnavailable { get; init; }
+
+    /// <summary>Passenger's own: whether the debugger marks objects (<see cref="DapCommands.MarkObject"/>).</summary>
+    public bool? SupportsMarkObject { get; init; }
+
+    /// <summary>Passenger's own: whether the debugger forces a step or a continue (<see cref="StepInArguments.Force"/>),
+    /// stepping without Just My Code and passing every breakpoint by but Run to Cursor's.</summary>
+    public bool? SupportsForcedSteps { get; init; }
     public IReadOnlyList<DapExceptionFilter>? ExceptionBreakpointFilters { get; init; }
 }
 
@@ -153,9 +162,11 @@ public sealed record DapSource
 /// <summary>A line breakpoint as asked for. <c>Suspend</c> is Passenger's own: whether a hit stops the program, so a
 /// breakpoint can log and stop, or neither stop nor log a message of its own ("Breakpoint reached"); without it,
 /// a log message alone means no stop, as the protocol has it. <c>RunTo</c> is Passenger's own too: Run to Cursor's line,
-/// whose next hit stops whatever the condition, hit count and Suspend say, tried as the breakpoint's own hit all the same.</summary>
+/// whose next hit stops whatever the condition, hit count and Suspend say, tried as the breakpoint's own hit all the same.
+/// So are <c>Key</c>, <c>WaitFor</c>, <c>Temporary</c>, <c>Snapshot</c>, <c>Captures</c> and <c>CaptureLimit</c>
+/// (<see cref="IHitBreakpoint"/>).</summary>
 public sealed record DapSourceBreakpoint(int Line, int? Column = null, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
-    bool? RunTo = null) : IAskedBreakpoint;
+    bool? RunTo = null, int? Key = null, int? WaitFor = null, bool? Temporary = null, bool? Snapshot = null, string? Captures = null, int? CaptureLimit = null) : IAskedBreakpoint;
 
 public sealed record SetBreakpointsArguments(DapSource Source, IReadOnlyList<DapSourceBreakpoint>? Breakpoints);
 
@@ -178,14 +189,26 @@ public sealed record DapBreakpoint
     public int? Offset { get; init; }
 }
 
-/// <summary>A function breakpoint as asked for; <c>Suspend</c> is Passenger's own, as a line breakpoint's is.</summary>
-public sealed record DapFunctionBreakpoint(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null);
+/// <summary>A function breakpoint as asked for; <c>Suspend</c>, <c>Key</c>, <c>WaitFor</c>, <c>Temporary</c>,
+/// <c>Snapshot</c>, <c>Captures</c> and <c>CaptureLimit</c> are Passenger's own, as a line breakpoint's are.</summary>
+public sealed record DapFunctionBreakpoint(string Name, string? Condition = null, string? HitCondition = null, string? LogMessage = null, bool? Suspend = null,
+    int? Key = null, int? WaitFor = null, bool? Temporary = null, bool? Snapshot = null, string? Captures = null, int? CaptureLimit = null);
 
 public sealed record SetFunctionBreakpointsArguments(IReadOnlyList<DapFunctionBreakpoint>? Breakpoints);
 
 /// <summary>Whether a data breakpoint can watch a member of a container (an object's field or property, an array's element)
 /// by the container's variables reference and the member's name as the variables request named it.</summary>
 public sealed record DataBreakpointInfoArguments(string Name, int? VariablesReference = null, int? FrameId = null);
+
+/// <summary>Passenger's own request: the object an expression's value is in a frame, marked so that it is known again at every
+/// stop and named by its label (<c>$1</c>) in any expression until it is unmarked or collected.</summary>
+public sealed record MarkObjectArguments(string Expression, int? FrameId = null);
+
+/// <summary>The label the object was marked with, the one it had where it was marked already.</summary>
+public sealed record MarkObjectResponse(string Label);
+
+/// <summary>Passenger's own request: a marked object let go of, its label named by no expression from then on.</summary>
+public sealed record UnmarkObjectArguments(string Label);
 
 public sealed record DataBreakpointInfoResponse
 {
@@ -360,8 +383,17 @@ public sealed record VariablesArguments(int VariablesReference);
 
 public sealed record VariablesResponse(IReadOnlyList<DapVariable> Variables);
 
+public sealed record ReadMemoryArguments(string MemoryReference, int Count, long? Offset = null);
+
+public sealed record ReadMemoryResponse(string Address, byte[] Data, int? UnreadableBytes = null, int PointerSize = 8, bool LittleEndian = true);
+
+public sealed record ResolveMemoryArguments(string Expression, int FrameId);
+
+public sealed record ResolveMemoryResponse(string Address);
+
 public sealed record DapVariable
 {
+    public string? MemoryReference { get; init; }
     public string Name { get; init; } = string.Empty;
     public string Value { get; init; } = string.Empty;
     [JsonConverter(typeof(SharedNames))]
@@ -373,6 +405,9 @@ public sealed record DapVariable
     /// <summary>Passenger's own: why the debugger cannot set this value (a frame's local Godot's debugger sets none of), where
     /// it cannot though an expression reaches it.</summary>
     public string? Unsettable { get; init; }
+
+    /// <summary>Passenger's own: the label of the marked object this value is (<c>$1</c>); null for any other.</summary>
+    public string? Mark { get; init; }
 }
 
 /// <summary>How a variable shows: its kind (<see cref="PresentationHintKinds"/>), its attributes (<see cref="DapAttributes"/>),
@@ -393,6 +428,7 @@ public sealed record EvaluateArguments(string Expression, int? FrameId = null,
 
 public sealed record EvaluateResponse
 {
+    public string? MemoryReference { get; init; }
     public string Result { get; init; } = string.Empty;
     public string? Type { get; init; }
     public int VariablesReference { get; init; }
@@ -405,6 +441,9 @@ public sealed record EvaluateResponse
     /// <summary>Passenger's own: why implicit evaluation stays off once an evaluation with every thread let go has ended, in
     /// words; null where it is on, or the others were held.</summary>
     public string? ImplicitOff { get; init; }
+
+    /// <summary>Passenger's own: the label of the marked object the value is; null for any other.</summary>
+    public string? Mark { get; init; }
 }
 
 /// <summary>Where a paused thread could go on from in a source at a line (Set Next Statement's question).</summary>
@@ -432,8 +471,13 @@ public sealed record SetExpressionResponse
 
 public sealed record ThreadArguments(int ThreadId);
 
-/// <summary>Step Into: the thread, and the call to step straight into (a target stepInTargets gave), Smart Step Into's.</summary>
-public sealed record StepInArguments(int ThreadId, int? TargetId = null);
+/// <summary>Step Into: the thread, and the call to step straight into (a target stepInTargets gave), Smart Step Into's;
+/// <paramref name="Force"/> is Passenger's own, Force Step Into's (<see cref="DapCapabilities.SupportsForcedSteps"/>).</summary>
+public sealed record StepInArguments(int ThreadId, int? TargetId = null, bool? Force = null);
+
+/// <summary>Step Over and Continue: the thread, and Passenger's own <paramref name="Force"/>, Force Step Over's and Force
+/// Run to Cursor's (<see cref="DapCapabilities.SupportsForcedSteps"/>).</summary>
+public sealed record GoingArguments(int ThreadId, bool? Force = null);
 
 /// <summary>The calls a frame's statement can step into, in the order they run (Smart Step Into's question), its source read
 /// as its project compiles it: with these preprocessor symbols, at this C# version ("12.0", "preview"); with neither, with
@@ -545,6 +589,66 @@ public sealed record ThreadEvent([IdentifierOf(typeof(EventReasons))][property: 
 /// <summary>Output, of category stdout, stderr or console.</summary>
 public sealed record OutputEvent(string Output, string? Category = null);
 
+/// <summary>Passenger's own event: a snapshot point's capture, the program's state where one of its threads took the point's
+/// hit, read as a stop's frames and values are and copied whole, so it reads alike once the program has run on. The
+/// program was held <see cref="Paused"/> for it and then went on; <see cref="Values"/> holds each frame's locals and each
+/// row's members read, by the reference that names them (a row's own <see cref="DapVariable.VariablesReference"/>), and
+/// <see cref="Asked"/> the point's own expressions, read in its top frame.</summary>
+public sealed record SnapshotEvent
+{
+    /// <summary>The snapshot point, by the id the debugger gave it.</summary>
+    public int BreakpointId { get; init; }
+
+    public int ThreadId { get; init; }
+    public string? ThreadName { get; init; }
+
+    /// <summary>When it was taken, by the machine's clock.</summary>
+    public DateTimeOffset At { get; init; }
+
+    /// <summary>How long the program was held for it, from the hit to its going on, in milliseconds.</summary>
+    public double PausedMilliseconds { get; init; }
+
+    public IReadOnlyList<DapSnapshotFrame> Frames { get; init; } = [];
+    public IReadOnlyDictionary<int, IReadOnlyList<DapVariable>> Values { get; init; } = new Dictionary<int, IReadOnlyList<DapVariable>>();
+    public IReadOnlyList<DapVariable> Asked { get; init; } = [];
+
+    /// <summary>What the capture left unread, where it read less than the frames and values asked of it; null for none.</summary>
+    public string? Cut { get; init; }
+}
+
+/// <summary>A frame of a snapshot, its locals by their reference among the snapshot's values, 0 where they were not read.</summary>
+public sealed record DapSnapshotFrame(DapStackFrame Frame, int Locals);
+
+/// <summary>Passenger's own request: whether the debugger records the program's calls from now on (step back debugging).</summary>
+public sealed record RecordArguments(bool On);
+
+/// <summary>Passenger's own request: the recording's moments on a thread, every thread's without one.</summary>
+public sealed record TimelineArguments(int? ThreadId = null);
+
+/// <summary>What a recording kept: whether it records now, its moments oldest first, how many older ones it let go to keep
+/// within <see cref="MostMoments"/> and <see cref="MostBytes"/> of values, how many it recorded in all, and how long
+/// recording them held the program in all, in milliseconds.</summary>
+public sealed record TimelineResponse(bool Recording, IReadOnlyList<DapMoment> Moments, int Dropped, int Recorded, double HeldMilliseconds, int MostMoments, long MostBytes);
+
+/// <summary>A recorded moment: its number in the session's recording, what it is (<see cref="DapMomentKinds"/>), its
+/// thread, when, its method's frame where it stood, how many recorded calls it ran inside, and what happened, in words.</summary>
+public sealed record DapMoment(int Index, [property: IdentifierOf(typeof(DapMomentKinds))] string Kind, int ThreadId, DateTimeOffset At, DapStackFrame Place, int Depth, string Said);
+
+/// <summary>Passenger's own request: a recorded moment, by its number, as a past stop.</summary>
+public sealed record MomentArguments(int Index);
+
+/// <summary>Passenger's own request: what a stopped frame's method will do from where it stands.</summary>
+public sealed record AheadArguments(int FrameId);
+
+/// <summary>The code a stopped frame's method won't run, from the values it stands with, running none of the program's code
+/// (lines and columns from one); the values its locals will take on the lines ahead; and the line from which it could no
+/// longer tell, none where it read on to the method's end. Empty for a frame not read (not the top one, or without symbols).</summary>
+public sealed record AheadResponse(IReadOnlyList<DapAheadSpan> WontRun, IReadOnlyList<DapAheadValue> Values, int? UnsureFrom);
+
+public sealed record DapAheadSpan(int Line, int Column, int EndLine, int EndColumn);
+
+public sealed record DapAheadValue(int Line, string Name, string Value);
+
 /// <summary>A breakpoint changed (bound, or moved), new or removed.</summary>
 public sealed record BreakpointEvent
 {
@@ -555,7 +659,42 @@ public sealed record BreakpointEvent
 
 public sealed record ModuleEvent([IdentifierOf(typeof(EventReasons))][property: IdentifierOf(typeof(EventReasons))] string Reason, DapModule Module);
 
-public sealed record DapModule(string Id, string Name, string? Path = null);
+/// <summary>A module the program loaded, its id the debugger's own for the one load of it (one assembly in two load contexts
+/// is two modules); with the protocol's version, Just My Code's verdict (<see cref="IsUserCode"/>), whether its code runs
+/// optimized, where its symbols came from and its address.</summary>
+public sealed record DapModule(string Id, string Name, string? Path = null)
+{
+    public string? Version { get; init; }
+    public bool? IsUserCode { get; init; }
+    public bool? IsOptimized { get; init; }
+
+    /// <summary>Whether its symbols are loaded, in words (<see cref="DapSymbolStatus"/>).</summary>
+    [IdentifierOf(typeof(DapSymbolStatus))]
+    public string? SymbolStatus { get; init; }
+
+    /// <summary>The file its symbols were read from, or where they lie (in the assembly), where it has any.</summary>
+    public string? SymbolFilePath { get; init; }
+
+    public string? AddressRange { get; init; }
+
+    /// <summary>Passenger's own: made as the program runs (System.Reflection.Emit), with no file.</summary>
+    public bool? IsDynamic { get; init; }
+}
+
+/// <summary>Whether a module's symbols are loaded, its symbolStatus as Passenger's debug adapter says it and the IDE reads it,
+/// each written once.</summary>
+[IdentifierHome]
+public static class DapSymbolStatus
+{
+    /// <summary>Its own symbols, from a PDB beside it or inside it.</summary>
+    public const string Loaded = "Loaded";
+
+    /// <summary>Symbols the debugger made by decompiling it, which it had none of.</summary>
+    public const string Decompiled = "Decompiled";
+
+    /// <summary>None yet: a frame in it shows no source until it is decompiled.</summary>
+    public const string None = "Not loaded";
+}
 
 public sealed record ProcessEvent(string Name, int? SystemProcessId = null, bool? IsLocalProcess = null, string? StartMethod = null);
 

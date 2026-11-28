@@ -392,6 +392,15 @@ public sealed partial class AspireInteractions
         }
     }
 
+    /// <summary>The property a resource that makes connections (a database, a cache) tells its connection string by.</summary>
+    private const string ConnectionStringProperty = "resource.connectionString";
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> connectionStrings = new(StringComparer.Ordinal);
+
+    /// <summary>Each resource's connection string as its AppHost told it, by the resource's name, unmasked for the Database
+    /// window alone, which marks its secrets for ContainerSecrets as it was taken.</summary>
+    internal IReadOnlyDictionary<string, string> ConnectionStrings => connectionStrings;
+
     private static void ValidateIdentity(string value)
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length > 1024 || value.Any(char.IsControl))
@@ -412,6 +421,16 @@ public sealed partial class AspireInteractions
         if (rejectDuplicate && target.ContainsKey(incoming.Name))
         {
             throw new InvalidDataException("The AppHost sent duplicate resources.");
+        }
+        // A resource's connection string, kept whole apart for the Database window, its secrets marked, before it is masked.
+        if (incoming.Properties.FirstOrDefault(p => p.Name == ConnectionStringProperty) is { Value.KindCase: Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StringValue } told)
+        {
+            ContainerSecrets.Mark(told.Value.StringValue);
+            connectionStrings[incoming.Name] = told.Value.StringValue;
+        }
+        else
+        {
+            connectionStrings.TryRemove(incoming.Name, out _);
         }
         // A secret masked by ContainerSecrets' rule, and one the AppHost marks sensitive whatever its name.
         Resource resource = incoming.Clone();

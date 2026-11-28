@@ -66,7 +66,7 @@ public sealed class SelfDebuggingTests : IDisposable
             + "(dotnet build-server shutdown)");
         Dictionary<string, byte[]> restore = RestoreFiles(repository);
         string picture = Path.Combine(folder, "inner.png");
-        Task<string?> launched;
+        Task<Words?> launched;
         // The build of the person's checkout has their NuGet settings and analyzers; the inner Passenger it starts, the run's.
         using (TestRun.PersonsNuGet())
         using (TestRun.AnalyzersAsBuilt())

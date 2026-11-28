@@ -28,7 +28,7 @@ public partial class ManagedDebugger
         try
         {
             if (handler is not ICorDebugILFrame frame || FindModule(frame.Function.Module) is not { } module
-                || module.MetadataReader.AsyncCatch(frame.Function.Token, ModuleMetadataReader.VersionOf(frame)) is not { } caught || caught.Offset != (int)handlerOffset
+                || module.MetadataReader.AsyncCatch(frame.Function.Token, module.MetadataReader.VersionOf(frame)) is not { } caught || caught.Offset != (int)handlerOffset
                 || ThrownTypes(thread) is not { } thrown || frame.TryGetArgument(0, out ICorDebugValue? stateMachine) < 0 || stateMachine is null)
             {
                 return null;
@@ -111,13 +111,13 @@ public partial class ManagedDebugger
     {
         if (FindModule(caller.Function.Module) is not { } callerModule
             || callerModule.MetadataReader.GetStateMachineKickoffMethodToken(caller.Function.Token) is null
-            || callerModule.MetadataReader.GetAsyncMethodSteppingInfo(caller.Function.Token, ModuleMetadataReader.VersionOf(caller)) is not { } awaits
+            || callerModule.MetadataReader.GetAsyncMethodSteppingInfo(caller.Function.Token, callerModule.MetadataReader.VersionOf(caller)) is not { } awaits
             || caller.TryGetArgument(0, out ICorDebugValue? stateMachine) < 0 || stateMachine is null)
         {
             return null;
         }
         int call = caller.IP.pnOffset;
-        int? version = ModuleMetadataReader.VersionOf(caller);
+        int? version = callerModule.MetadataReader.VersionOf(caller);
         uint? awaited = awaits.AwaitInfos.Where(a => a.ResumeOffset > call).OrderBy(a => a.ResumeOffset).Select(a => a.YieldOffset).Cast<uint?>().FirstOrDefault();
         bool sameStatement = awaited is { } yieldOffset
             && callerModule.MetadataReader.GetSourceLocationForOffset(caller.Function.Token, call, version) is { } statement
@@ -187,7 +187,7 @@ public partial class ManagedDebugger
     private bool CallsIn(ICorDebugILFrame frame, ModuleInfo frameModule, ModuleInfo module, int method)
     {
         int token = frame.Function.Token;
-        int? version = ModuleMetadataReader.VersionOf(frame);
+        int? version = frameModule.MetadataReader.VersionOf(frame);
         return frameModule.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, frame.IP.pnOffset, version) is var (start, end)
             && frameModule.MetadataReader.CallSites(token, start, end > start ? end : int.MaxValue, version)
                 .Any(call => call.Kind == ModuleMetadataReader.CallKind.Call && ResolveCalledMethod(frameModule, call.Token) is var (called, calledToken)
@@ -196,12 +196,12 @@ public partial class ManagedDebugger
 
     /// <summary>Whether a frame's arguments or locals, as far as it has them, hold what is made for a task
     /// (<see cref="MadeFor"/>), or, <paramref name="calledOn"/>, its first argument is the task.</summary>
-    private static bool Holds(ICorDebugILFrame frame, CORDB_ADDRESS task, bool calledOn)
+    private bool Holds(ICorDebugILFrame frame, CORDB_ADDRESS task, bool calledOn)
     {
         try
         {
             return calledOn && frame.TryGetArgument(0, out ICorDebugValue? first) >= 0 && first?.UnwrapDebugValueToObjectOrNull()?.Address == task
-                || frame.EnumerateArguments().Concat(frame.EnumerateLocalVariables()).Any(value => MadeFor(value, task));
+                || frame.EnumerateArguments().Concat((LocalsOf(frame).Locals ?? []).OfType<ICorDebugValue>()).Any(value => MadeFor(value, task));
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -215,7 +215,7 @@ public partial class ManagedDebugger
     {
         int token = frame.Function.Token;
         int ip = frame.IP.pnOffset;
-        int? version = ModuleMetadataReader.VersionOf(frame);
+        int? version = module.MetadataReader.VersionOf(frame);
         return module.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(token, ip, version) is var (start, _)
             && module.MetadataReader.CallSites(token, start, ip + 1, version).Any(call => call.Kind == ModuleMetadataReader.CallKind.Call && Read(frame, call.Offset) is { } value
                 && (value.UnwrapDebugValueToObjectOrNull()?.Address == task || MadeFor(value, task)));

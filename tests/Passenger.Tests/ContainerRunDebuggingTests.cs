@@ -43,13 +43,14 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
 
     /// <summary>Debugging compose services as one flow, every step needing a Linux container engine and the container
     /// tools, each in an instance of its own: two services debugged at once and the Containers window's Restart, Stop
-    /// and Remove, Hot Reload reaching a paused service and a rude edit restarting its service, and an edit made while
-    /// they come up, after a restart's build, before a Restart without a build, or while images build applied once they
-    /// run.</summary>
+    /// and Remove, a run of several parts' Compose part debugged, Hot Reload reaching a paused service and a rude edit
+    /// restarting its service, and an edit made while they come up, after a restart's build, before a Restart without a
+    /// build, or while images build applied once they run.</summary>
     [AvaloniaFact]
     public void Container_services_are_debugged_and_hot_reloaded_each_edit_reaching_them_once_they_run()
     {
         Flow.StepApart("two services debugged at once stop in Main and in a request and the Containers windows Restart Stop and Remove go through the run", () => new ContainerRunDebuggingTests(tools), t => t.Two_services_debugged_at_once_stop_in_Main_and_in_a_request_and_the_Containers_windows_Restart_Stop_and_Remove_go_through_the_run());
+        Flow.StepApart("a runs Compose part debugs its dotnet service to a breakpoint under the runs Debug and Stop takes it down", () => new ContainerRunDebuggingTests(tools), t => t.A_runs_Compose_part_debugs_its_dotnet_service_to_a_breakpoint_under_the_runs_Debug_and_Stop_takes_it_down());
         Flow.StepApart("hot Reload reaches a paused service and Run with Hot Reload applies an edit and restarts a service for a rude one", () => new ContainerRunDebuggingTests(tools), t => t.Hot_Reload_reaches_a_paused_service_and_Run_with_Hot_Reload_applies_an_edit_and_restarts_a_service_for_a_rude_one());
         Flow.StepApart("an edit made while Run with Hot Reload brings its services up is applied once they run", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_made_while_Run_with_Hot_Reload_brings_its_services_up_is_applied_once_they_run());
         Flow.StepApart("an edit made while Rerun or Hot Reloads restart is held after its build is applied once the services run again", () => new ContainerRunDebuggingTests(tools), t => t.An_edit_made_while_Rerun_or_Hot_Reloads_restart_is_held_after_its_build_is_applied_once_the_services_run_again());
@@ -61,7 +62,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// container tools, each in an instance of its own: Detach of a service Hot Reload changed refused saying why,
     /// Attach under Run with Hot Reload debugging by its session, Attach to a service its Debug tab debugs showing that
     /// tab, a Release image stopping through the path map, a service whose environment turns its debugger off never
-    /// held, and a taken port chosen again.</summary>
+    /// held, a taken port chosen again, and a snapshot point capturing a service's request without stopping it.</summary>
     [AvaloniaFact]
     public void A_container_services_attach_detach_and_ports_follow_its_session_and_say_why_where_it_cannot_be_debugged()
     {
@@ -72,6 +73,38 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         Flow.StepApart("a service whose environment turns its debugger off is never held and serves under Debug and Profile saying why (\"compose\")", () => new ContainerRunDebuggingTests(tools), t => t.A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why("compose"));
         Flow.StepApart("a service whose environment turns its debugger off is never held and serves under Debug and Profile saying why (\"Dockerfile\")", () => new ContainerRunDebuggingTests(tools), t => t.A_service_whose_environment_turns_its_debugger_off_is_never_held_and_serves_under_Debug_and_Profile_saying_why("Dockerfile"));
         Flow.StepApart("a port Passenger chose that is taken before up is chosen again and the service comes up debugged on another", () => new ContainerRunDebuggingTests(tools), t => t.A_port_Passenger_chose_that_is_taken_before_up_is_chosen_again_and_the_service_comes_up_debugged_on_another());
+        Flow.StepApart("a snapshot point in a services handler captures a request it answers without a stop its frame in the workspaces file", () => new ContainerRunDebuggingTests(tools), t => t.A_snapshot_point_in_a_services_handler_captures_a_request_it_answers_without_a_stop_its_frame_in_the_workspaces_file());
+    }
+
+    /// <summary>A snapshot point in web's handler, its services debugged in their containers, captures a request as web answers
+    /// it with no stop: the folder's snapshots list it, its top frame placed in the workspace's own Program.cs (the container's
+    /// path crossing back) at the point's line, and the handler's local as it was there.</summary>
+    private void A_snapshot_point_in_a_services_handler_captures_a_request_it_answers_without_a_stop_its_frame_in_the_workspaces_file()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("snap");
+        MainWindow window = ContainerRunsTests.Open(folder);
+        window.Debugger.Breakpoints.ToggleSnapshot(Source(folder, "Web"), InRequest + 1);
+        Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
+        try
+        {
+            Debugged(window, "the services to come up debugged");
+            DebugTab web = Tab(window, "web");
+            Ui.WaitFor(() => window.Debugger.Breakpoints.In(Source(folder, "Web")).Single().Status == BreakpointStatus.Bound, "the snapshot point to bind in web");
+            Assert.Equal("web 1", Ui.Await(Get(ContainerRunsTests.Published(project, "web")), "web's answer", TimeSpan.FromMinutes(1)));
+            Ui.WaitFor(() => window.BottomPanel.Debug.Snapshots.Count == 1, "web's request to be captured");
+            TakenSnapshot taken = window.BottomPanel.Debug.Snapshots[0];
+            Passenger.Dap.DapStackFrame top = taken.Top!;
+            Assert.True(top.Source?.Path == Source(folder, "Web") && top.Line == InRequest + 2 && taken.LocalsOf(top).Any(v => v.Name == "said" && v.Value == "\"web 1\""),
+                $"web's snapshot has its top frame at {top.Source?.Path}:{top.Line} with [{string.Join(", ", taken.LocalsOf(top).Select(v => $"{v.Name} = {v.Value}"))}], "
+                + $"where it stands at {Source(folder, "Web")}:{InRequest + 2} with said = \"web 1\"");
+            Assert.NotEqual(DebugState.Paused, web.Session!.State);
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the services down");
+            window.Close();
+        }
     }
 
     /// <summary>Two services debugged at once, each stopping in Main and in a request, stepped and evaluated, web's address in
@@ -166,6 +199,47 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         window.Close();
     }
 
+    /// <summary>A run of several parts in the folder's passenger-runs.json, a Compose part bringing up web (and cache, which it
+    /// depends on), then a command: Debug of the run debugs web as compose.yaml's own configuration's Debug does, in a Debug
+    /// tab of its own stopping at Main's breakpoint, the part's Run window tab following the containers' log and the command
+    /// after it run once they are up; Stop ends web's session and takes the containers down.</summary>
+    private void A_runs_Compose_part_debugs_its_dotnet_service_to_a_breakpoint_under_the_runs_Debug_and_Stop_takes_it_down()
+    {
+        Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
+        (string folder, string project) = Shop("parts");
+        string host = Dotnet.Host().Replace("\\", "/", StringComparison.Ordinal);
+        TestFolders.Write(folder, Passenger.Workspace.RunsFile.FileName, $$"""
+            { "passengerRuns": 1, "runs": [ { "name": "Stack", "parts": [
+              { "compose": ["compose.yaml"], "services": ["web"] },
+              { "command": "\"{{host}}\" --version", "name": "after" }
+            ] } ] }
+            """);
+        MainWindow window = ContainerRunsTests.Open(folder);
+        window.Debugger.Breakpoints.Toggle(Source(folder, "Web"), InMain);
+        try
+        {
+            Ui.WaitFor(() => window.SelectConfiguration("Stack"), () => $"the folder's run to be listed ({string.Join(", ", window.Configurations.Select(c => c.Name))})");
+            Debugged(window, "the run's Compose part to come up with web under the debugger");
+            DebugTab web = Tab(window, "web");
+            StoppedAt(window, web, Source(folder, "Web"), InMain, "web to stop in Main under the run's Debug");
+            Assert.False(web.Session!.IsLocal, "web's program was taken for one of this machine's");
+            Assert.DoesNotContain(window.Debugger.Tabs, t => t.Name == "api");
+            Assert.Contains("web", window.Builds.ProjectsOf("Stack").Debugged);
+            Ui.WaitFor(() => window.RunParts.Select(p => p.Name).SequenceEqual(["compose: web", "after"])
+                    && window.RunParts[1] is { State: PartState.Ended } after && after.Runner.Shown().ToString().Contains("Process finished with exit code 0", StringComparison.Ordinal),
+                () => $"the Compose part's tab and the command after it, run once its services were up ({string.Join("; ", window.RunParts.Select(p => $"{p.Name} {p.Said}"))}; {window.Status})");
+            Assert.True(window.RunParts[0].IsRunning && window.RunParts[0].Console == window.BottomPanel.Run,
+                $"The Compose part's tab is not the Run window's console following its log: {window.RunParts[0].Said}");
+            Resume(window, web);
+        }
+        finally
+        {
+            Docker.Stopped(window, project, "Stop to take the run's containers down");
+        }
+        Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, "web's session to end with the run");
+        window.Close();
+    }
+
     private void Hot_Reload_reaches_a_paused_service_and_Run_with_Hot_Reload_applies_an_edit_and_restarts_a_service_for_a_rude_one()
     {
         Assert.SkipWhen(tools.WhyNot is not null, tools.WhyNot ?? string.Empty);
@@ -252,7 +326,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         {
             Assert.True(window.SelectConfiguration("Compose: compose.yaml"));
             Task held = window.Builds.HoldNextUp(edited.Task);
-            Task<string?> running = window.Builds.RunAsync(hotReload: true);
+            Task<Words?> running = window.Builds.RunAsync(hotReload: true);
             Ui.PumpUntil(() => held.IsCompleted || running.IsCompleted, "Run with Hot Reload to build and come to its up", TimeSpan.FromMinutes(5));
             Assert.False(running.IsCompleted, $"Run with Hot Reload ended before its up: {(running.IsCompleted ? running.Result : null)}");
             // Not settled: the start holds the window's background work until its services are up.
@@ -264,7 +338,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.Contains("\"web 2\"", editor.Document.Snapshot.ToString(), StringComparison.Ordinal);
 
             edited.SetResult();
-            string? refused = Ui.Await(running, "the services to come up with Hot Reload", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(running, "the services to come up with Hot Reload", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web and api to be attached to for Hot Reload");
             int port = ContainerRunsTests.Published(project, "web");
@@ -307,12 +381,12 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.True(window.Perform(AppActions.Save), $"Save could not run: {window.Status}");
             Ui.Settle();
             Task rerunHeld = window.Builds.HoldNextUp(rerunEdited.Task);
-            Task<string?> rerunning = window.Builds.RerunAsync();
+            Task<Words?> rerunning = window.Builds.RerunAsync();
             Ui.PumpUntil(() => rerunHeld.IsCompleted || rerunning.IsCompleted, "Rerun to build web and come to its restart", TimeSpan.FromMinutes(5));
             Assert.False(rerunning.IsCompleted, $"Rerun ended before its restart: {(rerunning.IsCompleted ? rerunning.Result : null)}");
             Typed(window, "web 2", "web 3");
             rerunEdited.SetResult();
-            string? reran = Ui.Await(rerunning, "Rerun to restart web", TimeSpan.FromMinutes(5));
+            string? reran = Ui.Await(rerunning, "Rerun to restart web", TimeSpan.FromMinutes(5))?.English;
             Assert.True(reran?.Contains("restarted web with the new build", StringComparison.Ordinal) == true, $"{reran}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web to be attached to again after Rerun");
             Assert.Equal("web 2", Ui.Await(Get(port), "web's answer as Rerun built it", TimeSpan.FromMinutes(1)));
@@ -421,12 +495,12 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             window.OpenFile(Path.Combine(folder, "Web", "Message.cs"));
             Ui.Settle();
             Task startHeld = window.Builds.HoldNextUp(startEdited.Task);
-            Task<string?> running = window.Builds.RunAsync(hotReload: true);
+            Task<Words?> running = window.Builds.RunAsync(hotReload: true);
             Ui.PumpUntil(() => startHeld.IsCompleted || running.IsCompleted, "Run with Hot Reload to save the files for its images and come to its up", TimeSpan.FromMinutes(5));
             Assert.False(running.IsCompleted, $"Run with Hot Reload ended before its up: {(running.IsCompleted ? running.Result : null)}");
             Typed(window, "web 1", "web 2");
             startEdited.SetResult();
-            string? refused = Ui.Await(running, "the images to be built and come up with Hot Reload", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(running, "the images to be built and come up with Hot Reload", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}\n{ContainerRunsTests.Run(window)}");
             Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web and api to be attached to for Hot Reload");
             int port = ContainerRunsTests.Published(project, "web");
@@ -491,8 +565,8 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             window.ShowToolWindow(ToolWindowIds.Debug);
             Ui.Settle();
             Ui.Click(window.DebugWindow.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => ActionTips.ActionOf(b) == AppActions.Detach));
-            Assert.Equal(DebugController.LetsNoDebuggerGo("web"), window.Status);
-            Assert.Equal("restart web without the debugger", window.StatusPlace?.Name);
+            Assert.Equal(DebugController.LetsNoDebuggerGo("web").Shown, window.Status);
+            Assert.Equal("restart web without the debugger", window.StatusPlace?.Name.English);
             Assert.True(web.IsLive, "Detach, refused, ended web's session");
             Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Detach was refused, which a held program never gives", TimeSpan.FromMinutes(1)));
 
@@ -503,7 +577,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.Equal("web 1", Ui.Await(Get(port), "web's answer as built, restarted without the debugger", TimeSpan.FromMinutes(1)));
             Assert.DoesNotContain(window.Debugger.Tabs, t => t.Name == "web" && t.IsLive);
 
-            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web, restarted", TimeSpan.FromMinutes(2));
+            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web, restarted", TimeSpan.FromMinutes(2))?.English;
             Assert.True(attached is null, $"Attach to web, restarted without the changes, was refused: {attached}");
             Assert.Contains(window.Debugger.Tabs, t => t.Name == "web" && t.IsLive);
         }
@@ -537,7 +611,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Apply", TimeSpan.FromMinutes(1)));
 
             window.Debugger.Breakpoints.Toggle(Source(folder, "Web"), InRequest);
-            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web under Run with Hot Reload", TimeSpan.FromMinutes(2));
+            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web under Run with Hot Reload", TimeSpan.FromMinutes(2))?.English;
             Assert.True(attached is null, $"Attach to web was refused: {attached}\n{ContainerRunsTests.Run(window)}");
             DebugTab web = Tab(window, "web");
             Assert.True(web.IsLive, "web's session ended with Attach");
@@ -550,7 +624,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.Equal("web 2", Ui.Await(answer, "web's answer, debugged by its Hot Reload session", TimeSpan.FromMinutes(1)));
             window.Debugger.Breakpoints.Toggle(Source(folder, "Web"), InRequest);
 
-            attached = Ui.Await(window.Builds.AttachServiceAsync("api"), "Attach to api under Run with Hot Reload", TimeSpan.FromMinutes(2));
+            attached = Ui.Await(window.Builds.AttachServiceAsync("api"), "Attach to api under Run with Hot Reload", TimeSpan.FromMinutes(2))?.English;
             Assert.True(attached is null, $"Attach to api was refused: {attached}\n{ContainerRunsTests.Run(window)}");
             DebugTab api = Tab(window, "api");
             Ui.WaitFor(() => api.Session is { State: DebugState.Running }, "api to run under the debugger");
@@ -558,7 +632,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Assert.Equal("running", ContainerRunsTests.States(project)["api"]);
             Assert.Equal("api 1", Ui.Await(Get(ContainerRunsTests.Published(project, "api")), "api's answer, attached to", TimeSpan.FromMinutes(1)));
 
-            string? restarted = Ui.Await(window.Builds.RunServiceAsync("web"), "Run Service without Debugger to restart web", TimeSpan.FromMinutes(3));
+            string? restarted = Ui.Await(window.Builds.RunServiceAsync("web"), "Run Service without Debugger to restart web", TimeSpan.FromMinutes(3))?.English;
             Assert.True(restarted is null, $"Run Service without Debugger was refused: {restarted}\n{ContainerRunsTests.Run(window)}");
             Assert.Contains("restarted without the debugger", window.Status, StringComparison.Ordinal);
             Ui.WaitFor(() => !web.IsLive, "web's session to end with its restart");
@@ -594,7 +668,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Chosen(window, api);
             window.DockHost.Hide(ToolWindowIds.Debug);
 
-            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web, which its tab debugs", TimeSpan.FromMinutes(1));
+            string? attached = Ui.Await(window.Builds.AttachServiceAsync("web"), "Attach to web, which its tab debugs", TimeSpan.FromMinutes(1))?.English;
             Assert.True(attached is null, $"Attach to web was refused: {attached}\n{ContainerRunsTests.Run(window)}");
             Assert.Equal("web of Compose: compose.yaml is debugged already, in the Debug tab shown", window.Status);
             Assert.Same(web, window.Debugger.Chosen);
@@ -617,7 +691,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>Runs the chosen configuration with Hot Reload, waiting for web and api to be attached to for it.</summary>
     private static void HotReloadRun(MainWindow window)
     {
-        string? refused = Ui.Await(window.Builds.RunAsync(hotReload: true), "the services to come up with Hot Reload", TimeSpan.FromMinutes(5));
+        string? refused = Ui.Await(window.Builds.RunAsync(hotReload: true), "the services to come up with Hot Reload", TimeSpan.FromMinutes(5))?.English;
         Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
         Ui.WaitFor(() => window.Debugger.Running.Count == 2, "web and api to be attached to for Hot Reload");
     }
@@ -719,10 +793,10 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         try
         {
             const string Why = "Its runtime was started with DOTNET_EnableDiagnostics_Debugger=0, which turns its debugger off: nothing can attach to it";
-            foreach ((string by, Func<Task<string?>> start) in (ReadOnlySpan<(string, Func<Task<string?>>)>)[("debugger", () => window.DebugAsync()),
+            foreach ((string by, Func<Task<Words?>> start) in (ReadOnlySpan<(string, Func<Task<Words?>>)>)[("debugger", () => window.DebugAsync()),
                 ("profiler", () => window.ProfileAsync())])
             {
-                string? refused = Ui.Await(start(), $"the run to come up under the {by}", TimeSpan.FromMinutes(5));
+                string? refused = Ui.Await(start(), $"the run to come up under the {by}", TimeSpan.FromMinutes(5))?.English;
                 if (by == "debugger")
                 {
                     Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
@@ -766,7 +840,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
         System.Net.Sockets.TcpListener? holder = null;
         try
         {
-            Task<string?> debugging = window.DebugAsync();
+            Task<Words?> debugging = window.DebugAsync();
             Ui.PumpUntil(() => held.IsCompleted || debugging.IsCompleted, "Debug to choose its ports and come to its up", TimeSpan.FromMinutes(5));
             Assert.False(debugging.IsCompleted, $"Debug ended before its up: {(debugging.IsCompleted ? debugging.Result : null)}");
             // api is the configuration's browser's: the port chosen for it, taken at [::] too, where Docker Desktop binds it.
@@ -774,7 +848,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             holder = System.Net.Sockets.TcpListener.Create(chosen);
             holder.Start();
             taken.SetResult();
-            string? refused = Ui.Await(debugging, "Debug to come up with api on another port", TimeSpan.FromMinutes(5));
+            string? refused = Ui.Await(debugging, "Debug to come up with api on another port", TimeSpan.FromMinutes(5))?.English;
             Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
             int now = ContainerRunsTests.Published(project, "api");
             Assert.NotEqual(chosen, now);
@@ -816,7 +890,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
     /// <summary>Debugs the chosen configuration, failing with what its services said when it does not come up.</summary>
     private static void Debugged(MainWindow window, string what)
     {
-        string? refused = Ui.Await(window.DebugAsync(), what, TimeSpan.FromMinutes(5));
+        string? refused = Ui.Await(window.DebugAsync(), what, TimeSpan.FromMinutes(5))?.English;
         Assert.True(refused is null, $"{refused}{Ui.BuildErrors(window)}\n{ContainerRunsTests.Run(window)}");
     }
 

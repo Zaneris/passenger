@@ -230,7 +230,7 @@ public sealed partial class PassengerTools
             // A rebase stopped for conflicts goes on by its own action, which an agent runs by its id.
             throw new InvalidOperationException(vcs.Merge is { Operation: MergeOperation.Rebase, Stop: null }
                 ? $"{result.Commit.Message} (ide_action {AppActions.ContinueRebase} and {AppActions.AbortRebase})"
-                : chosen.Count == 0 && passed.Count > 0 && result.Commit.Message == Refusals.NoFilesChosenToCommit ? $"{result.Commit.Message}: {Plural.Listed(left)}"
+                : chosen.Count == 0 && passed.Count > 0 && result.Commit.Message == Refusals.NoFilesChosenToCommit.English ? $"{result.Commit.Message}: {Plural.Listed(left)}"
                 : result.Commit.Message);
         }
         string made = result.Made is { } head ? $"{head.Short} {head.Subject}" : result.Commit.Message;
@@ -389,9 +389,14 @@ public sealed partial class PassengerTools
     private const int MostCommitFiles = 20;
 
     [McpServerTool(Name = McpTools.VcsCheckout, Title = "Check out a branch", Destructive = true), Description(
-        "Checks out a branch (with create, a new one from the head), as the branch menu does; open files take what is on disk after.")]
-    public Task<string> VcsCheckout(string branch, bool create = false, CancellationToken cancel = default) => OnUi(cancel, async () =>
+        "Checks out a branch (with create, a new one from the head), as the branch menu does; open files take what is on disk after. " +
+        "changes: bring (uncommitted changes go along, as git carries them) or stash (put away first, new files too; vcs_stash pops them).")]
+    public Task<string> VcsCheckout(string branch, bool create = false, string changes = "bring", CancellationToken cancel = default) => OnUi(cancel, async () =>
     {
+        if (changes is not ("bring" or "stash"))
+        {
+            throw new ArgumentException($"No changes '{changes}'; there are bring and stash", nameof(changes));
+        }
         VcsController vcs = Session.Vcs;
         await vcs.Opened;
         // A branch named that git has not, nor a remote's of that name it would track, is said in words an agent goes on from.
@@ -407,12 +412,22 @@ public sealed partial class PassengerTools
             throw new InvalidOperationException(refused);
         }
         AgentCall.Say($"Checking out {branch}");
-        VcsOutcome switched = create ? await vcs.NewBranchAsync(branch) : await vcs.CheckoutAsync(branch);
+        Func<Task<VcsOutcome>> checkout = create ? () => vcs.NewBranchAsync(branch) : () => vcs.CheckoutAsync(branch);
+        StashInfo? stashed = null;
+        VcsOutcome switched;
+        if (changes == "stash" && (await vcs.ChangesSavedAsync()).Changes.Count > 0)
+        {
+            (switched, stashed) = await vcs.StashedCheckoutAsync(branch, checkout);
+        }
+        else
+        {
+            switched = await checkout();
+        }
         if (switched.Problem is { } failed)
         {
             throw new InvalidOperationException(failed);
         }
-        return $"On {vcs.Branch}";
+        return stashed is null ? $"On {vcs.Branch}" : $"On {vcs.Branch}; the changes were stashed as stash@{{0}} ({stashed.Message})";
     });
 
     [McpServerTool(Name = McpTools.VcsStash, Title = "Stash or unstash changes", Destructive = true), Description(
@@ -608,9 +623,9 @@ public sealed partial class PassengerTools
         }
         EfUpdate weighed = await window.Migrations.UpdateAsync(chosen, id, at, null, cancel);
         PackageChange done = weighed.AsAsked
-            ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said }
-            : weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said }
-            : throw new InvalidOperationException(weighed.Said ?? Refusals.SolutionClosed);
+            ? new PackageChange(id, at, chosen.Name, Changed(await Session.Packages.InstallAsync(chosen, id, at))) { Said = weighed.Said?.English }
+            : weighed.Outcome is { } made ? new PackageChange(id, at, chosen.Name, Changed(made)) { With = weighed.With.Count > 0 ? weighed.With : null, Said = weighed.Said?.English }
+            : throw new RefusedException(weighed.Said ?? Refusals.SolutionClosed);
         return await WarnedAsync(done, feeds, offered, cancel);
     });
 
@@ -715,13 +730,13 @@ public sealed partial class PassengerTools
         AgentCall.Follow(window.Actions.Work, AppActions.Profile, AppActions.Build, AppActions.AttachProfiler, AppActions.RunProgram, AppActions.MemorySnapshot);
         using (LaunchBuild built = new(Builds))
         {
-            Task<string?> started = resource is not null ? ProfileResource()
+            Task<Words?> started = resource is not null ? ProfileResource()
                 : !attach ? window.ProfileAsync(arguments)
                 : container is null ? window.AttachProfilerAsync()
                 : window.AttachProfilerAsync(await ProfiledIn(container));
             if (await started.WaitAsync(cancel) is { } problem)
             {
-                throw new InvalidOperationException(WithBuildErrors(problem, built.Ended));
+                throw new InvalidOperationException(WithBuildErrors(problem.English, built.Ended));
             }
         }
         choice?.Began = true;
@@ -798,7 +813,7 @@ public sealed partial class PassengerTools
             Godot = GameFramesOf(snapshot, Math.Clamp(top, 1, 200)),
             // A program Profile started that said it needs a terminal, as the Profiler window offers one.
             NeedsTerminal = Builds.RunNeed is { Profiled: true } need && !attach
-                ? $"{need.Said}: {McpTools.Profile} with terminal true profiles it in a Terminal tab" : null,
+                ? $"{need.Said.English}: {McpTools.Profile} with terminal true profiles it in a Terminal tab" : null,
         };
 
         ProfileFrame Frame(string method, int total, int self) =>
@@ -818,7 +833,7 @@ public sealed partial class PassengerTools
         }
 
         // A compose service as it runs, else its configuration started for it profiled; else an Aspire resource.
-        async Task<string?> ProfileResource()
+        async Task<Words?> ProfileResource()
         {
             if (await ComposeTargetAsync(resource!, configuration, starts: !attach, cancel) is { } compose)
             {
@@ -829,7 +844,7 @@ public sealed partial class PassengerTools
             return await ProfileAspireTarget();
         }
 
-        Task<string?> ProfileRunningServiceAsync(ComposeTarget compose)
+        Task<Words?> ProfileRunningServiceAsync(ComposeTarget compose)
         {
             Debuggable(compose, global::Passenger.App.Run.RunStart.Profile);
             return window.ServiceActionAsync(AppActions.ServiceProfile, compose.Service);

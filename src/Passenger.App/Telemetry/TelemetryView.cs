@@ -62,14 +62,14 @@ public sealed class TelemetryView : IDisposable
     /// <paramref name="request"/> when it gives them, else this view's own.</summary>
     public TelemetryView(string? showTrace = null, string? showLogs = null, Func<string, bool>? request = null)
     {
-        StructuredLogs = List(logItems, log => log.ToString(), "Structured logs");
-        TraceList = List(traceItems, trace => trace.ToString(), "Traces");
-        SpanList = List(spanItems, span => new string(' ', Math.Min(span.Depth, 32) * 2) + span.Span, "Trace span hierarchy");
+        StructuredLogs = List(logItems, log => log.ToString(), TelemetryWords.StructuredLogs);
+        TraceList = List(traceItems, trace => trace.ToString(), TelemetryWords.Traces);
+        SpanList = List(spanItems, span => new string(' ', Math.Min(span.Depth, 32) * 2) + span.Span, TelemetryWords.SpanHierarchy);
         StructuredLogs.SelectionChanged += (_, _) => ShowLog();
         TraceList.SelectionChanged += (_, _) => ShowTrace();
         SpanList.SelectionChanged += (_, _) => ShowSpan();
-        logTrace = PageTool(IconKeys.Locate, "Show the structured log's trace and span", showTrace, "telemetryShowTrace", ShowSelectedTrace, request);
-        spanLogs = PageTool(IconKeys.DocumentText, "Show a retained log of this trace and span", showLogs, "telemetryShowLogs", ShowRelatedLogs, request);
+        logTrace = PageTool(IconKeys.Locate, TelemetryWords.ShowLogTrace, showTrace, "telemetryShowTrace", ShowSelectedTrace, request);
+        spanLogs = PageTool(IconKeys.DocumentText, TelemetryWords.ShowSpanLogs, showLogs, "telemetryShowLogs", ShowRelatedLogs, request);
         logTrace.IsEnabled = false;
         spanLogs.IsEnabled = false;
         foreach (OutputView output in new[] { logDetails, spanDetails })
@@ -142,8 +142,8 @@ public sealed class TelemetryView : IDisposable
             if (both is null)
             {
                 ToolTabs.Strip<TelemetryPage> strip = new() { Margin = new Thickness(Gaps.Normal, 0) };
-                strip.Add(TelemetryPage.Logs, "Structured logs", name: "telemetryLogs");
-                strip.Add(TelemetryPage.Traces, "Traces", name: "telemetryTraces");
+                strip.Add(TelemetryPage.Logs, TelemetryWords.StructuredLogs, name: "telemetryLogs");
+                strip.Add(TelemetryPage.Traces, TelemetryWords.Traces, name: "telemetryTraces");
                 strip.Choice = Shown;
                 ContentControl page = new() { Content = Shown == TelemetryPage.Logs ? LogsPage : TracesPage };
                 strip.Chosen += (_, chosen) => Choose(chosen);
@@ -215,8 +215,8 @@ public sealed class TelemetryView : IDisposable
         spanDetails.Clear();
         wantedTrace = null;
         wantedLogs = null;
-        logsStatus.Text = "Structured logs stream here while this page is shown.";
-        tracesStatus.Text = "Traces stream here while this page is shown.";
+        ShownWords.Set(logsStatus, TextBlock.TextProperty, TelemetryWords.LogsStreamHere);
+        ShownWords.Set(tracesStatus, TextBlock.TextProperty, TelemetryWords.TracesStreamHere);
     }
 
     /// <summary>Says why there is nothing to stream (no run collects telemetry), in place of the pages' words.</summary>
@@ -237,7 +237,7 @@ public sealed class TelemetryView : IDisposable
     private async Task WatchAsync(TelemetrySource source, TelemetryPage page, string? resource, CancellationToken cancel)
     {
         TextBlock label = page == TelemetryPage.Traces ? tracesStatus : logsStatus;
-        label.Text = "Connecting to dashboard telemetry…";
+        ShownWords.Set(label, TextBlock.TextProperty, TelemetryWords.Connecting);
         try
         {
             if (page == TelemetryPage.Logs)
@@ -262,7 +262,7 @@ public sealed class TelemetryView : IDisposable
                     {
                         ShowTrace(again: true);
                     }
-                    tracesStatus.Text = $"Live · {Numbers.Said(traces.Count)} retained traces";
+                    ShownWords.Set(tracesStatus, TextBlock.TextProperty, TelemetryWords.LiveTraces(traces.Count));
                     if (wantedTrace is { } wanted && traces.FirstOrDefault(trace => trace.TraceId == wanted.TraceId) is { } listed)
                     {
                         wantedTrace = null;
@@ -274,7 +274,7 @@ public sealed class TelemetryView : IDisposable
             {
                 if (!disposed && !cancel.IsCancellationRequested)
                 {
-                    label.Text = "Telemetry ended. Refresh to reconnect.";
+                    ShownWords.Set(label, TextBlock.TextProperty, TelemetryWords.Ended);
                 }
             });
         }
@@ -282,12 +282,12 @@ public sealed class TelemetryView : IDisposable
         catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or TimeoutException or ArgumentException
             or NotSupportedException or System.Net.Http.HttpRequestException)
         {
-            string reason = source.Unread(error);
+            Words reason = source.Unread(error);
             UiThread.Post(() =>
             {
                 if (!disposed && !cancel.IsCancellationRequested)
                 {
-                    label.Text = $"{reason}. Refresh to reconnect.";
+                    ShownWords.Set(label, TextBlock.TextProperty, TelemetryWords.FailedReconnect(reason));
                 }
             });
         }
@@ -396,7 +396,7 @@ public sealed class TelemetryView : IDisposable
         {
             return;
         }
-        logsStatus.Text = $"Live · {Numbers.Said(logItems.Count)} retained structured logs";
+        ShownWords.Set(logsStatus, TextBlock.TextProperty, TelemetryWords.LiveLogs(logItems.Count));
         if (wantedLogs is { } wanted && Correlated(wanted.TraceId, wanted.SpanId) is { } found)
         {
             wantedLogs = null;
@@ -580,7 +580,7 @@ public sealed class TelemetryView : IDisposable
 
     /// <summary>A page's toolbar button: the host's action of that id when it gives one (shown with its work, its tip naming
     /// the action's keys), else the view's own.</summary>
-    private static Button PageTool(string icon, string tip, string? action, string name, Action own, Func<string, bool>? request)
+    private static Button PageTool(string icon, Words tip, string? action, string name, Action own, Func<string, bool>? request)
     {
         if (action is null)
         {
@@ -608,7 +608,7 @@ public sealed class TelemetryView : IDisposable
         return ToolBars.Top(new DockPanel { Margin = new Thickness(Gaps.Normal, 0), Children = { right, said } });
     }
 
-    private static ListBox List<T>(ObservableCollection<RunItem<T>> items, Func<T, string> text, string name)
+    private static ListBox List<T>(ObservableCollection<RunItem<T>> items, Func<T, string> text, Words name)
         where T : class
     {
         ListBox list = new()
@@ -617,7 +617,7 @@ public sealed class TelemetryView : IDisposable
             ItemsSource = items,
         };
         ReusedRows.Use(list, () => Row(text));
-        AutomationProperties.SetName(list, name);
+        ShownWords.Set(list, AutomationProperties.NameProperty, name);
         return list;
     }
 

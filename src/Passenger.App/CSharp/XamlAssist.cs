@@ -46,6 +46,36 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// <summary>The XAML code style as Settings leaves it, which a file's .editorconfig overrides.</summary>
     public XamlFormatSettings XamlFormat { get; set; } = new();
 
+    /// <summary>Enter between an attribute's empty quotes in a file of a project, where it may write a property element (<see cref="PropertyElementTyping"/>).</summary>
+    public override bool FormatsTyped(string typed) => typed == "\n" && context.Editors.Active?.Language == Passenger.Languages.Language.Xaml && context.XamlCurrent is not null
+        && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } } && PropertyElementTyping.Takes(Editor.Document.Snapshot, caret);
+
+    /// <summary>The attribute Enter broke the line in between its empty quotes written as a property element where the file's
+    /// types read it as a property's, joined to Enter's step of Undo, the caret inside it.</summary>
+    public override void FormatLineBreak()
+    {
+        if (context.Editors.Active is { } shown && shown.Language == Passenger.Languages.Language.Xaml && context.XamlOf(shown) is { } xaml
+            && Editor.Selections is { HasMultiple: false, Primary: { IsEmpty: true, Caret: int caret } })
+        {
+            IdeErrors.Observe(PropertyElementAsync(Editor, shown, xaml, caret));
+        }
+    }
+
+    /// <summary>The property element for the attribute Enter broke the line in at <paramref name="caret"/>, read against the
+    /// file's types as the text stands, made only where it still stands so. Held as the window's work until made or let go.</summary>
+    private static async Task PropertyElementAsync(Passenger.Editor.CodeEditor editor, OpenDocument shown, XamlDocument xaml, int caret)
+    {
+        using (BackgroundWork.Scope())
+        {
+            TextSnapshot asked = shown.Text.Snapshot;
+            if (await xaml.FileAsync() is { } file && ReferenceEquals(shown.Text.Snapshot, asked)
+                && PropertyElementTyping.Written(file, asked, caret, shown.LineEnding, shown.Indentation.Options.Unit) is ({ } edits, int at))
+            {
+                editor.FormatKeyAt(asked, edits, at);
+            }
+        }
+    }
+
     public override bool Typed(string text)
     {
         if (context.XamlCurrent is null)
@@ -129,7 +159,7 @@ internal sealed partial class XamlAssist : LanguageAssist
         {
             return null;
         }
-        if (await ExpressionPlaceAsync(xaml, offset) is { } expression)
+        if ((await ExpressionPlaceAsync(xaml, offset) ?? await CodePlaceAsync(xaml, offset)) is { } expression)
         {
             return expression.Place is { } reached
                 ? new Declared(Declared.Served([reached], ServerPlaces.Texts(context.Editors)), Refusals.NoDeclaration)
@@ -153,8 +183,8 @@ internal sealed partial class XamlAssist : LanguageAssist
                 unreached.Add(said);
             }
         }
-        return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), places.Count == 0 && unreached.Count > 0
-            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration);
+        return new Declared(Declared.Served(places, ServerPlaces.Texts(context.Editors)), (places.Count == 0 && unreached.Count > 0
+            ? $"{found.Symbol.Name}'s declaration cannot be reached: {string.Join("; ", unreached)}" : Refusals.NoDeclaration));
     }
 
     public override async Task<bool> UsagesAsync(int offset, bool inPopup)
@@ -236,7 +266,8 @@ internal sealed partial class XamlAssist : LanguageAssist
         xamlAsked = at;
         try
         {
-            (int Start, IReadOnlyList<(CompletionItem Item, XamlItem Offered)> Items, bool Head)? code = await ExpressionItemsAsync(xaml, caret, cancel.Token);
+            (int Start, IReadOnlyList<(CompletionItem Item, XamlItem Offered)> Items, bool Head)? code = await ExpressionItemsAsync(xaml, caret, cancel.Token)
+                ?? await CodeItemsAsync(xaml, caret, cancel.Token);
             // In an expression's code the server's list stands alone; in the name it starts with, a markup extension's may still be meant.
             XamlCompletionList? list = code is { Head: false } ? null : await xaml.CompleteAsync(caret, cancel.Token);
             if (cancel.IsCancellationRequested || Editor.Document != asked)
@@ -336,7 +367,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     /// string's generated property and each language's entry of its key).</summary>
     private async Task XamlGoTo(XamlDocument xaml, int offset)
     {
-        if (await ExpressionPlaceAsync(xaml, offset) is { } expression)
+        if ((await ExpressionPlaceAsync(xaml, offset) ?? await CodePlaceAsync(xaml, offset)) is { } expression)
         {
             if (expression.Place is { } place)
             {
@@ -348,7 +379,7 @@ internal sealed partial class XamlAssist : LanguageAssist
             }
             return;
         }
-        if (await XamlSymbolAt(xaml, offset, Refusals.NoDeclaration) is not { } found)
+        if (await XamlSymbolAt(xaml, offset, Refusals.NoDeclaration.Shown) is not { } found)
         {
             return;
         }
@@ -373,7 +404,7 @@ internal sealed partial class XamlAssist : LanguageAssist
     {
         if (context.Xaml?.Invoke() is not { } service)
         {
-            return (null, Refusals.NoFolder);
+            return (null, Refusals.NoFolder.Shown);
         }
         Passenger.Xaml.Metadata.AssemblyTypes? theme = file.Types.Assemblies.Where(a => a.Name.Contains(".Themes.", StringComparison.Ordinal) && a.XamlFiles.Count > 0)
             .OrderBy(a => a.Name.EndsWith(".Fluent", StringComparison.Ordinal) ? 0 : 1).FirstOrDefault();
@@ -944,14 +975,14 @@ internal sealed partial class XamlAssist : LanguageAssist
         try
         {
             files = TypeRename.Apply(context.Editors, edit, [], asked, dropped, recording).Files;
-            await WorkspaceEdits.LandedAsync(recording, context.Say);
+            await WorkspaceEdits.LandedAsync(recording, said => context.Say(said));
         }
         catch (WorkspaceEditFailed failed)
         {
             return RefactorOutcome.Refused($"Rename failed: {failed.Message}");
         }
-        return new RefactorOutcome(dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
-            : files > 1 ? $"Renamed in {Numbers.Said(files)} files" : "Renamed", null, [.. changes.Keys.Select(DocumentUris.ToPath)
+        return new RefactorOutcome((dropped.Count > 0 ? Refusals.EditedMeanwhile("Renamed", dropped)
+            : files > 1 ? $"Renamed in {Numbers.Said(files)} files" : "Renamed"), null, [.. changes.Keys.Select(DocumentUris.ToPath)
                 .Where(p => !(context.Editors.Find(p) is { } open && dropped.Contains(open.Name))).Select(p => new RefactoredFile(p, RefactoredChange.Changed, []))], dropped);
     }
 
@@ -1116,8 +1147,9 @@ internal sealed partial class XamlAssist : LanguageAssist
     private static XmlAttribute? NameIn(string text, string name) =>
         XmlTree.Parse(text).Elements.Select(XamlFile.NameAttribute).FirstOrDefault(a => a is { IsValueClosed: true } && a.Value == name);
 
-    /// <summary>The XAML file a line of the C# WPF's MarkupCompile wrote (<c>obj/…/MainWindow.g.cs</c>, or the design-time
-    /// <c>.g.i.cs</c>) was made from: the file its nearest <c>#line</c> above names; null for a file that is not one.</summary>
+    /// <summary>The XAML file a line of the C# WPF's MarkupCompile or WinUI's XAML compiler wrote (<c>obj/…/MainWindow.g.cs</c>,
+    /// or the design-time <c>.g.i.cs</c>) was made from: the file its nearest <c>#line</c> above names, else the one its
+    /// <c>#pragma checksum</c> does (WinUI's, which writes no <c>#line</c> before its fields); null for a file that is not one.</summary>
     private static string? MarkupCompiled(string path, int line)
     {
         string name = Path.GetFileName(path);
@@ -1129,7 +1161,12 @@ internal sealed partial class XamlAssist : LanguageAssist
         string[] lines = (EditorArea.ReadText(path) ?? string.Empty).Split('\n');
         for (int at = Math.Min(line, lines.Length - 1); at >= 0; at--)
         {
-            if (LineDirective().Match(lines[at]) is { Success: true } directive)
+            Match directive = LineDirective().Match(lines[at]);
+            if (!directive.Success && at == 0)
+            {
+                directive = ChecksumDirective().Match(lines[at]);
+            }
+            if (directive.Success)
             {
                 string xaml = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, directive.Groups["file"].Value.Replace('\\', Path.DirectorySeparatorChar)));
                 return Passenger.Core.FoundPaths.Askable(xaml) && File.Exists(xaml) ? Passenger.Core.PathNames.Canonical(xaml) : null;
@@ -1140,6 +1177,9 @@ internal sealed partial class XamlAssist : LanguageAssist
 
     [GeneratedRegex(@"^\s*#line\s+\d+\s+""(?<file>[^""]+\.xaml)""")]
     private static partial Regex LineDirective();
+
+    [GeneratedRegex(@"^\uFEFF?\s*#pragma\s+checksum\s+""(?<file>[^""]+\.xaml)""")]
+    private static partial Regex ChecksumDirective();
 
     [GeneratedRegex(@"(?<class>[\w.]+)\.g\.cs")]
     private static partial Regex GeneratedFile();

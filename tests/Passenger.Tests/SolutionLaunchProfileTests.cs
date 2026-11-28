@@ -1,4 +1,5 @@
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Containers;
 using Passenger.App.Debugging;
@@ -7,14 +8,18 @@ using Passenger.App.ToolWindows;
 using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Text;
+using Passenger.Workspace;
 
 namespace Passenger.Tests;
 
 /// <summary>A solution's multi-project launch profile, as Visual Studio writes it beside the solution, run and debugged from
 /// Passenger's toolbar: listed among the run configurations; Run builds its projects once and runs each in the launch profile
-/// it names, each in a tab of the Terminal window; Debug debugs the one set to Start, stopping at its breakpoint, and runs the
+/// it names, each in a tab of the Run window; Debug debugs the one set to Start, stopping at its breakpoint, and runs the
 /// one set to Start without debugging; Stop ends them all; a project whose own configuration collects its logs and traces
-/// collects them started by the profile too. It debugs through the window, so run alone.</summary>
+/// collects them started by the profile too; and a run of several parts in the folder's passenger-runs.json starts a command
+/// as a step and each part once the one before it is ready, restarts one part alone and ends all on Stop, and debugs its
+/// .NET parts, a part waiting for a debugged one's line hearing it from its start. It debugs through the window, so run
+/// alone.</summary>
 [Collection(Alone.Name)]
 public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClassFixture<RestoredFolders>, IDisposable
 {
@@ -39,6 +44,7 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
         Flow.StepApart("Run of a launch profile runs each project in its launch profile and Stop ends them all", () => new SolutionLaunchProfileTests(folders), t => t.Run_of_a_launch_profile_runs_each_project_in_its_launch_profile_and_Stop_ends_them_all());
         Flow.StepApart("Debug of a launch profile debugs the project set to Start runs the other and Stop ends both", () => new SolutionLaunchProfileTests(folders), t => t.Debug_of_a_launch_profile_debugs_the_project_set_to_Start_runs_the_other_and_Stop_ends_both());
         Flow.StepApart("a project that collects its logs and traces says why none come with no engine as the profile starts it", () => new SolutionLaunchProfileTests(folders), t => t.A_project_that_collects_its_logs_and_traces_says_why_none_come_with_no_engine_as_the_profile_starts_it());
+        Flow.StepApart("a run of several parts starts each once the one before is ready restarts one alone and Stop ends them all", () => new SolutionLaunchProfileTests(folders), t => t.A_run_of_several_parts_starts_each_once_the_one_before_is_ready_restarts_one_alone_and_Stop_ends_them_all());
     }
 
     private void Run_of_a_launch_profile_runs_each_project_in_its_launch_profile_and_Stop_ends_them_all()
@@ -47,14 +53,14 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
         try
         {
             Ui.Launched(window, window.RunAsync(), "the profile's projects to start", TimeSpan.FromMinutes(3));
-            Ui.WaitFor(() => window.RunCopies.Select(r => r.Name).SequenceEqual(["Api: second", "Worker"])
-                    && Terminal(window.RunCopies[0]).Contains("Api says second", StringComparison.Ordinal) && Terminal(window.RunCopies[1]).Contains("Worker up", StringComparison.Ordinal),
+            Ui.WaitFor(() => window.RunParts.Select(r => r.Name).SequenceEqual(["Api: second", "Worker"])
+                    && Text(window.RunParts[0]).Contains("Api says second", StringComparison.Ordinal) && Text(window.RunParts[1]).Contains("Worker up", StringComparison.Ordinal),
                 () => $"each project to run in its own tab, Api in the launch profile the file names ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            Assert.True(window.Status == "Running Both: Api: second and Worker, each in a tab of the Terminal window", $"The status bar says {window.Status}");
+            Assert.True(window.Status == "Running Both: Api: second and Worker, each in a tab of the Run window", $"The status bar says {window.Status}");
             Assert.False(window.Debugger.IsDebugging, "Run of the profile debugged a project");
 
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.RunCopies.Count == 0 && !window.IsRunning, () => $"Stop to end both projects ({Runs(window)})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.RunParts.All(r => !r.IsRunning) && !window.IsRunning, () => $"Stop to end both projects ({Runs(window)})", TimeSpan.FromMinutes(1));
         }
         finally
         {
@@ -76,12 +82,12 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
             Ui.Launched(window, window.DebugAsync(), "the profile's projects to start", TimeSpan.FromMinutes(3));
             Ui.WaitFor(() => Tab(window, "Api: second")?.Session?.State == DebugState.Paused && Console(window, "Api: second").Contains("Api says second", StringComparison.Ordinal),
                 () => $"Api to stop at its breakpoint under the debugger ({Sessions(window)}; {window.Status})", TimeSpan.FromMinutes(1));
-            Ui.WaitFor(() => window.RunCopies.Select(r => r.Name).SequenceEqual(["Worker"]) && Terminal(window.RunCopies[0]).Contains("Worker up", StringComparison.Ordinal),
-                () => $"Worker to run without the debugger in a tab of the Terminal window ({Runs(window)}; {Sessions(window)})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.RunParts.Select(r => r.Name).SequenceEqual(["Worker"]) && Text(window.RunParts[0]).Contains("Worker up", StringComparison.Ordinal),
+                () => $"Worker to run without the debugger in a tab of the Run window ({Runs(window)}; {Sessions(window)})", TimeSpan.FromMinutes(1));
             Assert.True(Tab(window, "Worker") is null, $"Worker, set to start without debugging, was debugged: {Sessions(window)}");
 
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => !window.Debugger.Tabs.Any(t => t.IsLive) && window.RunCopies.Count == 0 && !window.IsRunning,
+            Ui.WaitFor(() => !window.Debugger.Tabs.Any(t => t.IsLive) && window.RunParts.All(r => !r.IsRunning) && !window.IsRunning,
                 () => $"Stop to end both projects ({Sessions(window)}; {Runs(window)})", TimeSpan.FromMinutes(1));
         }
         finally
@@ -90,7 +96,85 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
         }
     }
 
-    /// <summary>The window on the test's restored Shop, its profile chosen in the toolbar, listed after the projects' own.</summary>
+    /// <summary>A run of several parts in the folder's passenger-runs.json: dotnet --version as a step, then Api, which the
+    /// part after it waits for until it says its greeting, then Worker. Run starts the step and Api only once the step ended
+    /// with exit code 0, and Worker only once Api said its line, each in a tab of the Run window; Worker's Rerun restarts it
+    /// alone while Api runs on in the same process, and Stop ends every part. Debug of it debugs Api and Worker, each in a
+    /// Debug tab, Worker started once Api's greeting is heard though Api says it as it starts, before its launch returns.</summary>
+    private void A_run_of_several_parts_starts_each_once_the_one_before_is_ready_restarts_one_alone_and_Stop_ends_them_all()
+    {
+        MainWindow window = Open();
+        try
+        {
+            string host = Dotnet.Host().Replace("\\", "/", StringComparison.Ordinal);
+            TestFolders.Write(folder!, RunsFile.FileName, $$"""
+                {
+                  "passengerRuns": 1,
+                  "runs": [
+                    {
+                      "name": "Steps",
+                      "parts": [
+                        { "command": "\"{{host}}\" --version", "name": "version", "readyWhen": "exited" },
+                        { "project": "Api/Api.csproj", "launchProfile": "second", "readyWhen": { "line": "says sec.nd" } },
+                        { "project": "Worker/Worker.csproj" }
+                      ]
+                    }
+                  ]
+                }
+                """);
+            Ui.WaitFor(() => window.SelectConfiguration("Steps"), () => $"the folder's run to be listed ({string.Join(", ", window.Configurations.Select(c => c.Name))})", TimeSpan.FromMinutes(1));
+            Ui.Launched(window, window.RunAsync(), "the run's parts to start", TimeSpan.FromMinutes(3));
+            Ui.WaitFor(() => window.RunParts.Select(r => r.Name).SequenceEqual(["version", "Api: second", "Worker"]) && Text(window.RunParts[2]).Contains("Worker up", StringComparison.Ordinal),
+                () => $"each part to start in its own tab of the Run window ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            PartRun version = window.RunParts[0];
+            PartRun api = window.RunParts[1];
+            PartRun worker = window.RunParts[2];
+            Assert.True(version is { State: PartState.Ended, Ended.IsCompletedSuccessfully: true } && Text(version).Contains("Process finished with exit code 0", StringComparison.Ordinal),
+                $"The step did not run to its end before the parts after it started: {Text(version)}");
+            Assert.True(window.Status == "Running Steps: version, Api: second and Worker, each in a tab of the Run window", $"The status bar says {window.Status}");
+            Assert.True(api.IsRunning && worker.IsRunning, $"A part ended once the next started: {Runs(window)}");
+
+            int? apiProcess = api.ProcessId;
+            int? workerProcess = worker.ProcessId;
+            Ui.Click(window.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>().First(b => b.Name == "runPart3Tab"));
+            Ui.Click(worker.Console.GetVisualDescendants().OfType<Avalonia.Controls.Button>().First(b => Avalonia.Controls.ToolTip.GetTip(b) is "Rerun" && b.IsEffectivelyVisible));
+            Ui.WaitFor(() => worker.IsRunning && worker.ProcessId != workerProcess && Text(worker).Contains("Worker up", StringComparison.Ordinal),
+                () => $"Worker's Rerun to start it again in its tab ({Runs(window)}; {window.Status})", TimeSpan.FromMinutes(2));
+            Assert.True(api.IsRunning && api.ProcessId == apiProcess, $"Worker's restart ended Api, which was to run on: {Runs(window)}");
+
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => window.RunParts.All(r => !r.IsRunning) && !window.IsRunning, () => $"Stop to end every part ({Runs(window)})", TimeSpan.FromMinutes(1));
+
+            // Api's launch held once its program runs, until its greeting is in its console: Worker waits for that line all the same.
+            TaskCompletionSource greeted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            try
+            {
+                Task held = window.Builds.HoldNextLaunch(greeted.Task, opened: true);
+                Task<Words?> debugging = window.DebugAsync();
+                // Not settled: the start holds the window's background work until it has started every part.
+                Ui.PumpUntil(() => held.IsCompleted || debugging.IsCompleted, "Api's launch to be held once its program runs", TimeSpan.FromMinutes(3));
+                Ui.PumpUntil(() => Console(window, "Api: second").Contains("Api says second", StringComparison.Ordinal) || debugging.IsCompleted,
+                    "Api to say its greeting under the debugger as its launch is held", TimeSpan.FromMinutes(1));
+                greeted.SetResult();
+                Ui.Launched(window, debugging, "Worker to start once Api's greeting, said before its launch returned, is heard", TimeSpan.FromMinutes(1));
+            }
+            finally
+            {
+                greeted.TrySetResult();
+            }
+            Ui.WaitFor(() => Console(window, "Api: second").Contains("Api says second", StringComparison.Ordinal) && Console(window, "Worker").Contains("Worker up", StringComparison.Ordinal),
+                () => $"Api and Worker to run under the debugger, each in its Debug tab ({Sessions(window)}; {Runs(window)}; {window.Status})", TimeSpan.FromMinutes(1));
+            Assert.True(window.RunParts.Select(r => r.Name).SequenceEqual(["version"]), $"A .NET part under the debugger also ran in a tab of the Run window: {Runs(window)}");
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.Tabs.Any(t => t.IsLive) && window.RunParts.All(r => !r.IsRunning) && !window.IsRunning,
+                () => $"Stop to end every part ({Sessions(window)}; {Runs(window)})", TimeSpan.FromMinutes(1));
+        }
+        finally
+        {
+            End(window);
+        }
+    }
+
     /// <summary>With no container engine, Api, whose own configuration collects its logs and traces, says so as the profile
     /// starts it, run or debugged, as it does started alone, and runs as it would; Worker, which collects none, says nothing.</summary>
     private void A_project_that_collects_its_logs_and_traces_says_why_none_come_with_no_engine_as_the_profile_starts_it()
@@ -103,10 +187,10 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
             Ui.Launched(window, window.RunAsync(), "the profile's projects to start", TimeSpan.FromMinutes(3));
             Assert.True(window.Status?.Split(Without).Length == 2 && !window.Status.Contains("Worker runs without", StringComparison.Ordinal),
                 $"Run of the profile did not say once that Api's logs and traces are not collected, as Api's own run does: {window.Status}");
-            Ui.WaitFor(() => window.RunCopies.Count == 2 && Terminal(window.RunCopies[0]).Contains("Api says second", StringComparison.Ordinal),
+            Ui.WaitFor(() => window.RunParts.Count == 2 && Text(window.RunParts[0]).Contains("Api says second", StringComparison.Ordinal),
                 () => $"Api to run as it would ({Runs(window)})", TimeSpan.FromMinutes(1));
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.RunCopies.Count == 0 && !window.IsRunning, () => $"Stop to end both projects ({Runs(window)})", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => window.RunParts.All(r => !r.IsRunning) && !window.IsRunning, () => $"Stop to end both projects ({Runs(window)})", TimeSpan.FromMinutes(1));
 
             Ui.Launched(window, window.DebugAsync(), "the profile's projects to start under the debugger", TimeSpan.FromMinutes(3));
             Ui.WaitFor(() => Console(window, "Api: second").Contains(Without, StringComparison.Ordinal),
@@ -138,7 +222,7 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
             Assert.True(dashboard.Name == "Api: second" && window.Status?.Contains($"Api: second's logs and traces go to Aspire's dashboard ({dashboard.ProjectName})", StringComparison.Ordinal) == true,
                 $"Run of the profile did not bring up Api's dashboard as Api's own run does: {dashboard.Name}; {window.Status}");
             Ui.Run(window, AppActions.Stop);
-            Ui.WaitFor(() => window.RunCopies.Count == 0 && !window.IsRunning && window.Session.Dashboards.Count == 0,
+            Ui.WaitFor(() => window.RunParts.All(r => !r.IsRunning) && !window.IsRunning && window.Session.Dashboards.Count == 0,
                 () => $"Stop to end both projects and Api's dashboard ({Runs(window)}; {window.Session.Dashboards.Count} dashboards)", TimeSpan.FromMinutes(1));
         }
         finally
@@ -194,17 +278,16 @@ public sealed class SolutionLaunchProfileTests(RestoredFolders folders) : IClass
     {
         if (window.Debugger.IsDebugging || window.IsRunning)
         {
-            Assert.Null(window.Actions.Run(AppActions.StopAll));
+            Assert.Null(window.Actions.Run(AppActions.StopAll)?.Shown);
             Ui.WaitFor(() => !window.Debugger.IsDebugging && !window.IsRunning, () => $"the projects to end ({Sessions(window)}; {Runs(window)})", TimeSpan.FromMinutes(1));
         }
         window.Close();
     }
 
-    /// <summary>What a program run in a tab of the Terminal window has written there, its scrollback and its screen.</summary>
-    private static string Terminal(TerminalRun run) =>
-        string.Join('\n', run.Session.Screen.Scrollback.Select(l => l.Text()).Concat(run.Session.Screen.Lines.Select(l => l.Text())));
+    /// <summary>What a part run in a tab of the Run window has written there.</summary>
+    private static string Text(PartRun part) => part.Runner.Shown().ToString();
 
-    private static string Runs(MainWindow window) => string.Join(", ", window.RunCopies.Select(r => $"{r.Name}: {string.Join(" / ", Terminal(r).Split('\n').Where(l => l.Length > 0).TakeLast(2))}"));
+    private static string Runs(MainWindow window) => string.Join(", ", window.RunParts.Select(r => $"{r.Name} ({r.Said}): {string.Join(" / ", Text(r).Split('\n').Where(l => l.Length > 0).TakeLast(2))}"));
 
     private static DebugTab? Tab(MainWindow window, string name) => window.Debugger.Tabs.FirstOrDefault(t => t.Name == name && t.IsLive);
 

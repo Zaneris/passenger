@@ -63,6 +63,80 @@ public static class EfDatabases
         return environment.Count == 0 ? null : new EfRunDatabase(environment, string.Join("; ", new[] { where }.Concat(kept).OfType<string>()));
     }
 
+    /// <summary>The key every Cosmos DB emulator signs in with, the same for each, as its documentation gives it.</summary>
+    private const string CosmosEmulatorKey = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+
+    /// <summary>Each database a compose run's services run from their images (PostgreSQL, SQL Server, MySQL and MariaDB,
+    /// ClickHouse, MongoDB, Cosmos DB's emulator, Redis and Valkey, DynamoDB Local, Cassandra), whoever uses it: its connection string as this machine reaches it, at the port Compose published, signed in
+    /// as its image's own variables make its user, with the driver's package that names its kind, and where it is. None
+    /// where the run has stopped or its model cannot be read.</summary>
+    public static async Task<IReadOnlyList<(string Service, string Value, string[] Packages, string Where)>> OfServicesAsync(ContainerRun run, CancellationToken cancel)
+    {
+        if (run.IsStopped)
+        {
+            return [];
+        }
+        ComposeModel model;
+        try
+        {
+            model = await ComposeModel.ReadAsync(run.Engine, run.Plan.Compose, run.Plan.Folder, cancel);
+        }
+        catch (Exception failed) when (failed is ContainerCommandException or System.Text.Json.JsonException or TimeoutException or IOException)
+        {
+            return [];
+        }
+        string? endpoint = null;
+        List<(string, string, string[], string)> found = [];
+        foreach (ComposeService service in model.Services)
+        {
+            IReadOnlyDictionary<string, string> told = service.Environment;
+            string? Told(params string[] names) => names.Select(name => told.GetValueOrDefault(name)).FirstOrDefault(v => v is { Length: > 0 });
+            string image = service.Image ?? string.Empty;
+            (int Port, string[] Packages, Func<string, int, string> Write)? database = Kind(service) switch
+            {
+                // Each value written as its driver reads it back whole, a password's semicolon or quote its own.
+                "postgres" => (5432, [], (host, port) => ConnectionServer.Written(("Host", host), ("Port", Number(port)),
+                    ("Database", Told("POSTGRES_DB") ?? Told("POSTGRES_USER") ?? "postgres"), ("Username", Told("POSTGRES_USER") ?? "postgres"),
+                    ("Password", Told("POSTGRES_PASSWORD") ?? string.Empty))),
+                "sqlserver" => (1433, ["Microsoft.Data.SqlClient"], (host, port) => ConnectionServer.Written(("Server", $"{host},{Number(port)}"), ("Database", "master"),
+                    ("User Id", "sa"), ("Password", Told("MSSQL_SA_PASSWORD", "SA_PASSWORD") ?? string.Empty), ("TrustServerCertificate", "True"))),
+                _ when image.Contains("clickhouse", StringComparison.OrdinalIgnoreCase) => (8123, ["ClickHouse.Driver"], (host, port) =>
+                    ConnectionServer.Written(("Host", host), ("Port", Number(port)), ("Database", Told("CLICKHOUSE_DB") ?? "default"),
+                        ("Username", Told("CLICKHOUSE_USER") ?? "default"), ("Password", Told("CLICKHOUSE_PASSWORD") ?? string.Empty))),
+                "redis" => (6379, ["StackExchange.Redis"], (host, port) => RedisAt(host, port, Told("REDIS_PASSWORD", "VALKEY_PASSWORD"))),
+                _ when image.Contains("valkey", StringComparison.OrdinalIgnoreCase) => (6379, ["StackExchange.Redis"], (host, port) =>
+                    RedisAt(host, port, Told("VALKEY_PASSWORD", "REDIS_PASSWORD"))),
+                _ when image.Contains("cassandra", StringComparison.OrdinalIgnoreCase) => (9042, ["CassandraCSharpDriver"], (host, port) =>
+                    ConnectionServer.Written(("Contact Points", host), ("Port", Number(port)), ("Username", Told("CASSANDRA_USER")),
+                        ("Password", Told("CASSANDRA_USER") is null ? null : Told("CASSANDRA_PASSWORD") ?? string.Empty))),
+                // DynamoDB Local takes any key and secret.
+                _ when image.Contains("dynamodb-local", StringComparison.OrdinalIgnoreCase) => (8000, ["AWSSDK.DynamoDBv2"], (host, port) =>
+                    ConnectionServer.Written(("ServiceURL", $"http://{host}:{Number(port)}"), ("Region", "us-east-1"), ("AccessKey", "local"), ("SecretKey", "local"))),
+                "mongo" => (27017, ["MongoDB.Driver"], (host, port) => "mongodb://"
+                    + (Told("MONGO_INITDB_ROOT_USERNAME") is { } root ? $"{Uri.EscapeDataString(root)}:{Uri.EscapeDataString(Told("MONGO_INITDB_ROOT_PASSWORD") ?? string.Empty)}@" : string.Empty)
+                    + $"{host}:{port}/{Told("MONGO_INITDB_DATABASE") ?? string.Empty}" + (Told("MONGO_INITDB_ROOT_USERNAME") is null ? string.Empty : "?authSource=admin")),
+                // Every emulator signs in with the one key its documentation gives; the older one serves HTTPS on its own certificate.
+                _ when image.Contains("azure-cosmos-emulator", StringComparison.OrdinalIgnoreCase) => (8081, ["Microsoft.Azure.Cosmos"], (host, port) =>
+                    image.Contains("vnext", StringComparison.OrdinalIgnoreCase) && !string.Equals(Told("PROTOCOL"), "https", StringComparison.OrdinalIgnoreCase)
+                        ? $"AccountEndpoint=http://{host}:{port}/;AccountKey={CosmosEmulatorKey}"
+                        : $"AccountEndpoint=https://{host}:{port}/;AccountKey={CosmosEmulatorKey};DisableServerCertificateValidation=True"),
+                _ when Default(service) == 3306 => (3306, ["MySqlConnector"], (host, port) => ConnectionServer.Written(("Server", host), ("Port", Number(port)),
+                    ("Database", Told("MYSQL_DATABASE", "MARIADB_DATABASE") ?? string.Empty),
+                    ("User ID", Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") is null ? Told("MYSQL_USER", "MARIADB_USER") ?? "root" : "root"),
+                    ("Password", Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") ?? Told("MYSQL_PASSWORD", "MARIADB_PASSWORD") ?? string.Empty))),
+                _ => null,
+            };
+            if (database is not { } kind || await PublishedAsync(run, service, kind.Port, cancel) is not { } published)
+            {
+                continue;
+            }
+            endpoint ??= (await run.Engine.StateAsync(cancel: cancel)).Endpoint ?? string.Empty;
+            string host = Host(published.Link, endpoint.Length > 0 ? endpoint : null);
+            found.Add((service.Name, kind.Write(host, published.Port), kind.Packages, $"{service.Name} at {host}:{published.Port}"));
+        }
+        return found;
+    }
+
     /// <summary>The database an AppHost that runs now gives the startup project as one of its resources; null when none does.</summary>
     public static EfRunDatabase? OfAspire(AspireController aspire, ProjectModel startup)
     {
@@ -118,6 +192,14 @@ public static class EfDatabases
     }
 
     private static string Host(ContainerPort published, string? endpoint) => published.LinkOn(endpoint)?.Host ?? "localhost";
+
+    private static string Number(int port) => port.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Redis at a host and port, signed in by its password escaped whole in a redis:// URI, so a comma in it, which
+    /// would end it in a configuration's words, stays its own.</summary>
+    private static string RedisAt(string host, int port, string? password) =>
+        password is null ? $"{host}:{Number(port)}"
+            : $"redis://:{Uri.EscapeDataString(password)}@{(host.Contains(':', StringComparison.Ordinal) && !host.StartsWith('[') ? $"[{host}]" : host)}:{Number(port)}";
 
     private static string? Kind(ComposeService service) => BackingService.OfImage(service.Image)?.Service;
 

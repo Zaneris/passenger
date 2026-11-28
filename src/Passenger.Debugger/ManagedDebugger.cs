@@ -68,6 +68,13 @@ public partial class ManagedDebugger
     private bool _launched;
     private bool _justMyCode;
 
+    /// <summary>Whether the client's last step or continue was forced (Force Step Into and Over, Force Run to Cursor): it
+    /// runs without Just My Code, its stop read so too, and passes every breakpoint by but Run to Cursor's.</summary>
+    private bool _forcing;
+
+    /// <summary>Just My Code as the step under way and its stop take it: off for a forced one.</summary>
+    private bool JustMyCodeNow => _justMyCode && !_forcing;
+
     /// <summary>The assemblies the client carries into the program, by name, never the user's code (<see cref="Carry"/>).</summary>
     private HashSet<string> _carried = new(StringComparer.OrdinalIgnoreCase);
 
@@ -225,8 +232,13 @@ public partial class ManagedDebugger
     public event Action? OnTerminated;
     public event Action<int>? OnThreadStarted;
     public event Action<int>? OnThreadExited;
-    public event Action<string, string, string>? OnModuleLoaded;
-    public event Action<string, string, string>? OnModuleUnloaded;
+    /// <summary>A module loaded, as <see cref="Described"/> says it.</summary>
+    public event Action<DapModule>? OnModuleLoaded;
+
+    /// <summary>A module's symbols loaded since it was told of (decompiled for a frame in it).</summary>
+    public event Action<DapModule>? OnModuleChanged;
+
+    public event Action<DapModule>? OnModuleUnloaded;
     // Output text, isError (true for stderr, false for stdout)
     public event Action<string, bool>? OnOutput;
     /// <summary>What the debugger itself has to tell the user, beside the program's output.</summary>
@@ -312,6 +324,8 @@ public partial class ManagedDebugger
         _callbacks.OnAnyEvent += QueueEvent;
         // Not held: it serves the runtime's events for as long as the session lasts.
         Core.UnawaitedWork.Observe(Core.BackgroundWork.Unheld(ProcessRuntimeEventQueue));
+        // Not held, and off the program's path: the session's first condition, message, watch or snapshot then compiles warm.
+        Core.UnawaitedWork.Observe(Core.BackgroundWork.Unheld(ExpressionEvaluator.Compiler.CilExpressionCompiler.WarmUp));
     }
 
     private void QueueEvent(object? sender, CorDebugManagedCallbackEventArgs e)
@@ -324,6 +338,10 @@ public partial class ManagedDebugger
         else if (e is EvalCompleteCorDebugManagedCallbackEventArgs or EvalExceptionCorDebugManagedCallbackEventArgs)
         {
             EvalStatus.EndCame(e, EvaluationThread(e)?.TryGetID(out uint thread) is Cor.S_OK ? (int)thread : null);
+        }
+        else if (e is BreakpointCorDebugManagedCallbackEventArgs or Exception2CorDebugManagedCallbackEventArgs)
+        {
+            _hitCame.AddOrUpdate(e, new StrongBox<long>(System.Diagnostics.Stopwatch.GetTimestamp()));
         }
         _runtimeEventChannel.Writer.TryWrite(e);
     }
@@ -644,7 +662,7 @@ public partial class ManagedDebugger
         SourceInfo? source = null;
         try
         {
-            source = GetSourceInfoAtFrame(StoppedFrame(thread), _justMyCode is false);
+            source = GetSourceInfoAtFrame(StoppedFrame(thread), JustMyCodeNow is false);
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -989,9 +1007,9 @@ public partial class ManagedDebugger
     /// not the user's code.</summary>
     internal bool StopStepAt(ICorDebugThread thread)
     {
-        if (TopFrame(thread) is not ICorDebugILFrame frame || (_justMyCode && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
-            || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame))
-            || GetSourceInfoAtFrame(frame, _justMyCode is false) is not { } source)
+        if (TopFrame(thread) is not ICorDebugILFrame frame || (JustMyCodeNow && !IsUserCodeFrame(frame)) || FindModule(frame.Function.Module) is not { } module
+            || module.MetadataReader.IsCurrentSequencePointHidden(frame.Function.Token, frame.IP.pnOffset, module.MetadataReader.VersionOf(frame))
+            || GetSourceInfoAtFrame(frame, JustMyCodeNow is false) is not { } source)
         {
             return false;
         }
@@ -1200,7 +1218,7 @@ public partial class ManagedDebugger
         try
         {
             return frame is ICorDebugILFrame il && FindModule(il.Function.Module) is { } module
-                && module.MetadataReader.GetAsyncMethodSteppingInfo(il.Function.Token, ModuleMetadataReader.VersionOf(il)) is not null;
+                && module.MetadataReader.GetAsyncMethodSteppingInfo(il.Function.Token, module.MetadataReader.VersionOf(il)) is not null;
         }
         catch (Exception error) when (Failures.OfRuntime(error))
         {
@@ -1270,7 +1288,7 @@ public partial class ManagedDebugger
                 return false;
             }
             int token = il.Function.Token;
-            int? version = ModuleMetadataReader.VersionOf(il);
+            int? version = module.MetadataReader.VersionOf(il);
             int at = il.IP.pnOffset;
             return module.MetadataReader.GetAsyncMethodSteppingInfo(token, version) is { } method && at > method.LastUserCodeIlOffset
                 && module.MetadataReader.IsCurrentSequencePointHidden(token, at, version);
@@ -1319,13 +1337,13 @@ public partial class ManagedDebugger
             throw new InvalidOperationException("A step operation is already in progress");
         }
 
-        ICorDebugILFrame? below = _justMyCode ? null : AboveShownCaller(thread, frame);
+        ICorDebugILFrame? below = JustMyCodeNow ? null : AboveShownCaller(thread, frame);
         if (stepType is StepType.StepOut && below is not null)
         {
             _logger?.Invoke($"Stepper set on thread {thread.Id}: out of {FrameTold(frame)}, whose caller is native code, as out of {FrameTold(below)}");
             return BeginStep(Intercepting(below.CreateStepper()), thread, below, justMyCode: false, stepper => stepper.StepOut());
         }
-        bool justMyCode = _justMyCode && _asyncStepper?.SeesFrameLeave(thread, frame) is not true;
+        bool justMyCode = JustMyCodeNow && _asyncStepper?.SeesFrameLeave(thread, frame) is not true;
         ICorDebugStepper begun = BeginStep(Intercepting(frame.CreateStepper()), thread, frame, justMyCode, stepper =>
         {
             if (stepType == StepType.StepOut)
@@ -1429,11 +1447,16 @@ public partial class ManagedDebugger
     internal (int Start, int End)? StepRangeOf(ICorDebugILFrame frame, int? at = null)
     {
         ICorDebugFunction function = frame.Function;
-        if (FindModule(function.Module)?.MetadataReader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, at ?? frame.IP.pnOffset, ModuleMetadataReader.VersionOf(frame)) is not var (start, end))
+        if (FindModule(function.Module)?.MetadataReader is not { } reader)
         {
             return null;
         }
-        return (start, start == end ? function.ILCode.Size : end);
+        int? version = reader.VersionOf(frame);
+        if (reader.GetStartAndEndSequencePointIlOffsetsForIlOffset(function.Token, at ?? frame.IP.pnOffset, version) is not var (start, end))
+        {
+            return null;
+        }
+        return (start, start != end ? end : reader.MethodIL(function.Token, version)?.Length ?? function.ILCode.Size);
     }
 
     /// <summary>Binds a line breakpoint in every loaded module (or the one just <paramref name="loaded"/>) whose symbols name

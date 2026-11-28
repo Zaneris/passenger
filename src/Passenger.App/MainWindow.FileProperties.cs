@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Text;
 using Passenger.Workspace;
 using A = Passenger.App.AppActions;
@@ -17,12 +18,12 @@ public partial class MainWindow
 {
     private void AddFileProperties()
     {
-        actions!.Add(new IdeAction(A.FileEncoding, "File Encoding", "IDE", _ => ShowEncodingMenu())
+        actions!.Add(new IdeAction(A.FileEncoding, ActionTitles.FileEncoding, ActionGroups.Ide, _ => ShowEncodingMenu())
         {
             WhyNot = Unchangeable,
             Menus = [new MenuPlace("File", 2, 0)],
         });
-        actions.Add(new IdeAction(A.FileIndentation, "File Indentation", "IDE", _ => ShowIndentMenu())
+        actions.Add(new IdeAction(A.FileIndentation, ActionTitles.FileIndentation, ActionGroups.Ide, _ => ShowIndentMenu())
         {
             WhyNot = Refusals.NeedsLines,
             Menus = [new MenuPlace("File", 2, 2)],
@@ -30,7 +31,7 @@ public partial class MainWindow
         });
         foreach ((string id, bool tabs) in (ReadOnlySpan<(string, bool)>)[(A.ConvertIndentationToTabs, true), (A.ConvertIndentationToSpaces, false)])
         {
-            actions.Add(new IdeAction(id, tabs ? "Convert Indentation to Tabs" : "Convert Indentation to Spaces", "IDE", context => ConvertIndentation(context.File!, tabs))
+            actions.Add(new IdeAction(id, tabs ? ActionTitles.ConvertIndentationToTabs : ActionTitles.ConvertIndentationToSpaces, ActionGroups.Ide, context => ConvertIndentation(context.File!, tabs))
             {
                 WhyNot = context => Refusals.NeedsLines(context) ?? context.File!.WhyNotConverted(tabs),
                 Words = [tabs ? "Tabify" : "Untabify"],
@@ -40,7 +41,7 @@ public partial class MainWindow
         {
             LineSeparator separator = LineSeparators.All[i];
             // The file's own is checked (MenuChoice), and choosing it again changes nothing.
-            actions.Add(new IdeAction(LineSeparatorAction(separator), separator.Title(), "Line Separators", context =>
+            actions.Add(new IdeAction(LineSeparatorAction(separator), LineSeparatorTitle(separator), ActionGroups.LineSeparators, context =>
             {
                 if (context.File!.Separator != separator)
                 {
@@ -74,8 +75,16 @@ public partial class MainWindow
         _ => A.LineSeparatorsLf,
     };
 
+    /// <summary>A line separator's item in the Line Separators menu, its break escaped: "LF - Unix and macOS (\n)".</summary>
+    private static Words LineSeparatorTitle(LineSeparator separator) => separator switch
+    {
+        LineSeparator.CRLF => ActionTitles.LineSeparatorsCrlf(separator.Escaped()),
+        LineSeparator.CR => ActionTitles.LineSeparatorsCr(separator.Escaped()),
+        _ => ActionTitles.LineSeparatorsLf(separator.Escaped()),
+    };
+
     /// <summary>Why the file's line separator and encoding cannot change: none is open, or it is read-only.</summary>
-    private static string? Unchangeable(ActionContext context) =>
+    private static Words? Unchangeable(ActionContext context) =>
         context.File is not { } file ? Refusals.NoFile : file.ReadOnlyWhy;
 
 
@@ -157,7 +166,7 @@ public partial class MainWindow
     {
         if (document.ReadOnlyWhy is { } readOnly)
         {
-            status.Text = readOnly;
+            status.Text = readOnly.Shown;
             return;
         }
         string from = document.EncodingName;

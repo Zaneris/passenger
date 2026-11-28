@@ -3,10 +3,10 @@ using Passenger.Languages.CSharp;
 
 namespace Passenger.Tests;
 
-/// <summary>The connection a design-time factory reads for a context, by its name in the configuration: the one the
-/// context's registration in code reads, directly, through a local or as an Aspire integration's name, else the one the
-/// context reads itself, else the one configured under the context's name; never the first configured, and none where
-/// nothing tells.</summary>
+/// <summary>The connection dotnet ef reads for a context, by its name in the configuration: the one its design-time factory
+/// reads, alone where it has one; else the one the context's registration in code reads, directly, through a local or as an
+/// Aspire integration's name, else the one the context reads itself, else the one configured under the context's name; never
+/// the first configured, and none where nothing tells.</summary>
 [Collection(Beside.Name)]
 [SameOnEverySystem]
 public sealed class EfConnectionsTests
@@ -38,6 +38,25 @@ public sealed class EfConnectionsTests
                 protected override void OnConfiguring(DbContextOptionsBuilder options) => options.UseSqlite(configuration.GetConnectionString("Sales"));
             }
             """));
+        // A design-time factory, which dotnet ef makes the context by, comes before the registration, alone.
+        Assert.Equal("Local", Name("""
+            builder.Services.AddDbContext<ShopContext>(o => o.UseSqlServer(builder.Configuration.GetConnectionString("Sales")));
+            public sealed class ShopFactory : IDesignTimeDbContextFactory<ShopContext>
+            {
+                public ShopContext CreateDbContext(string[] args) => new(new DbContextOptionsBuilder<ShopContext>().UseSqlServer(Settings().GetConnectionString("Local")).Options);
+            }
+            """));
+        const string Unread = """
+            builder.Services.AddDbContext<ShopContext>(o => o.UseSqlite("Data Source=production.db"));
+            public sealed class ShopFactory : Microsoft.EntityFrameworkCore.Design.IDesignTimeDbContextFactory<Data.ShopContext>
+            {
+                public ShopContext CreateDbContext(string[] args) => new(Options.From(args));
+            }
+            """;
+        Assert.Null(Name(Unread));
+        Assert.Null(EfConnections.WrittenOf("ShopContext", [("Program.cs", Unread)], CSharpParsing.Default));
+        Assert.Equal("ShopFactory", EfConnections.FactoryOf("ShopContext", [("Program.cs", Unread)], CSharpParsing.Default));
+        Assert.Equal("Data Source=local.db", EfConnections.WrittenOf("ShopContext", [("Program.cs", Unread.Replace("new(Options.From(args))", "new(new DbContextOptionsBuilder<ShopContext>().UseSqlite(\"Data Source=local.db\").Options)", StringComparison.Ordinal))], CSharpParsing.Default));
     }
 
     private void Without_a_registration_the_connection_configured_under_the_contexts_name_is_its_and_never_the_first()

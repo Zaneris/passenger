@@ -499,6 +499,9 @@ internal sealed class HeapGraph
         /// <summary>An object's bytes as last read, kept for the next: its references are read from them.</summary>
         private byte[] bytes = new byte[4096];
 
+        /// <summary>The offsets of the last object's references whose fields its type has not named yet (<see cref="References"/>).</summary>
+        private readonly List<int> unnamed = [];
+
         /// <summary>How many objects were read with their fields' names (<see cref="Named"/>).</summary>
         public int NamedFrom { get; private set; }
 
@@ -516,7 +519,7 @@ internal sealed class HeapGraph
                 Add(item.Address, index, (long)size);
                 if (type.ContainsPointers && type.GCDesc is { IsEmpty: false } layout && size <= int.MaxValue && References(item, layout, (int)size, index, type.IsArray))
                 {
-                    Named(item, index);
+                    Named(type, index);
                 }
                 // What a ConditionalWeakTable keeps alive for a key, whatever the key's type holds.
                 for (int at = FirstDependent(dependents, item.Address); at < dependents.Length && dependents[at].Key == item.Address; at++)
@@ -533,7 +536,7 @@ internal sealed class HeapGraph
 
         /// <summary>An object's references from its bytes and its type's layout, each with where it is held: no reference is
         /// made of them, nor its object's type looked up, which a million objects would pay for. True where a field holds one
-        /// whose name its type has not been given yet.</summary>
+        /// whose name its type has not been given yet, its offset kept (<see cref="unnamed"/>).</summary>
         private bool References(ClrObject item, GCDesc layout, int size, int index, bool array)
         {
             if (bytes.Length < size)
@@ -545,27 +548,32 @@ internal sealed class HeapGraph
             {
                 return false;
             }
-            bool unnamed = false;
+            unnamed.Clear();
             foreach ((ulong target, int at) in layout.WalkObject(bytes, read))
             {
                 // The layout counts from the object's method table, a reference's offset from its first field.
                 int offset = at - pointerSize;
                 Refers(target, offset);
-                unnamed |= !array && !Found[index].Fields.ContainsKey(offset);
+                if (!array && !Found[index].Fields.ContainsKey(offset))
+                {
+                    unnamed.Add(offset);
+                }
             }
-            return unnamed;
+            return unnamed.Count > 0;
         }
 
-        /// <summary>The names of the fields an object holds references in, read for its type through ClrMD's references: a
-        /// type's first object, and one holding a field none before it did.</summary>
-        private void Named(ClrObject item, int index)
+        /// <summary>The names of the fields an object holds references in that its type has not been given yet (a type's first
+        /// object's, and one holding a field none before it did), read from its type's fields at their offsets (<see
+        /// cref="FieldAt"/>), what each refers to never looked at.</summary>
+        private void Named(ClrType type, int index)
         {
             NamedFrom++;
-            foreach (ClrReference reference in item.EnumerateReferencesWithFields(carefully: false, considerDependantHandles: false))
+            ImmutableArray<ClrInstanceField> fields = type.Fields;
+            foreach (int offset in unnamed)
             {
-                if (!reference.IsArrayElement && !Found[index].Fields.ContainsKey(reference.Offset))
+                if (FieldName(fields, offset) is { } name)
                 {
-                    Found[index].Fields[reference.Offset] = FieldName(reference);
+                    Found[index].Fields.TryAdd(offset, name);
                 }
             }
         }
@@ -590,10 +598,32 @@ internal sealed class HeapGraph
         private static int FirstDependent((ulong Key, ulong Value)[] dependents, ulong key) =>
             Passenger.Core.Sorted.FirstAtOrAfter<(ulong Key, ulong Value), ulong>(dependents, static d => d.Key, key);
 
-        private static string FieldName(ClrReference reference)
+        /// <summary>The name of the field holding a reference at an offset of an object's data: a struct field's with its own
+        /// field's within it (a primitive's value field, which is its own type's, passed over); null where no field is there.</summary>
+        private static string? FieldName(ImmutableArray<ClrInstanceField> fields, int offset)
         {
-            string outer = reference.Field?.Name ?? "?";
-            return reference.InnerField?.Field?.Name is { } inner ? $"{outer}.{inner}" : outer;
+            if (FieldAt(fields, offset) is not { } outer)
+            {
+                return null;
+            }
+            string name = outer.Name ?? "?";
+            return outer.IsValueType && outer.Type is { IsValueType: true } held && FieldAt(held.Fields, offset - outer.Offset) is { Name: { } inner } within
+                && !(within == outer && inner == "m_value") ? $"{name}.{inner}" : name;
+        }
+
+        /// <summary>The field an offset of an object's data lies in: the last to begin at or before it (the first of those
+        /// beginning there), by offsets alone, as a field's size is its type's, which a dump answers in milliseconds.</summary>
+        private static ClrInstanceField? FieldAt(ImmutableArray<ClrInstanceField> fields, int offset)
+        {
+            ClrInstanceField? at = null;
+            foreach (ClrInstanceField field in fields)
+            {
+                if (field.Offset <= offset && (at is null || at.Offset < field.Offset))
+                {
+                    at = field;
+                }
+            }
+            return at;
         }
 
         private int TypeIndex(ClrType type) => TypeOf(type.MethodTable, () =>

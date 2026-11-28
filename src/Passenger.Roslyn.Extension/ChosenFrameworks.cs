@@ -115,7 +115,7 @@ internal sealed class ChosenFrameworksHandler(LspWorkspaceManager workspaces, Ls
 
     /// <summary>The projects left unanalysed: of each project file the client chose a framework for, the server's projects of
     /// its other frameworks, where it has the one chosen (one it lacks, its restore failed say, leaves all of them in).</summary>
-    private static HashSet<ProjectId> Unchosen(Solution solution, IReadOnlyDictionary<string, string> frameworks)
+    internal static HashSet<ProjectId> Unchosen(Solution solution, IReadOnlyDictionary<string, string> frameworks)
     {
         Dictionary<string, string> chosen = new(PathNames.Comparer);
         foreach ((string path, string framework) in frameworks)

@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Passenger.App.Editors;
+using Passenger.App.History;
 using Passenger.App;
 using Passenger.App.ToolWindows;
 using Passenger.App.Vcs;
@@ -104,8 +105,9 @@ public sealed partial class VcsTests : IDisposable
 
     /// <summary>The Commit window as one flow, each step one test's check in an instance of its own: git started off
     /// the window's thread, the diff's keys, renames by git mv or the Explorer committed as renames, Amend rewording
-    /// alone and keeping what was typed, a message file another program holds, and a hook's job holding git's output
-    /// done within seconds.</summary>
+    /// alone and keeping what was typed, a message file another program holds, a hook's job holding git's output
+    /// done within seconds, the messages committed offered again, and the Git keys of VCS Operations, Commit and Push and
+    /// New Branch.</summary>
     [AvaloniaFact]
     public void A_commit_takes_what_the_person_chose_and_typed_as_renames_where_files_moved_never_held_by_another_program()
     {
@@ -118,12 +120,15 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("amends last message read late keeps what was typed meanwhile and lands nowhere once amend is off", t => t.Amends_last_message_read_late_keeps_what_was_typed_meanwhile_and_lands_nowhere_once_amend_is_off());
         Flow.StepApart<VcsTests>("a commit whose message file another program holds is made and the file goes once let go", t => t.A_commit_whose_message_file_another_program_holds_is_made_and_the_file_goes_once_let_go());
         Flow.StepApart<VcsTests>("a commit whose hook leaves a job holding gits output is done within seconds", t => t.A_commit_whose_hook_leaves_a_job_holding_gits_output_is_done_within_seconds());
+        Flow.StepApart<VcsTests>("the commit windows message history offers each message committed newest first to change and commit again", t => t.The_commit_windows_message_history_offers_each_message_committed_newest_first_to_change_and_commit_again());
+        Flow.StepApart<VcsTests>("vcs operations commit and push and new branch run from their keys", t => t.Vcs_operations_commit_and_push_and_new_branch_run_from_their_keys());
     }
 
-    /// <summary>The log and annotations as one flow, each step the check one test made in an instance of its own:
-    /// annotations in a SHA-256 repository, the Commit and Log menus ignoring a file, reverting a commit and branching
-    /// from one, a commit's file in the log jumping to its source and copying its path, and a commit made elsewhere
-    /// reaching the log of the working tree's top and of a folder in it.</summary>
+    /// <summary>The log and annotations as one flow, each step in an instance of its own: annotations in a SHA-256
+    /// repository, the Commit and Log menus ignoring a file, reverting a commit and branching from one, a commit's file in
+    /// the log jumping to its source, a commit made elsewhere reaching the log of the tree's top and of a folder in it, an
+    /// interactive rebase making the history its preview showed, a tag made from the log, annotated and signed, pushed,
+    /// moved and deleted here and on the remote, and a worktree made, opened, committed from and removed.</summary>
     [AvaloniaFact]
     public void The_log_follows_commits_made_anywhere_and_its_menus_act_on_the_commit_or_file_chosen()
     {
@@ -131,6 +136,10 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("the commit and log menus ignore a file revert a commit and branch from one", t => t.The_commit_and_log_menus_ignore_a_file_revert_a_commit_and_branch_from_one());
         Flow.StepApart<VcsTests>("a commits file in the log jumps to its source and copies its path from its menu", t => t.A_commits_file_in_the_log_jumps_to_its_source_and_copies_its_path_from_its_menu());
         Flow.StepApart<VcsTests>("a commit made elsewhere reaches the log of the working trees top and of a folder in it", t => t.A_commit_made_elsewhere_reaches_the_log_of_the_working_trees_top_and_of_a_folder_in_it());
+        Flow.StepApart<VcsTests>("an interactive rebase from the log moves squashes rewords and drops commits making the history its preview showed", t => t.An_interactive_rebase_from_the_log_moves_squashes_rewords_and_drops_commits_making_the_history_its_preview_showed());
+        Flow.StepApart<VcsTests>("an interactive rebase stops for conflicts and at an edit and goes on by skip commit and continue rebase", t => t.An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase());
+        Flow.StepApart<VcsTests>("a tag made from the log annotated and signed is pushed moved and deleted here and on the remote as its preview said", t => t.A_tag_made_from_the_log_annotated_and_signed_is_pushed_moved_and_deleted_here_and_on_the_remote_as_its_preview_said());
+        Flow.StepApart<VcsTests>("a worktree made from a branchs menu opens in its own window is committed from and removed once asked", t => t.A_worktree_made_from_a_branchs_menu_opens_in_its_own_window_is_committed_from_and_removed_once_asked());
     }
 
     /// <summary>Stash and Unstash as one flow, each step the check one test made in an instance of its own: nothing to
@@ -146,13 +155,14 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("enter or a double click on a stash shows its files beside the working tree and pops nothing", t => t.Enter_or_a_double_click_on_a_stash_shows_its_files_beside_the_working_tree_and_pops_nothing());
         Flow.StepApart<VcsTests>("unstash changes takes the stash chosen though another program stashed or dropped since the list was read", t => t.Unstash_changes_takes_the_stash_chosen_though_another_program_stashed_or_dropped_since_the_list_was_read());
         Flow.StepApart<VcsTests>("stashing a change and a new file leaves the git log as it was", t => t.Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was());
+        Flow.StepApart<VcsTests>("the commit windows stashes list each stashs files and diffs then apply pop and drop it as said and undo brings a dropped one back", t => t.The_commit_windows_stashes_list_each_stashs_files_and_diffs_then_apply_pop_and_drop_it_as_said_and_undo_brings_a_dropped_one_back());
     }
 
     /// <summary>Update Project and Push as one flow, each step the check one test made in an instance of its own: Stop
     /// ending an update whose remote stalls with a commit running after it, a diverged branch merged where git is not
     /// told how and rebased where pull.rebase says, an uncommitted edit kept through both, a push asking the person for
-    /// a login, a new branch pushed to the only remote or asking which of several, and a checkout refused as git busy
-    /// while an update pulls.</summary>
+    /// a login, a new branch pushed to the only remote or asking which of several, a rewritten branch force pushed under a
+    /// lease, and a checkout refused as git busy while an update pulls.</summary>
     [AvaloniaFact]
     public void Update_push_and_pull_bring_the_upstream_in_as_git_is_told_ask_for_a_login_and_stop_when_asked()
     {
@@ -161,7 +171,9 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("update project with pull rebase rebases onto the upstream keeping an unrelated uncommitted edit", t => t.Update_project_with_pull_rebase_rebases_onto_the_upstream_keeping_an_unrelated_uncommitted_edit());
         Flow.StepApart<VcsTests>("push to a remote that asks for a login asks the person and goes once they sign in", t => t.Push_to_a_remote_that_asks_for_a_login_asks_the_person_and_goes_once_they_sign_in());
         Flow.StepApart<VcsTests>("push of a new branch goes to the only remote whatever its name and asks which of several", t => t.Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several());
+        Flow.StepApart<VcsTests>("force push replaces a rewritten branch on the remote once agreed but never what someone pushed since", t => t.Force_push_replaces_a_rewritten_branch_on_the_remote_once_agreed_but_never_what_someone_pushed_since());
         Flow.StepApart<VcsTests>("a checkout asked for while update project pulls is refused as git busy and the update lands", t => t.A_checkout_asked_for_while_update_project_pulls_is_refused_as_git_busy_and_the_update_lands());
+        Flow.StepApart<VcsTests>("remotes are added pushed to renamed repointed and removed as their dialogs said a token in a url masked", t => t.Remotes_are_added_pushed_to_renamed_repointed_and_removed_as_their_dialogs_said_a_token_in_a_url_masked());
     }
 
     /// <summary>Create Git Repository and Add to .gitignore as one flow, each step the check one test made in an
@@ -206,6 +218,7 @@ public sealed partial class VcsTests : IDisposable
         Flow.StepApart<VcsTests>("a commit and a branch switch from outside a folder opened below the repositorys top are followed by the bars colours commit list and branch", t => t.A_commit_and_a_branch_switch_from_outside_a_folder_opened_below_the_repositorys_top_are_followed_by_the_bars_colours_commit_list_and_branch());
         Flow.StepApart<VcsTests>("a save leaves the explorers chosen rows the git log and go to file as they were", t => t.A_save_leaves_the_explorers_chosen_rows_the_git_log_and_go_to_file_as_they_were());
         Flow.StepApart<VcsTests>("coming back to the window reads no last commit text again and head moved elsewhere moves every files bars in one read", t => t.Coming_back_to_the_window_reads_no_last_commit_text_again_and_head_moved_elsewhere_moves_every_files_bars_in_one_read());
+        Flow.StepApart<VcsTests>("a folder holding a second repository lists and commits each from the commit windows tab of it", t => t.A_folder_holding_a_second_repository_lists_and_commits_each_from_the_commit_windows_tab_of_it());
     }
 
     /// <summary>A reftable repository's changes from outside as one flow, every step needing a git that makes one (2.45
@@ -1342,19 +1355,19 @@ public sealed partial class VcsTests : IDisposable
         MainWindow window = Ui.OpenFolder(folder, languageServer: false);
         Ui.Settle();
 
-        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.Press(PushAsked(window), "ENTER");
         Ui.ClickButton(LoginAsked(window, remote), "Cancel");
         Ui.Landed(() => window.Actions.Work.Of(AppActions.Push) is null, "the push's end once its login was cancelled");
-        Assert.Equal($"Push failed: the login to {remote.Place} was cancelled", window.Status);
+        Assert.Equal($"main was not pushed to origin/main: the login to {remote.Place} was cancelled", window.Status);
         Assert.Equal(0, remote.SignedIn);
 
-        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.ClickButton(PushAsked(window), "Push");
         GitQuestionDialog asked = LoginAsked(window, remote);
         asked.KeyTextInput(StandInGitRemote.User);
         Ui.Press(asked, "TAB");
         asked.KeyTextInput(StandInGitRemote.Password);
         Ui.Press(asked, "ENTER");
-        Ui.Landed(() => window.Status == "Pushed main", "the push once signed in");
+        Ui.Landed(() => window.Status == "Pushed main to origin/main, which it tracks from now on", "the push once signed in");
         Assert.Equal(Git("rev-parse", "HEAD").Trim(), TestGit.Run(remote.Repository, "rev-parse", "main").Trim());
         Assert.True(remote.SignedIn > 0, "The remote heard no request with the login typed");
         Assert.False(Ui.IdeLog().Contains(StandInGitRemote.Password, StringComparison.Ordinal), "The password typed for git is in the IDE's log");
@@ -1370,8 +1383,81 @@ public sealed partial class VcsTests : IDisposable
         return asked;
     }
 
+    /// <summary>A branch rewritten since it was pushed (amended, as a rebase rewrites it) is refused a plain Push, the Push
+    /// dialog listing what it sends and saying so; Force Push asks first, leaving the remote as it was when declined, and
+    /// replaces the remote's branch once agreed, with a lease: a commit someone else pushed there since it was last fetched
+    /// is never replaced. Where the remote's branch has nothing the branch lacks, Force Push is greyed saying so.</summary>
+    private void Force_push_replaces_a_rewritten_branch_on_the_remote_once_agreed_but_never_what_someone_pushed_since()
+    {
+        string served = TestFolders.Create("git-served-");
+        TestGit.Run(served, "init", "-q", "--bare");
+        Git("remote", "add", "origin", served);
+        Git("push", "-q", "-u", "origin", "main");
+        string pushed = Git("rev-parse", "HEAD").Trim();
+        Git("commit", "-q", "--amend", "-m", "Rewritten");
+        MainWindow window = Open();
+        List<string> asked = [];
+        bool agree = false;
+        window.Confirm = (title, _, yes) =>
+        {
+            asked.Add($"{title}: {yes}");
+            return Task.FromResult(agree);
+        };
+
+        PushDialog refused = PushAsked(window);
+        Assert.Equal(["Rewritten"], refused.Sends.Select(c => c.Subject));
+        Assert.Equal(
+            [
+                "Sends 1 commit to origin/main, as last fetched.",
+                "origin/main has 1 commit main lacks, as after a rebase or an amend: git refuses Push until it is brought in (merge or rebase onto origin/main), "
+                    + "and Force Push replaces it, only while origin/main stands as last fetched.",
+                "main keeps tracking origin/main.",
+            ], refused.WhatItDoes);
+        Assert.True(refused.ForceButton.IsEnabled, "Force Push is greyed where origin/main has a commit main lacks");
+        Ui.ClickButton(refused, "Push");
+        Ui.Landed(() => window.Status?.StartsWith("main was not pushed to origin/main", StringComparison.Ordinal) == true, "the plain push of a rewritten branch refused");
+        Assert.Equal(pushed, TestGit.Run(served, "rev-parse", "main").Trim());
+
+        Ui.ClickButton(PushAsked(window), "Force Push");
+        Ui.Settle();
+        Assert.Equal(["Force Push: Force Push"], asked);
+        Assert.Equal(pushed, TestGit.Run(served, "rev-parse", "main").Trim());
+
+        agree = true;
+        Ui.ClickButton(PushAsked(window), "Force Push");
+        Ui.Landed(() => window.Status == "Force pushed main to origin/main", "the force push once agreed");
+        Assert.Equal(Git("rev-parse", "HEAD").Trim(), TestGit.Run(served, "rev-parse", "main").Trim());
+        PushDialog even = PushAsked(window);
+        Assert.False(even.ForceButton.IsEnabled, "Force Push is offered where origin/main has nothing main lacks");
+        Assert.Equal("origin/main has no commit main lacks, as last fetched: Push sends it", ToolTip.GetTip(even.ForceButton));
+        Ui.ClickButton(even, "Cancel");
+
+        string elsewhere = TestFolders.Create("git-elsewhere-");
+        TestGit.Run(elsewhere, "clone", "-q", "-b", "main", served, ".");
+        TestGit.Run(elsewhere, "config", GitConfigKeys.UserEmail, "tests@passenger.invalid");
+        TestGit.Run(elsewhere, "config", "user.name", "Passenger Tests");
+        TestGit.Run(elsewhere, "commit", "-q", "--allow-empty", "-m", "Theirs");
+        TestGit.Run(elsewhere, "push", "-q", "origin", "main");
+        string theirs = TestGit.Run(elsewhere, "rev-parse", "HEAD").Trim();
+        Git("commit", "-q", "--amend", "-m", "Rewritten again");
+        Ui.ClickButton(PushAsked(window), "Force Push");
+        Ui.Landed(() => window.Status?.StartsWith("main was not force pushed to origin/main", StringComparison.Ordinal) == true, "the force push refused by its lease");
+        Assert.Equal(theirs, TestGit.Run(served, "rev-parse", "main").Trim());
+        window.Close();
+    }
+
+    /// <summary>The Push dialog Push… opened, once it shows, held to the dialogs' rule.</summary>
+    private static PushDialog PushAsked(MainWindow window)
+    {
+        Assert.True(window.Perform(AppActions.Push), window.Status);
+        Ui.PumpUntil(() => window.PushWindow is { IsVisible: true }, "the Push dialog to show");
+        PushDialog asked = DialogButtonsTests.Check(window.PushWindow!);
+        Assert.Equal($"Push {window.Vcs.Branch}", asked.Title);
+        return asked;
+    }
+
     /// <summary>Push of a branch that tracks none goes to the repository's only remote whatever its name, the branch tracking
-    /// it there from then on; with several remotes the window asks which, and pushes to the one chosen.</summary>
+    /// it there from then on; with several remotes the Push dialog asks which, and pushes to the one chosen.</summary>
     private void Push_of_a_new_branch_goes_to_the_only_remote_whatever_its_name_and_asks_which_of_several()
     {
         string upstream = TestFolders.Create("git-upstream-");
@@ -1383,24 +1469,175 @@ public sealed partial class VcsTests : IDisposable
         MainWindow window = Open();
         Assert.Equal("feature", window.Vcs.Branch);
 
-        Assert.True(window.Perform(AppActions.Push), window.Status);
-        Ui.Landed(() => window.Status == "Pushed feature", "the push to the only remote, upstream");
+        PushDialog first = PushAsked(window);
+        Assert.Equal("upstream", first.RemoteBox.SelectedItem);
+        Assert.Equal(Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries), first.Sends.Select(c => c.Subject));
+        Assert.False(first.ForceButton.IsEnabled, "Force Push is offered where upstream has no branch feature to replace");
+        Ui.ClickButton(first, "Push");
+        Ui.Landed(() => window.Status == "Pushed feature to upstream/feature, which it tracks from now on", "the push to the only remote, upstream");
         Assert.Equal(Git("rev-parse", "feature").Trim(), TestGit.Run(upstream, "rev-parse", "feature").Trim());
         Assert.Equal("upstream/feature", Git("rev-parse", "--abbrev-ref", "feature@{upstream}").Trim());
 
         Git("remote", "add", "other", other);
         Git("switch", "-q", "-c", "second");
         Ui.WaitFor(() => window.Vcs.Branch == "second", "the window to follow the checkout of second");
-        Assert.True(window.Perform(AppActions.Push), window.Status);
-        Ui.Settle();
-        ChoicePopup choosing = Assert.IsType<ChoicePopup>(window.Popup);
-        Assert.Equal(["other", "upstream"], choosing.Rows.Select(r => r.Label));
-        window.KeyTextInput("other");
-        Ui.Settle();
-        Ui.Press(window, "ENTER");
-        Ui.Landed(() => window.Status == "Pushed second", "the push to the remote chosen, other");
+        PushDialog choosing = PushAsked(window);
+        Assert.Equal(["other", "upstream"], choosing.RemoteBox.Items);
+        Assert.Equal("other", choosing.RemoteBox.SelectedItem);
+        choosing.RemoteBox.SelectedItem = "upstream";
+        Ui.Landed(() => choosing.WhatItDoes[0] == "Makes the branch second on upstream at second's commit, which upstream has already.", "what a push to upstream does");
+        choosing.RemoteBox.SelectedItem = "other";
+        Ui.Landed(() => choosing.Sends.Count > 0, "what a push to other sends");
+        Ui.ClickButton(choosing, "Push");
+        Ui.Landed(() => window.Status == "Pushed second to other/second, which it tracks from now on", "the push to the remote chosen, other");
         Assert.Equal(Git("rev-parse", "second").Trim(), TestGit.Run(other, "rev-parse", "second").Trim());
         Assert.Equal("other/second", Git("rev-parse", "--abbrev-ref", "second@{upstream}").Trim());
+        window.Close();
+    }
+
+    /// <summary>Manage Remotes… adds a remote and fetches it, Push to… sends a branch that tracks origin to it, saying first
+    /// which commits it sends and that the branch keeps tracking origin, Edit Remote… renames it and gives it another URL,
+    /// and Remove Remote… asks first, naming the branch that goes: each as its dialog's preview said, in its words and git's.
+    /// A URL holding a token shows masked in the list, the preview, git's words and the status bar, and an edit leaving its
+    /// masked box alone keeps the URL whole; a remote never fetched is listed in the branches panel with its menu.</summary>
+    private void Remotes_are_added_pushed_to_renamed_repointed_and_removed_as_their_dialogs_said_a_token_in_a_url_masked()
+    {
+        string origin = TestFolders.Create("git-origin-");
+        string backup = TestFolders.Create("git-backup-");
+        string moved = TestFolders.Create("git-moved-");
+        foreach (string bare in (string[])[origin, backup, moved])
+        {
+            TestGit.Run(bare, "init", "-q", "--bare", "-b", "main");
+        }
+        Git("remote", "add", "origin", origin);
+        Git("push", "-q", "-u", "origin", "main");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Twice");
+        string first = GitHashes.Short(Git("rev-parse", "HEAD~1").Trim());
+        string twice = GitHashes.Short(Git("rev-parse", "HEAD").Trim());
+        MainWindow window = Open();
+        List<string> said = [];
+        using IDisposable following = Ui.FollowStatus(window, said);
+
+        Assert.True(window.Perform(AppActions.ManageRemotes), window.Status);
+        Ui.WaitFor(() => window.RemotesWindow is { IsVisible: true }, "the Remotes dialog");
+        RemotesDialog remotes = DialogButtonsTests.Check(window.RemotesWindow!);
+        Ui.Landed(() => remotes.Rows.Count == 1, "the remotes listed");
+        Assert.Equal((string[])["origin"], remotes.Rows.Select(r => r.Name));
+        Ui.Click(remotes.AddButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Add Remote dialog");
+        RemoteDialog adding = DialogButtonsTests.Check(window.RemoteWindow!);
+        Assert.Equal(string.Empty, adding.NameBox.Text);
+        Ui.Settle();
+        Assert.True(adding.Problem.Length == 0, $"Add Remote said why it will not save before anything was typed: {adding.Problem}");
+        adding.KeyTextInput("backup");
+        Ui.Click(adding.UrlBox);
+        adding.KeyTextInput(backup);
+        Ui.Settle();
+        Assert.Equal(
+            [
+                $"Adds the remote backup, which this repository fetches from and pushes to at {backup}.",
+                "Fetches its branches now: they come under Remote › backup in the Git log's branches, and nothing of yours changes.",
+            ], adding.WhatItDoes);
+        Assert.Equal($"git remote add backup {backup}\ngit fetch backup", adding.GitWords);
+        Ui.Click(adding.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy && remotes.Rows.Count == 2, "the remote added, fetched and listed");
+        Assert.Contains($"Added the remote backup, at {backup} and fetched its branches", said);
+        Assert.Equal(backup, Git("remote", "get-url", "backup").Trim());
+
+        Assert.True(window.Perform(AppActions.PushTo), window.Status);
+        Ui.WaitFor(() => window.PushWindow is { IsVisible: true }, "the Push dialog");
+        PushDialog pushing = DialogButtonsTests.Check(window.PushWindow!);
+        Assert.Equal("backup", pushing.RemoteBox.SelectedItem);
+        Ui.Landed(() => pushing.GitWords.Length > 0, "what a push to backup sends");
+        Assert.Equal(
+            [
+                "Makes the branch main on backup, sending 2 commits it lacks, as last fetched.",
+                "main keeps tracking origin/main.",
+            ], pushing.WhatItDoes);
+        Assert.Equal([$"{twice} Twice", $"{first} First"], pushing.Sends.Select(c => $"{c.Short} {c.Subject}"));
+        Assert.False(pushing.ForceButton.IsEnabled, "Force Push is offered where backup has no branch main to replace");
+        Assert.Equal("git push backup main", pushing.GitWords);
+        Ui.Click(pushing.PushButton);
+        Ui.Landed(() => window.PushWindow is null && !window.Vcs.IsBusy, "the push to backup");
+        Assert.Contains("Pushed main to backup/main", said);
+        Assert.Equal(Git("rev-parse", "main").Trim(), TestGit.Run(backup, "rev-parse", "main").Trim());
+        Assert.Equal("origin/main", Git("rev-parse", "--abbrev-ref", "main@{upstream}").Trim());
+
+        Ui.Landed(() => remotes.Rows.Count == 2, "the remotes read again");
+        remotes.Chosen = remotes.Rows.Single(r => r.Name == "backup");
+        Ui.Click(remotes.EditButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Edit Remote dialog");
+        RemoteDialog editing = DialogButtonsTests.Check(window.RemoteWindow!);
+        Assert.Equal("backup", editing.NameBox.Text);
+        editing.NameBox.SelectAll();
+        editing.KeyTextInput("mirror");
+        Ui.Click(editing.UrlBox);
+        editing.UrlBox.SelectAll();
+        editing.KeyTextInput(moved);
+        Ui.Settle();
+        Assert.Equal(
+            [
+                "Renames backup to mirror: its 1 branch here becomes mirror/….",
+                $"Fetches from and pushes to {moved} from now on, in place of {backup}; its branches here stay as last fetched until it is fetched again.",
+                "The repository it names is not changed.",
+            ], editing.WhatItDoes);
+        Assert.Equal($"git remote rename backup mirror\ngit remote set-url mirror {moved}", editing.GitWords);
+        Ui.Click(editing.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy, "the remote renamed and given its new URL");
+        Assert.Contains($"Renamed the remote backup to mirror, its branches here and those tracking them following; it fetches from and pushes to {moved} now", said);
+        Assert.Equal(moved, Git("remote", "get-url", "mirror").Trim());
+        Git("rev-parse", "--verify", "-q", "refs/remotes/mirror/main");
+
+        const string Token = "s3cret-token";
+        string url = $"https://alice:{Token}@example.invalid/shop.git";
+        Ui.Click(remotes.AddButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Add Remote dialog again");
+        RemoteDialog secret = DialogButtonsTests.Check(window.RemoteWindow!);
+        secret.KeyTextInput("hosted");
+        Ui.Click(secret.UrlBox);
+        secret.KeyTextInput(url);
+        secret.ThenBox.SelectedIndex = 1;
+        Ui.Settle();
+        Assert.DoesNotContain(Token, string.Join('\n', [.. secret.WhatItDoes, secret.GitWords]));
+        Assert.Equal("git remote add hosted https://alice:••••••@example.invalid/shop.git", secret.GitWords);
+        Ui.Click(secret.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy && remotes.Rows.Count == 3, "the remote with a token added and listed");
+        Assert.Equal(url, Git("remote", "get-url", "hosted").Trim());
+        Assert.DoesNotContain(said, s => s.Contains(Token, StringComparison.Ordinal));
+        Assert.Equal("https://alice:••••••@example.invalid/shop.git", RemotesDialog.Said(remotes.Rows.Single(r => r.Name == "hosted")));
+        remotes.Chosen = remotes.Rows.Single(r => r.Name == "hosted");
+        Ui.Click(remotes.EditButton);
+        Ui.WaitFor(() => window.RemoteWindow is { IsVisible: true }, "the Edit Remote dialog of the URL with a token");
+        RemoteDialog masked = DialogButtonsTests.Check(window.RemoteWindow!);
+        Assert.Equal("https://alice:••••••@example.invalid/shop.git", masked.UrlBox.Text);
+        masked.KeyTextInput("server");
+        Ui.Settle();
+        Assert.Equal("git remote rename hosted server", masked.GitWords);
+        Ui.Click(masked.SaveButton);
+        Ui.Landed(() => window.RemoteWindow is null && !window.Vcs.IsBusy, "the remote with a token renamed");
+        Assert.Equal(url, Git("remote", "get-url", "server").Trim());
+
+        window.Perform(AppActions.ShowGit);
+        BranchesPanel panel = window.GitBranches;
+        Ui.Landed(() => panel.Rows.Any(r => r.Title == "server"), "the remote never fetched in the branches panel");
+        Assert.Equal(["Fetch", "Edit Remote…", "Remove Remote…"], panel.RemoteMenu("server").OfType<MenuItem>().Select(i => i.Header as string));
+
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+        Ui.Landed(() => remotes.Rows.Any(r => r.Name == "mirror"), "the remotes read again after the rename");
+        remotes.Chosen = remotes.Rows.Single(r => r.Name == "mirror");
+        Ui.Click(remotes.RemoveButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && remotes.Rows.All(r => r.Name != "mirror"), "the remote removed and the list read again");
+        Assert.Equal([$"Remove Remote: Remove the remote mirror? Its 1 branch here goes with it. The repository at {moved} keeps everything: "
+            + "adding the remote again and fetching brings its branches back."], asked);
+        Assert.Contains("Removed the remote mirror and its branches here: the repository it named keeps everything", said);
+        Assert.Equal(["origin", "server"], Git("remote").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        remotes.Close();
         window.Close();
     }
 
@@ -1469,7 +1706,12 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal("Not committed yet", shop.GutterAnnotations[0]);
 
         CodeEditor editor = window.EditorArea.CodeEditor;
-        Ui.Click(editor, new Point(10, (5 * editor.LineHeight) + (editor.LineHeight / 2) - editor.ScrollOffset.Y), settle: false);
+        // The signposts' authors read the blame Annotate shows: the field's newest commit, the first, chosen by a press on it.
+        Ui.WaitFor(() => editor.RowsAbove.Count == 3 && editor.RowsAbove[1].Words[^1].Text == "Passenger Tests",
+            () => $"the field's signpost naming its author: {string.Join(", ", editor.RowsAbove.SelectMany(r => r.Words).Select(w => w.Text))}");
+        Ui.Click(editor, editor.RowAbovePoint(3, 0, editor.RowsAbove[1].Words.Count - 1)!.Value, settle: false);
+        Ui.Landed(() => window.GitLog.Selected?.Hash == first, "the field's newest commit chosen in the log from its signpost");
+        Ui.Click(editor, new Point(10, editor.PointOf(editor.Document.Snapshot.GetLineStart(5)).Y + (editor.LineHeight / 2)), settle: false);
         Ui.Landed(() => window.GitLog.Selected?.Hash == twice, "the commit chosen in the log");
 
         Task closing = window.ToggleAnnotationsAsync(shop);
@@ -1715,6 +1957,138 @@ public sealed partial class VcsTests : IDisposable
         window.Close();
     }
 
+    /// <summary>Stash Changes leaves new files in place once its box for them is unticked and puts them away with it ticked;
+    /// the Commit window's Stashes tab lists both, newest first, by message, branch and age, opens one to its files (its new
+    /// file among them) and a file's diff beside what it was, says what Pop, Apply and Drop do with it in words and git's,
+    /// applies one keeping it, pops the other dropping it, and drops the last once asked, whose Undo puts it back.</summary>
+    private void The_commit_windows_stashes_list_each_stashs_files_and_diffs_then_apply_pop_and_drop_it_as_said_and_undo_brings_a_dropped_one_back()
+    {
+        string shop = Path.Combine(folder, "Shop.cs");
+        string notes = Path.Combine(folder, "Notes.txt");
+        MainWindow window = Open();
+        window.EditorArea.CodeEditor.GoTo(new TextPosition(2, 4));
+        window.KeyTextInput("long ");
+        File.WriteAllText(notes, "a new file\n");
+        NamePopup stash = window.ShowStash()!;
+        Ui.Settle();
+        Assert.Equal(MainWindow.IncludeNewFiles, stash.Option!.Content);
+        Assert.True(stash.Option.IsChecked, "Stash Changes offered to leave new files out to begin with");
+        Ui.Click(stash.Option);
+        stash.Text = "Count only";
+        Task stashing = stash.SubmitAsync();
+        Ui.Landed(() => stashing.IsCompleted && Text(window) == Original, $"the change stashed and the file as the commit has it ({window.Status})");
+        Assert.True(File.Exists(notes), "Stash Changes with its new files' box unticked put Notes.txt away");
+        stash = window.ShowStash()!;
+        Ui.Settle();
+        stash.Text = "Notes too";
+        stashing = stash.SubmitAsync();
+        Ui.Landed(() => stashing.IsCompleted && !File.Exists(notes), "the new file stashed");
+        Assert.Equal(["On main: Notes too", "On main: Count only"], Stashes());
+
+        window.Confirm = (_, _, _) => Task.FromResult(true);
+        window.Perform(AppActions.ShowCommit);
+        CommitView view = window.CommitView;
+        Ui.Click(view.StashesTab);
+        Assert.True(view.ShowsStashes, "The Stashes tab's click left the changes shown");
+        StashesView stashes = view.Stashes;
+        Ui.Landed(() => stashes.Stashes.Count == 2, "the stashes listed");
+        Assert.Equal(["Notes too", "Count only"], stashes.Rows.Select(r => r.Said.Message));
+        Assert.Equal("main", stashes.Rows[0].Said.Branch);
+        Ui.Await(stashes.ChooseAsync(1, "Shop.cs"), "Count only's files");
+        Assert.Equal(
+            [
+                "Pop puts the changes to Shop.cs back into your files and drops the stash; Apply puts them back and keeps it.",
+                "Where your files changed the same lines since, git stops for the conflicts and the stash stays.",
+                "Drop deletes it without putting anything back; Undo brings it back while git keeps its commit.",
+            ], stashes.WhatItDoes);
+        Assert.Equal("git stash pop stash@{1}\ngit stash apply stash@{1}\ngit stash drop stash@{1}", stashes.GitWords);
+        stashes.FocusRows();
+        Ui.Press(window, "ENTER");
+        IDiffHost diff = OpenDiffs.Landed(window, "the stashed file's diff");
+        Assert.Equal(Original, OpenDiffs.ViewOf(diff).Left.Document.Snapshot.ToString());
+        Assert.Equal(Original.Replace("int count", "long int count", StringComparison.Ordinal), OpenDiffs.ViewOf(diff).Right.Document.Snapshot.ToString());
+        diff.Close();
+        Ui.Await(stashes.ChooseAsync(0, "Notes.txt"), "Notes too's files");
+        Assert.StartsWith("Pop puts the new file Notes.txt back", stashes.WhatItDoes[0], StringComparison.Ordinal);
+
+        Ui.Await(stashes.ChooseAsync(1), "Count only chosen");
+        Ui.Click(stashes.ApplyButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && Text(window).Contains("long int count", StringComparison.Ordinal), "the stash applied to the open file");
+        Assert.Equal(["On main: Notes too", "On main: Count only"], Stashes());
+        Ui.Await(stashes.ChooseAsync(0), "Notes too chosen");
+        Ui.Click(stashes.PopButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && File.Exists(notes) && stashes.Stashes.Count == 1, "the stash popped and dropped");
+        Assert.Equal(["On main: Count only"], Stashes());
+
+        List<string> asked = [];
+        window.Confirm = (title, text, _) =>
+        {
+            asked.Add($"{title}: {text}");
+            return Task.FromResult(true);
+        };
+        string kept = Git("rev-parse", "stash@{0}").Trim();
+        Ui.Await(stashes.ChooseAsync(0), "Count only chosen again");
+        Ui.Click(stashes.DropButton);
+        Ui.Landed(() => !window.Vcs.IsBusy && stashes.Stashes.Count == 0, "the stash dropped");
+        Assert.Equal([$"Drop Stash: Drop the stash \"Count only\" without putting its changes back? Undo brings it back while git keeps its commit, {GitHashes.Short(kept)}."], asked);
+        Assert.Empty(Stashes());
+        Assert.NotNull(stashes.Placeholder);
+        Assert.True(stashes.IsKeyboardFocusWithin, "Once its last stash was dropped the Stashes tab let go of the keys, so Undo would take the open file's own step");
+        Ui.Run(window, EditorActions.Undo);
+        Ui.WaitFor(() => Stashes() is ["On main: Count only"] && stashes.Stashes.Count == 1, () => $"Undo to put the dropped stash back ({window.Status})");
+        Assert.Equal(kept, Git("rev-parse", "stash@{0}").Trim());
+        window.Close();
+    }
+
+    /// <summary>A folder holding another repository below its own: the Commit window has a tab of each, by its name, branch
+    /// and how many files changed, its own listing its file alone (the other's top left to it), the status bar's branch
+    /// names the folder's repository, a commit from each tab goes to that repository, its files and branch as they were
+    /// in the other, and a tab's Push… pushes its repository while another is chosen.</summary>
+    private void A_folder_holding_a_second_repository_lists_and_commits_each_from_the_commit_windows_tab_of_it()
+    {
+        string lib = Path.Combine(folder, "lib");
+        Directory.CreateDirectory(lib);
+        File.WriteAllText(Path.Combine(lib, "Lib.cs"), "class Lib { }\n");
+        TestGit.Init(lib);
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        File.WriteAllText(Path.Combine(lib, "Lib.cs"), "class Lib { int size; }\n");
+        MainWindow window = Open();
+        window.Perform(AppActions.ShowCommit);
+        CommitView view = window.CommitView;
+        string top = VcsController.NameOf(window.Vcs.Repository!);
+        Ui.WaitFor(() => view.RepositoryTabs.Count == 2, "the Commit window's tab of each repository");
+        Ui.Landed(() => view.RepositoryTabs.Select(t => t.Content as string).SequenceEqual([$"{top} · main (1)", "lib · main (1)"]),
+            $"the tabs of {top} and lib with their branches and changes, where they say [{string.Join(", ", view.RepositoryTabs.Select(t => t.Content))}]");
+        Assert.Equal([PathNames.Canonical(Path.Combine(folder, "Shop.cs"))], view.Chosen.Select(c => c.Path));
+        Assert.Equal($"{top}: main", window.FindControl<TextBlock>("GitBranchText")?.Text);
+
+        view.Message = "Twice";
+        Assert.True(Ui.Await(view.CommitAsync(push: false), "the commit in the folder's repository"), window.Status);
+        Assert.Equal("Twice", Git("log", "-1", "--format=%s").Trim());
+        Ui.Click(view.RepositoryTabs[1]);
+        Ui.Landed(() => view.Vcs.Repository is { } tree && PathNames.Same(tree.Root, PathNames.Canonical(lib)) && view.Chosen.Count == 1, "lib's changed file listed");
+        Assert.Equal(PathNames.Canonical(Path.Combine(lib, "Lib.cs")), view.Chosen[0].Path);
+        view.Message = "Size";
+        Assert.True(Ui.Await(view.CommitAsync(push: false), "the commit in lib"), window.Status);
+        Assert.Equal("Size", TestGit.Run(lib, "log", "-1", "--format=%s").Trim());
+        Assert.Equal(string.Empty, TestGit.Run(lib, "status", "--porcelain").Trim());
+        Assert.Equal("Twice", Git("log", "-1", "--format=%s").Trim());
+
+        // Each repository's tab pushes that repository, whichever is chosen.
+        string libOrigin = TestFolders.Create("git-lib-origin-");
+        TestGit.Run(libOrigin, "init", "-q", "--bare", "-b", "main");
+        TestGit.Run(lib, "remote", "add", "origin", libOrigin);
+        Ui.Click(view.RepositoryTabs[0]);
+        Ui.ChooseFromMenu(view.RepositoryTabs[1], "Push…");
+        Ui.PumpUntil(() => window.PushWindow is { IsVisible: true }, "the Push dialog of lib");
+        PushDialog pushing = DialogButtonsTests.Check(window.PushWindow!);
+        Assert.Equal(["Size"], pushing.Sends.Take(1).Select(c => c.Subject));
+        Ui.ClickButton(pushing, "Push");
+        Ui.Landed(() => window.Status == "Pushed main to origin/main, which it tracks from now on", $"lib pushed from its tab's menu, where the status bar says \"{window.Status}\"");
+        Assert.Equal(TestGit.Run(lib, "rev-parse", "main").Trim(), TestGit.Run(libOrigin, "rev-parse", "main").Trim());
+        window.Close();
+    }
+
     private void Stashing_a_change_and_a_new_file_leaves_the_git_log_as_it_was()
     {
         MainWindow window = Open();
@@ -1762,9 +2136,9 @@ public sealed partial class VcsTests : IDisposable
         Ui.Settle();
         Assert.True(window.Vcs.Repository is null && window.GitBranches.Rows.Count == 0,
             $"The Git window of a folder in no repository lists [{string.Join(", ", window.GitBranches.Rows.Select(r => r.Title))}]");
-        Assert.Contains(window.GitLog.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
+        Assert.Contains(window.GitLog.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == ActionTitles.CreateRepository.English);
 
-        Ui.ClickButton(commit, VcsController.CreateRepository);
+        Ui.ClickButton(commit, ActionTitles.CreateRepository.English);
         string[] Listed() => [.. commit.Rows.OfType<CommitRow>().Select(r => Path.GetRelativePath(solution, r.Change.Path).Replace('\\', '/')).Order(StringComparer.Ordinal)];
         Ui.WaitFor(() => window.Vcs.Repository is not null && Listed().Contains(".gitignore"),
             () => $"the repository made with its .gitignore, where the Commit window lists [{string.Join(", ", Listed())}] and the status bar says '{window.Status}'");
@@ -1775,8 +2149,8 @@ public sealed partial class VcsTests : IDisposable
             $"git offers build output for the first commit:\n{untracked}");
         Assert.Equal($"Created a Git repository in {Path.GetFileName(solution)}", window.Status);
         Ui.WaitFor(() => window.GitBranches.Rows.Count > 0, "the Git window to list the new repository's HEAD");
-        Assert.Equal(Refusals.InRepository, window.Actions.WhyNot(AppActions.CreateRepository, window.Actions.Context()));
-        Assert.DoesNotContain(commit.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == VcsController.CreateRepository);
+        Assert.Equal(Refusals.InRepository.Shown, window.Actions.WhyNot(AppActions.CreateRepository, window.Actions.Context())?.Shown);
+        Assert.DoesNotContain(commit.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Content as string == ActionTitles.CreateRepository.English);
         window.Close();
     }
 
@@ -1871,7 +2245,7 @@ public sealed partial class VcsTests : IDisposable
         Ui.WaitFor(() => Marked().SequenceEqual(marked), () => $"The .gitignore's marks are {string.Join("; ", Marked())}");
         CodeEditor editor = window.EditorArea.CodeEditor;
         editor.Focus();
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(1) + new Avalonia.Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, 1);
         Ui.WaitFor(() => window.Assist.HoverText?.Contains("Ignores 1 path here: a.log", StringComparison.Ordinal) == true, () => $"The card on *.log says {window.Assist.HoverText}");
         window.MouseMove(new Avalonia.Point(1, 1), Avalonia.Input.RawInputModifiers.None);
 
@@ -2016,6 +2390,332 @@ public sealed partial class VcsTests : IDisposable
         Assert.Equal("from-first", window.Vcs.Branch);
         Assert.Equal(first.Hash, Git("rev-parse", "HEAD").Trim());
         window.Close();
+    }
+
+    /// <summary>Interactively Rebase from Here plans the commits from the one chosen in the log: one dragged to the bottom,
+    /// one squashed by its key, one reworded by typing its message and one dropped from its menu, the preview showing the
+    /// history it makes before anything runs; Start Rebasing makes that history, the commits' messages and files as
+    /// planned, the dropped commit's file gone under one change of Local History named for the rebase.</summary>
+    private void An_interactive_rebase_from_the_log_moves_squashes_rewords_and_drops_commits_making_the_history_its_preview_showed()
+    {
+        foreach (string name in (string[])["One", "Two", "Three", "Four", "Five"])
+        {
+            File.WriteAllText(Path.Combine(folder, $"{name}.txt"), $"{name}\n");
+            Git("add", $"{name}.txt");
+            Git("commit", "-q", "-m", name);
+        }
+        MainWindow window = Open();
+        InteractiveRebaseDialog dialog = PlanRebase(window, "One");
+        Assert.Equal(["Five", "Four", "Three", "Two", "One"], dialog.Rows.Select(r => r.Step.Commit.Subject));
+        Assert.False(dialog.StartButton.IsEnabled, "Start Rebasing was offered for a plan that changes nothing");
+        ListBox commits = Find(dialog, dialog.Rows);
+
+        Ui.Drag(dialog, RowPoint(dialog, commits, 1, 0.5), RowPoint(dialog, commits, 4, 0.8));
+        Assert.Equal(["Five", "Three", "Two", "One", "Four"], dialog.Rows.Select(r => r.Step.Commit.Subject));
+        Ui.Click(RowView(commits, 1), new Point(300, ListRow.Height / 2));
+        Ui.Press(dialog, "S");
+        dialog.Chosen = dialog.RowOf("Five");
+        Ui.ChooseFromMenu(commits, "Drop");
+        dialog.Chosen = dialog.RowOf("One");
+        Ui.Click(dialog.MessageBox);
+        dialog.MessageBox.SelectAll();
+        dialog.KeyTextInput("One, reworded");
+        Ui.Settle();
+        Assert.Equal([RebaseCommand.Drop, RebaseCommand.Squash, RebaseCommand.Pick, RebaseCommand.Reword, RebaseCommand.Pick], dialog.Rows.Select(r => r.Step.Command));
+        Assert.Equal(dialog.RowOf("Two").Step.Commit.Short, dialog.RowOf("Three").Into);
+
+        string[] shown = [.. dialog.History.Where(r => r.Made is not null).Select(r => r.Subject)];
+        Assert.Equal(["Two", "One, reworded", "Four"], shown);
+        Assert.Equal(["new message, 1 folded in", "new message", "moved"], dialog.History.Where(r => r.Made is not null).Select(r => string.Join(", ", r.Tags)));
+        Assert.EndsWith(" First", dialog.History[^1].Subject);
+        Assert.Contains("Five", dialog.LeftOut, StringComparison.Ordinal);
+        Assert.True(dialog.StartButton.IsEnabled, dialog.Problem);
+
+        Ui.Click(dialog.StartButton);
+        Ui.Landed(() => window.InteractiveRebaseWindow is null && !window.Vcs.IsBusy, "the rebase's end");
+        Assert.Equal(MergeOperation.None, window.Vcs.Merge.Operation);
+        Assert.Equal([.. shown, "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Equal("Two\n\nThree", Git("log", "-1", "--format=%B").Trim());
+        Assert.False(File.Exists(Path.Combine(folder, "Five.txt")), "The dropped commit's file was still there after the rebase");
+        Assert.True(File.Exists(Path.Combine(folder, "Four.txt")), "The moved commit's file was gone after the rebase");
+        LocalHistory history = window.LocalHistory!;
+        Ui.WaitFor(() => history.Snapshot().Events.Any(e => e.Name == "Git rebase" && e.Path?.EndsWith("Five.txt", StringComparison.Ordinal) == true),
+            "the dropped commit's file kept in Local History under the rebase");
+        Assert.Single(history.Snapshot().Events.Where(e => e.Name == "Git rebase").Select(e => e.Set).Distinct());
+
+        // A commit made on the branch while the next plan is open: the plan does not run, and the commit stays.
+        dialog = PlanRebase(window, "Four");
+        dialog.Chosen = dialog.RowOf("Two");
+        Ui.ChooseFromMenu(Find(dialog, dialog.Rows), "Drop");
+        File.WriteAllText(Path.Combine(folder, "Six.txt"), "Six\n");
+        Git("add", "Six.txt");
+        Git("commit", "-q", "-m", "Six");
+        Ui.Click(dialog.StartButton);
+        Ui.Landed(() => window.InteractiveRebaseWindow is null && !window.Vcs.IsBusy, "the refused rebase's end");
+        Assert.Equal(RebaseTodo.MovedSince, window.Status);
+        Assert.Equal(["Six", .. shown, "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        window.Close();
+    }
+
+    /// <summary>An interactive rebase follows git through its stops as a rebase does: a commit moved under the one it builds
+    /// on and reworded, its preview foreseeing it stops for conflicts and the one it built on may, stops it for conflicts,
+    /// the Conflicts dialog naming the person's commit, never the twin made for its new message; Skip Commit leaves that
+    /// commit out and goes on to the edit planned after it, where it stops saying so with Skip Commit refused, and
+    /// Continue Rebase finishes it.</summary>
+    private void An_interactive_rebase_stops_for_conflicts_and_at_an_edit_and_goes_on_by_skip_commit_and_continue_rebase()
+    {
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Twice");
+        File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 3", StringComparison.Ordinal));
+        Git("commit", "-q", "-am", "Thrice");
+        File.WriteAllText(Path.Combine(folder, "Notes.txt"), "notes\n");
+        Git("add", "Notes.txt");
+        Git("commit", "-q", "-m", "Notes");
+        MainWindow window = Open();
+        InteractiveRebaseDialog dialog = PlanRebase(window, "Twice");
+        ListBox commits = Find(dialog, dialog.Rows);
+        Ui.Click(RowView(commits, 1), new Point(300, ListRow.Height / 2));
+        Ui.Press(dialog, "alt DOWN");
+        Ui.Click(RowView(commits, 0), new Point(300, ListRow.Height / 2));
+        Ui.Press(dialog, "E");
+        dialog.Chosen = dialog.RowOf("Thrice");
+        Ui.Click(dialog.MessageBox);
+        dialog.MessageBox.SelectAll();
+        dialog.KeyTextInput("Thrice, reworded");
+        Assert.Equal(["Notes", "Twice", "Thrice"], dialog.Rows.Select(r => r.Step.Commit.Subject));
+        Assert.Equal([true, false, false], dialog.History.Where(r => r.Made is not null).Select(r => r.Made!.Stops));
+        string thrice = dialog.RowOf("Thrice").Step.Commit.Short;
+        Ui.WaitFor(() => dialog.History.Any(r => r.Stops is not null),
+            () => $"the preview's stops for conflicts, where its rows say {string.Join(" | ", dialog.History.Select(r => $"{r.Subject}: {r.Stops ?? "no stop"}"))}");
+        Assert.Equal([null, "may stop for conflicts", "stops for conflicts"], dialog.History.Where(r => r.Made is not null).Select(r => r.Stops));
+        Assert.Equal($"Stops at {thrice} Thrice for conflicts in Shop.cs", dialog.History[2].StopsWhy);
+
+        Ui.Click(dialog.StartButton);
+        Ui.WaitFor(() => window.ConflictsWindow is not null, "the Conflicts dialog for the moved commit");
+        Assert.EndsWith($", stopped at {thrice} Thrice", window.ConflictsWindow!.Description, StringComparison.Ordinal);
+        window.ConflictsWindow!.Close();
+        Ui.Settle();
+        Assert.Equal((MergeOperation.Rebase, (RebaseStop?)null), (window.Vcs.Merge.Operation, window.Vcs.Merge.Stop));
+        Assert.True(window.Perform(AppActions.SkipRebase), window.Status);
+        Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Merge.Stop is { Step: RebaseStep.Edit }, "the rebase stopped at the planned edit");
+        Assert.Contains("stopped to edit", window.Status, StringComparison.Ordinal);
+        Assert.Contains("Continue Rebase goes on", window.Actions.WhyNot(AppActions.SkipRebase, window.Actions.Context())?.Shown, StringComparison.Ordinal);
+        Assert.True(window.Perform(AppActions.ContinueRebase), window.Status);
+        Ui.Landed(() => !window.Vcs.IsBusy && window.Vcs.Merge.Operation is MergeOperation.None, "the rebase's end");
+        Assert.Equal(["Notes", "Twice", "First"], Git("log", "--format=%s").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        Assert.Contains("count += 2", File.ReadAllText(Path.Combine(folder, "Shop.cs")), StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>New Tag… from a commit of the log makes an annotated tag signed with the repository's SSH key and pushes it,
+    /// the dialog saying so in words and in git's before anything runs; Move Tag… from the tag's menu moves it to HEAD and
+    /// pushes it in place of the remote's; a tag whose remote has its own of the name asks before replacing it; and Delete
+    /// on Remote… then Delete take it off the remote and out of the repository, each saying what it means for others.</summary>
+    private void A_tag_made_from_the_log_annotated_and_signed_is_pushed_moved_and_deleted_here_and_on_the_remote_as_its_preview_said()
+    {
+        Assert.SkipWhen(TestSshKeys.WhyNot is not null, TestSshKeys.WhyNot ?? string.Empty);
+        string origin = TestFolders.Create("tag-origin-");
+        string keys = TestFolders.Create("tag-keys-");
+        try
+        {
+            string key = Ui.AwaitPumped(Waiting.Apart(() => TestSshKeys.MakeAsync(keys, "tagger")), "the key tags are signed with", TimeSpan.FromMinutes(1));
+            File.WriteAllText(Path.Combine(keys, "allowed_signers"), $"tests@passenger.invalid {TestSshKeys.Public(key)}\n");
+            Git("config", GitConfigKeys.GpgFormat, "ssh");
+            Git("config", GitConfigKeys.UserSigningKey, key + ".pub");
+            Git("config", GitConfigKeys.GpgSshAllowedSignersFile, Path.Combine(keys, "allowed_signers"));
+            TestGit.Run(origin, "init", "-q", "--bare", "-b", "main");
+            Git("remote", "add", "origin", origin);
+            File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 2", StringComparison.Ordinal));
+            Git("commit", "-q", "-am", "Twice");
+            string first = Git("rev-parse", "HEAD~1").Trim();
+            string twice = Git("rev-parse", "HEAD").Trim();
+            MainWindow window = Open();
+            window.Perform(AppActions.ShowGit);
+            GitLogView log = window.GitLog;
+            Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == "First"), "the log");
+            log.Select(log.Rows.First(r => r.Commit.Subject == "First").Commit);
+            Ui.ChooseFromMenu(Find(log, log.Rows), "New Tag…");
+            Ui.WaitFor(() => window.TagWindow is { IsVisible: true }, "the New Tag dialog");
+            TagDialog dialog = DialogButtonsTests.Check(window.TagWindow!);
+            Assert.Equal(first, dialog.AtBox.Text);
+            Ui.Settle();
+            Assert.True(dialog.Problem.Length == 0, $"New Tag said why it will not make the tag before anything was typed: {dialog.Problem}");
+            dialog.KeyTextInput("v1.0");
+            Ui.Click(dialog.KindBox[true]);
+            Ui.Click(dialog.MessageBox);
+            dialog.KeyTextInput("Release one");
+            Ui.Click(dialog.SignBox);
+            dialog.PushBox.SelectedIndex = 1;
+            Ui.Settle();
+            string at = $"{GitHashes.Short(first)} (First)";
+            Assert.Equal(
+                [
+                    $"Makes an annotated tag v1.0 at {at}.",
+                    "Keeps the message, you as its tagger and the time with it; signs it with SSH key tagger.pub, so whoever fetches it can check it is yours.",
+                    "Pushes it to origin, where whoever fetches from origin gets it.",
+                ], dialog.WhatItDoes);
+            Assert.Equal($"git tag -a -s -m \"…\" v1.0 {GitHashes.Short(first)}\ngit push origin v1.0", dialog.GitWords);
+            Ui.Click(dialog.CreateButton);
+            Ui.Landed(() => window.TagWindow is null && !window.Vcs.IsBusy, "the tag made and pushed");
+            Assert.Equal($"Tagged {GitHashes.Short(first)} as v1.0, annotated and signed and pushed it to origin, where whoever fetches gets it", window.Status);
+            Assert.Equal(first, TestGit.Run(origin, "rev-parse", "v1.0^{commit}").Trim());
+            Assert.Equal("Release one", Git("tag", "-l", "--format=%(contents:subject)", "v1.0").Trim());
+            Git("tag", "-v", "v1.0");
+
+            BranchesPanel panel = window.GitBranches;
+            ListBox branches = Find(panel, panel.Rows);
+            Ui.Landed(() => panel.Select("v1.0"), "the tag in the branches panel");
+            Ui.ChooseFromMenu(branches, "Move Tag…");
+            Ui.WaitFor(() => window.TagWindow is { IsVisible: true }, "the Move Tag dialog");
+            dialog = DialogButtonsTests.Check(window.TagWindow!);
+            Ui.Landed(() => dialog.MessageBox.Text == "Release one", "the tag's own message to keep");
+            Assert.True(dialog.KindBox.Choice, "Move Tag… of an annotated tag offered to make it lightweight");
+            dialog.PushBox.SelectedIndex = 1;
+            Ui.Settle();
+            Assert.Equal(
+                [
+                    $"Moves v1.0 from {at} to {GitHashes.Short(twice)} (Twice).",
+                    "Keeps the message, you as its tagger and the time with it.",
+                    "Pushes it to origin in place of the v1.0 there, if it has one: whoever fetched that one keeps it until they fetch tags again with --force.",
+                ], dialog.WhatItDoes);
+            Assert.Equal("Move Tag", dialog.CreateButton.Content);
+            Ui.Click(dialog.CreateButton);
+            Ui.Landed(() => window.TagWindow is null && !window.Vcs.IsBusy, "the tag moved and pushed");
+            Assert.Equal($"Moved v1.0 from {GitHashes.Short(first)} to {GitHashes.Short(twice)} here and on origin: whoever fetched it before keeps it where it was", window.Status);
+            Assert.Equal(twice, TestGit.Run(origin, "rev-parse", "v1.0^{commit}").Trim());
+
+            Git("tag", "v2", first);
+            Git("push", "-q", "origin", "v2");
+            Git("tag", "-f", "v2", twice);
+            List<string> asked = [];
+            window.Confirm = (title, _, _) =>
+            {
+                asked.Add(title);
+                return Task.FromResult(true);
+            };
+            window.Perform(AppActions.GitLogRefresh);
+            Ui.Landed(() => panel.Select("v2"), "the second tag in the branches panel");
+            Ui.ChooseFromMenu(branches, "Push…");
+            Ui.Landed(() => asked.Count == 1 && !window.Vcs.IsBusy, "the question whether to replace origin's own v2");
+            Assert.Equal("Replace origin's Tag v2", asked[0]);
+            Assert.Equal(twice, TestGit.Run(origin, "rev-parse", "v2^{commit}").Trim());
+
+            Assert.True(panel.Select("v1.0"));
+            Ui.ChooseFromMenu(branches, "Delete on Remote…");
+            Ui.Landed(() => asked.Count == 2 && !window.Vcs.IsBusy, "the tag deleted on origin");
+            Assert.Equal("Delete Tag on Remote", asked[1]);
+            Assert.DoesNotContain("v1.0", TestGit.Run(origin, "tag").Split('\n'));
+            Assert.Contains("v1.0", Git("tag").Split('\n'));
+            Ui.ChooseFromMenu(branches, "Delete");
+            Ui.Landed(() => !Git("tag").Split('\n').Contains("v1.0") && !window.Vcs.IsBusy, "the tag deleted here");
+            Assert.StartsWith("Deleted tag v1.0 here: a remote that has it keeps it", window.Status, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(origin);
+            TestFolders.Delete(keys);
+        }
+    }
+
+    /// <summary>New Worktree from a branch's menu checks it out in a folder beside the repository, saying so first, and opens
+    /// it in a window of its own, whose Commit window commits on that branch, which this window's log then shows and its
+    /// branches say is checked out there, Checkout greyed saying so; Remove Worktree…, refused while a window shows it, asks
+    /// first once it is closed, naming the change going to the Trash with its folder, and git forgets it, the branch kept.</summary>
+    private void A_worktree_made_from_a_branchs_menu_opens_in_its_own_window_is_committed_from_and_removed_once_asked()
+    {
+        Git("branch", "feature");
+        string beside = Worktrees.Beside(PathNames.Canonical(folder), "feature");
+        try
+        {
+            MainWindow window = Open();
+            window.Perform(AppActions.ShowGit);
+            BranchesPanel panel = window.GitBranches;
+            ListBox rows = Find(panel, panel.Rows);
+            Ui.Landed(() => panel.Select("feature"), "feature in the branches panel");
+            Ui.ChooseFromMenu(rows, "New Worktree from 'feature'…");
+            Ui.WaitFor(() => window.WorktreeWindow is { IsVisible: true }, "the New Worktree dialog");
+            WorktreeDialog dialog = DialogButtonsTests.Check(window.WorktreeWindow!);
+            Ui.Settle();
+            Assert.False(dialog.KindBox.Choice, "feature, checked out nowhere, was not offered as the branch to check out");
+            Assert.Equal(beside, dialog.FolderBox.Text);
+            Assert.Equal(
+                [
+                    $"Checks feature out in {Path.GetFileName(beside)}, a folder beside this repository's: a second working tree of this repository, with files and staged changes of its own, sharing every commit, branch, tag and stash with this one.",
+                    "While feature is checked out there, no other worktree can check it out: git keeps a branch in one worktree at a time.",
+                    "Opens it in a new window, trusted as this repository is.",
+                ], dialog.WhatItDoes);
+            Assert.Equal($"git worktree add ../{Path.GetFileName(beside)} feature", dialog.GitWords);
+            Ui.Click(dialog.CreateButton);
+            Ui.Landed(() => window.WorktreeWindow is null && PassengerApp.Windows.Any(w => w.Folder is { } shown && PathNames.Same(shown, beside)), "the worktree's own window");
+            MainWindow other = PassengerApp.Windows.Single(w => w.Folder is { } shown && PathNames.Same(shown, beside));
+            Ui.Landed(() => other.Vcs.Branch == "feature", "the worktree's window on feature");
+
+            File.WriteAllText(Path.Combine(beside, "Shop.cs"), Original.Replace("count++", "count += 3", StringComparison.Ordinal));
+            other.Perform(AppActions.Commit);
+            Ui.Landed(() => other.CommitView.Chosen.Any(c => c.Name == "Shop.cs"), "the worktree's change offered to commit");
+            Ui.Landed(() => other.FocusManager?.GetFocusedElement() is TextBox, "the commit message to have the keys");
+            other.KeyTextInput("Feature");
+            Ui.Press(other, OperatingSystem.IsMacOS() ? "meta Enter" : "control Enter");
+            Ui.Landed(() => Git("log", "-1", "--format=%s", "feature").Trim() == "Feature", "the commit on feature, made from the worktree's window");
+            Assert.Equal("main", window.Vcs.Branch);
+            Ui.Landed(() => window.GitLog.Rows.Any(r => r.Commit.Subject == "Feature"), "the worktree's commit in this window's log");
+
+            Ui.Landed(() => panel.Branches.Any(b => b.Name == "feature" && b.Worktree is not null), "feature read as checked out in the worktree");
+            MenuItem checkout = panel.Menu(panel.Branches.Single(b => b.Name == "feature")).OfType<MenuItem>().Single(i => i.Header as string == "Checkout");
+            Ui.Landed(() => !checkout.IsEnabled, "Checkout of feature greyed");
+            Assert.Contains("is checked out in the worktree", ToolTip.GetTip(checkout) as string, StringComparison.Ordinal);
+            WorktreeInfo made = panel.Worktrees.Single(w => PathNames.Same(PathNames.Canonical(w.Folder), beside));
+            MenuItem refused = panel.WorktreeMenu(made).OfType<MenuItem>().Single(i => i.Header as string == "Remove Worktree…");
+            Assert.False(refused.IsEnabled, "Remove Worktree… was offered while a window showed the worktree");
+
+            File.WriteAllText(Path.Combine(beside, "Notes.txt"), "notes\n");
+            other.Close();
+            Ui.Settle();
+            List<string> asked = [];
+            window.Confirm = (_, text, _) =>
+            {
+                asked.Add(text);
+                return Task.FromResult(true);
+            };
+            Ui.Click(Ui.Row(rows, panel.Rows.Single(r => r.Worktree is { } w && PathNames.Same(PathNames.Canonical(w.Folder), beside))));
+            Ui.ChooseFromMenu(rows, "Remove Worktree…");
+            Ui.Landed(() => !Directory.Exists(beside) && !window.Vcs.IsBusy, "the worktree's folder moved to the Trash");
+            Assert.Contains("1 file changed there that no commit holds goes to the Trash with it", Assert.Single(asked), StringComparison.Ordinal);
+            string trashed = Path.Combine(trash, Path.GetFileName(beside));
+            Assert.Equal("notes\n", File.ReadAllText(Path.Combine(trashed, "Notes.txt")));
+            Assert.StartsWith($"Moved to the Trash, as {PathNames.Shown(trashed, null)}, the folder of the worktree {Path.GetFileName(beside)}; feature and its commits stay",
+                window.Status, StringComparison.Ordinal);
+            Assert.DoesNotContain(Path.GetFileName(beside), Git("worktree", "list"), StringComparison.Ordinal);
+            Assert.Contains("feature", Git("branch", "--list", "feature"), StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            TestFolders.Delete(beside);
+        }
+    }
+
+    /// <summary>The Git log open, the commit with <paramref name="subject"/> chosen and Interactively Rebase from Here taken
+    /// from its menu: the dialog it opens.</summary>
+    private static InteractiveRebaseDialog PlanRebase(MainWindow window, string subject)
+    {
+        window.Perform(AppActions.ShowGit);
+        GitLogView log = window.GitLog;
+        Ui.Landed(() => log.Rows.Any(r => r.Commit.Subject == subject), "the log");
+        log.Select(log.Rows.First(r => r.Commit.Subject == subject).Commit);
+        Ui.ChooseFromMenu(Find(log, log.Rows), "Interactively Rebase from Here…");
+        Ui.WaitFor(() => window.InteractiveRebaseWindow is { IsVisible: true }, "the Interactive Rebase dialog");
+        return DialogButtonsTests.Check(window.InteractiveRebaseWindow!);
+    }
+
+    private static Control RowView(ListBox list, int index) => list.ContainerFromIndex(index) ?? throw new InvalidOperationException($"No row {index} is drawn");
+
+    /// <summary>A point of a row, past its box, in the dialog's units: <paramref name="down"/> of the way down it.</summary>
+    private static Point RowPoint(Window dialog, ListBox list, int index, double down)
+    {
+        Control row = RowView(list, index);
+        return row.TranslatePoint(new Point(300, row.Bounds.Height * down), dialog) ?? throw new InvalidOperationException($"Row {index} is not in the dialog");
     }
 
     /// <summary>A commit's file in the Git log offers what a changed file in the Commit window does: its diff, its file
@@ -2195,7 +2895,7 @@ public sealed partial class VcsTests : IDisposable
             Ui.Press(window, Ui.Shortcut(AppActions.Save), settle: false);
             Ui.PumpUntil(() => !window.EditorArea.Active!.IsModified, "the window to take the held file's save", TimeSpan.FromSeconds(10));
             commit = window.Vcs.CommitAsync([.. window.Vcs.Changes.Where(c => c.Name == "Shop.cs")], "Sealed", amend: false, push: false);
-            Ui.PumpUntil(() => window.Actions.Work.Latest?.Stage == "Waiting for Shop.cs to be saved…", "the commit to wait for Shop.cs's save", TimeSpan.FromSeconds(10));
+            Ui.PumpUntil(() => window.Actions.Work.Latest?.Stage.Shown == "Waiting for Shop.cs to be saved…", "the commit to wait for Shop.cs's save", TimeSpan.FromSeconds(10));
         }
         CommitResult made = Ui.Landed(commit, "the commit made once Shop.cs was saved");
         Assert.True(made.Succeeded, made.Commit.Message);
@@ -2580,6 +3280,49 @@ public sealed partial class VcsTests : IDisposable
 
     private static Avalonia.Controls.ListBox Find(Avalonia.Controls.Control view, object rows) =>
         Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<Avalonia.Controls.ListBox>().First(l => ReferenceEquals(l.ItemsSource, rows));
+
+    /// <summary>The Git keys of the keymap in force: VCS Operations lists the Git menu's actions with their keys and runs the
+    /// one chosen (Commit…, showing the Commit window); Commit and Push there commits the change and pushes it to the remote;
+    /// New Branch's box makes a branch from the head and checks it out.</summary>
+    private void Vcs_operations_commit_and_push_and_new_branch_run_from_their_keys()
+    {
+        string remote = TestFolders.Create("git-remote-");
+        TestGit.Run(remote, "init", "-q", "--bare", "-b", "main");
+        Git("remote", "add", "origin", remote);
+        Git("push", "-q", "-u", "origin", "main");
+        MainWindow window = Open();
+        try
+        {
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, Ui.Shortcut(AppActions.VcsOperations));
+            Passenger.App.Vcs.ChoicePopup operations = Assert.IsType<Passenger.App.Vcs.ChoicePopup>(window.Popup);
+            Assert.True(operations.Rows.FirstOrDefault()?.Label.English == "Commit…" && operations.Rows.Any(r => r.Label.English == "Commit and Push…" && r.Detail.English.Length > 0),
+                $"VCS Operations listed [{string.Join("; ", operations.Rows.Select(r => $"{r.Label} {r.Detail}"))}], not the Git menu's actions with their keys");
+            Ui.Press(window, "ENTER");
+            Ui.Settle();
+            Assert.True(window.DockHost.IsShown(ToolWindowIds.Commit), "Commit… chosen in VCS Operations left the Commit window hidden");
+
+            File.WriteAllText(Path.Combine(folder, "Shop.cs"), Original.Replace("count++", "count += 3", StringComparison.Ordinal));
+            Assert.True(window.Perform(AppActions.CommitRefresh), window.Status);
+            Ui.Landed(() => window.CommitView.Rows.OfType<CommitRow>().Any(r => r.Change.Name == "Shop.cs"), "Shop.cs changed in the Commit window");
+            window.CommitView.Message = "Three at a time";
+            window.CommitView.FocusMessage();
+            Ui.Settle();
+            Ui.Press(window, Ui.Shortcut(AppActions.CommitAndPush));
+            Ui.Landed(() => TestGit.Run(remote, "log", "-1", "--format=%s", "main").Trim() == "Three at a time", "the commit pushed to the remote");
+
+            Ui.Press(window, Ui.Shortcut(AppActions.NewBranch));
+            NamePopup branch = Assert.IsType<NamePopup>(window.Popup);
+            branch.Text = "feature/keys";
+            Task submitted = branch.SubmitAsync();
+            Ui.Landed(() => submitted.IsCompleted && window.Vcs.Branch == "feature/keys", "the new branch checked out");
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(remote);
+        }
+    }
 
     private MainWindow Open()
     {

@@ -529,6 +529,11 @@ public sealed class Keymap
         return this;
     }
 
+    /// <summary>Gives an action a keymap's own list in place of what its parent gave it, keys and mouse shortcuts alike as
+    /// Rider's keymap files list them (none takes them all away), each taken from any action that had it.</summary>
+    public Keymap Own(string action, params string[] shortcuts) =>
+        Set(action, shortcuts.Where(t => !MouseShortcut.IsMouse(t)).Select(Shortcut.Parse), shortcuts.Where(MouseShortcut.IsMouse).Select(MouseShortcut.Parse));
+
     /// <summary>The clicks an action runs from, or the drags, as it is one or the other.</summary>
     private Dictionary<MouseShortcut, string> PressesOf(string action) => EditorActions.IsDrag(action) ? byDrag : byMouse;
 
@@ -591,7 +596,8 @@ public sealed class Keymap
 }
 
 /// <summary>Turns key presses into actions, holding the first half of a chord until the second, and a modifier tapped
-/// alone until it is tapped again (<see cref="Shortcut.IsDoubleTap"/>) within half a second, a double-click's time.</summary>
+/// alone until it is tapped again (<see cref="Shortcut.IsDoubleTap"/>) within half a second, a double-click's time, its
+/// action run as the second tap is let go, so a modifier tapped and then held for a shortcut runs nothing.</summary>
 /// <param name="keymap">The keymap the keys run.</param>
 /// <param name="timestamps">The clock the taps are told apart by, in timestamps of Stopwatch's, its own unless
 /// given.</param>
@@ -610,6 +616,9 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
     /// <summary>A modifier pressed alone and let go, nothing pressed since, and when it was let go.</summary>
     private (Keystroke Stroke, long At)? tapped;
 
+    /// <summary>A modifier pressed alone again in time after its tap, nothing pressed since: a double tap once let go.</summary>
+    private Keystroke? doubled;
+
     public Keymap Keymap { get; set; } = keymap;
 
     /// <summary>A chord's first keystroke was pressed, or the wait for its second ended.</summary>
@@ -626,7 +635,8 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
         shifted = false;
         if (IsModifierOnly(stroke.Key))
         {
-            return Tap(e, out consumed);
+            Tap(e);
+            return null;
         }
         Heard(e);
         if (IsAltGrTyping(e))
@@ -669,45 +679,50 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
         {
             held = null;
             tapped = null;
+            doubled = null;
         }
     }
 
-    /// <summary>A key let go: a modifier pressed alone and let go with nothing between is a tap, a double tap's first.</summary>
-    public void Release(KeyEventArgs e)
+    /// <summary>A key let go: a modifier pressed alone and let go with nothing between is a tap, a double tap's first, or
+    /// its second, whose action it answers; null for any other.</summary>
+    public string? Release(KeyEventArgs e)
     {
-        if (held is { } stroke && Keystroke.Alone(e.Key, KeyModifiers.None) == stroke)
+        Keystroke? second = doubled;
+        doubled = null;
+        if (held is not { } stroke || Keystroke.Alone(e.Key, KeyModifiers.None) != stroke)
         {
-            tapped = (stroke, now());
+            held = null;
+            return null;
         }
         held = null;
+        if (second == stroke)
+        {
+            return Keymap.ActionFor(new Shortcut(stroke, stroke));
+        }
+        tapped = (stroke, now());
+        return null;
     }
 
-    /// <summary>A modifier's key pressed: the double tap's action when it follows its first tap in time, else the start
-    /// of a tap; a key held down repeats its press, which starts nothing.</summary>
-    private string? Tap(KeyEventArgs e, out bool consumed)
+    /// <summary>A modifier's key pressed: a double tap's second when it follows its first tap in time and the keymap gives
+    /// the double tap an action, else the start of a tap; a key held down repeats its press, which starts nothing.</summary>
+    private void Tap(KeyEventArgs e)
     {
-        consumed = false;
         if (Keystroke.Alone(e.Key, e.KeyModifiers) is not { } stroke)
         {
             held = null;
             tapped = null;
-            return null;
+            doubled = null;
+            return;
         }
         if (held == stroke)
         {
-            return null;
+            return;
         }
         (Keystroke Stroke, long At)? first = tapped;
         tapped = null;
-        if (first is { } tap && tap.Stroke == stroke && Stopwatch.GetElapsedTime(tap.At, now()) <= DoubleTap
-            && Keymap.ActionFor(new Shortcut(stroke, stroke)) is { } action)
-        {
-            held = null;
-            consumed = true;
-            return action;
-        }
+        doubled = first is { } tap && tap.Stroke == stroke && Stopwatch.GetElapsedTime(tap.At, now()) <= DoubleTap
+            && Keymap.ActionFor(new Shortcut(stroke, stroke)) is not null ? stroke : null;
         held = stroke;
-        return null;
     }
 
     /// <summary>Forgets a chord's first keystroke and a modifier's first tap, so the next key is a key of its own.</summary>
@@ -715,6 +730,7 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
     {
         held = null;
         tapped = null;
+        doubled = null;
         if (pending is not null)
         {
             pending = null;
@@ -749,6 +765,7 @@ public sealed class KeymapDispatcher(Keymap keymap, Func<long>? timestamps = nul
     /// <inheritdoc cref="LeftAltHeld"/>
     private const ulong RightCtrlHeld = 0x4;
 
-    internal static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
+    /// <summary>Whether a key is a modifier's alone, which types nothing.</summary>
+    public static bool IsModifierOnly(Key key) => key is Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
         or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
 }

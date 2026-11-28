@@ -100,6 +100,36 @@ public sealed record ThemeFile(string Name, string Description, IReadOnlyDiction
     /// <summary>The VS Code colour theme it is laid over, or null for none.</summary>
     public VsCodeBase? Base { get; init; }
 
+    /// <summary>The theme Passenger carries it is laid over, by name (<see cref="ThemeSource.Carried"/>), or null for
+    /// Passenger's own, under every theme.</summary>
+    public string? BuiltInBase { get; init; }
+
+    /// <summary>The icons it gives under Dark in Passenger's place, each by the key of the icon it stands for (<c>Icon.Run</c>,
+    /// <c>FileIcon.CSharp</c>) and its SVG's path beside the file.</summary>
+    public IReadOnlyDictionary<string, string> DarkIcons { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The icons it gives under Light, as <see cref="DarkIcons"/>.</summary>
+    public IReadOnlyDictionary<string, string> LightIcons { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The icons it gives under a variant.</summary>
+    public IReadOnlyDictionary<string, string> IconsOf(bool dark) => dark ? DarkIcons : LightIcons;
+
+    /// <summary>The VS Code file icon theme drawing its files and folders under Dark (<c>iconTheme</c>), by its extension's id
+    /// and its label, or by its JSON's file beside the theme's; null for none.</summary>
+    public VsCodeBase? DarkIconTheme { get; init; }
+
+    /// <summary>The VS Code file icon theme drawing its files and folders under Light, as <see cref="DarkIconTheme"/>.</summary>
+    public VsCodeBase? LightIconTheme { get; init; }
+
+    /// <summary>The VS Code file icon theme under a variant, or null for none.</summary>
+    public VsCodeBase? IconThemeOf(bool dark) => dark ? DarkIconTheme : LightIconTheme;
+
+    /// <summary>Each VS Code file icon theme it names, each once.</summary>
+    public IEnumerable<VsCodeBase> IconThemes => ((VsCodeBase?[])[DarkIconTheme, LightIconTheme]).OfType<VsCodeBase>().Distinct();
+
+    /// <summary>Every icon's file it names, each once.</summary>
+    public IEnumerable<string> IconFiles => DarkIcons.Values.Concat(LightIcons.Values).Distinct(StringComparer.Ordinal);
+
     /// <summary>The picture drawn under a variant, or null for none.</summary>
     public BackgroundValue? BackgroundOf(bool dark) => dark ? DarkBackground : LightBackground;
 
@@ -141,18 +171,26 @@ public static partial class ThemeFiles
     private static readonly string[] CodePrefixes = ["Editor.", "Syntax.", "SyntaxStyle.", "Diff."];
 
     /// <summary>Tokens a theme may give that Passenger's own theme leaves out, each drawn as Passenger draws it without: the
-    /// fourth to sixth rainbow brace colours, so depths cycle through as many as a theme gives, and how a parameter is set.</summary>
+    /// fourth to sixth rainbow brace colours, so depths cycle through as many as a theme gives, how a parameter is set, and
+    /// how every icon is drawn beside its own colours (<see cref="IconLook"/>).</summary>
     public static readonly IReadOnlyDictionary<string, ThemeTokenKind> Optional = new Dictionary<string, ThemeTokenKind>(StringComparer.Ordinal)
     {
         ["Syntax.Brace4"] = ThemeTokenKind.Colour,
         ["Syntax.Brace5"] = ThemeTokenKind.Colour,
         ["Syntax.Brace6"] = ThemeTokenKind.Colour,
         ["SyntaxStyle.Parameter"] = ThemeTokenKind.TextStyle,
+        [IconLook.SaturationToken] = ThemeTokenKind.Number,
+        [IconLook.BrightnessToken] = ThemeTokenKind.Number,
+        [IconLook.TintToken] = ThemeTokenKind.Colour,
     };
 
     /// <summary>Kinds of code drawn in the code's plain words unless a file colours them: one a file leaves out takes the
     /// file's <c>Editor.Text</c> where it gives that, so a file written before they were tokens draws them as it did.</summary>
     public static readonly IReadOnlyList<string> PlainKinds = ["Syntax.Parameter", "Syntax.Local", "Syntax.Namespace", "Syntax.Operator"];
+
+    /// <summary>A documentation comment's markup, drawn as its words unless a file colours it: one a file leaves out takes the
+    /// file's <c>Syntax.DocComment</c> where it gives that, so a file written before they were tokens draws as it did.</summary>
+    public static readonly IReadOnlyList<string> DocCommentParts = ["Syntax.DocCommentTag", "Syntax.DocCommentAttributeName", "Syntax.DocCommentAttributeValue"];
     private static readonly string[] Styles = ["Normal", "Bold", "Italic", "Bold Italic"];
     private static readonly string[] Sections = ["tokens", "dark", "light"];
 
@@ -198,31 +236,40 @@ public static partial class ThemeFiles
     private static ThemeFile Theme(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code, List<string> problems)
     {
         string what = code ? "a code colour scheme" : "a theme";
-        PassOver(file, root, code ? [Member.Format, Member.Name, "description", .. Sections, "languages", Member.VsCode] : [Member.Format, Member.Name, "description", .. Sections, .. Beyond], what, problems);
+        PassOver(file, root, code ? [Member.Format, Member.Name, "description", .. Sections, "languages", Member.VsCode, Member.Base] : [Member.Format, Member.Name, "description", .. Sections, .. Beyond], what, problems);
         string name = Words(root, Member.Name, LongestName, needed: true);
         string description = Words(root, "description", LongestDescription, needed: false);
-        // Over a VS Code theme, the plain kinds a file leaves out are the base's own.
-        bool plain = JsonMembers.Value(root, Member.VsCode) is null;
+        string? carried = BuiltInBase(root);
+        // Over a VS Code theme or one Passenger carries, the plain kinds a file leaves out are the base's own.
+        bool plain = JsonMembers.Value(root, Member.VsCode) is null && carried is null;
         Dictionary<string, TokenValue>[] sections = TokenSections(file, root, tokens, code, null, plain, problems);
         if (!code)
         {
             WorkOutLaterTokens(sections, tokens);
         }
-        (BackgroundValue? dark, BackgroundValue? light) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
+        (BackgroundValue? darkPicture, BackgroundValue? lightPicture) = code ? (null, null) : Background(file, JsonMembers.Value(root, "background"), problems);
+        (Dictionary<string, string>? dark, Dictionary<string, string>? light) = code ? (null, null) : Icons(file, JsonMembers.Value(root, "icons"), problems);
+        (VsCodeBase? iconDark, VsCodeBase? iconLight) = code ? (null, null) : IconTheme(file, JsonMembers.Value(root, Member.IconTheme), problems);
         return new ThemeFile(name, description, sections[0], sections[1], sections[2])
         {
             Fonts = code ? ThemeFonts.None : Fonts(file, JsonMembers.Value(root, "fonts"), problems),
-            DarkBackground = dark,
-            LightBackground = light,
+            DarkBackground = darkPicture,
+            LightBackground = lightPicture,
             Languages = Languages(file, JsonMembers.Value(root, "languages"), tokens, plain, problems),
             Layout = code ? null : Layout(file, JsonMembers.Value(root, "layout"), problems),
+            DarkIcons = dark is null ? new Dictionary<string, string>(StringComparer.Ordinal) : dark,
+            LightIcons = light is null ? new Dictionary<string, string>(StringComparer.Ordinal) : light,
             Base = Base(file, JsonMembers.Value(root, Member.VsCode), problems),
+            BuiltInBase = carried,
+            DarkIconTheme = iconDark,
+            LightIconTheme = iconLight,
         };
     }
 
     /// <summary>A holder's tokens for both variants, Dark and Light, each in its section; <paramref name="language"/> names
     /// the language a theme's <c>languages</c> gives them for, whose tokens are the code's alone; with
-    /// <paramref name="plain"/>, the plain kinds it leaves out take its plain words (<see cref="PlainKinds"/>).</summary>
+    /// <paramref name="plain"/>, the plain kinds it leaves out take its plain words (<see cref="PlainKinds"/>) and a
+    /// documentation comment's markup its words' colour (<see cref="DocCommentParts"/>).</summary>
     private static Dictionary<string, TokenValue>[] TokenSections(string file, JsonElement root, IReadOnlyDictionary<string, ThemeTokenKind> tokens, bool code,
         string? language, bool plain, List<string> problems)
     {
@@ -262,17 +309,23 @@ public static partial class ThemeFiles
                 sections[i][token.Name] = Value(file, $"{token.Name} in {Sections[i]}{inLanguage}", kind, token.Value, problems);
             }
         }
-        foreach (string kind in PlainKinds.Where(k => plain && tokens.ContainsKey(k) && !sections.Any(s => s.ContainsKey(k))))
+        TakeLeftOut(PlainKinds, "Editor.Text");
+        TakeLeftOut(DocCommentParts, "Syntax.DocComment");
+        return sections;
+
+        void TakeLeftOut(IReadOnlyList<string> kinds, string from)
         {
-            foreach (Dictionary<string, TokenValue> section in sections)
+            foreach (string kind in kinds.Where(k => plain && tokens.ContainsKey(k) && !sections.Any(s => s.ContainsKey(k))))
             {
-                if (section.TryGetValue("Editor.Text", out TokenValue? words))
+                foreach (Dictionary<string, TokenValue> section in sections)
                 {
-                    section[kind] = words;
+                    if (section.TryGetValue(from, out TokenValue? given))
+                    {
+                        section[kind] = given;
+                    }
                 }
             }
         }
-        return sections;
     }
 
     /// <summary>The tokens a file written before them leaves out, worked out in each variant from its own colours there: the
@@ -299,6 +352,10 @@ public static partial class ThemeFiles
             // The Debug button in the file's own icon colours, legible where its icons are.
             Work("Debug", Given("Icon"));
             Work("TitleBar.Debug", Given("TitleBar.Icon"));
+            // A measure's fine mark on the code in the file's own green.
+            Work("Editor.Fine", Given("Test.Passed"));
+            // A byte the debugged program changed in the file's own error colour.
+            Work("Memory.Changed", Given("Error"));
         }
     }
 

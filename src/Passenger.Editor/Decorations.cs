@@ -11,6 +11,10 @@ public enum LineAnnotationLook
 
     /// <summary>In the error colour, italic, on a tinted ground that sets it apart from the rest.</summary>
     ErrorOnGround,
+
+    /// <summary>Upright on a chip, as a folded region's placeholder is: what the debugger keeps beside the code (the time a
+    /// run took to its stop, a value pinned to the line).</summary>
+    Chip,
 }
 
 /// <summary>Text drawn after a line's (from zero) code, part of no document: never selected, copied or
@@ -26,7 +30,7 @@ public readonly record struct FoldRegion(int Start, int End, string Placeholder,
 /// the doc comments' actions fold.</summary>
 public enum FoldKind : byte
 {
-    /// <summary>Braces that hold code (a namespace's, a type's, a lambda's), a JSON object or array.</summary>
+    /// <summary>Braces that hold code (a namespace's, a type's, a lambda's, a switch's, a statement's), a JSON object or array.</summary>
     Code,
 
     /// <summary>An XML element.</summary>
@@ -50,6 +54,9 @@ public enum FoldKind : byte
 
     /// <summary>#region to #endregion.</summary>
     Region,
+
+    /// <summary>A stretch the person folded themselves (Collapse Selection, Collapse Block), no region the language gives.</summary>
+    Own,
 }
 
 /// <summary>A word drawn inside a line at an offset, part of no document: a parameter's name before its argument or a
@@ -71,3 +78,32 @@ public enum InlayHintKind
     /// text as a type does; shown whatever Settings say of the other two.</summary>
     Value,
 }
+
+/// <summary>A row of words drawn above a line, part of no document: what the host says of the code the line begins. It
+/// stands at <see cref="Offset"/>, its words from that column's x, and goes with its line through edits
+/// (<see cref="RowAboveList.Through"/>). Carets, selections and the text's readers pass it by.</summary>
+public readonly record struct RowAbove(int Offset, IReadOnlyList<RowAboveWord> Words)
+{
+    /// <summary>Whether it is drawn as another is: the same words at the same offset.</summary>
+    public bool DrawnAlike(RowAbove other)
+    {
+        if (Offset != other.Offset || Words.Count != other.Words.Count)
+        {
+            return false;
+        }
+        for (int i = 0; i < Words.Count; i++)
+        {
+            if (!string.Equals(Words[i].Text, other.Words[i].Text, StringComparison.Ordinal)
+                || !string.Equals(Words[i].DotBrush, other.Words[i].DotBrush, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+/// <summary>A word of a row above a line; <see cref="Data"/> is what the host knows it by, given back by a press on the word
+/// (<see cref="CodeEditor.RowAbovePressed"/>) and a rest over it (<see cref="HoverEventArgs.Above"/>).
+/// <see cref="DotBrush"/> is the theme brush key for an optional dot before the word.</summary>
+public readonly record struct RowAboveWord(string Text, object? Data = null, string? DotBrush = null);

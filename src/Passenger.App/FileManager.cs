@@ -15,11 +15,11 @@ public static class FileManager
 {
     /// <summary>What the IDE calls it: the Finder, Explorer, or on Linux whichever file manager the desktop
     /// has.</summary>
-    public static string Name { get; } = OperatingSystem.IsMacOS() ? "Finder" : OperatingSystem.IsWindows() ? "Explorer" : "File Manager";
+    public static Words Name { get; } = OperatingSystem.IsMacOS() ? SharedWords.Finder : OperatingSystem.IsWindows() ? SharedWords.Explorer : SharedWords.FileManager;
 
     /// <summary>The action's words for showing a file there: Reveal in Finder on macOS, Show in Explorer
     /// elsewhere.</summary>
-    public static string Showing { get; } = OperatingSystem.IsMacOS() ? $"Reveal in {Name}" : $"Show in {Name}";
+    public static Words Showing { get; } = OperatingSystem.IsMacOS() ? ActionTitles.RevealInFinder : ActionTitles.RevealInFileManager(Name);
 
     /// <summary>macOS's open, by its full path, so no program of that name elsewhere runs in its place.</summary>
     private const string MacOpen = "/usr/bin/open";

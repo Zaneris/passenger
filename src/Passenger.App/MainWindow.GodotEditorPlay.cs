@@ -29,17 +29,17 @@ public partial class MainWindow
 
     /// <summary>Plays a configuration's game in Godot's editor open on its project, under the debugger where <paramref name="debug"/>
     /// and the addon lets it: null once the editor plays it, else why not.</summary>
-    private async Task<string?> PlayInGodotEditorAsync(RunConfiguration chosen, bool debug, CancellationToken cancel)
+    private async Task<Words?> PlayInGodotEditorAsync(RunConfiguration chosen, bool debug, CancellationToken cancel)
     {
         UiThread.Check();
         ProjectModel? project = session.RunProjects.FirstOrDefault(p => PathNames.Same(p.Path, chosen.Project));
         if ((project?.GodotFolder ?? (chosen.RunsScriptGame ? Path.GetDirectoryName(chosen.Project) : null) ?? GodotAtHand()) is not { } folder)
         {
-            return $"{chosen.Name} plays no Godot game";
+            return LaunchWords.PlaysNoGodotGame(chosen.Name);
         }
         if (AgentsOwn)
         {
-            return $"{chosen.Name} plays in the person's own Godot editor, which an agent's own Passenger does not ask: choose a configuration that runs the game here";
+            return LaunchWords.PlaysInPersonsEditor(chosen.Name);
         }
         string? scene;
         if (chosen.GodotScene == RunConfiguration.CurrentScene)
@@ -47,7 +47,7 @@ public partial class MainWindow
             string? open = Editors.Active?.Path is { } at ? await BackgroundWork.Run(() => GodotProject.SceneOf(folder, at, GodotProject.Read(folder)?.MainScene)) : null;
             if (open is null)
             {
-                return $"{chosen.Name} cannot run: it starts in the scene open in the editor, and none is (a .tscn, or a script a scene's node runs)";
+                return LaunchWords.NoSceneOpen(chosen.Name);
             }
             scene = GodotResPaths.Of(folder, open);
         }
@@ -66,20 +66,19 @@ public partial class MainWindow
                 peer.Debugs = null;
                 peer.Builds = null;
                 peer.PlayAsked = false;
-                return $"Godot's editor on {name} did not take the play within {Durations.Said(Waits.Of(PlayTaken))}";
+                return LaunchWords.PlayNotTaken(name, Durations.Words(Waits.Of(PlayTaken)));
             }
-            status.Text = debug ? $"{name} plays in Godot's editor, built here and debugged by this Passenger" : $"{name} plays in Godot's editor, built here";
+            status.Text = LaunchWords.PlaysThroughAddon(debug ? "debugged" : "run", name).Shown;
             return null;
         }
-        string? older = session.GodotEditors.Editors.Any(e => PathNames.Same(e.Project, folder))
-            ? $"; Passenger's addon there is too old to play as asked, so Install Passenger's Godot Addon… updates it" : null;
+        string older = session.GodotEditors.Editors.Any(e => PathNames.Same(e.Project, folder)) ? "older" : "none";
         if (!await session.GodotIde.IsOpenAsync(folder))
         {
             return await OfferGodotEditorAsync(chosen, name);
         }
         if (scene is not null)
         {
-            return $"Godot's editor on {name} plays only its main scene when asked without Passenger's addon: Install Passenger's Godot Addon… to play the scene chosen{older}";
+            return LaunchWords.PlaysMainSceneOnly(older, name);
         }
         if (project is { IsScriptGame: false } && chosen.BuildBeforeLaunch)
         {
@@ -92,36 +91,32 @@ public partial class MainWindow
         // Built here already: the editor plays without building again.
         if (await session.GodotIde.RequestAsync(folder, GodotIdeMessaging.DebugPlay, GodotIdeMessaging.PlayBuilt) is { } refused)
         {
-            return $"Godot's editor on {name} {refused}";
+            return LaunchWords.EditorRefusedPlay(name, refused);
         }
         idePlays.Add(folder);
-        status.Text = debug
-            ? $"{name} plays in Godot's editor undebugged: Godot's IDE messaging gives no debugger a way in, and Passenger's addon does (Install Passenger's Godot Addon…){older}"
-            : $"{name} plays in Godot's editor, built here{older}";
+        status.Text = LaunchWords.PlaysThroughMessaging(debug ? "debugged" : "run", older, name).Shown;
         return null;
     }
 
     /// <summary>With no Godot editor open on the project: why the game cannot play there, once the person was offered Godot's
     /// editor opened on it (its configuration run), which no agent's run is.</summary>
-    private async Task<string> OfferGodotEditorAsync(RunConfiguration chosen, string name)
+    private async Task<Words> OfferGodotEditorAsync(RunConfiguration chosen, string name)
     {
         RunConfiguration? editor = session.Configurations.All.FirstOrDefault(c => c.GodotEditor && PathNames.Same(c.Project, chosen.Project));
-        string why = editor is null ? $"Godot's editor is not open on {name}: open it, then run {chosen.Name} again"
-            : $"Godot's editor is not open on {name}: {editor.Name} opens it, then run {chosen.Name} again";
+        Words why = editor is null ? LaunchWords.GodotEditorNotOpen(name, chosen.Name) : LaunchWords.GodotEditorNotOpenOpens(name, editor.Name, chosen.Name);
         if (ActionWork.Heard is not null || editor is null)
         {
             return why;
         }
-        if (!await ConfirmAsync("Open Godot's Editor?", $"Godot's editor is not open on {name}, so it cannot play {chosen.Name}. Open it now, then run {chosen.Name} again once it is up.",
-            "Open in Godot Editor", null))
+        if (!await ConfirmAsync(LaunchWords.OpenGodotEditorTitle.Shown, LaunchWords.OpenGodotEditorQuestion(name, chosen.Name).Shown, LaunchWords.OpenInGodotEditor.Shown, null))
         {
             return why;
         }
         string kept = chosen.Name;
         session.Configurations.Select(editor.Name);
-        string? opened = await buildRun.RunAsync();
+        Words? opened = await buildRun.RunAsync();
         session.Configurations.Select(kept);
-        return opened is null ? $"Godot's editor opens on {name}: run {chosen.Name} again once it is up" : $"Godot's editor could not open on {name}: {opened}";
+        return opened is null ? LaunchWords.GodotEditorOpens(name, chosen.Name) : LaunchWords.GodotEditorNotOpened(name, opened);
     }
 
     /// <summary>Stop's end of what Godot's editor plays because Passenger asked: the addon or IDE messaging told to stop, each

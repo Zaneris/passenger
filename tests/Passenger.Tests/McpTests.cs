@@ -13,6 +13,7 @@ using Passenger.App.Settings;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
 using Passenger.Core;
+using Passenger.Roslyn.Extension;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
@@ -74,6 +75,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     public async Task An_agents_test_runs_answer_what_each_came_to_held_to_what_an_answer_carries()
     {
         await Flow.StepApartAsync("an agents run of a passing test after a failure answers no failure of a test it did not run", () => new McpTests(restored), t => t.An_agents_run_of_a_passing_test_after_a_failure_answers_no_failure_of_a_test_it_did_not_run());
+        await Flow.StepApartAsync("an agents run with coverage answers what its tests ran of the code and each files lines never run", () => new McpTests(restored), t => t.An_agents_run_with_coverage_answers_what_its_tests_ran_of_the_code_and_each_files_lines_never_run());
+        await Flow.StepApartAsync("an agent makes a fake of a dependency through a code action and fills a calls arguments with its mocking librarys doubles and tests using them run green", () => new McpTests(restored), t => t.An_agent_makes_a_fake_of_a_dependency_and_fills_a_calls_arguments_with_its_mocking_librarys_doubles_and_tests_using_them_run_green());
         await Flow.StepApartAsync("an agents unit test actions answer what the run came to", () => new McpTests(restored), t => t.An_agents_unit_test_actions_answer_what_the_run_came_to());
         await Flow.StepApartAsync("an agents test written and run at once by its classs name runs and its failure is told", () => new McpTests(restored), t => t.An_agents_test_written_and_run_at_once_by_its_classs_name_runs_and_its_failure_is_told());
         await Flow.StepApartAsync("an agents run of one test in a folder of two solutions builds its project and what it references alone", () => new McpTests(restored), t => t.An_agents_run_of_one_test_in_a_folder_of_two_solutions_builds_its_project_and_what_it_references_alone());
@@ -398,7 +401,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.WriteAllText(Path.Combine(unstarted, "Caller.cs"), Caller);
         await using McpClient serverless = await Start(["--mcp", unstarted],
             environment: new() { [global::Passenger.Lsp.RoslynServerFolder.ServerVariable] = Path.Combine(unstarted, "no-server") });
-        string couldNot = Refusals.CSharpUnavailable("The Roslyn language server is missing");
+        string couldNot = Refusals.CSharpUnavailable("The Roslyn language server is missing").English;
         foreach ((string tool, Dictionary<string, object?> arguments) in CodeAsks("Greeter.cs", "Caller.cs").Append((McpTools.Diagnostics, new())))
         {
             CallToolResult answer = await Result(serverless, tool, arguments);
@@ -554,6 +557,207 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         JsonElement failed = Assert.Single((await Call(client, McpTools.TestsList, new() { ["state"] = "failed" })).EnumerateArray());
         Assert.Equal("Sums.Tests.SumTests.Two_and_two_make_five", failed.GetProperty("test").GetString());
     }
+
+    /// <summary>tests_run with coverage answers what the tests ran of the code they test: the share of its lines and branches,
+    /// and its file's lines never run as one stretch and the line whose branch no test took; with debug as well it is refused,
+    /// saying why.</summary>
+    private async Task An_agents_run_with_coverage_answers_what_its_tests_ran_of_the_code_and_each_files_lines_never_run()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-coverage-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            TestFolders.Write(folder, "Sums/Sums.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n</Project>\n");
+            TestFolders.Write(folder, "Sums/Sum.cs",
+                "namespace Sums;\n\npublic static class Sum\n{\n    public static int Of(int a, int b) => a + b;\n\n" +
+                "    public static int Clamped(int value) => value > 9 ? 9 : value;\n\n" +
+                "    public static int Halved(int value)\n    {\n        int half = value / 2;\n        return half;\n    }\n}\n");
+            TestFolders.Write(folder, "Sums.Tests/Sums.Tests.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n  </PropertyGroup>\n" +
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n" +
+                "  <ItemGroup>\n    <ProjectReference Include=\"../Sums/Sums.csproj\" />\n  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(folder, "Sums.Tests/SumTests.cs",
+                "using Xunit;\n\nnamespace Sums.Tests;\n\npublic class SumTests\n{\n    [Fact]\n    public void Adds() => Assert.Equal(4, Sums.Sum.Of(2, 2));\n\n" +
+                "    [Fact]\n    public void Clamps() => Assert.Equal(9, Sums.Sum.Clamped(12));\n}\n");
+            TestFolders.Write(folder, "Sums.slnx", "<Solution>\n  <Project Path=\"Sums/Sums.csproj\" />\n  <Project Path=\"Sums.Tests/Sums.Tests.csproj\" />\n</Solution>\n");
+            await Restore.RunAsync(Path.Combine(folder, "Sums.slnx"));
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder], languageServer: false);
+        JsonElement run = await Call(client, McpTools.TestsRun, new() { ["coverage"] = true });
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+        JsonElement coverage = run.GetProperty("coverage");
+        Assert.True(coverage.GetProperty("summary").GetString() == "33% of lines (2 of 6) and 50% of branches (1 of 2) run",
+            $"tests_run with coverage did not say what the tests ran of Sum's six lines of code: {run}");
+        JsonElement file = Assert.Single(coverage.GetProperty("files").EnumerateArray());
+        Assert.Equal(Path.Combine("Sums", "Sum.cs"), file.GetProperty("path").GetString());
+        Assert.True(file.GetProperty("neverRun").GetString() == "10-13" && file.GetProperty("branchesNotTaken").GetString() == "7 (1 of 2 branches)",
+            $"tests_run with coverage did not name Halved's lines as never run and Clamped's line as a branch never taken: {file}");
+
+        CallToolResult both = await Result(client, McpTools.TestsRun, new() { ["coverage"] = true, ["debug"] = true });
+        Assert.True(both.IsError == true && Text(both).Contains(Refusals.CoverageDebugged.English, StringComparison.Ordinal), $"tests_run with coverage and debug answered: {Text(both)}");
+    }
+
+    /// <summary>An agent's code_actions at an interface's name offers Create Fake into the test project that sees it, and at a
+    /// sealed class the same action, refused saying the seam it needs; apply_code_action writes the fake into the test
+    /// project's Fakes folder, beside fakes keeping their types' declarations (<see cref="Doubled"/>), and tests_run runs them
+    /// green. In a call missing the clock, Fill Arguments with Doubles writes a double of the mocking library the test
+    /// project references (a stand-in of NSubstitute's, a proxy answering defaults), which a test runs green with (#2087).</summary>
+    private async Task An_agent_makes_a_fake_of_a_dependency_and_fills_a_calls_arguments_with_its_mocking_librarys_doubles_and_tests_using_them_run_green()
+    {
+        string folder = PathNames.Canonical(TestFolders.Create("mcp-fake-"));
+        DeleteAtEnd(folder);
+        await TestFolders.PrepareAsync(async () =>
+        {
+            TestFolders.Write(folder, "Shop/Shop.csproj", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
+            TestFolders.Write(folder, "Shop/Greeter.cs", ClockedGreeter);
+            TestFolders.Write(folder, "Shop/Doubled.cs", Doubled);
+            TestFolders.Write(folder, "Shop.Tests/Shop.Tests.csproj",
+                $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{TestProjects.Framework}</TargetFramework>\n    <Nullable>enable</Nullable>\n" +
+                "    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n" +
+                $"  <ItemGroup>\n    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"{TestPackages.TestSdk}\" />\n    <PackageReference Include=\"xunit\" Version=\"{TestPackages.XunitTwo}\" />\n" +
+                $"    <PackageReference Include=\"xunit.runner.visualstudio\" Version=\"{TestPackages.XunitTwoRunner}\" />\n  </ItemGroup>\n" +
+                "  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n    <ProjectReference Include=\"../NSubstitute/NSubstitute.csproj\" />\n  </ItemGroup>\n</Project>\n");
+            TestFolders.Write(folder, "NSubstitute/NSubstitute.csproj", TestProjects.Library("<Nullable>enable</Nullable>"));
+            TestFolders.Write(folder, "NSubstitute/Substitute.cs", SubstituteStandIn);
+            TestFolders.Write(folder, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n" +
+                "  <Project Path=\"NSubstitute/NSubstitute.csproj\" />\n</Solution>\n");
+            await Restore.RunAsync(Path.Combine(folder, "Shop.slnx"));
+        }, folder);
+        await using McpClient client = await Start(["--mcp", folder]);
+        Dictionary<string, object?> clock = new() { ["path"] = "Shop/Greeter.cs", ["line"] = 3, ["column"] = 19 };
+        string[] offered = [.. (await Call(client, McpTools.CodeActions, clock)).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(offered.FirstOrDefault() == "Create Fake of IClock in Shop.Tests [quickfix]", $"code_actions at IClock offered {string.Join("; ", offered)}");
+        CallToolResult calendar = await Result(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop/Greeter.cs", ["line"] = 10, ["column"] = 22, ["title"] = "Create Fake of Calendar" });
+        Assert.True(calendar.IsError == true && Text(calendar).Contains(Refusals.FakeNeedsSeam("Calendar", FakeSeams.Sealed, "Extract Interface", "Introduce Parameter").English, StringComparison.Ordinal),
+            $"Create Fake of the sealed Calendar answered {Text(calendar)}");
+
+        await Call(client, McpTools.ApplyCodeAction, new(clock) { ["title"] = "Create Fake of IClock in Shop.Tests" });
+        string fake = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "Fakes", "FakeClock.cs"));
+        Assert.True(fake.StartsWith("namespace Shop.Tests.Fakes;", StringComparison.Ordinal) && fake.Contains("public Func<int, string>? OnZone { get; set; }", StringComparison.Ordinal),
+            $"the fake written was\n{fake}");
+        foreach ((int line, int column, string type, string file, string written) in new[]
+        {
+            (3, 23, "Named", "FakeNamed.cs", "public override string Name { get; protected set; }"),
+            (8, 18, "IStore<T>", "FakeStore.cs", "where T : unmanaged"),
+            (15, 22, "IInner<U>", "FakeInner.cs", "class FakeInner<T, U> : Outer<T>.IInner<U>"),
+        })
+        {
+            await Call(client, McpTools.ApplyCodeAction, new() { ["path"] = "Shop/Doubled.cs", ["line"] = line, ["column"] = column, ["title"] = $"Create Fake of {type} in Shop.Tests" });
+            string made = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "Fakes", file)).ReplaceLineEndings("\n");
+            Assert.True(made.Contains(written, StringComparison.Ordinal), $"the fake of {type} written was\n{made}");
+        }
+        TestFolders.Write(folder, "Shop.Tests/GreeterTests.cs", GreeterTests);
+        JsonElement run = await Call(client, McpTools.TestsRun);
+        Assert.StartsWith("Tests passed: 2, failed: 0 of 2", run.GetProperty("summary").GetString(), StringComparison.Ordinal);
+
+        TestFolders.Write(folder, "Shop.Tests/SubstitutedTests.cs",
+            "using Xunit;\n\nnamespace Shop.Tests;\n\npublic class SubstitutedTests\n{\n    [Fact]\n    public void Greets_at_midnight()\n    {\n" +
+            "        Assert.Equal(\"Good morning, Ada\", new Greeter().Greet(\"Ada\"));\n    }\n}\n");
+        Dictionary<string, object?> call = new() { ["path"] = "Shop.Tests/SubstitutedTests.cs", ["line"] = 10, ["column"] = 55 };
+        string[] fills = [.. (await Call(client, McpTools.CodeActions, call)).EnumerateArray().Select(a => a.GetString()!)];
+        Assert.True(fills.FirstOrDefault() == "Fill Arguments with Doubles [quickfix]", $"code_actions in the call missing the clock offered {string.Join("; ", fills)}");
+        await Call(client, McpTools.ApplyCodeAction, new(call) { ["title"] = "Fill Arguments with Doubles" });
+        string filled = File.ReadAllText(Path.Combine(folder, "Shop.Tests", "SubstitutedTests.cs"));
+        Assert.True(filled.StartsWith("using NSubstitute;", StringComparison.Ordinal) && filled.Contains("new Greeter(Substitute.For<IClock>())", StringComparison.Ordinal),
+            $"the call filled reads\n{filled}");
+        JsonElement again = await Call(client, McpTools.TestsRun);
+        Assert.StartsWith("Tests passed: 3, failed: 0 of 3", again.GetProperty("summary").GetString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>A stand-in of NSubstitute's Substitute.For, whose doubles answer every call with its type's default.</summary>
+    private const string SubstituteStandIn = """
+        using System.Reflection;
+
+        namespace NSubstitute;
+
+        public static class Substitute
+        {
+            public static T For<T>(params object[] arguments) where T : class => DispatchProxy.Create<T, Answers>();
+        }
+
+        public class Answers : DispatchProxy
+        {
+            protected override object? Invoke(MethodInfo? method, object?[]? args) =>
+                method?.ReturnType is { IsValueType: true } type && type != typeof(void) ? System.Activator.CreateInstance(type) : null;
+        }
+
+        """;
+
+    /// <summary>Types whose fakes must keep what they declare to compile: an accessor less accessible than its property, a
+    /// type parameter's unmanaged constraint, and the type parameters of the type holding a nested one.</summary>
+    private const string Doubled = """
+        namespace Shop;
+
+        public abstract class Named
+        {
+            public abstract string Name { get; protected set; }
+        }
+
+        public interface IStore<T> where T : unmanaged
+        {
+            T Read();
+        }
+
+        public class Outer<T>
+        {
+            public interface IInner<U>
+            {
+                T Make(U from);
+            }
+        }
+
+        """;
+
+    /// <summary>A greeter that reads the time of day through a clock, and a calendar no fake can stand in for.</summary>
+    internal const string ClockedGreeter = """
+        namespace Shop;
+
+        public interface IClock
+        {
+            DateTime Now { get; }
+
+            string Zone(int offset);
+        }
+
+        public sealed class Calendar
+        {
+        }
+
+        public class Greeter(IClock clock)
+        {
+            public string Greet(string name) => clock.Now.Hour < 12 ? $"Good morning, {name}" : $"Good day, {name} ({clock.Zone(0)})";
+        }
+
+        """;
+
+    /// <summary>Tests that stand the generated FakeClock in for the greeter's clock, its hook and its calls read.</summary>
+    internal const string GreeterTests = """
+        using Shop.Tests.Fakes;
+        using Xunit;
+
+        namespace Shop.Tests;
+
+        public class GreeterTests
+        {
+            [Fact]
+            public void Greets_in_the_morning()
+            {
+                FakeClock clock = new() { Now = new DateTime(2026, 11, 24, 9, 0, 0) };
+                Assert.Equal("Good morning, Ada", new Greeter(clock).Greet("Ada"));
+            }
+
+            [Fact]
+            public void Says_the_zone_later_on()
+            {
+                FakeClock clock = new() { Now = new DateTime(2026, 11, 24, 15, 0, 0), OnZone = offset => $"UTC+{offset}" };
+                Assert.Equal("Good day, Ada (UTC+0)", new Greeter(clock).Greet("Ada"));
+                Assert.Equal([0], clock.ZoneCalls);
+            }
+        }
+
+        """;
 
     /// <summary>The Unit Tests actions an agent runs through ide_action answer what the run came to, as tests_run's tally says
     /// it: Run All Tests with one test failing, Rerun Failed Tests of that one, and again once it is mended; Rerun Failed Tests
@@ -1658,7 +1862,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(vimKeys.GetProperty("note").GetString()!.Contains("<C-v> (Vim mode: Visual block mode; keymap: ", StringComparison.Ordinal),
             $"settings said nothing of what each Ctrl key does on either side: {vimKeys.GetRawText()}");
         CallToolResult noKey = await Result(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-v> <C-x>" } });
-        Assert.True(noKey.IsError == true && Text(noKey).Contains("Vim mode's Ctrl keys (Settings | Editor) has no key <C-x>", StringComparison.Ordinal),
+        Assert.True(noKey.IsError == true && Text(noKey).Contains("Vim mode's Ctrl keys (Settings | Editor | Typing) has no key <C-x>", StringComparison.Ordinal),
             $"settings_set of a Ctrl key Vim mode does not give answered: {Text(noKey)}");
         JsonElement given = Assert.Single((await Call(client, McpTools.SettingsSet, new() { ["changes"] = new Dictionary<string, object> { ["vimKeysToKeymap"] = "<C-o> <C-v>" } })).EnumerateArray());
         Assert.True((given.GetProperty("before").GetString(), given.GetProperty("after").GetString()) == ("", "<C-o> <C-v>")
@@ -1924,7 +2128,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         await TestGit.RunAsync(repository, "commit", "-q", "-m", "Later");
         ProcessStartInfo editing = ChildProcesses.Command("git", ["rebase", "-i", "HEAD~2"], repository);
         // The list's first step, Two's pick, made an edit, as a person's editor would.
-        editing.Environment["GIT_SEQUENCE_EDITOR"] = "sed -i.bak -e 1s/^pick/edit/";
+        editing.Environment[GitVariables.SequenceEditor] = "sed -i.bak -e 1s/^pick/edit/";
         ChildResult rebasing = await ChildProcesses.RunAsync(editing, limit: TimeSpan.FromMinutes(1), cancel: Cancel);
         Assert.True(File.Exists(Path.Combine(repository, ".git", "rebase-merge", "amend")), $"The rebase was to stop to edit Two: {rebasing.Error}{rebasing.Output}");
 
@@ -2090,8 +2294,8 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
     /// <summary>An agent's vcs tools refuse what the repository has not, naming what there is, and change nothing: a checkout
     /// of a branch not there names create and the branches there are, never git's "fatal: invalid reference"; a log of no
     /// commits is refused; a stash with a message but no action, which lists and so puts nothing away, says to give push, and
-    /// an action vcs_stash has not is refused as one; and the history of lines past a file's end names how many it has, never
-    /// as lines not committed yet.</summary>
+    /// an action vcs_stash has not is refused as one; the history of lines past a file's end names how many it has, never
+    /// as lines not committed yet; and a checkout's changes are brought or stashed alone, a stash leaving the branch clean.</summary>
     private async Task An_agents_vcs_tools_refuse_a_branch_a_stash_action_and_lines_the_repository_has_not_naming_what_there_is()
     {
         string repository = TestFolders.Create("mcp-vcs-refused-");
@@ -2124,6 +2328,14 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"The history of lines past Notes.txt's end answered: {Text(past)}");
         JsonElement last = Assert.Single((await Call(client, McpTools.VcsLog, new() { ["path"] = "Notes.txt", ["startLine"] = 3, ["endLine"] = 3 })).EnumerateArray());
         Assert.Equal("First", last.GetProperty("subject").GetString());
+
+        // A checkout's changes are brought or stashed, nothing else: stash leaves the branch made clean, vcs_stash holding them.
+        CallToolResult discard = await Result(client, McpTools.VcsCheckout, new() { ["branch"] = "aside", ["create"] = true, ["changes"] = "discard" });
+        Assert.True(discard.IsError == true && Text(discard).Contains("No changes 'discard'; there are bring and stash", StringComparison.Ordinal),
+            $"A checkout's changes vcs_checkout does not have answered: {Text(discard)}");
+        Assert.Equal($"On aside; the changes were stashed as stash@{{0}} (On main: {Passenger.App.Vcs.VcsController.StashedFor("aside")})",
+            (await Call(client, McpTools.VcsCheckout, new() { ["branch"] = "aside", ["create"] = true, ["changes"] = "stash" })).GetString());
+        Assert.Equal("one\ntwo\nthree", File.ReadAllText(notes));
     }
 
     /// <summary>An agent's edit of a Latin-1 file with a character Latin-1 cannot hold is saved as UTF-8, as the person's
@@ -2173,7 +2385,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             $"vcs_stash outside a repository answered: {Text(stashes)}");
 
         JsonElement built = await Call(client, McpTools.Build);
-        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild && built.GetProperty("errors").GetInt32() == 0,
+        Assert.True(built.GetProperty("outcome").GetString() == Refusals.NothingToBuild.English && built.GetProperty("errors").GetInt32() == 0,
             $"A build of a folder with no solution or project answered: {built}");
 
         CallToolResult unread = await Result(client, McpTools.Diagnostics, new() { ["path"] = "Notes.md" });
@@ -2224,11 +2436,11 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(unknown.IsError == true && Text(unknown).Contains("No action is called app.no.such: ide_actions lists them", StringComparison.Ordinal),
             $"ide_action of an action there is not answered: {Text(unknown)}");
 
-        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls),
-            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile),
-            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons),
-            (AppActions.AddCommand, Refusals.CommandIsThePersons), (AppActions.RemoveCommand, Refusals.CommandIsThePersons),
-            (AppActions.CloseSolution, Refusals.CloseSolutionIsThePersons)])
+        foreach ((string action, string why) in ((string, string)[])[(AppActions.InstallDotnetSdk, Refusals.AgentInstalls.English),
+            (AppActions.AddDotnetToPath, Refusals.AgentChangesPath.English), (AppActions.InstallWorkloads, Refusals.AgentInstallsMobile.English),
+            (AppActions.InstallAndroidDependencies, Refusals.AgentInstallsMobile.English), (AppActions.RestartToUpdate, Refusals.RestartIsThePersons.English),
+            (AppActions.AddCommand, Refusals.CommandIsThePersons.English), (AppActions.RemoveCommand, Refusals.CommandIsThePersons.English),
+            (AppActions.CloseSolution, Refusals.CloseSolutionIsThePersons.English)])
         {
             CallToolResult refused = await Result(client, McpTools.IdeAction, new() { ["action"] = action });
             Assert.True(refused.IsError == true && Text(refused).Contains(why, StringComparison.Ordinal),
@@ -2583,7 +2795,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         File.WriteAllText(global, string.Empty);
 
         await using McpClient client = await Start(["--mcp", repository], languageServer: false,
-            environment: new() { ["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1", ["GIT_CONFIG_GLOBAL"] = global });
+            environment: new() { ["GIT_TEST_ASSUME_DIFFERENT_OWNER"] = "1", [GitVariables.ConfigGlobal] = global });
         foreach (Dictionary<string, object?>? arguments in new Dictionary<string, object?>?[] { null, new() { ["path"] = "Notes.txt" } })
         {
             CallToolResult refused = await Result(client, McpTools.VcsStatus, arguments);
@@ -2672,7 +2884,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Dictionary<string, string?>? home = OperatingSystem.IsWindows() ? new() { ["DOTNET_CLI_HOME"] = Directory.CreateDirectory(Path.Combine(TestRun.Root, "mcp-dotnet-home")).FullName } : null;
         await using McpClient client = await Start(["--mcp", folder], environment: home, languageServer: false);
         CallToolResult none = await Result(client, McpTools.VcsStatus);
-        Assert.True(none.IsError == true && Text(none).Contains(Refusals.NoRepository, StringComparison.Ordinal), $"vcs_status in a folder of no repository answered: {Text(none)}");
+        Assert.True(none.IsError == true && Text(none).Contains(Refusals.NoRepository.English, StringComparison.Ordinal), $"vcs_status in a folder of no repository answered: {Text(none)}");
 
         string made = Text(await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.CreateRepository }));
         Assert.Equal($"Created a Git repository in {Path.GetFileName(folder)}", made);
@@ -2681,7 +2893,7 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
             .Select(c => $"{c.GetProperty("path").GetString()} {c.GetProperty("kind").GetString()}").Order(StringComparer.Ordinal));
 
         CallToolResult again = await Result(client, McpTools.IdeAction, new() { ["action"] = AppActions.CreateRepository });
-        Assert.True(again.IsError == true && Text(again).Contains(Refusals.InRepository, StringComparison.Ordinal),
+        Assert.True(again.IsError == true && Text(again).Contains(Refusals.InRepository.English, StringComparison.Ordinal),
             $"Create Git Repository in a folder made a repository answered: {Text(again)}");
     }
 
@@ -2948,14 +3160,16 @@ public sealed class McpTests : McpRig, IClassFixture<RestoredFolders>
         Assert.True(refused.IsError == true && Text(refused).Contains($"{AppActions.ApplyHotReloadChanges} did not run: Nothing runs", StringComparison.Ordinal),
             $"Apply Hot Reload Changes with nothing running answered: {Text(refused)}");
         string selectElement = Assert.Single(listed, l => l.StartsWith($"{AppActions.SelectElement}: ", StringComparison.Ordinal));
-        Assert.Contains("cannot run: No Avalonia or WPF app is being debugged", selectElement, StringComparison.Ordinal);
+        Assert.Contains("cannot run: No Avalonia, WPF or WinUI app is being debugged", selectElement, StringComparison.Ordinal);
         string restart = Assert.Single(listed, l => l.StartsWith($"{AppActions.RestartCSharpServer}: Restart C# Language Server [IDE]", StringComparison.Ordinal));
-        Assert.Contains($" - cannot run: {Refusals.NoCSharp}", restart, StringComparison.Ordinal);
+        Assert.Contains($" - cannot run: {Refusals.NoCSharp.English}", restart, StringComparison.Ordinal);
+        // An action that turns something on and off says which it is, so an agent never turns one blind.
+        Assert.Contains(listed, l => l.StartsWith($"{AppActions.ContinuousTesting}: Continuous Testing [Unit Tests] (off)", StringComparison.Ordinal));
 
         Assert.Equal($"Ran {AppActions.ShowStructure}", (await Call(client, McpTools.IdeAction, new() { ["action"] = AppActions.ShowStructure })).GetString());
         // A console app's folder holds no Godot project, which the Game window serves.
         string game = Assert.Single(listed, l => l.StartsWith($"{AppActions.ShowGame}: ", StringComparison.Ordinal));
-        Assert.Contains($" - cannot run: {Refusals.NoGodotProject}", game, StringComparison.Ordinal);
+        Assert.Contains($" - cannot run: {Refusals.NoGodotProject.English}", game, StringComparison.Ordinal);
 
         // An action's id, which its line begins with.
         static string Id(string line) => line[..line.IndexOf(": ", StringComparison.Ordinal)];

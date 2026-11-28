@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Passenger.App.Run;
 using Passenger.Core;
 using Passenger.Host;
@@ -21,6 +22,12 @@ public class BuildConfigurationsTests
         ("a godot game offers its sdks three configurations and never release", A_godot_game_offers_its_sdks_three_configurations_and_never_release),
         ("projects offer every configuration and platform any declares once shown with its platform where several are", Projects_offer_every_configuration_and_platform_any_declares_once_shown_with_its_platform_where_several_are),
         ("a choice kept stands while offered and falls back to the default once gone", A_choice_kept_stands_while_offered_and_falls_back_to_the_default_once_gone),
+        ("projects of processors alone default to this machines and a solutions default to its configuration for this machine", () => Cases.Each<(Architecture, string)>(
+        [
+            (Architecture.X64, "Debug|x64"),
+            (Architecture.Arm64, "Debug|ARM64"),
+            (Architecture.X86, "Debug|x86"),
+        ], row => Projects_of_processors_alone_default_to_this_machines(row.Item1, row.Item2))),
         ("a publish takes release else the configuration named for release", () => Cases.Each<(string, string)>(
         [
             ("Debug;ExportDebug;ExportRelease", "ExportRelease"),
@@ -31,7 +38,7 @@ public class BuildConfigurationsTests
     {
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([(null, null)]);
         Assert.Equal(["Debug|AnyCPU", "Release|AnyCPU"], offered.Select(o => o.Key));
-        Assert.Equal("Debug|AnyCPU", BuildConfigurations.DefaultOf(offered)?.Key);
+        Assert.Equal("Debug|AnyCPU", BuildConfigurations.DefaultOf(offered, Architecture.X64)?.Key);
         Assert.Equal(["Debug", "Release"], offered.Select(o => o.Shown(offered)));
     }
 
@@ -40,7 +47,7 @@ public class BuildConfigurationsTests
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([("Debug;ExportDebug;ExportRelease", "AnyCPU")]);
         Assert.Equal(["Debug", "ExportDebug", "ExportRelease"], offered.Select(o => o.Configuration));
         Assert.DoesNotContain(offered, o => o.Configuration == "Release");
-        Assert.Equal("Debug|AnyCPU", BuildConfigurations.DefaultOf(offered)?.Key);
+        Assert.Equal("Debug|AnyCPU", BuildConfigurations.DefaultOf(offered, Architecture.X64)?.Key);
     }
 
     private void Projects_offer_every_configuration_and_platform_any_declares_once_shown_with_its_platform_where_several_are()
@@ -51,10 +58,19 @@ public class BuildConfigurationsTests
         Assert.Equal("Staging | x64", offered[7].Shown(offered));
     }
 
+    private void Projects_of_processors_alone_default_to_this_machines(Architecture machine, string expected)
+    {
+        IReadOnlyList<BuildConfiguration> winui = BuildConfigurations.Declared([("Debug;Release", "x86;x64;ARM64")]);
+        Assert.Equal(expected, BuildConfigurations.DefaultOf(winui, machine)?.Key);
+        Assert.Equal(expected.Replace("Debug", "Release", StringComparison.Ordinal),
+            BuildConfigurations.Here(winui, new BuildConfiguration("Release", "x86"), machine)?.Key);
+        Assert.Equal("Debug|AnyCPU", BuildConfigurations.DefaultOf(BuildConfigurations.Declared([("Debug", "AnyCPU;x64;ARM64")]), machine)?.Key);
+    }
+
     private void A_choice_kept_stands_while_offered_and_falls_back_to_the_default_once_gone()
     {
         IReadOnlyList<BuildConfiguration> offered = BuildConfigurations.Declared([("Debug;Release", null)]);
-        BuildConfiguration? fallback = BuildConfigurations.DefaultOf(offered);
+        BuildConfiguration? fallback = BuildConfigurations.DefaultOf(offered, Architecture.X64);
         Assert.Equal("Release|AnyCPU", BuildConfigurations.Chosen(offered, fallback, "release|anycpu")?.Key);
         Assert.Equal("Debug|AnyCPU", BuildConfigurations.Chosen(offered, fallback, "Staging|AnyCPU")?.Key);
         Assert.Equal("Debug|AnyCPU", BuildConfigurations.Chosen(offered, fallback, "not a key")?.Key);

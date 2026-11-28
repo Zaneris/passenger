@@ -60,7 +60,7 @@ internal sealed class GodotScriptTypes(GodotSceneIndex index, Func<string, strin
         Kept kept = new();
         if (document.Highlighter is { } grammar)
         {
-            kept.Layer = new Languages.ColourLayer(grammar, document.Text);
+            kept.Layer = new Languages.ColourLayer(grammar, document.Text, GDScriptTokenizer.ContinuesIdentifier);
             document.Highlighter = kept.Layer;
         }
         return (Checker, kept);

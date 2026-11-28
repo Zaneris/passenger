@@ -23,6 +23,10 @@ public sealed partial class CodeEditor
         {
             return true;
         }
+        if (extend && columnMode && vim is null && ExtendColumn(action, text))
+        {
+            return true;
+        }
         switch (action)
         {
             case EditorActions.Left:
@@ -150,7 +154,7 @@ public sealed partial class CodeEditor
             return IsEdit(action);
         }
         string eol = document.LineEnding;
-        if (action is EditorActions.NewLine or EditorActions.Indent or EditorActions.Paste)
+        if (action is EditorActions.NewLine or EditorActions.Indent or EditorActions.Paste or EditorActions.PasteAsPlainText)
         {
             LeaveEndTag();
             text = document.Snapshot;
@@ -182,7 +186,10 @@ public sealed partial class CodeEditor
                 Apply(TextEditing.StartNewLine(text, selections, eol, Indent, above: true));
                 return true;
             case EditorActions.Indent:
-                Apply(TextEditing.Indent(text, selections, Indent));
+                if (!StepsOverTypedCloser())
+                {
+                    Apply(TextEditing.Indent(text, selections, Indent));
+                }
                 return true;
             case EditorActions.Outdent:
                 Apply(TextEditing.Outdent(text, selections, Indent));
@@ -214,6 +221,24 @@ public sealed partial class CodeEditor
             case EditorActions.ToggleCase:
                 Apply(TextEditing.ToggleCase(text, selections));
                 return true;
+            case EditorActions.SplitLine:
+                Apply(TextEditing.SplitLine(text, selections, eol, Indent, Markup));
+                return true;
+            case EditorActions.DeleteToLineStart:
+                Apply(TextEditing.DeleteToLineStart(text, selections));
+                return true;
+            case EditorActions.DeleteToLineEnd:
+                Apply(TextEditing.DeleteToLineEnd(text, selections));
+                return true;
+            case EditorActions.Transpose:
+                Apply(TextEditing.Transpose(text, selections));
+                return true;
+            case EditorActions.ToggleOverwrite:
+                Overwrite = !Overwrite;
+                return true;
+            case EditorActions.ToggleColumnMode:
+                ColumnMode = !ColumnMode;
+                return true;
             case EditorActions.CutToLineEnd:
                 (EditPlan? plan, string removed) = TextEditing.CutToLineEnd(text, selections);
                 if (plan is not null)
@@ -227,7 +252,13 @@ public sealed partial class CodeEditor
                 Apply(TextEditing.Cut(text, selections, Folding.Hidden));
                 return true;
             case EditorActions.Paste:
-                BackgroundWork.Track(PasteFromClipboardAsync());
+                BackgroundWork.Track(PasteFromClipboardAsync(plain: false));
+                return true;
+            case EditorActions.PasteAsPlainText:
+                BackgroundWork.Track(PasteFromClipboardAsync(plain: true));
+                return true;
+            case EditorActions.ExpandWord or EditorActions.ExpandWordBackward:
+                ExpandWord(backward: action == EditorActions.ExpandWordBackward);
                 return true;
         }
         return false;
@@ -264,6 +295,15 @@ public sealed partial class CodeEditor
 
     private int PageLines => Math.Max(1, (int)(Viewport.Height / metrics.LineHeight) - 1);
 
+    /// <summary>Applies a plan an edit by the code's structure made (Move Statement's lines), as one undo step, what keeps
+    /// offsets in the text it moves going with it.</summary>
+    public void ApplyPlan(EditPlan plan)
+    {
+        document.BreakUndoGroup();
+        Apply(plan);
+        document.BreakUndoGroup();
+    }
+
     private void Apply(EditPlan? plan)
     {
         if (plan is null || IsReadOnly)
@@ -281,6 +321,7 @@ public sealed partial class CodeEditor
             editing = false;
         }
         KeepSplitBlocks(plan);
+        KeepTypedClosers(plan);
         FollowMoves(foldsBefore, plan);
         // A caret the edit leaves where a row wraps stands after the text it typed, at the end of the row before.
         nextWrapLeaning = CaretsAtWraps(plan.Selections);
@@ -293,8 +334,8 @@ public sealed partial class CodeEditor
         SetSelections(selections.With(s => s.MoveTo(to(s), extend)), reveal: true);
     }
 
-    /// <summary>Up and Down go by rows, a wrapped line's included, and keep returning to the x a vertical run of moves
-    /// started from, even through shorter rows.</summary>
+    /// <summary>Up and Down go by rows of text, a wrapped line's included and the rows above lines passed by, and keep
+    /// returning to the x a vertical run of moves started from, even through shorter rows.</summary>
     private void MoveVertically(int rows, bool extend)
     {
         document.BreakUndoGroup();
@@ -304,7 +345,7 @@ public sealed partial class CodeEditor
         {
             (int row, double caretX) = Place(text, s.Caret, LeansBack(s.Caret));
             double x = double.IsNaN(s.PreferredX) ? caretX : s.PreferredX;
-            int target = row + rows;
+            int target = TextRowsAway(row, rows);
             int offset;
             if (target < 0)
             {
@@ -338,7 +379,7 @@ public sealed partial class CodeEditor
         }
         Selection edge = direction < 0 ? selections.Items[0] : selections.Items[^1];
         (int at, double caretX) = Place(text, edge.Caret, LeansBack(edge.Caret));
-        int row = at + direction;
+        int row = TextRowsAway(at, direction);
         if (row < 0 || row >= RowCount)
         {
             return;
@@ -372,13 +413,16 @@ public sealed partial class CodeEditor
     private void SetClipboard(string copied, bool wholeLines)
     {
         lineCopy = wholeLines ? copied : null;
+        Copied?.Invoke(this, new CopiedText(copied, wholeLines));
         if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
             UnawaitedWork.Observe(clipboard.SetTextAsync(copied));
         }
     }
 
-    private async Task PasteFromClipboardAsync()
+    /// <summary>The clipboard's text pasted at the carets, whole lines above the caret's line where this IDE copied it as
+    /// them; reindented as the language reindents a paste unless <paramref name="plain"/>.</summary>
+    private async Task PasteFromClipboardAsync(bool plain)
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard || await clipboard.TryGetTextAsync() is not { Length: > 0 } pasted)
         {
@@ -386,8 +430,59 @@ public sealed partial class CodeEditor
         }
         string normalized = pasted.Replace("\r\n", "\n");
         bool wholeLines = lineCopy is not null && normalized == lineCopy.Replace("\r\n", "\n");
+        Apply(TextEditing.Paste(document.Snapshot, selections, pasted, wholeLines, document.LineEnding, ReindentsPaste && !plain ? Indent : null));
+    }
+
+    /// <summary>Text pasted at the carets as Paste pastes the clipboard's, whole lines above the caret's line where it was
+    /// copied as them, and put on the clipboard; Paste from History's choice. A read-only editor refuses it.</summary>
+    public void PasteText(string pasted, bool wholeLines)
+    {
+        if (IsReadOnly)
+        {
+            return;
+        }
+        SetClipboard(pasted, wholeLines);
+        LeaveEndTag();
         Apply(TextEditing.Paste(document.Snapshot, selections, pasted, wholeLines, document.LineEnding, ReindentsPaste ? Indent : null));
+    }
+
+    /// <summary>Cyclic Expand Word's last step: where the word it finishes begins, as typed, the round of words it steps
+    /// through (<see cref="WordExpansion"/>), the one it shows (0 for the word as typed), and the text's version and caret
+    /// it left, so a press at once after steps on from there.</summary>
+    private sealed record Expansion(int Start, string Begun, IReadOnlyList<string> Words, int Index, int Version, int Caret);
+
+    private Expansion? expansion;
+
+    /// <summary>The other texts whose words Cyclic Expand Word offers after this one's above the caret: the other open files'.</summary>
+    public Func<IEnumerable<string>>? WordsElsewhere { get; set; }
+
+    /// <summary>The word begun at the caret finished as the next word of its round, or the one before; each press one more
+    /// step of the same undo, the word as typed coming round again after the last.</summary>
+    private void ExpandWord(bool backward)
+    {
+        if (selections.HasMultiple || !selections.Primary.IsEmpty)
+        {
+            return;
+        }
+        int caret = selections.Primary.Caret;
+        Expansion? going = expansion is { } last && last.Version == document.Version && last.Caret == caret ? last : null;
+        if (going is null)
+        {
+            if (WordExpansion.At(document.Snapshot.ToString(), caret, WordsElsewhere?.Invoke() ?? []) is not { Words.Count: > 0 } found)
+            {
+                return;
+            }
+            going = new Expansion(found.Start, found.Begun, found.Words, 0, 0, 0);
+        }
+        int round = going.Words.Count + 1;
+        int index = (((going.Index + (backward ? -1 : 1)) % round) + round) % round;
+        string word = index == 0 ? going.Begun : going.Words[index - 1];
+        Apply(new EditPlan([new TextEdit(going.Start, caret - going.Start, word)], SelectionSet.Single(going.Start + word.Length), EditKind.Joined));
+        expansion = going with { Index = index, Version = document.Version, Caret = going.Start + word.Length };
     }
 
     private static bool IsEdit(string action) => action.StartsWith("editor.", StringComparison.Ordinal);
 }
+
+/// <summary>Text an editor put on the clipboard, and whether it was whole lines, which a paste puts above the caret's line.</summary>
+public readonly record struct CopiedText(string Text, bool WholeLines);

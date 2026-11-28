@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FilterSteps" xml:space="preserve">
+    <value>Filter steps</value>
+    <comment>The Step Library's search field.</comment>
+  </data>
+  <data name="FilterDefinitions" xml:space="preserve">
+    <value>Filter Step Definitions</value>
+    <comment>The Step Library's filter menu button.</comment>
+  </data>
+  <data name="CopyPhrase" xml:space="preserve">
+    <value>Copy Phrase</value>
+    <comment>A step definition's row menu item copying its phrase.</comment>
+  </data>
+  <data name="AnyStep" xml:space="preserve">
+    <value>Any step</value>
+    <comment>The Step Library's heading over definitions that bind a step of any keyword.</comment>
+  </data>
+  <data name="Hooks" xml:space="preserve">
+    <value>Hooks</value>
+    <comment>The Step Library's heading over the hooks.</comment>
+  </data>
+  <data name="NoDefinitions" xml:space="preserve">
+    <value>No step definitions yet: a [Given], [When] or [Then] method of a [Binding] class is listed here</value>
+    <comment>The Step Library's words where the projects have no step definition.</comment>
+  </data>
+  <data name="EveryUsed" xml:space="preserve">
+    <value>Every step definition is used by a feature step</value>
+    <comment>The Step Library's words where Unused Only leaves nothing.</comment>
+  </data>
+  <data name="NoneFits" xml:space="preserve">
+    <value>No step definition fits the filter</value>
+    <comment>The Step Library's words where the filter keeps nothing.</comment>
+  </data>
+  <data name="UnusedOnly" xml:space="preserve">
+    <value>Unused Only</value>
+    <comment>The filter menu's item keeping the definitions no feature step uses.</comment>
+  </data>
+  <data name="InsertIntoFeature" xml:space="preserve">
+    <value>Insert into Feature</value>
+    <comment>A definition's button writing its phrase into the feature shown.</comment>
+  </data>
+  <data name="Unused" xml:space="preserve">
+    <value>Unused</value>
+    <comment>A definition's mark where no feature step uses it.</comment>
+  </data>
+  <data name="Uses" xml:space="preserve">
+    <value>{count, plural, one {# use} other {# uses}}</value>
+    <comment>A definition's link to the feature steps it binds.</comment>
+  </data>
+  <data name="FindUsagesOf" xml:space="preserve">
+    <value>Find Usages: the {count, plural, one {# feature step} other {# feature steps}} it binds</value>
+    <comment>The tip of a definition's link to its uses.</comment>
+  </data>
+  <data name="TaggedOnly" xml:space="preserve">
+    <value>Runs only where a scenario is tagged {tags}</value>
+    <comment>A hook's tip: the tags its scope names, as a choice of them.</comment>
+  </data>
+  <data name="OnlyWhere" xml:space="preserve">
+    <value>Only where {conditions}</value>
+    <comment>A definition's tip: its scope's conditions, listed.</comment>
+  </data>
+  <data name="TaggedScenario" xml:space="preserve">
+    <value>a scenario is tagged @{tag}</value>
+    <comment>A scope's condition: a scenario's tag.</comment>
+  </data>
+  <data name="NamedFeature" xml:space="preserve">
+    <value>the feature is "{feature}"</value>
+    <comment>A scope's condition: the feature's name.</comment>
+  </data>
+  <data name="NamedScenario" xml:space="preserve">
+    <value>the scenario is "{scenario}"</value>
+    <comment>A scope's condition: the scenario's name.</comment>
+  </data>
+  <data name="Listed" xml:space="preserve">
+    <value>{first}, {then}</value>
+    <comment>Conditions listed one after another.</comment>
+  </data>
+  <data name="Lines" xml:space="preserve">
+    <value>{first}
+{then}</value>
+    <comment>A tip's lines, one under another.</comment>
+  </data>
+</root>

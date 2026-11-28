@@ -1,4 +1,5 @@
 using Avalonia;
+using Passenger.Core;
 using Passenger.Dap;
 
 namespace Passenger.App.Debugging;
@@ -55,8 +56,9 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>Why no expression reaches this row's value, so it can be neither set, watched nor inspected; null where one
     /// does.</summary>
-    public string? NoExpression =>
-        Role == VariableRole.Watch ? null
+    public Words? NoExpression =>
+        Captured ? Refusals.SnapshotValue
+        : Role == VariableRole.Watch ? null
         : Role == VariableRole.Scope ? "A scope groups the frame's values and is no value of its own"
         : Role == VariableRole.Result ? "An evaluated result is no variable: its expression is the one evaluated"
         : Role == VariableRole.Error ? "This row says why a value could not be read and is no value of its own"
@@ -81,10 +83,19 @@ public sealed class VariableNode(string name, string value, string? type, int re
 
     /// <summary>Why this row's value cannot be set; null where it can.</summary>
     public string? NoSetting =>
-        NoExpression ?? Unsettable ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null);
+        (NoExpression ?? Unsettable ?? (IsCopy ? "The debugger shows this value from a copy it made, so a value set here would leave the program's own unchanged" : null))?.Shown;
 
     /// <summary>The debugger's word that it cannot set this value, and why, though an expression reaches it.</summary>
     public string? Unsettable { get; init; }
+
+    /// <summary>The label of the marked object its value is ($1), which its row shows beside the value; null for any other.</summary>
+    public string? Mark { get; init; }
+
+    /// <summary>The address a live pointer or managed reference names for Memory.</summary>
+    public string? MemoryReference { get; init; }
+
+    /// <summary>A snapshot's value, read as the program ran on, which has run on since: no expression reaches it now.</summary>
+    public bool Captured { get; init; }
 
     /// <summary>Its value is being typed over, in its row (Set Value, F2).</summary>
     public bool IsEditing
@@ -131,10 +142,12 @@ public sealed class VariableNode(string name, string value, string? type, int re
         set => Set(ref isExpanded, value);
     }
 
-    public static VariableNode From(DapVariable variable, int depth, VariableNode? parent = null) =>
+    /// <summary>A row as the debugger read it, a snapshot's where it is <paramref name="captured"/> or its parent is.</summary>
+    public static VariableNode From(DapVariable variable, int depth, VariableNode? parent = null, bool captured = false) =>
         new(variable.Name, variable.Value, variable.Type, variable.VariablesReference, depth,
             variable.PresentationHint?.Has(DapAttributes.FailedEvaluation) == true ? VariableRole.Error : VariableRole.Value)
         {
+            Captured = captured || parent?.Captured == true,
             Parent = parent,
             EvaluateName = variable.EvaluateName is { Length: > 0 } named ? named : null,
             IsVirtual = variable.PresentationHint?.Kind == PresentationHintKinds.Virtual,
@@ -142,6 +155,8 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsLazy = variable.PresentationHint?.Lazy == true && variable.VariablesReference > 0,
             NeedsThreads = SaysNeedsThreads(variable.PresentationHint),
             Unsettable = variable.Unsettable,
+            Mark = variable.Mark,
+            MemoryReference = variable.MemoryReference,
         };
 
     /// <summary>A lazy row as what it read: the debugger's one variable in its place, by its name, or why it read none.</summary>
@@ -155,6 +170,8 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsCopy = lazy.IsCopy,
             WasRead = true,
             NeedsThreads = SaysNeedsThreads(read?.PresentationHint),
+            Mark = read?.Mark,
+            MemoryReference = read?.MemoryReference,
         };
 
     /// <summary>A row as its expression read again with every thread let go, in its place: a watch stays a watch.</summary>
@@ -167,6 +184,8 @@ public sealed class VariableNode(string name, string value, string? type, int re
             IsVirtual = row.IsVirtual,
             IsCopy = row.IsCopy,
             NeedsThreads = SaysNeedsThreads(read.PresentationHint),
+            Mark = read.Mark,
+            MemoryReference = read.MemoryReference,
         };
 }
 

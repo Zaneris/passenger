@@ -5,7 +5,7 @@ namespace Passenger.UnitTests.Workspace;
 
 /// <summary>A project put in a .slnx: refused where its solution folder (or the solution's top) holds a project of its file
 /// name already, whatever the letter case, as MSBuild refuses to load such a solution, the file left as it was; taken
-/// in another solution folder.</summary>
+/// in another solution folder; and a solution's first project of processors alone giving it those platforms.</summary>
 public sealed class SolutionProjectsTests : IDisposable
 {
     private const string Solution = "<Solution>\n  <Folder Name=\"/src/\">\n    <Project Path=\"src/Hello/Hello.csproj\" />\n  </Folder>\n"
@@ -27,7 +27,9 @@ public sealed class SolutionProjectsTests : IDisposable
             "elements",
             "nested projects",
         ], (test, row) => test.Folders_nested_past_what_a_solution_holds_stand_in_the_deepest_and_lose_no_project(row))),
-        ("a project of that name is taken in another solution folder", test => test.A_project_of_that_name_is_taken_in_another_solution_folder()));
+        ("a project of that name is taken in another solution folder", test => test.A_project_of_that_name_is_taken_in_another_solution_folder()),
+        ("a new solutions first project of processors alone gives it those platforms and an any cpu one gives none",
+            test => test.A_new_solutions_first_project_of_processors_alone_gives_it_those_platforms_and_an_any_cpu_one_gives_none()));
 
     private void A_project_of_a_name_its_solution_folder_holds_already_is_refused_and_the_file_left_as_it_was(string? folder, string project, string where)
     {
@@ -91,6 +93,31 @@ public sealed class SolutionProjectsTests : IDisposable
         Assert.Equal(Solution.Replace("  <Project Path=\"a/Hello/Hello.csproj\" />\n",
             "  <Folder Name=\"/tests/\">\n    <Project Path=\"b/Hello/Hello.csproj\" />\n  </Folder>\n  <Project Path=\"a/Hello/Hello.csproj\" />\n", StringComparison.Ordinal),
             File.ReadAllText(solution));
+    }
+
+    private void A_new_solutions_first_project_of_processors_alone_gives_it_those_platforms_and_an_any_cpu_one_gives_none()
+    {
+        Directory.CreateDirectory(At("App"));
+        Directory.CreateDirectory(At("Lib"));
+        string app = Write("App/App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <Platforms>x86;x64;ARM64</Platforms>\n  </PropertyGroup>\n</Project>\n");
+        string library = Write("Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\">\n</Project>\n");
+        string modern = Write("Made.slnx", "<Solution>\n</Solution>\n");
+        Assert.Null(SolutionEdits.AddProject(modern, null, app));
+        string written = File.ReadAllText(modern);
+        Assert.True(written.Contains("<Platform Name=\"x86\" />", StringComparison.Ordinal) && written.Contains("<Platform Name=\"ARM64\" />", StringComparison.Ordinal)
+            && written.Contains("<Platform Solution=\"*|ARM64\" Project=\"ARM64\" />", StringComparison.Ordinal),
+            $"A new .slnx of a WinUI app's project declares or maps none of its platforms, so every build of it is AnyCPU's:\n{written}");
+        string classic = Write("Made.sln", "Microsoft Visual Studio Solution File, Format Version 12.00\nGlobal\nEndGlobal\n");
+        Assert.Null(SolutionEdits.AddProject(classic, null, app));
+        string sln = File.ReadAllText(classic);
+        Assert.True(sln.Contains("Debug|ARM64 = Debug|ARM64", StringComparison.Ordinal) && sln.Contains(".Debug|x64.ActiveCfg = Debug|x64", StringComparison.Ordinal)
+            && !sln.Contains("Any CPU", StringComparison.Ordinal), $"A new .sln of a WinUI app's project maps it to AnyCPU, which it refuses:\n{sln}");
+        string other = Write("Other.slnx", "<Solution>\n</Solution>\n");
+        Assert.Null(SolutionEdits.AddProject(other, null, library));
+        Assert.DoesNotContain("Configurations", File.ReadAllText(other), StringComparison.Ordinal);
+        // Added after another, it is mapped from the solution's Any CPU, as a .sln's first project's platform is.
+        Assert.Null(SolutionEdits.AddProject(other, null, app));
+        Assert.Contains("<Project Path=\"App/App.csproj\">\n    <Platform Solution=\"*|Any CPU\" Project=\"x86\" />\n  </Project>", File.ReadAllText(other), StringComparison.Ordinal);
     }
 
     private string At(params string[] parts) => Path.Combine([root, .. parts.SelectMany(p => p.Split('/'))]);

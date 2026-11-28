@@ -64,7 +64,7 @@ internal static class HotReload
                 SourceText now = await document.GetTextAsync(cancel).ConfigureAwait(false);
                 solution = solution.WithDocumentText(ids, SourceText.From(original.Text, now.Encoding, now.ChecksumAlgorithm));
             }
-            // A Razor file is an additional document, whose generator's C# is the code: that code is built from its text before.
+            // Razor or MAUI XAML is an additional document, whose generator's C# is the code: that code is built from its text before.
             else if (!ids.IsEmpty && solution.GetAdditionalDocument(ids[0]) is { } markup)
             {
                 SourceText now = await markup.GetTextAsync(cancel).ConfigureAwait(false);
@@ -118,6 +118,32 @@ internal static class HotReload
         {
             solution = await FrozenAsync(solution, session.Committed, scope, cancel).ConfigureAwait(false);
         }
+        if (message.Markup is not { } markup)
+        {
+            return await EmittedAsync(session, message, solution, scope, cancel).ConfigureAwait(false);
+        }
+        // A MAUI app's XAML is code its generator writes, generated afresh from what the app holds, the lock held to the emit's end.
+        await GeneratedMarkup.Generating.WaitAsync(cancel).ConfigureAwait(false);
+        try
+        {
+            (solution, IReadOnlyList<HotReloadProblem> errors, IReadOnlyList<string> remade, IReadOnlyList<HotReloadGeneratedCode> generated) =
+                await GeneratedMarkup.RegeneratedAsync(solution, markup, scope, session.Baselines, cancel).ConfigureAwait(false);
+            if (errors.Count > 0)
+            {
+                session.Baselines.Discard();
+                return new HotReloadEmitted(null, "blocked", [], errors, await ChangedAsync(session.Committed, solution, scope, cancel).ConfigureAwait(false));
+            }
+            return await EmittedAsync(session, message, solution, scope, cancel).ConfigureAwait(false) with { Remade = remade, Generated = generated };
+        }
+        finally
+        {
+            GeneratedMarkup.Generating.Release();
+        }
+    }
+
+    /// <summary>The update the edits come to, emitted against what the program runs.</summary>
+    private static async Task<HotReloadEmitted> EmittedAsync(Session session, HotReloadEmit message, Solution solution, IReadOnlySet<ProjectId>? scope, CancellationToken cancel)
+    {
         session.Debugger.Take(message);
         session.Originals.Take(message.Originals);
         // A new edit session, which reads the active statements again: paused or held, Edit and Continue; running, Hot Reload.
@@ -140,6 +166,7 @@ internal static class HotReload
         {
             // Nothing to apply: the service has taken the solution as it is as committed.
             session.Committed = results.Solution ?? solution;
+            session.Baselines.Commit();
             return new HotReloadEmitted(null, "none", [], problems, changed);
         }
         if (results.ModuleUpdates.Status == ModuleUpdateStatus.Ready)
@@ -154,6 +181,7 @@ internal static class HotReload
             {
                 session.Service.DiscardSolutionUpdate(session.Id);
             }
+            session.Baselines.Discard();
             return new HotReloadEmitted(null, "blocked", [], problems, changed);
         }
         Solution pending = results.Solution ?? solution;
@@ -241,6 +269,7 @@ internal static class HotReload
             session.Service.CommitSolutionUpdate(session.Id);
             session.Committed = pending;
             session.Pending = null;
+            session.Baselines.Commit();
         }
         return new HotReloadDone(null);
     }
@@ -259,6 +288,7 @@ internal static class HotReload
             }
             session.Service.DiscardSolutionUpdate(session.Id);
             session.Pending = null;
+            session.Baselines.Discard();
         }
         return new HotReloadDone(null);
     }
@@ -305,7 +335,7 @@ internal static class HotReload
             }
             foreach (DocumentId id in project.GetChangedAdditionalDocuments())
             {
-                if (before.GetAdditionalDocument(id) is { } was && RazorFiles.Is(was.FilePath))
+                if (before.GetAdditionalDocument(id) is { } was && GeneratedMarkup.Is(was.FilePath))
                 {
                     solution = solution.WithAdditionalDocumentText(id, await was.GetTextAsync(cancel).ConfigureAwait(false), PreservationMode.PreserveIdentity);
                 }
@@ -344,10 +374,10 @@ internal static class HotReload
                     paths.Add(path);
                 }
             }
-            // A Razor file's edit is the code its generator makes of it.
+            // A Razor or MAUI XAML file's edit is the code its generator makes of it.
             foreach (DocumentId id in project.GetChangedAdditionalDocuments())
             {
-                if (after.GetAdditionalDocument(id) is { FilePath: { } path } now && RazorFiles.Is(path) && before.GetAdditionalDocument(id) is { } was
+                if (after.GetAdditionalDocument(id) is { FilePath: { } path } now && GeneratedMarkup.Is(path) && before.GetAdditionalDocument(id) is { } was
                     && !(await was.GetTextAsync(cancel).ConfigureAwait(false)).ContentEquals(await now.GetTextAsync(cancel).ConfigureAwait(false)))
                 {
                     paths.Add(path);
@@ -425,6 +455,9 @@ internal static class HotReload
 
         /// <summary>The solution of the update emitted and not yet committed or discarded.</summary>
         public Solution? Pending { get; set; }
+
+        /// <summary>What MAUI's XAML generator writes the program's patches from, a .NET MAUI app's.</summary>
+        public XamlPatchBaselines Baselines { get; } = new();
     }
 
     /// <summary>The files' texts before the session's first edit to each, as Passenger kept them: the build's, which Roslyn

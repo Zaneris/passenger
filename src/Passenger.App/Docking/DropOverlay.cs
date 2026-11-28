@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Docking;
 
@@ -25,13 +27,13 @@ public sealed class DropOverlay : Canvas
     }
 
     /// <summary>Lights up a place, in the overlay's own coordinates, its outline drawn just inside it.</summary>
-    public void Show(Rect place, string? name)
+    public void Show(Rect place, Words? name)
     {
         SetLeft(zone, place.X + 2);
         SetTop(zone, place.Y + 2);
         zone.Width = Math.Max(0, place.Width - 4);
         zone.Height = Math.Max(0, place.Height - 4);
-        label.Text = name;
+        ShownWords.Set(label, TextBlock.TextProperty, name);
         label.IsVisible = name is not null;
         IsVisible = true;
     }

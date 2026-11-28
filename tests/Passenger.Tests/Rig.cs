@@ -52,31 +52,13 @@ public sealed class TestRun : IAsyncDisposable
     public static string Root { get; } = Path.Combine(Path.GetTempPath(), Prefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) + Unindexed);
 
     /// <summary>The temporary folder the run started with: the person's own.</summary>
-    public static string PersonsTemporary { get; } = Path.GetTempPath();
-
-    private const string TemporaryPrefix = "prun-";
+    public static string PersonsTemporary => RunTemporary.Persons;
 
     /// <summary>The temporary folder (TMPDIR) the run's programs are given on macOS and Linux: each .NET program's runtime
     /// makes its diagnostic socket and its debugger's pipes there, which one killed leaves, so the run's go with the run and
-    /// never stay in <see cref="PersonsTemporary"/>. Named short, as a socket's path holds 103 bytes; the person's own where
-    /// no folder is short enough, and on Windows, whose pipes go with their process.</summary>
-    public static string Temporary { get; } = RunTemporary();
-
-    /// <summary>In the person's temporary folder, else the system's (macOS's per-user one is too long), the first where the
-    /// longest socket name made there fits a socket's path: a stand-in diagnostics router's, for a 7-digit id and a 10-digit
-    /// start.</summary>
-    private static string RunTemporary()
-    {
-        const int Longest = 52;
-        string own = TemporaryPrefix + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        return OperatingSystem.IsWindows() ? PersonsTemporary
-            : TemporaryBases().Select(under => Path.Combine(under, own)).FirstOrDefault(folder => folder.Length + 1 + Longest <= 103) ?? PersonsTemporary;
-    }
-
-    /// <summary>Where a run's folders are made: the person's temporary folder, then, on macOS and Linux, the system's, as its
-    /// real path names it.</summary>
-    private static IEnumerable<string> TemporaryBases() =>
-        OperatingSystem.IsWindows() ? [PersonsTemporary] : [PersonsTemporary, OperatingSystem.IsMacOS() ? "/private/tmp" : "/tmp"];
+    /// never stay in <see cref="PersonsTemporary"/>. Named short (<see cref="RunTemporary"/>); the person's own where no
+    /// folder is short enough, and on Windows, whose pipes go with their process.</summary>
+    public static string Temporary { get; } = OperatingSystem.IsWindows() ? PersonsTemporary : RunTemporary.Own() ?? PersonsTemporary;
 
     /// <summary>Why the daemon of Biome's <paramref name="version"/> cannot listen in the run's Biome home, or null where it
     /// can: on macOS its socket lies under that home's Library/Caches, whose path may pass the 103 bytes a socket's path
@@ -94,6 +76,10 @@ public sealed class TestRun : IAsyncDisposable
     /// <summary>Where the run's IDE finds user secrets in place of the person's own: a project's folder there, by its id, is
     /// what a container run mounts.</summary>
     public static string UserSecrets => Path.Combine(Root, "usersecrets");
+
+    /// <summary>Where the run's IDE finds Aspire's secrets of each environment (what <c>aspire secret set</c> writes) in place
+    /// of the person's own, an AppHost's folder there by its UserSecretsId.</summary>
+    public static string AspireSecrets => Path.Combine(Root, "aspire-secrets");
 
     /// <summary>What every wall-clock limit of a test is multiplied by (<see cref="Limits.Scaled"/>): <c>PASSENGER_TEST_TIME_SCALE</c>,
     /// read once, 1 when unset, as on a developer's machine, for whose times each limit is written; CI sets it for each
@@ -143,12 +129,12 @@ public sealed class TestRun : IAsyncDisposable
         // Every folder a test opens is trusted, but one it holds to the person's answer (WorkspaceTrust.Ask).
         Passenger.Core.WorkspaceTrust.TrustEverything();
         List<string> ended = [];
-        foreach (string left in TemporaryBases().Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.Ordinal).SelectMany(under => Directory.EnumerateDirectories(under, "p*")))
+        foreach (string left in RunTemporary.Bases().Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.Ordinal).SelectMany(under => Directory.EnumerateDirectories(under, "p*")))
         {
             // A run still going has its process; one killed has none, and only an id reused since keeps its folder.
             string name = Path.GetFileName(left);
             string? number = name.StartsWith(Prefix, StringComparison.Ordinal) ? name[Prefix.Length..].Replace(Unindexed, string.Empty, StringComparison.Ordinal)
-                : name.StartsWith(TemporaryPrefix, StringComparison.Ordinal) ? name[TemporaryPrefix.Length..]
+                : name.StartsWith(RunTemporary.Prefix, StringComparison.Ordinal) ? name[RunTemporary.Prefix.Length..]
                 : null;
             if (int.TryParse(number, out int id) && (id == Environment.ProcessId || !Processes.IsRunning(id)))
             {
@@ -185,7 +171,7 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(StateStore.Variable, Settings);
         // As Passenger's Main has it, which no test's window runs.
         SdkTemporary.State = () => StateStore.DefaultRoot;
-        Environment.SetEnvironmentVariable("GIT_CONFIG_GLOBAL", gitConfig);
+        Environment.SetEnvironmentVariable(GitVariables.ConfigGlobal, gitConfig);
         Environment.SetEnvironmentVariable("GIT_CONFIG_NOSYSTEM", "1");
         // Configuration git takes from the environment, over the files' or (git config's) in place of them.
         OwnEnvironment.Set(GitVariables.ConfigParameters, null);
@@ -193,6 +179,15 @@ public sealed class TestRun : IAsyncDisposable
         OwnEnvironment.Set(GitVariables.ConfigCount, null);
         // Nor the person's ssh-agent, which ssh-keygen asks first for the key a commit is signed with.
         OwnEnvironment.Set("SSH_AUTH_SOCK", null);
+        // Nor the person's ssh configuration, keys and known hosts: a database's tunnel reads the run's empty SSH home.
+        Environment.SetEnvironmentVariable(Passenger.App.Database.SshFiles.HomeVariable, Directory.CreateDirectory(Path.Combine(Root, "ssh-home")).FullName);
+        // AWS's files and keys are the run's own: none of the person's profiles, keys or sign-ins is read.
+        Environment.SetEnvironmentVariable(Passenger.App.Database.AwsProfiles.HomeVariable, Directory.CreateDirectory(Path.Combine(Root, "aws-home")).FullName);
+        foreach (string aws in (string[])["AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION"])
+        {
+            OwnEnvironment.Set(aws, null);
+        }
         // Nor the person's GnuPG keyring and agent: gpg keeps a signing test's keys in the run's.
         string gnupg = Path.Combine(Root, "gnupg");
         if (OperatingSystem.IsWindows())
@@ -220,6 +215,10 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Xaml.SourceLink.Variable, "http://127.0.0.1:9/");
         // Nor the web for a JSON schema a file names: those Passenger does not carry are asked of where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.Web.JsonSchemas.Variable, "http://127.0.0.1:9/");
+        // Nor the person's Keychain, Credential Manager or Secret Service: the run keeps every secret in memory.
+        Environment.SetEnvironmentVariable(Passenger.Core.SystemCredentials.Variable, "memory");
+        // Nor Microsoft Entra ID or Azure Resource Manager: a sign-in or a server listing without a stand-in of the test's asks where nothing listens.
+        Environment.SetEnvironmentVariable(Passenger.App.Database.AzureSignIn.EndpointVariable, "http://127.0.0.1:9/");
         // Nor Open VSX for VS Code themes: the explorer and a theme's base without a stand-in of the test's ask where nothing listens.
         Environment.SetEnvironmentVariable(Passenger.App.OpenVsx.Variable, "http://127.0.0.1:9/");
         // Nor GitHub for Passenger's themes repository: it is read from the copy the tests carry.
@@ -228,14 +227,19 @@ public sealed class TestRun : IAsyncDisposable
         Environment.SetEnvironmentVariable(Passenger.App.Web.DockerHubTags.Variable, "http://127.0.0.1:9/");
         // Nor a registry for a Dockerfile's base images: BuildKit's checks are off but in the one test that turns them on.
         Environment.SetEnvironmentVariable(Passenger.App.Containers.BuildKitChecks.Variable, "off");
+        // Solution-wide analysis is off at first, so a window that never looks at the solution's problems analyses nothing.
+        Environment.SetEnvironmentVariable(Passenger.App.CSharp.CSharpService.SolutionWideVariable, "off");
         // Nor the person's motion and caret settings: carets blink at Passenger's own rate but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemMotion.Variable, "full,blink=530");
+        // English whatever the machine's languages, so every test reads the words as written.
+        Environment.SetEnvironmentVariable(Passenger.Core.SystemLanguages.Variable, "en-US");
         // Nor the person's high contrast: a window shows the theme its test chooses but where a test stands in.
         Environment.SetEnvironmentVariable(Passenger.App.SystemContrast.Variable, "none");
         // Nor the person's own Windows Path: a program a test's PATH lacks stays missing but where a test stands in.
         Environment.SetEnvironmentVariable(UserEnvironment.PathNowVariable, ";");
         // Nor the person's user secrets: a container run mounts a project's from the run's own folder, which a test writes.
         Environment.SetEnvironmentVariable(Passenger.App.Containers.ContainerPlans.UserSecretsVariable, UserSecrets);
+        Environment.SetEnvironmentVariable(Passenger.App.Aspire.AspireSecrets.Variable, AspireSecrets);
         // Nor the person's Passenger: an agent's call with no window to join starts this build headless, in the run's state.
         Environment.SetEnvironmentVariable(Passenger.App.Mcp.McpProxy.StartVariable, "headless");
         // Nor the person's Discord: a window without a stand-in of its own looks where nothing listens.
@@ -1634,6 +1638,16 @@ public static class Ui
         }
     }
 
+    /// <summary>Waits for a launch whose refusal is words (Run's, Debug's, Profile's), as the other does, failing with them
+    /// in English.</summary>
+    public static void Launched(Passenger.App.MainWindow window, Task<Passenger.Core.Words?> launch, string what, TimeSpan? limit = null)
+    {
+        if (Await(launch, what, limit) is { } refused)
+        {
+            throw new Xunit.Sdk.XunitException($"Waiting for {what}, the window refused: {refused.English}{BuildErrors(window)}{Limits.WhereTheTimeWent()}");
+        }
+    }
+
     /// <summary>The status bar's words and the last build's own errors after them, for a failure message: of a build that
     /// failed the status bar says only how many errors it had, and CI's runs keep only what the message says.</summary>
     public static string Said(Passenger.App.MainWindow window) => $"{window.Status}{BuildErrors(window)}";
@@ -1791,6 +1805,32 @@ public static class Ui
         (TopLevel top, Point point) = Aim(control, at);
         top.MouseMove(point, modifiers);
         Settle();
+    }
+
+    /// <summary>The pointer brought to rest on a character of an editor's text, the one way a test points at text: the
+    /// text scrolled into view first where it lies past the editor's edge, as a person scrolls to what they point at, and
+    /// aimed as <see cref="Hover"/> aims, so the rest lands on the text and not on what covers it or lies past it. It waits
+    /// for nothing after, the caller waiting for what it checks (a card, a link, the window's loop run); where it rests,
+    /// in its window.</summary>
+    public static Point RestOn(CodeEditor editor, int offset)
+    {
+        double at = editor.PointOf(offset).Y;
+        if (at < 0 || at + editor.LineHeight > editor.Bounds.Height)
+        {
+            editor.ScrollTo(new Vector(editor.ScrollOffset.X, editor.ScrollOffset.Y + at - (editor.Bounds.Height / 3)));
+        }
+        (TopLevel top, Point point) = Aim(editor, editor.PointOf(offset) + new Point(1, editor.LineHeight / 2));
+        top.MouseMove(point, RawInputModifiers.None);
+        return point;
+    }
+
+    /// <summary>The words a control's open tip shows, as the tip lays them out; fails where none of its is open.</summary>
+    public static TextBlock TipWords(Control control)
+    {
+        TopLevel top = TopLevel.GetTopLevel(control) ?? throw new Xunit.Sdk.XunitException($"{Named(control)} is in no window, so it shows no tip");
+        ToolTip tip = top.GetVisualDescendants().OfType<ToolTip>().FirstOrDefault(t => t.Parent is Avalonia.Controls.Primitives.Popup { PlacementTarget: { } owner } && owner == control)
+            ?? throw new Xunit.Sdk.XunitException($"{Named(control)} shows no tip");
+        return tip.Content as TextBlock ?? tip.GetVisualDescendants().OfType<TextBlock>().Single();
     }
 
     /// <summary>A right click as <see cref="Click(Control, Point?, RawInputModifiers, bool)"/> makes a click, which opens
@@ -2087,6 +2127,11 @@ public static class Ui
         Settle();
         return window;
     }
+
+    /// <summary>The row an offset is drawn on, counted from the file's first: its line's, below the rows above lines
+    /// (signposts) and past the wraps and folds before it.</summary>
+    public static int RowOf(CodeEditor editor, int offset) =>
+        (int)Math.Round((editor.PointOf(offset).Y + editor.ScrollOffset.Y) / editor.LineHeight);
 
     /// <summary>The caret put just after the first place some text is in an editor, failing when the text is not there.</summary>
     public static void PlaceAfter(CodeEditor editor, string text)

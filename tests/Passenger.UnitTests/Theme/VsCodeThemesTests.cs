@@ -6,7 +6,8 @@ namespace Passenger.UnitTests.Theme;
 
 /// <summary>VS Code colour themes read as data: a theme's JSON with comments and trailing commas, the files it includes, a
 /// <c>.vsix</c>'s manifest and theme files; each refusal (no JSON, no theme, past a limit, a path leaving the extension, a
-/// TextMate theme file), each saying why; TextMate scope selectors matched as VS Code matches them; and Open VSX's answers.</summary>
+/// TextMate theme file), each saying why; TextMate scope selectors matched as VS Code matches them; and Open VSX's answers.
+/// VS Code file icon themes alike: their SVG icons, what they draw and the icon a file or folder finds there.</summary>
 public class VsCodeThemesTests
 {
     private const string Dark = """
@@ -52,7 +53,97 @@ public class VsCodeThemesTests
         ], row => A_vs_code_colour_reads_with_its_alpha_last(row.Item1, row.Item2))),
         ("the innermost scope a rule colours wins then the longer selector then more parents then the later rule", The_innermost_scope_a_rule_colours_wins_then_the_longer_selector_then_more_parents_then_the_later_rule),
         ("a vsix names its extension and colour themes and reads them from its zip", A_vsix_names_its_extension_and_colour_themes_and_reads_them_from_its_zip),
-        ("open vsx s search answer lists each extension with its downloads rating and vsix", Open_vsx_s_search_answer_lists_each_extension_with_its_downloads_rating_and_vsix));
+        ("open vsx s search answer lists each extension with its downloads rating and vsix", Open_vsx_s_search_answer_lists_each_extension_with_its_downloads_rating_and_vsix),
+        ("a file icon theme reads its svg icons what it draws and its light section over them and names what it passed over", A_file_icon_theme_reads_its_svg_icons_what_it_draws_and_its_light_section_over_them_and_names_what_it_passed_over),
+        ("a file finds its icon by its whole name then its extensions longest first each under its folder first then its language", () => Cases.Each<(string, string?, string?, bool, string?, bool)>(
+        [
+            ("Package.json", null, null, true, "npm", true),
+            ("lib.d.ts", null, null, true, "dts", true),
+            ("app.ts", null, null, true, "ts", true),
+            ("ci.yml", "workflows", null, true, "workflow", true),
+            ("ci.yml", "src", null, true, "yaml", true),
+            ("README.md", null, "markdown", true, "markdown", true),
+            ("Program.CS", null, "csharp", false, "csharpDay", true),
+            ("notes.unknown", null, null, true, "_file", false),
+        ], row => A_file_finds_its_icon_by_its_whole_name_then_its_extensions_longest_first_each_under_its_folder_first_then_its_language(row.Item1, row.Item2, row.Item3, row.Item4, row.Item5, row.Item6))),
+        ("a folder finds its icon by its name open or closed else the themes folder", () => Cases.Each<(string, bool, string?, bool)>(
+        [
+            ("SRC", false, "src", true),
+            ("src", true, "srcOpen", true),
+            ("docs", false, "_folder", false),
+            ("docs", true, "_open", false),
+        ], row => A_folder_finds_its_icon_by_its_name_open_or_closed_else_the_themes_folder(row.Item1, row.Item2, row.Item3, row.Item4))),
+        ("a vsix names its file icon themes and takes one with every svg it draws passing over one that is no svg", A_vsix_names_its_file_icon_themes_and_takes_one_with_every_svg_it_draws_passing_over_one_that_is_no_svg));
+
+    private const string Icons = """
+        // Lantern's icons.
+        {
+          "iconDefinitions": {
+            "_file": {"iconPath": "./icons/file.svg"}, "_folder": {"iconPath": "./icons/folder.svg"}, "_open": {"iconPath": "./icons/open.svg"},
+            "csharp": {"iconPath": "./icons/csharp.svg"}, "csharpDay": {"iconPath": "./icons/csharp-day.svg"},
+            "dts": {"iconPath": "./icons/dts.svg"}, "ts": {"iconPath": "./icons/ts.svg"}, "npm": {"iconPath": "./icons/npm.svg"},
+            "workflow": {"iconPath": "./icons/workflow.svg"}, "yaml": {"iconPath": "./icons/yaml.svg"}, "markdown": {"iconPath": "./icons/markdown.svg"},
+            "src": {"iconPath": "./icons/src.svg"}, "srcOpen": {"iconPath": "./icons/src-open.svg"},
+            "glyph": {"fontCharacter": "\\E001"}, "picture": {"iconPath": "./icons/picture.png"},
+          },
+          "file": "_file", "folder": "_folder", "folderExpanded": "_open",
+          "fileNames": {"package.json": "npm", "ghost": "missing"},
+          "fileExtensions": {"cs": "csharp", "d.ts": "dts", "ts": "ts", "yml": "yaml", "workflows/yml": "workflow", "glyph": "glyph"},
+          "languageIds": {"markdown": "markdown"},
+          "folderNames": {"src": "src"},
+          "folderNamesExpanded": {"src": "srcOpen"},
+          "light": {"fileExtensions": {"cs": "csharpDay"}},
+          "hidesExplorerArrows": false,
+          "somethingNew": true,
+        }
+        """;
+
+    private static VsCodeIconTheme IconTheme() => VsCodeIconThemes.ReadTheme("dist/theme.json", "Lantern Icons", Encoding.UTF8.GetBytes(Icons)).Read!;
+
+    private void A_file_icon_theme_reads_its_svg_icons_what_it_draws_and_its_light_section_over_them_and_names_what_it_passed_over()
+    {
+        ThemeRead<VsCodeIconTheme> read = VsCodeIconThemes.ReadTheme("dist/theme.json", "Lantern Icons", Encoding.UTF8.GetBytes(Icons));
+        VsCodeIconTheme theme = read.Read!;
+        Assert.Equal("Lantern Icons", theme.Name);
+        Assert.Equal("dist/icons/csharp.svg", theme.Icons["csharp"]);
+        Assert.False(theme.Icons.ContainsKey("glyph") || theme.Icons.ContainsKey("picture"), "An icon of a font's character or a PNG was read as an SVG");
+        Assert.Equal(("_file", "_folder", "_open"), (theme.Dark.File, theme.Dark.Folder, theme.Dark.FolderExpanded));
+        Assert.Equal(("csharp", "csharpDay"), (theme.Dark.FileExtensions["cs"], theme.Light.FileExtensions["cs"]));
+        Assert.Equal("npm", theme.Light.FileNames["package.json"]);
+        Assert.False(theme.Dark.FileNames.ContainsKey("ghost") || theme.Dark.FileExtensions.ContainsKey("glyph"), "A name kept an icon the theme draws no SVG for");
+        Assert.Contains(read.Problems, p => p.Contains("glyph, picture are no SVG", StringComparison.Ordinal));
+        Assert.Contains(read.Problems, p => p.Contains("2 files or folders name an icon it does not define as an SVG", StringComparison.Ordinal));
+        Assert.Contains(read.Problems, p => p.Contains("somethingNew", StringComparison.Ordinal));
+        Assert.DoesNotContain(read.Problems, p => p.Contains("hidesExplorerArrows", StringComparison.Ordinal));
+    }
+
+    private void A_file_finds_its_icon_by_its_whole_name_then_its_extensions_longest_first_each_under_its_folder_first_then_its_language(string name, string? folder,
+        string? language, bool dark, string? icon, bool named) =>
+        Assert.Equal(new VsCodeIconMatch(icon, named), IconTheme().FileIcon(name, folder, dark, () => language));
+
+    private void A_folder_finds_its_icon_by_its_name_open_or_closed_else_the_themes_folder(string name, bool open, string? icon, bool named) =>
+        Assert.Equal(new VsCodeIconMatch(icon, named), IconTheme().FolderIcon(name, open, dark: true));
+
+    private void A_vsix_names_its_file_icon_themes_and_takes_one_with_every_svg_it_draws_passing_over_one_that_is_no_svg()
+    {
+        const string svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16"/></svg>""";
+        string[] drawn = ["file", "folder", "open", "csharp", "csharp-day", "dts", "npm", "workflow", "yaml", "markdown", "src", "src-open"];
+        byte[] vsix = Vsix([("extension/package.json", """
+            {"publisher": "lantern", "name": "lantern-icons", "version": "2.0.0",
+             "contributes": {"iconThemes": [{"id": "lantern-icons", "label": "Lantern Icons", "path": "./dist/theme.json"}, {"label": "Broken"}]}}
+            """), ("extension/dist/theme.json", Icons), ("extension/dist/icons/ts.svg", "<html/>"), .. drawn.Select(d => ($"extension/dist/icons/{d}.svg", svg))]);
+        ThemeRead<VsCodeExtension> manifest = VsCodeThemes.ReadManifest("package.json", VsCodeThemes.Vsix(vsix, out _)!(VsCodeThemes.Manifest).Bytes);
+        Assert.Equal([new VsCodeIconContribution("lantern-icons", "Lantern Icons", "dist/theme.json")], manifest.Read!.IconThemes);
+        Assert.Contains(manifest.Problems, p => p.Contains("a file icon theme it contributes", StringComparison.Ordinal));
+        (VsCodeIconTaken? taken, string? why) = VsCodeIconThemes.FromVsix(vsix, "lantern-icons");
+        Assert.True(taken is not null, why);
+        Assert.Equal(((string[])[VsCodeThemes.Manifest, "dist/theme.json", .. drawn.Select(d => $"dist/icons/{d}.svg")]).Order(StringComparer.Ordinal), taken.Files.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal("2.0.0", taken.Version);
+        Assert.Contains(taken.Problems, p => p.Contains("dist/icons/ts.svg is no SVG", StringComparison.Ordinal));
+        (VsCodeIconTaken? none, string? refused) = VsCodeIconThemes.FromVsix(vsix, "Lantern Night");
+        Assert.Null(none);
+        Assert.Equal("lantern.lantern-icons 2.0.0 contributes no file icon theme labelled Lantern Night: it contributes Lantern Icons", refused);
+    }
 
     private void A_theme_reads_with_comments_and_trailing_commas_its_colours_rules_and_semantic_colours_and_names_what_it_passed_over()
     {
@@ -102,7 +193,20 @@ public class VsCodeThemesTests
             ("theme/dark.tmTheme", "", null),
         ], row => A_path_a_file_names_is_taken_inside_the_extension_or_refused(row.Item1, row.Item2, row.Item3))),
         ("a vsix that is no zip holds no manifest or is past a limit is refused saying why", A_vsix_that_is_no_zip_holds_no_manifest_or_is_past_a_limit_is_refused_saying_why),
-        ("a manifest naming no publisher and name is refused", A_manifest_naming_no_publisher_and_name_is_refused));
+        ("a manifest naming no publisher and name is refused", A_manifest_naming_no_publisher_and_name_is_refused),
+        ("a file icon theme that cannot be read is refused saying why", () => Cases.Each<(string, string)>(
+        [
+            ("""{"iconDefinitions": {"glyph": {"fontCharacter": "\\E001"}}, "file": "glyph"}""", "defines no icon Passenger draws: it is no file icon theme of SVGs"),
+            ("""{"iconDefinitions": {"a": {"iconPath": "../../outside.svg"}}}""", "defines no icon Passenger draws"),
+            ("""{"iconDefinitions": {""", "is not JSON as VS Code reads it"),
+        ], row => A_file_icon_theme_that_cannot_be_read_is_refused_saying_why(row.Item1, row.Item2))));
+
+    private void A_file_icon_theme_that_cannot_be_read_is_refused_saying_why(string json, string why)
+    {
+        ThemeRead<VsCodeIconTheme> read = VsCodeIconThemes.ReadTheme("theme.json", "Lantern Icons", Encoding.UTF8.GetBytes(json));
+        Assert.Null(read.Read);
+        Assert.Contains(why, read.Refused, StringComparison.Ordinal);
+    }
 
     private void A_theme_that_cannot_be_read_is_refused_saying_why(string json, string why)
     {

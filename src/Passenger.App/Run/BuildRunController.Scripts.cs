@@ -11,14 +11,14 @@ namespace Passenger.App.Run;
 public sealed partial class BuildRunController
 {
     /// <summary>Runs a script configuration; null once it runs, else why it could not, said.</summary>
-    private async Task<string?> RunScriptAsync(RunConfiguration chosen, string? arguments, Working work)
+    private async Task<Words?> RunScriptAsync(RunConfiguration chosen, string? arguments, Working work)
     {
         using IDisposable held = BackgroundWork.Scope();
         if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
         {
             return Said(unsaved);
         }
-        work.Say($"Reading {chosen.Name}'s package.json…");
+        work.Say(LaunchWords.ReadingPackage(chosen.Name));
         string top = session.Folder ?? Path.GetDirectoryName(chosen.Project)!;
         string? configured = parts.Settings().NodeInterpreter;
         string? root = session.NodeFiles.Packages.FirstOrDefault(p => PathNames.Same(p.Manifest, chosen.Project))?.Root;
@@ -37,11 +37,11 @@ public sealed partial class BuildRunController
         }
         if (package is null)
         {
-            return Said($"{chosen.Name} cannot run: {PathNames.Shown(chosen.Project, session.Folder)} is gone, or does not read as a package.json");
+            return Said(LaunchWords.CannotRun(chosen.Name, LaunchWords.PackageUnread(PathNames.Shown(chosen.Project, session.Folder))));
         }
         if (!package.Scripts.Any(s => s.Name == chosen.Script))
         {
-            return Said($"{chosen.Name} cannot run: {package.Name}'s package.json has no script named {chosen.Script}");
+            return Said(LaunchWords.CannotRun(chosen.Name, LaunchWords.NoScriptNamed(package.Name, chosen.Script)));
         }
         IReadOnlyList<string> extra = CommandLine.Split(arguments ?? chosen.Arguments);
         (System.Diagnostics.ProcessStartInfo? start, string? problem) = ScriptRuns.Start(package, chosen.Script, extra, node);
@@ -49,7 +49,8 @@ public sealed partial class BuildRunController
         {
             return Said(problem!);
         }
-        string running = string.Join("; ", [$"Running {chosen.Name}: {ScriptRuns.Said(package, chosen.Script, extra)} in {PathNames.Shown(package.Folder, session.Folder)}", .. notes]);
+        Words running = notes.Aggregate(LaunchWords.RunningScript(chosen.Name, ScriptRuns.Said(package, chosen.Script, extra), PathNames.Shown(package.Folder, session.Folder)),
+            (said, note) => Clauses.Then(said, note));
         ran = chosen.Name;
         RunProject = package.Folder;
         session.RunPlan = null;

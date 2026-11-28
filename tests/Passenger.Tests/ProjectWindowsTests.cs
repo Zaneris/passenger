@@ -332,7 +332,7 @@ public sealed class ProjectWindowsTests : ProjectWindowsFolders
         Ui.Settle();
         dialog.Query = "open project";
         Ui.Settle();
-        Assert.Equal(SettingsDialog.SystemPage, dialog.Page);
+        Assert.Equal(SettingsDialog.GeneralPage, dialog.Page);
         Assert.Contains("Open project in", dialog.Shown);
         RadioButton[] choices = [.. dialog.GetVisualDescendants().OfType<RadioButton>()];
         Assert.Equal(["New window", "Current window", "Ask"], choices.Select(r => (string?)r.Content));

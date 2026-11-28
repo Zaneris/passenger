@@ -38,6 +38,37 @@ public static partial class AtomicFile
     public static void Write(string path, Action<Stream> fill, UnixFileMode? mode, string suffix, Action<string, string> put) =>
         Write(path, fill, static (stream, fill) => fill(stream), mode, suffix, put);
 
+    /// <summary>Writes a file whole as <paramref name="fill"/> makes its bytes, awaiting what it reads them from (a database's
+    /// rows), so a large one is never held whole; a failure or a cancel of the fill's is thrown, its temporary file deleted
+    /// and the file as it was.</summary>
+    public static async Task WriteAsync(string path, Func<Stream, Task> fill, UnixFileMode? mode, string suffix, Action<string, string> put)
+    {
+        string full = Path.GetFullPath(path);
+        string temporary = Path.Combine(Path.GetDirectoryName(full)!, Guid.NewGuid().ToString("N") + suffix);
+        UnixFile? replaced = OperatingSystem.IsWindows() ? null : UnixFileMetadata.Of(full);
+        bool made = false;
+        try
+        {
+            await using (FileStream stream = new(temporary, Options(mode, FileOptions.Asynchronous)))
+            {
+                made = true;
+                Prepare(stream, full, temporary, replaced, mode);
+                await fill(stream);
+                await stream.FlushAsync();
+                stream.Flush(flushToDisk: true);
+            }
+            Place(temporary, path, full, replaced, mode, put);
+        }
+        catch
+        {
+            if (made)
+            {
+                Delete(temporary);
+            }
+            throw;
+        }
+    }
+
     private delegate void Filling<TState>(FileStream stream, TState state) where TState : allows ref struct;
 
     private static void Write<TState>(string path, TState state, Filling<TState> fill, UnixFileMode? mode, string suffix, Action<string, string> put)
@@ -50,35 +81,14 @@ public static partial class AtomicFile
         bool made = false;
         try
         {
-            FileStreamOptions options = new() { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
-            if (mode is { } given && !OperatingSystem.IsWindows())
-            {
-                options.UnixCreateMode = given;
-            }
-            using (FileStream stream = new(temporary, options))
+            using (FileStream stream = new(temporary, Options(mode, FileOptions.None)))
             {
                 made = true;
-                if (replaced is { Links: 1 } kept)
-                {
-                    UnixFileMetadata.Give(full, kept, stream.SafeFileHandle, temporary);
-                }
-                if (mode is { } exact && !OperatingSystem.IsWindows())
-                {
-                    // The umask, an ACL given or an owner changed may have taken bits the file is to have: its mode exactly, before any byte is in.
-                    File.SetUnixFileMode(stream.SafeFileHandle, exact);
-                }
+                Prepare(stream, full, temporary, replaced, mode);
                 fill(stream, state);
                 stream.Flush(flushToDisk: true);
             }
-            if (replaced is { Links: > 1 })
-            {
-                InPlace(temporary, full, mode);
-                Delete(temporary);
-            }
-            else
-            {
-                put(temporary, path);
-            }
+            Place(temporary, path, full, replaced, mode, put);
         }
         catch
         {
@@ -87,6 +97,45 @@ public static partial class AtomicFile
                 Delete(temporary);
             }
             throw;
+        }
+    }
+
+    /// <summary>How a temporary file is made: new, written alone, with its mode from its making on macOS and Linux.</summary>
+    private static FileStreamOptions Options(UnixFileMode? mode, FileOptions options)
+    {
+        FileStreamOptions made = new() { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, Options = options };
+        if (mode is { } given && !OperatingSystem.IsWindows())
+        {
+            made.UnixCreateMode = given;
+        }
+        return made;
+    }
+
+    /// <summary>A temporary file just made given what the file it replaces keeps, and its mode exactly, before any byte is in.</summary>
+    private static void Prepare(FileStream stream, string full, string temporary, UnixFile? replaced, UnixFileMode? mode)
+    {
+        if (replaced is { Links: 1 } kept)
+        {
+            UnixFileMetadata.Give(full, kept, stream.SafeFileHandle, temporary);
+        }
+        if (mode is { } exact && !OperatingSystem.IsWindows())
+        {
+            // The umask, an ACL given or an owner changed may have taken bits the file is to have: its mode exactly, before any byte is in.
+            File.SetUnixFileMode(stream.SafeFileHandle, exact);
+        }
+    }
+
+    /// <summary>A temporary file written whole put in its file's place, or written into it where another hard link names it.</summary>
+    private static void Place(string temporary, string path, string full, UnixFile? replaced, UnixFileMode? mode, Action<string, string> put)
+    {
+        if (replaced is { Links: > 1 })
+        {
+            InPlace(temporary, full, mode);
+            Delete(temporary);
+        }
+        else
+        {
+            put(temporary, path);
         }
     }
 

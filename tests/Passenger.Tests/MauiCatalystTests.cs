@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using System.Text.Json;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using ModelContextProtocol.Client;
 using Passenger.App;
 using Passenger.App.Debugging;
@@ -18,12 +19,12 @@ namespace Passenger.Tests;
 /// chosen runs it, which the system opens hidden and never in front, none of the windows it kept reopened, as nobody sees
 /// this window: Passenger's relay is carried into the sandboxed app's container, where it listens on a Unix socket. Built
 /// with .NET's assemblies whole, Run with Hot Reload carries the inspector and the update handlers' hook in too, so its tree
-/// is the app's window, a tap reaches its button's centre, an edit lands and its update handler is called; built as the
-/// template has it, which trims them, Debug says they stay out, and stops in its main page, which its interpreter runs,
-/// steps, shows, evaluates and takes an edit. Stop ends the app and takes out what was carried, its start's own instance
-/// alone where it is debugged and run at once; an agent's Passenger killed with its tree ends the app it opened too. Skips,
-/// saying why, off a Mac, without MAUI's and Mac Catalyst's workloads or Xcode, or the Mac Catalyst relay. Debugged through
-/// the window, so alone; each test's waits end within the run's limit on a test (<see cref="Limits.WithinHang"/>).</summary>
+/// is the app's window, a tap reaches its button's centre, a C# edit lands and its update handler is called, and XAML edits
+/// show, patched or the page made again; built as the template has it, which trims them, Debug says they stay out, and stops
+/// in its main page, which its interpreter runs, steps, shows, evaluates and takes an edit; built whole with its XAML's line
+/// info and debugged, it stops at its XAML's breakpoints, in its click handler as an edit changed it, and where each XAML
+/// edit's code makes what they are on. Stop ends the app and takes out what was carried, its own instance alone where debugged
+/// and run at once; an agent's Passenger killed with its tree ends the app too. Skips, saying why, where it cannot run.</summary>
 [Collection(Alone.Name)]
 [AboutMacOS]
 public sealed class MauiCatalystTests : McpRig
@@ -33,7 +34,7 @@ public sealed class MauiCatalystTests : McpRig
     /// <summary>What the update handler the test adds to the app writes once Hot Reload has applied an edit.</summary>
     private const string Handled = "Update handler called for MainPage";
 
-    /// <summary>The MAUI app's Mac Catalyst head built whole, run on this Mac with Hot Reload: its tree, a tap and an edit.</summary>
+    /// <summary>The MAUI app's Mac Catalyst head built whole, run on this Mac with Hot Reload: its tree, a tap, a C# edit and XAML edits.</summary>
     [AvaloniaFact]
     public void A_maui_apps_mac_catalyst_head_run_with_hot_reload_shows_its_tree_takes_a_tap_and_an_edit_and_ends_with_stop()
     {
@@ -79,6 +80,39 @@ public sealed class MauiCatalystTests : McpRig
             InputDone again = Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button after the edit", TimeSpan.FromMinutes(1));
             Assert.True(again.Shows == "Tapped 2 times", $"The button's click ran as built, not as edited: it shows \"{again.Shows}\"");
 
+            // The page's XAML, whose code MAUI's source generator writes: in the program's update, then patched into the open page by MAUI.
+            window.OpenFile(Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "MainPage.xaml"));
+            Typing.Replace(window, "Text=\"Hello, World!\"", "Text=\"Hello, Passenger!\"");
+            MauiApp.XamlApplied(window, "a property's edit", Slow);
+            MauiApp.Shows(window, app, "Hello, Passenger!", "the edited label's text");
+            Assert.True(Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = button.Id }), "a tap on the button after the XAML edit",
+                TimeSpan.FromMinutes(1)).Shows == "Tapped 3 times", "The page was made again rather than patched: its button lost its count");
+            Typing.Replace(window, "            <Button", "            <Label Text=\"Added by Hot Reload\" />\n\n            <Button");
+            MauiApp.XamlApplied(window, "an added element", Slow);
+            MauiApp.Shows(window, app, "Added by Hot Reload", "the added label");
+            Typing.Replace(window, "Style=\"{StaticResource SubHeadline}\"", "Style=\"{StaticResource Headline}\"");
+            MauiApp.XamlApplied(window, "a style's edit", Slow);
+            MauiApp.Shows(window, app, "Welcome to \n.NET Multi-platform App UI", "the welcome label in the headline's size", ("FontSize", "32"));
+            // A binding's and a C# expression's edits, which MAUI's patch may pass over: the page is made again from its XAML.
+            Typing.Replace(window, "<Label Text=\"Added by Hot Reload\" />", "<Label Text=\"{Binding Text, Source={x:Reference CounterBtn}}\" />");
+            MauiApp.XamlApplied(window, "a binding to the button's text", Slow);
+            Assert.True(window.Debugger.LastApplied!.Said.English.Contains("MainPage made again", StringComparison.Ordinal),
+                $"The page was not made again for a binding's edit: {window.Debugger.LastApplied.Said}");
+            MauiApp.ShowsButtonsText(window, app, string.Empty, "the label bound to the button's text, made again with the page", "Click me");
+            Ui.AwaitPumped(app.InputAsync(new InputAction(InputKinds.Click) { Element = MauiApp.Button(app).Id }), "a tap on the page's button made again", TimeSpan.FromMinutes(1));
+            MauiApp.ShowsButtonsText(window, app, string.Empty, "the label bound to the button's text after a tap", "Tapped 4 times");
+            Typing.Replace(window, "HorizontalOptions=\"Fill\" />", "HorizontalOptions=\"Fill\" />\n\n<Label Text=\"{CounterBtn.Text + '!'}\" />");
+            MauiApp.XamlApplied(window, "an element with a C# expression of the button's text", Slow);
+            MauiApp.ShowsButtonsText(window, app, "!", "the added label whose C# expression reads the button's text", "Click me");
+            Typing.Replace(window, "Text=\"Hello, Passenger!\"", "Txt=\"Hello, Passenger!\"");
+            Ui.Run(window, AppActions.ApplyHotReloadChanges);
+            HotReloadOutcome? refused = null;
+            Ui.WaitFor(() => (refused = window.Debugger.LastApplied) is { Result: not HotReloadResult.Applied }, () => $"Hot Reload to refuse a property the label lacks: {Ui.Said(window)}", Slow);
+            Assert.True(refused!.Result == HotReloadResult.Errors && refused.Problems.Any(p => p.Path is { } path && path.EndsWith("MainPage.xaml", StringComparison.Ordinal)),
+                $"An edit naming a property the label lacks was not refused at its place in the XAML: {refused.Result}, {refused.Said}");
+            MauiApp.Shows(window, app, "Hello, Passenger!", "the label as it was before the refused edit");
+            Typing.Replace(window, "Txt=\"Hello, Passenger!\"", "Text=\"Hello, Passenger!\"");
+
             Ui.Run(window, AppActions.Stop);
             Ui.WaitFor(() => window.Runner.Ended.IsCompleted, "the run to end once stopped");
             Ui.WaitFor(() => window.Debugger.Running.Count == 0, "the quiet session to end with the app");
@@ -94,8 +128,8 @@ public sealed class MauiCatalystTests : McpRig
     }
 
     /// <summary>The tests of the project <c>dotnet new maccatalysttest</c> makes run in its app on this Mac, and one is debugged there; then the MAUI app's
-    /// Mac Catalyst head as the template builds it, debugged on this Mac, its trimmed assemblies said; then debugged and run at
-    /// once, each instance ended alone, from the one build.</summary>
+    /// Mac Catalyst head as the template builds it, debugged on this Mac, its trimmed assemblies said, its memory read through
+    /// the relay; then debugged and run at once, each instance ended alone, from the one build.</summary>
     [AvaloniaFact]
     public void A_device_test_projects_tests_run_as_a_mac_catalyst_app_and_a_maui_apps_head_is_debugged_as_the_template_builds_it_and_beside_a_run_each_ending_alone()
     {
@@ -107,13 +141,55 @@ public sealed class MauiCatalystTests : McpRig
         (string folder, string project) = Prepared("maui-catalyst-debug", whole: false);
         try
         {
-            Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, and takes a Hot Reload edit",
-                () => A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit(folder, project));
+            Flow.Step("a MAUI app's Mac Catalyst head built as the template has it is debugged, its assemblies trimmed said, its memory read through the relay, and takes a Hot Reload edit",
+                () => A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_its_memory_read_and_takes_a_hot_reload_edit(folder, project));
             Flow.Step("a MAUI app's Mac Catalyst head debugged and run at once ends each instance alone with its own start",
                 () => A_maui_apps_mac_catalyst_head_debugged_and_run_at_once_ends_each_instance_alone_with_its_own_start(folder));
         }
         finally
         {
+            TestFolders.Delete(folder);
+        }
+        Flow.Step("a MAUI app's Mac Catalyst head built whole with its XAML's line info and debugged stops at its XAML's breakpoints as without it, in its click handler's code an edit changed at the edit's lines, and where each XAML edit's code makes what they are on",
+            A_maui_apps_mac_catalyst_head_built_whole_with_its_xamls_line_info_and_debugged_stops_at_its_xamls_breakpoints_in_its_edited_click_handler_and_where_each_xaml_edits_code_makes_what_they_are_on);
+    }
+
+    /// <summary>The app built whole, MAUI's generator mapping the code it writes of the XAML to the XAML with #line directives
+    /// (MauiXamlLineInfo), debugged: its XAML's breakpoints stop as in a build without them; its inspector connected, a tap
+    /// runs its click handler as an edit changed it, which its interpreter runs, stopping and stepping at the edit's lines
+    /// (<see cref="MauiApp.StopsInEditedHandler"/>); then its XAML edits, each update's code stopping where it makes or sets
+    /// what a breakpoint is on (<see cref="MauiApp.TakesXamlEdits"/>).</summary>
+    private static void A_maui_apps_mac_catalyst_head_built_whole_with_its_xamls_line_info_and_debugged_stops_at_its_xamls_breakpoints_in_its_edited_click_handler_and_where_each_xaml_edits_code_makes_what_they_are_on()
+    {
+        (string folder, string project) = Prepared("maui-catalyst-lines", whole: true, lineInfo: true);
+        MainWindow window = Ui.OpenFolder(folder);
+        window.ApplySettings(window.Settings with { HotReload = true });
+        try
+        {
+            Chosen(window);
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            Ui.Launched(window, window.DebugAsync(), "the Mac Catalyst head's build whole with its XAML's line info and its debugged opening", Slow);
+            // The build's own, not the copy in its app bundle.
+            string pdb = Directory.EnumerateFiles(Path.Combine(Path.GetDirectoryName(project)!, "bin"), $"{MauiApp.Name}.pdb", SearchOption.AllDirectories)
+                .First(p => !p.Contains(".app/", StringComparison.Ordinal));
+            Assert.True(PortablePdbs.EmbeddedSources(pdb, d => d.EndsWith("MainPage.xaml.xsg.cs", StringComparison.Ordinal)) is [(_, string code)] && code.Contains("#line ", StringComparison.Ordinal),
+                "MAUI's generator wrote no #line directive in the main page's code, so the build does not map it to the XAML");
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
+            MacCatalystApp opened = window.Debugger.Tabs.Select(t => t.Plan?.MacCatalyst?.App).LastOrDefault(a => a is not null)
+                ?? throw new Xunit.Sdk.XunitException("The session's plan opens no Mac Catalyst app");
+            Ui.Run(window, AppActions.Resume);
+            Ui.WaitFor(() => window.LiveApp is { State: LiveAppState.Connected },
+                () => $"the debugged app's inspector to connect; it is {window.LiveApp?.State.ToString() ?? "not made"} ({window.LiveApp?.Problem}): {Ui.Said(window)}\n{Console(window)}", Slow);
+            MauiApp.StopsInEditedHandler(window, window.LiveApp!, project, Slow);
+            MauiApp.TakesXamlEdits(window, window.LiveApp!, project, (xaml, hello, clickMe), Slow, heldPastLimit: true);
+
+            Ui.Run(window, AppActions.Stop);
+            Ui.WaitFor(() => !window.Debugger.IsDebugging, "the debug session to end once stopped", TimeSpan.FromMinutes(1));
+            Ui.WaitFor(() => Running(opened) is null, () => $"the debugged app to end once stopped; process {Running(opened)} still runs it", TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            window.Close();
             TestFolders.Delete(folder);
         }
     }
@@ -125,7 +201,7 @@ public sealed class MauiCatalystTests : McpRig
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip($"A Mac Catalyst test project cannot run here: {Refusals.MacCatalystOnMacAlone}");
+            Assert.Skip($"A Mac Catalyst test project cannot run here: {Refusals.MacCatalystOnMacAlone.Shown}");
         }
         string folder = PathNames.Canonical(TestFolders.Create("catalyst-device-tests"));
         try
@@ -193,7 +269,7 @@ public sealed class MauiCatalystTests : McpRig
         }
     }
 
-    private static void A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_and_takes_a_hot_reload_edit(string folder, string project)
+    private static void A_maui_apps_mac_catalyst_head_built_as_the_template_has_it_is_debugged_its_assemblies_trimmed_said_its_memory_read_and_takes_a_hot_reload_edit(string folder, string project)
     {
         MainWindow window = Ui.OpenFolder(folder);
         window.ApplySettings(window.Settings with { HotReload = true });
@@ -218,12 +294,37 @@ public sealed class MauiCatalystTests : McpRig
             string carried = Carried(opened);
             Assert.True(Running(opened) is not null, $"No process runs {opened.Executable} while it is debugged");
 
-            Ui.Run(window, AppActions.StepOver);
+            // Breakpoints in the page's XAML bind in the code MAUI's source generator wrote of it; AppShell's, inflated as the app runs, say why they cannot.
+            (string xaml, int hello, int clickMe) = MauiApp.XamlBreakpoints(window, project);
+            string shell = Path.Combine(PathNames.Canonical(Path.GetDirectoryName(project)!), "AppShell.xaml");
+            window.OpenFile(shell);
+            Ui.Settle();
+            window.EditorArea.CodeEditor.GoTo(new TextPosition(Array.FindIndex(File.ReadAllLines(shell), l => l.TrimStart().StartsWith("<ShellContent", StringComparison.Ordinal)), 0));
+            Ui.Run(window, AppActions.ToggleBreakpoint);
+            LineBreakpoint inShell = window.Debugger.Breakpoints.In(shell).Single();
+            Ui.WaitFor(() => inShell.Status == BreakpointStatus.Invalid && inShell.Message?.Contains("inflator", StringComparison.Ordinal) == true,
+                () => $"AppShell.xaml's breakpoint said not to bind, its page not source-generated; it is {inShell.Status}: {inShell.Message}", Slow);
+            Ui.Run(window, AppActions.Resume);
+            MauiApp.StopsInXaml(window, xaml, hello, clickMe, Slow);
+            Ui.Run(window, AppActions.StepOut);
             Ui.WaitFor(() => window.Debugger.Session?.State == DebugState.Paused && Shown(window, "this") is { } shown && shown.Contains("ScrollView", StringComparison.Ordinal),
-                () => $"the step over InitializeComponent, the page's content shown made; this is {Shown(window, "this") ?? "not shown"}: {Ui.Said(window)}", Slow);
+                () => $"the step out of InitializeComponent, the page's content shown made; this is {Shown(window, "this") ?? "not shown"} at {MauiApp.Top(window)}: {Ui.Said(window)}", Slow);
+            window.OpenFile(page);
             Dap.EvaluateResponse count = Ui.Await(window.Debugger.Session!.EvaluateAsync("count + 41", window.BottomPanel.Debug.Frames[0].Id, Dap.EvaluateContexts.Watch),
                 "the page's count, evaluated where the app stopped", Slow);
             Assert.Equal("41", count.Result);
+
+            // Memory reads the app's bytes through the relay as it reads a program's here: the page's own, by its row.
+            VariableNode self = window.BottomPanel.Debug.Tree.Rows.First(r => r.Depth == 0 && r.Name == "this");
+            Assert.True(Dap.MemoryAddresses.TryParse(self.MemoryReference, out ulong selfAt), $"The page's row names no address for Memory: {self.Value}");
+            window.DebugWindow.VariablesList.SelectedItem = self;
+            Ui.ChooseFromMenu(window.DebugWindow.VariablesList, VariablesList.ViewMemory);
+            Passenger.App.ToolWindows.DebugMemoryView memory = window.DebugWindow.GetVisualDescendants().OfType<Passenger.App.ToolWindows.DebugMemoryView>().Single();
+            string selfBytes = Dap.MemoryAddresses.Show(selfAt);
+            Ui.WaitFor(() => memory.GetVisualDescendants().OfType<TextBlock>().Any(t => t.IsEffectivelyVisible
+                    && t.Inlines?.OfType<Avalonia.Controls.Documents.Run>().FirstOrDefault()?.Text?.StartsWith(selfBytes, StringComparison.Ordinal) == true),
+                () => $"the page's bytes at {selfBytes}, read through the relay: {string.Join(" / ", memory.GetVisualDescendants().OfType<Passenger.App.ToolWindows.EmptyState>().Where(e => e.IsVisible).Select(e => e.Text))}", Slow);
+            window.BottomPanel.Debug.ShowTab(console: false);
 
             Typing.Replace(window, "$\"Clicked {count} time\"", "$\"Pressed {count} time\"");
             Ui.Run(window, AppActions.ApplyHotReloadChanges);
@@ -367,8 +468,9 @@ public sealed class MauiCatalystTests : McpRig
 
     /// <summary>The MAUI template's Mac Catalyst head in a folder of its own, with an update handler that says each type an
     /// update changed, its build keeping .NET's assemblies <paramref name="whole"/> or trimming them as the template's does,
-    /// or a skip saying why it cannot be made or run here.</summary>
-    private static (string Folder, string Project) Prepared(string name, bool whole)
+    /// the code MAUI's generator writes of its XAML mapped to the XAML (<paramref name="lineInfo"/>), or a skip saying why it
+    /// cannot be made or run here.</summary>
+    private static (string Folder, string Project) Prepared(string name, bool whole, bool lineInfo = false)
     {
         Relayed();
         string folder = PathNames.Canonical(TestFolders.Create(name));
@@ -390,7 +492,15 @@ public sealed class MauiCatalystTests : McpRig
             """);
         if (whole)
         {
-            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", "\t<PropertyGroup>\n\t\t<MtouchLink>None</MtouchLink>\n\t</PropertyGroup>\n</Project>",
+            // MAUI's generator writes #line directives where MauiXamlLineInfo is "enable", not where it is "true".
+            string lines = lineInfo ? "\t\t<MauiXamlLineInfo>enable</MauiXamlLineInfo>\n" : string.Empty;
+            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", $"\t<PropertyGroup>\n\t\t<MtouchLink>None</MtouchLink>\n{lines}\t</PropertyGroup>\n</Project>",
+                StringComparison.Ordinal));
+        }
+        else
+        {
+            // The shell inflated as the app runs, which MAUI's source generator writes no code of.
+            File.WriteAllText(project, File.ReadAllText(project).Replace("</Project>", "\t<ItemGroup>\n\t\t<MauiXaml Update=\"AppShell.xaml\" Inflator=\"Runtime\" />\n\t</ItemGroup>\n</Project>",
                 StringComparison.Ordinal));
         }
         return (folder, project);
@@ -410,7 +520,7 @@ public sealed class MauiCatalystTests : McpRig
     {
         if (!OperatingSystem.IsMacOS())
         {
-            Assert.Skip($"It cannot run here: {Refusals.MacCatalystOnMacAlone}");
+            Assert.Skip($"It cannot run here: {Refusals.MacCatalystOnMacAlone.Shown}");
         }
         string runtime = $"maccatalyst-{(RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64")}";
         if (!File.Exists(CarriedFiles.Relay(runtime, MacCatalystApp.RelayFile)))

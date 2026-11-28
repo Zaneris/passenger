@@ -888,6 +888,8 @@ public sealed class GodotScriptAdapter : InProcessAdapter
             Reached = reached,
             Say = Say,
             Told = told,
+            Session = Hits,
+            Removed = Removed,
         }))
         {
             return true;

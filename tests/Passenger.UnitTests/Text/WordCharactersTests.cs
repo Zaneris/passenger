@@ -21,6 +21,7 @@ public class WordCharactersTests
         ("A word move right steps over a letters marks and stops at an emojis end", A_word_move_right_steps_over_a_letters_marks_and_stops_at_an_emojis_end),
         ("A word move left steps back over a letters marks to its words start", A_word_move_left_steps_back_over_a_letters_marks_to_its_words_start),
         ("A double click takes a word with its letters marks and an emoji with its own", A_double_click_takes_a_word_with_its_letters_marks_and_an_emoji_with_its_own),
+        ("Extend Selection in plain text takes the word a double click takes", Extend_Selection_in_plain_text_takes_the_word_a_double_click_takes),
         ("Select Next and Select All by whole words pass over a word inside one whose letter carries a mark", Select_Next_and_Select_All_by_whole_words_pass_over_a_word_inside_one_whose_letter_carries_a_mark));
 
     private void A_word_move_right_steps_over_a_letters_marks_and_stops_at_an_emojis_end() => Cases.Each<(string before, WordStop stop, string after)>(
@@ -66,6 +67,21 @@ public class WordCharactersTests
         TextRange word = TextNavigation.WordAt(text, caret.Primary.Caret);
         string shown = Marked.Show(text, SelectionSet.Single(new Selection(word.Start, word.End)));
         Assert.True(shown == after, $"A double-click in {before} chose {shown}, splitting a letter from its marks");
+    });
+
+    private void Extend_Selection_in_plain_text_takes_the_word_a_double_click_takes() => Cases.Each<(string before, string after)>(
+    [
+        ("ca|fe\u0301 x", $"«{Cafe}| x"),
+        ($"x {Cafe}|", $"x «{Cafe}|"),
+        ($"x |{Namaskar}", $"x «{Namaskar}|"),
+        ("a, |; b", "«a, ; b|"),
+    ], row =>
+    {
+        (string before, string after) = row;
+        (TextSnapshot text, SelectionSet caret) = Marked.Parse(before);
+        TextRange word = Passenger.Languages.CSharp.SelectionRanges.Extend(text, null, caret.Primary.Range) ?? default;
+        string shown = Marked.Show(text, SelectionSet.Single(new Selection(word.Start, word.End)));
+        Assert.True(shown == after, $"Extend Selection in {before} chose {shown}, splitting a letter from its marks where a double-click takes them together");
     });
 
     private void Select_Next_and_Select_All_by_whole_words_pass_over_a_word_inside_one_whose_letter_carries_a_mark()

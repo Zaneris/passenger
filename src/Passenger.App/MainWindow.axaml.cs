@@ -87,7 +87,7 @@ public partial class MainWindow : IdeWindow
             Declare = () => Request(AppActions.GoToDeclaration),
         });
         // One keymap for the whole window, seen before any control: editor actions go to the editor with the focus.
-        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnTypingRefused, OnSideButton, OnActivity, OnLeft);
+        windowKeys = new IdeKeys(this, keys, popups, OnEscape, OnKey, OnTypingRefused, RunThere, OnActivity, OnLeft);
         windowKeys.Attach(this);
         AddActions();
         AddTitleBar();
@@ -101,6 +101,7 @@ public partial class MainWindow : IdeWindow
         AddSettings();
         AddActiveEditor();
         AddFolding();
+        AddClipboard();
         AddCompilationSymbols();
         AddPackages();
         AddProfiler();
@@ -118,20 +119,30 @@ public partial class MainWindow : IdeWindow
         AddRoutes();
         AddSteps();
         AddStepLibrary();
+        AddCoverage();
+        AddContinuousTesting();
         AddRequestMarks();
         AddRequests();
         AddMigrations();
+        AddDatabase();
         AddContainers();
         AddRunMarks();
         AddRunHere();
         AddPlaces();
         AddSwitcher();
         AddHierarchy();
+        AddSyntaxTree();
+        AddClones();
+        AddDependencyMap();
+        AddIlViewer();
+        AddTestDoubles();
         AddFileOperations();
         AcceptDrops(this);
         AddFileProperties();
         AddTargetFramework();
         AddRunTargets();
+        AddRunAnything();
+        AddCodeMoves();
         AddBuildConfigurations();
         AddMobile();
         AddAutosave();
@@ -150,8 +161,16 @@ public partial class MainWindow : IdeWindow
         AddPreview();
         AddXamlWorkspace();
         AddMarkdownPreview();
+        AddFormDesigner();
         FollowThemeLayout();
         Explorer.FileOpened += (_, path) => OpenFile(path);
+        Explorer.GeneratedOpened += (_, made) => IdeErrors.Observe(OpenGeneratedAsync(made));
+        Explorer.Tree.GeneratedAsked += project =>
+        {
+            generatedListed.Add(project);
+            session.CSharp?.Generated.List(project);
+        };
+        Explorer.Tree.RestoreAsked += project => IdeErrors.Observe(ShowRestoredAsync(project));
         Explorer.IndexedFiles = IndexedFiles;
         Explorer.FileClicked += (_, path) =>
         {
@@ -271,15 +290,16 @@ public partial class MainWindow : IdeWindow
             {
                 if (active.Syntax?.Current is { } parsed && Debugging.LambdaBreakpoints.On(parsed, click.Line) is { Count: > 0 } lambdas)
                 {
-                    ShowGutterMenu(editor, active, LineBreakpointChoices(active, parsed.Text, click.Line, lambdas));
+                    ShowGutterMenu(editor, active, click.Line, LineBreakpointChoices(active, parsed.Text, click.Line, lambdas));
                 }
-                else if (session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line) is { } breakpoint)
+                else if ((session.Debug.Breakpoints.In(active.Path).FirstOrDefault(b => b.Line == click.Line)
+                    ?? (Debugging.CodeBreakpoint?)session.Debug.Breakpoints.MethodsIn(active.Path).FirstOrDefault(m => m.Line == click.Line)) is { } breakpoint)
                 {
                     ShowBreakpointPopup(breakpoint);
                 }
                 else
                 {
-                    ShowGutterMenu(editor, active);
+                    ShowGutterMenu(editor, active, click.Line);
                 }
             }
             else if (click.Modifiers.HasFlag(KeyModifiers.Shift))
@@ -330,8 +350,8 @@ public partial class MainWindow : IdeWindow
         Bind(session);
         Bottom.Build.RerunClicked += (_, _) => buildRun.Rebuild();
         Bottom.Build.StopClicked += (_, _) => session.Builder.Stop();
-        Bottom.Run.RerunClicked += (_, _) => IdeErrors.Observe(RerunAsync());
-        Bottom.Run.StopClicked += (_, _) => session.Runner.Stop();
+        Bottom.Run.RerunClicked += (_, _) => IdeErrors.Observe(buildRun.RerunConsoleAsync());
+        Bottom.Run.StopClicked += (_, _) => buildRun.StopConsole();
         Bottom.Run.HotReloadClicked += (_, _) => Request(AppActions.ApplyHotReloadChanges);
         Bottom.Run.NameKeys(AppActions.Rerun, AppActions.Stop, AppActions.ApplyHotReloadChanges);
         Bottom.Run.OfferWhenEmpty("A program's output shows here", AppActions.RunProgram, "Run");
@@ -350,11 +370,14 @@ public partial class MainWindow : IdeWindow
             ? bindingValues!.HoverAt(shown, offset)
             : await session.Debug.HoverAt(offset, cancel);
         assist.GutterWords = line => Editors.Active is { } beside ? GutterWordsOf(beside, line) : null;
-        assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated && godotValues is { } live && live.Card(annotated, annotation, card);
-        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, Godot's checks; each language's own come from its assist.
+        AddSignposts();
+        assist.AnnotationCard = (annotation, card) => Editors.Active is { } annotated
+            && (session.Debug.PinCard(annotated, annotation, card) || godotValues is { } live && live.Card(annotated, annotation, card));
+        // Passenger's own fixes: bindings, compose names, Aspire, configuration and localized keys, layer rules, Godot's checks; each language's own come from its assist.
+        assist.EditorFixesAsked = TestDoubleFixesAsync;
         assist.EditorFixes = (file, offset) => [.. Passenger.App.LiveTree.BindingErrors.Fixes(file, offset, session.FailedBindings.Select(b => b.Failure)),
             .. session.Web?.Checks.Fixes(file, offset) ?? [], .. assist.AspireFixes(file, offset), .. assist.ComposeReadFixes(file, offset), .. MigrationFixes(file, offset),
-            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks),
+            .. assist.ConfigurationFixes(file, offset), .. assist.LocalizationFixes(file, offset), .. assist.LayerFixes(file, offset), .. ProjectLayerFixes(file, offset), .. assist.GodotFixes(file, offset, session.GodotMarks),
             .. MobileFixes(file, offset), .. PackageFixes(file, offset)];
         assist.AskValue = AskValueAsync;
         assist.ConfirmFix = (title, text, yes) => Confirm(title, text, yes);
@@ -363,11 +386,13 @@ public partial class MainWindow : IdeWindow
         assist.ConfiguredBy = path => session.ConfiguredBy(path);
         assist.IndexedFiles = () => session.Folder is { } folder ? (folder, session.Index.Files) : null;
         assist.Repository = () => session.Vcs.Repository;
+        FollowSqlConsoles();
         assist.AddActions(actions!);
         usages.AddActions(actions!);
         DebugController.AddActions(actions!, () => session.Debug);
         AddFind();
         AddProblems();
+        AddErrorFiles();
         AddContextMenus();
         AddProjectWindows();
         AddMainMenu();
@@ -501,6 +526,13 @@ public partial class MainWindow : IdeWindow
             e.Handled |= consumed;
             return;
         }
+        if (!shifted && focused is Tables.CellGrid && Editors.Active?.DatabaseTable is not null && TableTakes(action) is { } taken)
+        {
+            // A table's grid takes the keys Rider's data grid gives its own actions.
+            Request(taken);
+            e.Handled = true;
+            return;
+        }
         if (actions![action] is { InEditor: false })
         {
             if (!shifted)
@@ -521,6 +553,11 @@ public partial class MainWindow : IdeWindow
             e.Handled = true;
             return;
         }
+        if (!shifted && (focused as Visual)?.FindAncestorOfType<WinForms.FormDesignPane>(includeSelf: true) is { } design && DesignTakes(design, action))
+        {
+            e.Handled = true;
+            return;
+        }
         if (EditorWithKeys(window, focused) is not { } editor)
         {
             if (!shifted && (ExplorerTakes(action) || CommitTakes(action, focused) || (focused as Visual)?.FindAncestorOfType<ReleaseNotesView>(includeSelf: true)?.Move(action) == true))
@@ -530,6 +567,13 @@ public partial class MainWindow : IdeWindow
             return;
         }
         bool own = editor == Editors.CodeEditor;
+        if (!shifted && own && action == AppActions.KeysIn(AppActions.DatabaseRun) && Editors.Active is { } sql && Passenger.App.Database.SqlConsole.Speaks(sql.Language))
+        {
+            // A SQL file runs its statement on the keys the editor's own action has elsewhere.
+            Request(AppActions.DatabaseRun);
+            e.Handled = true;
+            return;
+        }
         if (!shifted && action is EditorActions.Undo or EditorActions.Redo && editor.FindAncestorOfType<Passenger.App.Vcs.DiffView>() is { PutsBackOnDisk: not null } copy
             && editor == copy.Right && UndoCommand(action == EditorActions.Redo, null))
         {
@@ -571,9 +615,10 @@ public partial class MainWindow : IdeWindow
         }
     }
 
-    /// <summary>A side button pressed in one of the IDE's windows, over the editor, a tool window or anything else: the
-    /// keymap's action for it (Back, Forward) runs there, the window it was pressed in being the one worked in.</summary>
-    private void OnSideButton(TopLevel window, string action)
+    /// <summary>A side button pressed, or a modifier tapped twice, in one of the IDE's windows, over the editor, a tool window
+    /// or anything else: the keymap's action for it (Back, Forward, Go to Everything) runs there, the window it was made in
+    /// being the one worked in.</summary>
+    private void RunThere(TopLevel window, string action)
     {
         Editors.Front(window);
         Request(action);
@@ -714,12 +759,16 @@ public partial class MainWindow : IdeWindow
         return chosen;
     }
 
-    /// <summary>Shows where the debugger stopped: the file and line, and the Debug window's frames.</summary>
+    /// <summary>Shows where the debugger stopped (a step, a breakpoint, a frame chosen): the file and line, the view left
+    /// still where the line already stands in it, and the Debug window's frames.</summary>
     private void ShowStop(string path, TextPosition position)
     {
-        NavigateTo(path, position);
+        navigator.NavigateTo(path, position, keepingView: true);
         ShowToolWindow(ToolWindowIds.Debug);
-        Bottom.Debug.ShowTab(console: false);
+        if (!Bottom.Debug.IsMemoryShown)
+        {
+            Bottom.Debug.ShowTab(console: false);
+        }
     }
 
     /// <summary>Stop can be clicked while there is something to stop: a debug session, a program Run or Profile
@@ -837,49 +886,55 @@ public partial class MainWindow : IdeWindow
     {
         // Each shows only while the open folder holds what it serves, every one added later too.
         Dock.WhyUnserved = window => window.Serves.WhyNot(session.Folder is null ? null : session.Holds);
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, "Explorer", IconKeys.Explorer, Explorer, Docking.ToolAnchor.LeftTop)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Explorer, ToolWindowTitles.Explorer, IconKeys.Explorer, Explorer, Docking.ToolAnchor.LeftTop)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.FocusExplorer,
             HeaderTools = Explorer.TakeHeaderTools(),
             Options = ExplorerOptions,
-            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, SelectOpenedFileTitle),
+            HeaderAction = (AppActions.SelectOpenedFile, IconKeys.Locate, ActionTitles.SelectOpenedFile),
             Chosen = () => Explorer.SelectedNodes,
             // Opening every row would read every folder on disk, build output and packages too: it closes them alone.
             CollapseAll = Explorer.Tree.CollapseAll,
             OpenAtFirst = true,
         });
         // Shown however it is (its action, its stripe button, a layout), it asks for the file shown then itself.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, "Structure", IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Structure, ToolWindowTitles.Structure, IconKeys.Structure, MakeStructure, Docking.ToolAnchor.LeftBottom)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowStructure,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, "Run", IconKeys.RunOutline, Bottom.RunWindow, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Run, ToolWindowTitles.Run, IconKeys.RunOutline, Bottom.RunWindow, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowRun,
-            ActionTitle = "Run Tool Window",
+            ActionTitle = ActionTitles.ShowRun,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, "Debug", IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Debug, ToolWindowTitles.Debug, IconKeys.Debug, () => debugView = new ToolWindows.DebugView(Bottom.Debug), Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowDebug,
-            ActionTitle = "Debug Tool Window",
+            ActionTitle = ActionTitles.ShowDebug,
             Tools = () => debugView?.HeaderTools,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, "Aspire", IconKeys.Aspire, MakeAspire, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Modules, ToolWindowTitles.Modules, IconKeys.Modules, MakeModules, Docking.ToolAnchor.BottomLeft)
+        {
+            Serves = ToolWindowServes.EveryFolder,
+            Action = AppActions.ShowModules,
+            Menus = [new MenuPlace("Run", 1, 12)],
+        });
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Aspire, ToolWindowTitles.Aspire, IconKeys.Aspire, MakeAspire, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.AppHosts,
             Action = AppActions.ShowAspire,
-            ActionTitle = "Aspire Tool Window",
+            ActionTitle = ActionTitles.ShowAspire,
         });
         Closed += (_, _) =>
         {
             Bottom.Aspire.Dispose();
             aspireView?.Dispose();
         };
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Tests, "Unit Tests", IconKeys.Tests, Bottom.Tests, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Tests, ToolWindowTitles.Tests, IconKeys.Tests, Bottom.Tests, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowTests,
@@ -888,17 +943,17 @@ public partial class MainWindow : IdeWindow
             ExpandAll = Bottom.TestTree.ExpandAll,
             CollapseAll = Bottom.TestTree.CollapseAll,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, "Build", IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Build, ToolWindowTitles.Build, IconKeys.Build, Bottom.Build, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowBuild,
-            ActionTitle = "Build Tool Window",
+            ActionTitle = ActionTitles.ShowBuild,
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, "Problems", IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Problems, ToolWindowTitles.Problems, IconKeys.Problems, () => new ToolWindows.ProblemsView(Bottom.Problems), Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowProblems,
-            ActionTitle = "Problems",
+            ActionTitle = ActionTitles.ShowProblems,
         });
     }
 
@@ -917,7 +972,8 @@ public partial class MainWindow : IdeWindow
         {
             find.Alone = findSettings.UsagesAlone;
         }
-        Editors.ShowsMarkdownPreview = store.Previews.Value.Markdown;
+        Editors.MarkdownLayout = store.Previews.Value.MarkdownLayout;
+        Editors.FormLayout = store.Previews.Value.FormLayoutOrDefault;
         Editors.ShowsSvgPreview = store.Previews.Value.Svg;
         Editors.ShowsHtmlPreview = store.Previews.Value.Html;
         ShowPreviews(store.Previews.Value.Xaml);
@@ -990,6 +1046,7 @@ public partial class MainWindow : IdeWindow
             {
                 State.StateFile.NewsNow -= news;
                 LetGoFolder();
+                questions?.Dispose();
                 state.Release();
             };
             SayStateNews();
@@ -1053,7 +1110,6 @@ public partial class MainWindow : IdeWindow
         RunTargets = session.Targets.Kept,
         Build = session.BuildChoices.Kept,
         Folds = session.Folds.Capture(Editors.Documents),
-        GodotEditorOffered = godotEditorOffered,
         GodotTemplatesStyle = godotTemplatesStyle,
         ExplorerView = explorerView,
         AttachScope = attachScope.Where == Debugging.AttachWhere.Anywhere ? null : attachScope,
@@ -1083,14 +1139,17 @@ public partial class MainWindow : IdeWindow
         // Before the folder's documents are this window's, so what restoring them changes is not written back.
         RestoreUnitTests(opening.UnitTests.Value);
         session.Tests.Keep(opening.UnitTestResults.Value.Methods);
+        session.Continuous.Open(folder, opening.TestReach.Value);
         branchFavorites = opening.GitBranches.Value;
         session.Vcs.SignOff = opening.Commit.Value.SignOff;
         session.Vcs.GroupsByDirectory = opening.Commit.Value.GroupsByDirectory;
+        session.Vcs.Returning = opening.Commit.Value.Returning;
         if (gitView?.Log.Branches is { } branches)
         {
             branches.Favorites = branchFavorites;
         }
         session.Keep(opening);
+        database?.Keep(opening.Database);
         WorkspaceState kept = opening.Workspace.Value;
         if (kept.UnloadedProjects.Count > 0)
         {
@@ -1105,7 +1164,6 @@ public partial class MainWindow : IdeWindow
         {
             session.Opened(shown.Path);
         }
-        godotEditorOffered = kept.GodotEditorOffered;
         godotTemplatesStyle = kept.GodotTemplatesStyle;
         OfferGodotEditor();
         ListenForGodotEditors();
@@ -1119,9 +1177,21 @@ public partial class MainWindow : IdeWindow
     {
         structure = new ToolWindows.StructureView();
         structure.Follow(() => Editors.Active is { } shown ? (shown.Path, shown.Name, Editors.CodeEditor.CaretPosition.Line) : null,
-            () => Editors.Active is { } shown ? session.OutlineOf(shown) : null);
-        structure.GoToRequested += (_, row) => navigator.GoTo(row);
-        structure.Chosen += (_, row) => IdeErrors.Observe(ShowSceneNodeAsync(row));
+            () => Editors.Active is { } shown ? DesignOutlineOf(shown) ?? session.OutlineOf(shown) : null);
+        structure.GoToRequested += (_, row) =>
+        {
+            if (!ComponentRowChosen(row))
+            {
+                navigator.GoTo(row);
+            }
+        };
+        structure.Chosen += (_, row) =>
+        {
+            if (!ComponentRowChosen(row) && !DesignOutlined())
+            {
+                IdeErrors.Observe(ShowSceneNodeAsync(row));
+            }
+        };
         structure.UsagesRequested += (_, row) =>
         {
             NavigateTo(row.Path, row.Position);
@@ -1200,11 +1270,13 @@ public partial class MainWindow : IdeWindow
         await (session.CSharp?.UnloadAsync([project]) ?? Task.CompletedTask);
     }
 
-    /// <summary>A breakpoint's properties beside its line in the gutter, its condition ready to type.</summary>
-    public void ShowBreakpointPopup(Debugging.LineBreakpoint breakpoint)
+    /// <summary>A breakpoint's properties beside its line in the gutter (a method breakpoint's, its method's), its condition
+    /// ready to type.</summary>
+    public void ShowBreakpointPopup(Debugging.CodeBreakpoint breakpoint)
     {
         CodeEditor editor = Editors.CodeEditor;
-        Point at = popups.PointIn(editor, editor.GutterPoint(breakpoint.Line)) ?? new Point(100, 100);
+        int line = breakpoint is Debugging.MethodBreakpoint method ? method.Line : ((Debugging.LineBreakpoint)breakpoint).Line;
+        Point at = popups.PointIn(editor, editor.GutterPoint(line)) ?? new Point(100, 100);
         Debugging.BreakpointPopup popup = new(breakpoint, session.Debug.Breakpoints, actions!.Shortcut(AppActions.ViewBreakpoints));
         popup.Closed += (_, more) =>
         {
@@ -1300,12 +1372,24 @@ public partial class MainWindow : IdeWindow
         window.Closed += (_, show) =>
         {
             popups.Close();
-            if (show is not null)
+            if (show is Debugging.LineBreakpoint line)
             {
-                NavigateTo(show.Path, new TextPosition(show.Line, show.Column ?? 0));
+                NavigateTo(line.Path, new TextPosition(line.Line, line.Column ?? 0));
+            }
+            else if (show is Debugging.MethodBreakpoint { Path: { } path } method)
+            {
+                NavigateTo(path, new TextPosition(method.Line, 0));
             }
         };
+        window.ExportRequested += (_, _) => IdeErrors.Observe(ExportBreakpointsAsync());
+        window.ImportRequested += (_, _) => IdeErrors.Observe(ImportThenRefill());
         popups.Show(window);
+
+        async Task ImportThenRefill()
+        {
+            await ImportBreakpointsAsync();
+            window.Refill();
+        }
     }
 
     /// <summary>The exception types Add CLR Exception Breakpoints offers: the solution's own, as the language server finds
@@ -1341,7 +1425,7 @@ public partial class MainWindow : IdeWindow
     {
         string? named = Folder is not { } folder ? null : session.Workspace?.Name ?? Path.GetFileName(folder);
         OpenDocument? shown = Editors.ShownInMain;
-        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{(shown.Tool is null ? shown.Name : shown.Title)}";
+        Title = shown is null ? named ?? "Welcome to Passenger" : $"{(named is null ? "" : named + " – ")}{(shown.Tool is null && shown.DatabaseTab is null ? shown.Name : shown.Title)}";
         FollowInDiscord();
     }
 
@@ -1349,6 +1433,7 @@ public partial class MainWindow : IdeWindow
     /// reports under way (its projects loading, and how far) whenever there is some.</summary>
     private string LanguageLabel()
     {
+        if (Editors.Active?.DatabaseTab is not null) { return "Database"; }
         // A diff's tab names no language of its own, nor a tool window's.
         string language = Editors.Active is { Diff: null, Tool: null } file ? file.Language.Name : string.Empty;
         if (Editors.Active is { Diff: null, Tool: null } active && Web.WebLanguages.LanguageOf(active.Path) is not null)

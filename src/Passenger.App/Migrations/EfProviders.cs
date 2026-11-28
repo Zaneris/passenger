@@ -9,7 +9,7 @@ public sealed record EfMove(ProjectModel Project, IReadOnlyList<(string Id, stri
 
 /// <summary>A fix of EF Core's packages and a provider that does not support them, worked out from the feed's own metadata
 /// before anything changes: its title as its button says it, and the moves it makes.</summary>
-public sealed record EfAlignment(string Title, IReadOnlyList<EfMove> Moves);
+public sealed record EfAlignment(Words Title, IReadOnlyList<EfMove> Moves);
 
 /// <summary>What the feeds offer a provider an update of EF Core would leave behind: the provider's newest version that
 /// supports the EF Core asked (<paramref name="Up"/>); else, where none does, EF Core's newest version between the project's
@@ -91,7 +91,7 @@ public static class EfProviders
             if (await RangeAsync(feed, behind.Id, version, framework, cancel) is { } range && EfRestore.InRange(range, runtime))
             {
                 ProjectModel owner = projects.FirstOrDefault(p => p.Packages.Any(r => r.Name.Equals(behind.Id, StringComparison.OrdinalIgnoreCase))) ?? projects[0];
-                return new EfAlignment($"Update {behind.Id} to {version}", [new EfMove(owner, [(behind.Id, version)])]);
+                return new EfAlignment(MigrationsWords.AlignUp(behind.Id, version), [new EfMove(owner, [(behind.Id, version)])]);
             }
         }
         IReadOnlyList<string> cores = (await feed.VersionsEachAsync(EfRestore.Core, VersionOrder.IsPrerelease(Lower(behind.Range)), cancel)).Answered().Chosen;
@@ -101,7 +101,7 @@ public static class EfProviders
         }
         List<EfMove> moves = [.. projects.Select(p => new EfMove(p, [.. p.Packages.Where(r => InSet(r.Name)).Select(r => (r.Name, supported))]))
             .Where(m => m.Packages.Count > 0)];
-        return moves.Count == 0 ? null : new EfAlignment($"Move EF Core to {supported}", moves);
+        return moves.Count == 0 ? null : new EfAlignment(MigrationsWords.AlignCore(supported), moves);
     }
 
     /// <summary>A range's lower end: "9.0.1" of "[9.0.1, 10.0.0)" or of "9.0.1".</summary>

@@ -21,7 +21,8 @@ public interface IServerDocument
 internal static class DiagnosticMarks
 {
     /// <summary>What a diagnostic draws as: errors, warnings and information squiggled; code the
-    /// compiler calls unnecessary faded; the server's quieter hints left off the page.</summary>
+    /// compiler calls unnecessary faded, and a local it warns is never used faded beside its line; the server's quieter
+    /// hints left off the page.</summary>
     public static Marker? Marker(Diagnostic diagnostic, TextRange range)
     {
         bool unnecessary = diagnostic.Tags?.Contains(DiagnosticTag.Unnecessary) == true;
@@ -30,7 +31,10 @@ internal static class DiagnosticMarks
         {
             return null;
         }
-        return Editor.Marker.Coded(range, k, diagnostic.Code, diagnostic.Message);
+        Marker marker = Editor.Marker.Coded(range, k, diagnostic.Code, diagnostic.Message);
+        return k is not MarkerKind.Unnecessary && !diagnostic.CodeIsNumber && diagnostic.Code is { } code && RoslynNames.UnusedLocals.Contains(code)
+            ? marker with { Faded = true }
+            : marker;
     }
 
     /// <summary>What a severity draws as: errors, warnings and information squiggled, the server's quieter hints left off

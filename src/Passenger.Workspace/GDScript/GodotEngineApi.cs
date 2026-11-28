@@ -88,7 +88,7 @@ public sealed class GodotEngineApi
 
     public HashSet<string> GlobalConstants { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The Godot that wrote the dump, as its header says (4.8 for 4.8 beta 5); null where it says none.</summary>
+    /// <summary>The Godot that wrote the dump, as its header says (4.8 for 4.8 RC 1); null where it says none.</summary>
     public Version? Version { get; private set; }
 
     /// <summary>GDScript's own functions, which no dump of the API holds (modules/gdscript/gdscript_utility_functions.cpp),

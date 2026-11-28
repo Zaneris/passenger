@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Passenger.Core;
 using Passenger.Dap;
 using Passenger.Debugger.ExpressionEvaluator;
@@ -271,6 +272,8 @@ public partial class ManagedDebugger
         {
             EnableEditAndContinue(corModule, moduleInfo);
         }
+        // The user's code runs unoptimized (built so, or asked as it loads), as does one Edit and Continue was turned on for.
+        moduleInfo.CompiledOptimized = !(builtUnoptimized || isUserCode || moduleInfo.Editable);
         ModuleSet_Version++;
         TryBindEntryBreakpoint(moduleInfo);
 
@@ -286,11 +289,12 @@ public partial class ManagedDebugger
             _coreLibCame.TrySetResult();
         }
 
-        OnModuleLoaded?.Invoke(modulePath, Path.GetFileName(modulePath), modulePath);
+        OnModuleLoaded?.Invoke(Described(moduleInfo));
 
         if (metadataReader.HasSymbols)
         {
             BindLineBreakpoints(moduleInfo);
+            BindRecording(moduleInfo);
             foreach (BreakpointManager.BreakpointInfo breakpoint in _breakpointManager.GetFunctionBreakpoints().Where(b => !b.Refused))
             {
                 bool becameVerified = TryBindFunctionBreakpoint(breakpoint, moduleInfo);
@@ -385,7 +389,7 @@ public partial class ManagedDebugger
             OnBreakpointChanged?.Invoke(breakpoint);
         }
 
-        OnModuleUnloaded?.Invoke(moduleInfo.ModulePath, moduleInfo.ModuleName, moduleInfo.ModulePath);
+        OnModuleUnloaded?.Invoke(Described(moduleInfo));
         Continue(clearVariables: false);
     }
 
@@ -412,6 +416,14 @@ public partial class ManagedDebugger
             // Right after a call a step over runs: what it returned is read, and the step goes on.
             await TakeWatchedReturn(breakpointCorDebugManagedCallbackEventArgs.Thread, watched);
             Continue(clearVariables: true);
+            return;
+        }
+
+        if (breakpoint is ICorDebugFunctionBreakpoint recorded && _records
+            && await TakeRecordedAsync(breakpointCorDebugManagedCallbackEventArgs.Thread, recorded,
+                _hitCame.TryGetValue(breakpointCorDebugManagedCallbackEventArgs, out StrongBox<long>? stamped) ? stamped.Value : System.Diagnostics.Stopwatch.GetTimestamp()))
+        {
+            GoOnFromRecorded();
             return;
         }
 
@@ -455,7 +467,7 @@ public partial class ManagedDebugger
             _entryBreakpoint = null;
             _stopAtEntry = false;
             EndStepForStop();
-            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
+            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), JustMyCodeNow is false);
             if (sourceInfo is null)
             {
                 ReportStop(corThread.Id, StopReasons.Entry);
@@ -491,7 +503,7 @@ public partial class ManagedDebugger
                     _stepper = null;
                 }
 
-                SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
+                SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), JustMyCodeNow is false);
                 if (sourceInfo is null)
                 {
                     // Into Task.NotifyDebuggerOfWaitCompletion, on toward the awaiting caller's next user code.
@@ -511,17 +523,22 @@ public partial class ManagedDebugger
         }
 
         BreakpointManager.BreakpointBinding? hit = managedBreakpoint.Bindings.Find(binding => binding.CorBreakpoint == functionBreakpoint);
-        if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint",
-            () => BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.IsFunctionBreakpoint ? managedBreakpoint.Line : hit?.Source.StartLine ?? managedBreakpoint.Line)))
+        long came = _hitCame.TryGetValue(breakpointCorDebugManagedCallbackEventArgs, out StrongBox<long>? held) ? held.Value : System.Diagnostics.Stopwatch.GetTimestamp();
+        if (!await HitStopsAsync(corThread, managedBreakpoint, "the breakpoint", () => hit?.Source is { } where
+            ? BreakpointHits.Reached(managedBreakpoint.IsFunctionBreakpoint ? where.DocumentPath : managedBreakpoint.FilePath, where.StartLine)
+            : BreakpointHits.Reached(managedBreakpoint.FilePath, managedBreakpoint.Line), came))
         {
             Continue(clearVariables: true);
+            TellTaken();
             return;
         }
+        // Run to Cursor's hold on a snapshot point: its capture is told with the stop.
+        TellTaken();
 
         EndStepForStop();
         if (managedBreakpoint.IsFunctionBreakpoint)
         {
-            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), _justMyCode is false);
+            SourceInfo? sourceInfo = GetSourceInfoAtFrame(StoppedFrame(corThread), JustMyCodeNow is false);
             // Told as a breakpoint's stop, not with the protocol's function breakpoint reason.
             if (sourceInfo is null)
             {
@@ -678,20 +695,20 @@ public partial class ManagedDebugger
         {
             // A box's evaluation left running holds the thread, so no stepper could go on from here: the step stops where it ended.
             _logger?.Invoke($"The step on thread {corThread.Id} stops where it ended, the box's evaluation left running above it");
-            SourceInfo? held = FindModule(ilFrame.Function.Module) is null ? null : GetSourceInfoAtFrame(ilFrame, _justMyCode is false);
+            SourceInfo? held = FindModule(ilFrame.Function.Module) is null ? null : GetSourceInfoAtFrame(ilFrame, JustMyCodeNow is false);
             _steppedIntoHidden = IsHiddenFrame(ilFrame) ? corThread.Id : null;
             ReportStop(corThread.Id, StopReasons.Step, held?.FilePath, held?.StartLine ?? 0, held?.StartColumn ?? 0, null);
             return;
         }
         ModuleInfo? module = FindModule(ilFrame.Function.Module);
-        if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, ModuleMetadataReader.VersionOf(ilFrame)))
+        if (module is not null && module.MetadataReader.IsCurrentSequencePointHidden(ilFrame.Function.Token, ilFrame.IP.pnOffset, module.MetadataReader.VersionOf(ilFrame)))
         {
             // Past a hidden sequence point, which would show the line before it as where the step ended.
             SetupStepper(corThread, StepType.StepOver, ilFrame);
             Continue(clearVariables: true);
             return;
         }
-        SourceInfo? sourceInfo = module is null ? null : GetSourceInfoAtFrame(ilFrame, _justMyCode is false);
+        SourceInfo? sourceInfo = module is null ? null : GetSourceInfoAtFrame(ilFrame, JustMyCodeNow is false);
         if (module is null || sourceInfo is null)
         {
             // No line to show (no symbols, code the compiler made, an async state machine's start): the step goes on to one.
@@ -847,6 +864,11 @@ public partial class ManagedDebugger
             return;
         }
 
+        if (_records && !EvalStatus.IsRunning && !_stopShown)
+        {
+            await RecordExceptionAsync(corThread, exceptionEventArgs,
+                _hitCame.TryGetValue(exceptionEventArgs, out StrongBox<long>? stamped) ? stamped.Value : System.Diagnostics.Stopwatch.GetTimestamp());
+        }
         ThreadId threadId = new ThreadId(corThread.Id);
         string exceptionType = GetCurrentExceptionType(corThread);
         bool shouldStop = false;

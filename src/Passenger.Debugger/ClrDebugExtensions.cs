@@ -11,8 +11,9 @@ namespace Passenger.Debugger;
 public static class ClrDebugExtensions
 {
     /// <summary>dbgshim's word that a runtime has started (or was running already), on dbgshim's own thread. A starting
-    /// runtime waits for this to return, so it returns only once the debugger has taken hold of the process.</summary>
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    /// runtime waits for this to return, so it returns only once the debugger has taken hold of the process. Of the
+    /// platform's default convention, as <see cref="DbgShim.RegisterForRuntimeStartup"/> takes it.</summary>
+    [UnmanagedCallersOnly]
     public static unsafe void OnRuntimeStartup(void* pCorDebug, void* parameter, int hr)
     {
         ICorDebug? corDebug = ComInterfaceMarshaller<ICorDebug>.ConvertToManaged(pCorDebug);

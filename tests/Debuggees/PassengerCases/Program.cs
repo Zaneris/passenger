@@ -308,6 +308,27 @@ internal static class Pointers
 		int number = 42;
 		int* pointer = &number;
 		Console.WriteLine($"pointers {*pointer}");
+		Managed();
+	}
+
+	private static unsafe void Managed()
+	{
+		Payload? item = new(0x12345678);
+		Payload replacement = new(0x23456789);
+		byte[] buffer = [0xd1, 0xe2, 0xf3, 0xa4];
+		string label = "managed memory";
+		fixed (byte* data = buffer)
+		{
+			Console.WriteLine($"managed memory {item.Number} {label} {buffer.Length} {data[0]}");
+			item = replacement;
+			item = null;
+			GC.KeepAlive(item);
+		}
+	}
+
+	private sealed class Payload(int number)
+	{
+		public int Number = number;
 	}
 }
 

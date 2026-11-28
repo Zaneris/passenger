@@ -53,6 +53,19 @@ public class BreakpointManager
         /// <summary>Held for Run to Cursor: its next hit stops whatever its condition, hit count and Suspend say.</summary>
         public bool RunTo => Request?.RunTo == true;
 
+        /// <summary>As asked for, kept through an update that lets go of a line breakpoint's request.</summary>
+        public int? Key { get; set; }
+
+        public int? WaitFor { get; set; }
+
+        public bool Temporary { get; set; }
+
+        public bool Snapshot { get; set; }
+
+        public string? Captures { get; set; }
+
+        public int? CaptureLimit { get; set; }
+
         /// <summary>A function breakpoint's request as the client made it: one made again just so keeps this breakpoint.</summary>
         public FunctionBreakpointRequest? FunctionRequest { get; set; }
 

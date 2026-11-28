@@ -22,12 +22,9 @@ public sealed class ReadOnlyFilesTests : IDisposable
 {
     private const string Trims = "root = true\n[*]\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n";
 
-    /// <summary>The editor actions that change the text, which an editor refusing changes greys.</summary>
-    internal static readonly HashSet<string> Changing = [EditorActions.Backspace, EditorActions.Delete, EditorActions.DeleteWordLeft,
-        EditorActions.DeleteWordRight, EditorActions.NewLine, EditorActions.StartNewLine, EditorActions.StartNewLineBefore, EditorActions.Indent,
-        EditorActions.Outdent, EditorActions.Duplicate, EditorActions.DeleteLine, EditorActions.MoveLineUp, EditorActions.MoveLineDown,
-        EditorActions.ToggleLineComment, EditorActions.ToggleBlockComment, EditorActions.Comment, EditorActions.Uncomment, EditorActions.JoinLines,
-        EditorActions.ToggleCase, EditorActions.CutToLineEnd, EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
+    /// <summary>Whether an editor action changes the text, which an editor refusing changes greys: the editor's own word for it
+    /// (<see cref="EditorActions.IsChange"/>), so an action added to the editor is held here with the rest.</summary>
+    private static bool Changing(string id) => EditorActions.IsChange(id);
 
     private readonly string folder = TestFolders.Create("read-only-");
 
@@ -76,7 +73,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Assert.False(shown.IsModified, "Typing changed a read-only file's text");
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
         Assert.Equal("A.cs is read-only", window.Status);
-        Assert.Equal("A.cs is read-only", window.Actions.WhyNot(AppActions.Save, window.Actions.Context()));
+        Assert.Equal("A.cs is read-only", window.Actions.WhyNot(AppActions.Save, window.Actions.Context())?.Shown);
         Assert.True(File.ReadAllText(decompiled) == "class A   \n{\n}", "Save rewrote a read-only file with its .editorconfig's trims");
         Assert.True(File.GetLastWriteTimeUtc(decompiled) == written, "Save wrote a read-only file, so its time changed");
 
@@ -93,7 +90,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         DateTime written = File.GetLastWriteTimeUtc(notes);
         MainWindow window = Open("Notes.txt");
 
-        Assert.Equal("Notes.txt is saved", window.Actions.WhyNot(AppActions.Save, window.Actions.Context()));
+        Assert.Equal("Notes.txt is saved", window.Actions.WhyNot(AppActions.Save, window.Actions.Context())?.Shown);
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
         Assert.True(File.ReadAllText(notes) == "notes   \nmore", "Save of an unmodified file wrote its .editorconfig's final line break");
         Assert.True(File.GetLastWriteTimeUtc(notes) == written, "Save of an unmodified file wrote it, so the next build would run again");
@@ -101,7 +98,7 @@ public sealed class ReadOnlyFilesTests : IDisposable
         window.EditorArea.CodeEditor.Selections = Passenger.Text.SelectionSet.Single("notes   \nmore".Length);
         window.KeyTextInput("!");
         Ui.Settle();
-        Assert.Null(window.Actions.WhyNot(AppActions.Save, window.Actions.Context()));
+        Assert.Null(window.Actions.WhyNot(AppActions.Save, window.Actions.Context())?.Shown);
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
         Assert.Equal("notes\nmore!\n", File.ReadAllText(notes));
         window.Close();
@@ -242,9 +239,9 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Ui.Settle();
         Assert.Equal(Kit, editor.Document.Snapshot.ToString());
         Assert.Equal(refused, window.Status);
-        Assert.Equal(refused, window.Actions.WhyNot(EditorActions.Duplicate, window.Actions.Context()));
-        Ui.WaitFor(() => window.Actions.WhyNot(AppActions.Rename, window.Actions.Context()) == refused,
-            () => $"Rename to grey on the package's Kit.cs saying whose file it is; it says {window.Actions.WhyNot(AppActions.Rename, window.Actions.Context()) ?? "nothing"}");
+        Assert.Equal(refused, window.Actions.WhyNot(EditorActions.Duplicate, window.Actions.Context())?.Shown);
+        Ui.WaitFor(() => window.Actions.WhyNot(AppActions.Rename, window.Actions.Context())?.Shown == refused,
+            () => $"Rename to grey on the package's Kit.cs saying whose file it is; it says {window.Actions.WhyNot(AppActions.Rename, window.Actions.Context())?.Shown ?? "nothing"}");
 
         string shown = Path.GetRelativePath(PathNames.Canonical(folder), kit);
         ModelContextProtocol.McpException renamed = Assert.Throws<ModelContextProtocol.McpException>(() => Ui.Await(
@@ -274,10 +271,10 @@ public sealed class ReadOnlyFilesTests : IDisposable
         List<string> greyed = [];
         foreach (string id in edit.Concat(EditorActions.All.Select(a => a.Id)).Distinct())
         {
-            string? why = window.Actions.WhyNot(id, context);
-            if (Changing.Contains(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp))
+            string? why = window.Actions.WhyNot(id, context)?.Shown;
+            if (Changing(id) ? why != ReadOnly : why is not null && !(id == AppActions.HighlightUsages && why == Refusals.NoCSharp.Shown))
             {
-                (Changing.Contains(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
+                (Changing(id) ? offered : greyed).Add($"{id} ({why ?? "enabled"})");
             }
         }
         Assert.True(offered.Count == 0, $"On the decompiled A.cs, which nothing can change, these are offered or greyed for another reason: {string.Join(", ", offered)}");
@@ -296,9 +293,9 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Ui.Press(window, Ui.Shortcut(AppActions.Find));
         context = window.Actions.Context();
         Assert.IsAssignableFrom<TextBox>(context.Focused);
-        Assert.True(window.Actions.WhyNot(EditorActions.Paste, context) is null && window.Actions.WhyNot(EditorActions.Cut, context) is null,
+        Assert.True(window.Actions.WhyNot(EditorActions.Paste, context)?.Shown is null && window.Actions.WhyNot(EditorActions.Cut, context)?.Shown is null,
             "Paste or Cut greyed in the find bar's field over a read-only file, which takes them itself");
-        Assert.Equal(ReadOnly, window.Actions.WhyNot(EditorActions.Duplicate, context));
+        Assert.Equal(ReadOnly, window.Actions.WhyNot(EditorActions.Duplicate, context)?.Shown);
         window.Close();
     }
 
@@ -351,33 +348,33 @@ public sealed class ReadOnlyFilesTests : IDisposable
         Ui.Settle();
         Ui.Click(run.Editor);
         Assert.Same(run.Editor, window.Actions.Context().Focused);
-        AssertChangesGreyed(window, Refusals.OutputReadOnly, "the Run console");
-        Assert.Null(window.Actions.WhyNot(AppActions.Find, window.Actions.Context()));
+        AssertChangesGreyed(window, Refusals.OutputReadOnly.Shown, "the Run console");
+        Assert.Null(window.Actions.WhyNot(AppActions.Find, window.Actions.Context())?.Shown);
 
-        Assert.NotEqual(Refusals.OutputReadOnly, window.Status);
+        Assert.NotEqual(Refusals.OutputReadOnly.Shown, window.Status);
         window.KeyTextInput("x");
         Ui.Settle();
         Assert.Equal(Output, run.Document.Snapshot.ToString());
-        Assert.Equal(Refusals.OutputReadOnly, window.Status);
+        Assert.Equal(Refusals.OutputReadOnly.Shown, window.Status);
         // Save, with no file open, says so: the status bar holds other words before the key.
         Ui.Press(window, Ui.Shortcut(AppActions.Save));
-        Assert.Equal(Refusals.NoFile, window.Status);
+        Assert.Equal(Refusals.NoFile.Shown, window.Status);
         Ui.Run(window, EditorActions.Duplicate);
         Assert.Equal(Output, run.Document.Snapshot.ToString());
-        Assert.Equal(Refusals.OutputReadOnly, window.Status);
+        Assert.Equal(Refusals.OutputReadOnly.Shown, window.Status);
 
         List<string> sent = [];
         run.Input = new ConsoleInput(sent.Add, () => { });
-        AssertChangesGreyed(window, Refusals.OutputReadOnly, "the Run console, its program reading its input", EditorActions.Paste, EditorActions.Backspace, EditorActions.NewLine);
-        Assert.Null(window.Actions.WhyNot(AppActions.Find, window.Actions.Context()));
+        AssertChangesGreyed(window, Refusals.OutputReadOnly.Shown, "the Run console, its program reading its input", EditorActions.Paste, EditorActions.Backspace, EditorActions.NewLine);
+        Assert.Null(window.Actions.WhyNot(AppActions.Find, window.Actions.Context())?.Shown);
         window.KeyTextInput("typo");
         Ui.Settle();
-        Assert.Null(window.Actions.Run(EditorActions.Backspace));
+        Assert.Null(window.Actions.Run(EditorActions.Backspace)?.Shown);
         Ui.Await(window.Clipboard!.SetTextAsync("ed"), "the text on the clipboard");
-        Assert.Null(window.Actions.Run(EditorActions.Paste));
+        Assert.Null(window.Actions.Run(EditorActions.Paste)?.Shown);
         Ui.WaitFor(() => run.Document.Snapshot.ToString() == Output + "typed", () => $"the Edit menu's Paste to type the clipboard after \"typ\"; the console holds \"{run.Document.Snapshot}\"");
-        Assert.Equal(Refusals.OutputReadOnly, window.Actions.Run(EditorActions.Duplicate));
-        Assert.Null(window.Actions.Run(EditorActions.NewLine));
+        Assert.Equal(Refusals.OutputReadOnly.Shown, window.Actions.Run(EditorActions.Duplicate)?.Shown);
+        Assert.Null(window.Actions.Run(EditorActions.NewLine)?.Shown);
         Ui.Settle();
         Assert.True(sent is ["typed\n"], $"The Edit menu's Backspace, Paste and New Line sent [{string.Join(", ", sent)}] to the program's input, not the line typed");
         run.Input = null;
@@ -406,14 +403,14 @@ public sealed class ReadOnlyFilesTests : IDisposable
             List<string> edit = EditMenu(window);
             string[] changing = [EditorActions.Undo, EditorActions.Redo, EditorActions.Cut, EditorActions.Paste];
             Assert.True(changing.Append(EditorActions.Copy).Append(EditorActions.SelectAll).All(edit.Contains), $"The Edit menu lacks some of Undo, Redo, Cut, Paste, Copy and Select All: {string.Join(", ", edit)}");
-            string[] offered = [.. changing.Where(id => window.Actions.WhyNot(id, context) != Refusals.TextReadOnly)
-                .Select(id => $"{id} ({window.Actions.WhyNot(id, context) ?? "enabled"})")];
+            string[] offered = [.. changing.Where(id => window.Actions.WhyNot(id, context)?.Shown != Refusals.TextReadOnly.Shown)
+                .Select(id => $"{id} ({window.Actions.WhyNot(id, context)?.Shown ?? "enabled"})")];
             Assert.True(offered.Length == 0, $"Over IDE Internal Errors' read-only details, these are offered or greyed for another reason: {string.Join(", ", offered)}");
-            Assert.True(window.Actions.WhyNot(EditorActions.Copy, context) is null && window.Actions.WhyNot(EditorActions.SelectAll, context) is null,
+            Assert.True(window.Actions.WhyNot(EditorActions.Copy, context)?.Shown is null && window.Actions.WhyNot(EditorActions.SelectAll, context)?.Shown is null,
                 "Copy or Select All greyed over a read-only text box, which they only read");
 
-            Assert.Null(window.Actions.Run(EditorActions.SelectAll));
-            Assert.Null(window.Actions.Run(EditorActions.Copy));
+            Assert.Null(window.Actions.Run(EditorActions.SelectAll)?.Shown);
+            Assert.Null(window.Actions.Run(EditorActions.Copy)?.Shown);
             Ui.Settle();
             string? copied = Ui.Await(window.Clipboard!.TryGetTextAsync(), "the clipboard's text");
             Assert.Equal(details.Text, copied);
@@ -439,8 +436,8 @@ public sealed class ReadOnlyFilesTests : IDisposable
         List<string> greyed = [];
         foreach (string id in EditorActions.All.Select(a => a.Id))
         {
-            string? whyNot = window.Actions.WhyNot(id, context);
-            bool refused = Changing.Contains(id) && !taken.Contains(id);
+            string? whyNot = window.Actions.WhyNot(id, context)?.Shown;
+            bool refused = Changing(id) && !taken.Contains(id);
             if (refused ? whyNot != why : whyNot is not null)
             {
                 (refused ? offered : greyed).Add($"{id} ({whyNot ?? "enabled"})");

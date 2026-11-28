@@ -510,20 +510,20 @@ internal sealed partial class CSharpAssist
             return null;
         }
         context.GodotScenes?.Invoke()?.FilesChanged([path]);
-        string said = Refusals.ChangedSinceRead(Path.GetFileName(path));
+        string said = Refusals.ChangedSinceRead(Path.GetFileName(path)).Shown;
         return patience?.Behind([path], null, said, said) ?? said;
     }
 
     /// <summary>Why a rename of a Godot name must not change files as it read them (<paramref name="read"/>, each file's text
     /// by its path), the index told at once (<see cref="GodotOutOfDateAsync"/>); null when each is as read.</summary>
     private async Task<string?> GodotBehindAsync(IReadOnlyDictionary<string, string> read, string old, Patience? patience) =>
-        await GodotOutOfDateAsync([.. read.Select(r => new PlacedEdits(r.Key, [], r.Value))], null, patience) is { } unread ? Refusals.NotRenamed(old, unread) : null;
+        (await GodotOutOfDateAsync([.. read.Select(r => new PlacedEdits(r.Key, [], r.Value))], null, patience) is { } unread ? Refusals.NotRenamed(old, unread) : null)?.Shown;
 
     /// <summary>Why a rename stopped at a file whose text is not what it was told of, a language server's places in it or the
     /// index's: the file waited for by <paramref name="patience"/> before the next attempt.</summary>
     private static string Overtaken(string file, string old, Patience? patience)
     {
-        string said = Refusals.ChangedAsRead(old, Path.GetFileName(file));
+        string said = Refusals.ChangedAsRead(old, Path.GetFileName(file)).Shown;
         return patience?.Behind([file], null, said, said) ?? said;
     }
 

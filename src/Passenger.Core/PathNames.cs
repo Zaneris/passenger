@@ -47,7 +47,10 @@ public static partial class PathNames
 
     /// <summary>Whether a folder ignores case in its entries' names, as it said when first asked; one not there answers as
     /// the nearest folder above it that is.</summary>
-    public static bool CaseIgnoredIn(string folder) => Volumes is { } volumes && volumes.IgnoresCaseIn(folder);
+    public static bool CaseIgnoredIn(string folder) => CaseIgnoredIn(folder.AsSpan());
+
+    /// <inheritdoc cref="CaseIgnoredIn(string)"/>
+    public static bool CaseIgnoredIn(ReadOnlySpan<char> folder) => Volumes is { } volumes && volumes.IgnoresCaseIn(folder);
 
     /// <summary>The path as the file system names it. Of a path that is not there (yet, or any more), the part that is
     /// there is resolved and the names below it are kept as given. A path the system names as given is itself, no copy.</summary>
@@ -97,6 +100,32 @@ public static partial class PathNames
         ReadOnlySpan<char> top = folder.TrimEnd(Separators);
         return path.Length > top.Length + 1 && Separators.Contains(path[top.Length])
             && (volumes is null ? path[..top.Length].SequenceEqual(top) : volumes.Same(path[..top.Length], top));
+    }
+
+    /// <summary>The folders a path lies under (<see cref="IsUnder(string, string)"/>), nearest first, each as the path spells
+    /// it without the separator after it (the root of "/a" empty, of "C:\a" "C:"), made nothing: for a look-up by each.</summary>
+    public static FoldersAbove Above(ReadOnlySpan<char> path) => new(path.TrimEnd(Separators));
+
+    /// <summary>The folders over a path (<see cref="Above"/>), one at a time.</summary>
+    public ref struct FoldersAbove(ReadOnlySpan<char> trimmed)
+    {
+        private readonly ReadOnlySpan<char> path = trimmed;
+        private int end = trimmed.Length;
+
+        public ReadOnlySpan<char> Current { get; private set; }
+
+        public readonly FoldersAbove GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            end = end <= 0 ? -1 : path[..end].LastIndexOfAny(Separators);
+            if (end < 0)
+            {
+                return false;
+            }
+            Current = path[..end];
+            return true;
+        }
     }
 
     /// <summary>Whether two spellings name one place, as <see cref="Comparer"/> compares them.</summary>

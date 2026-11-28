@@ -14,6 +14,7 @@ using Passenger.App.Run;
 using Passenger.App.Settings;
 using Passenger.App.State;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.Tests;
@@ -34,8 +35,9 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("preview overlays other windows and external changes without undoing them on close", t => t.Preview_overlays_other_windows_and_external_changes_without_undoing_them_on_close());
         Flow.StepApart<SettingsTests>("soft wrap and the terminals size and cursor show as changed in settings and go back as it closes unapplied", t => t.Soft_wrap_and_the_terminals_size_and_cursor_show_as_changed_in_settings_and_go_back_as_it_closes_unapplied());
         Flow.StepApart<SettingsTests>("a change reaches every editor and the next window opens on it", t => t.A_change_reaches_every_editor_and_the_next_window_opens_on_it());
-        Flow.StepApart<SettingsTests>("the font size actions and the zoom wheel change the editor's font and the next window opens on it", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it());
+        Flow.StepApart<SettingsTests>("the font size actions and the zoom wheel change the editor's font the consoles follow it until given their own and the next window opens on both", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_the_consoles_follow_it_until_given_their_own_and_the_next_window_opens_on_both());
         Flow.StepApart<SettingsTests>("terminal preferences apply to the view and are kept for the next window", t => t.Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window());
+        Flow.StepApart<SettingsTests>("the language chosen is in force at once and the words shown follow it in place", t => t.The_language_chosen_is_in_force_at_once_and_the_words_shown_follow_it_in_place());
     }
 
     /// <summary>A monospaced font installed beside the carried one is the code font everywhere once chosen, a
@@ -85,7 +87,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("every page at the least width cuts no word and lays nothing over anything", t => t.Every_page_at_the_least_width_cuts_no_word_and_lays_nothing_over_anything());
         Flow.StepApart<SettingsTests>("no row of any page runs under its scroll bar at the dialogs smallest size or its own", t => t.No_row_of_any_page_runs_under_its_scroll_bar_at_the_dialogs_smallest_size_or_its_own());
         Flow.StepApart<SettingsTests>("every family the font lists offer draws as its row comes into view", t => t.Every_family_the_font_lists_offer_draws_as_its_row_comes_into_view());
-        Flow.StepApart<SettingsTests>("a search keeps the pages and options it matches", t => t.A_search_keeps_the_pages_and_options_it_matches());
+        Flow.StepApart<SettingsTests>("the pages stand in a tree the keys and the pointer open, a page of no rows of its own listing those under it with what each is for, and a search keeps the pages and options it matches under the pages above them, each row made as its page first shows it", t => t.The_pages_stand_in_a_tree_and_a_search_keeps_the_pages_and_options_it_matches_under_the_pages_above_them());
     }
 
     /// <summary>Every family the code's and the window's font lists offer draws as its row comes into view, each list opened
@@ -126,6 +128,51 @@ public sealed class SettingsTests : IDisposable
         }
     }
 
+    /// <summary>Settings' Language row offers the system's language, named in itself, English and each carried language; a
+    /// language put in force (the pseudo-locale, as --language puts it) says again in place every word the open dialog shows
+    /// through ShownWords (which refuses a property the control lacks), and English chosen, or the system's languages followed
+    /// (the test run's en-US), each in force as it is applied.</summary>
+    private void The_language_chosen_is_in_force_at_once_and_the_words_shown_follow_it_in_place()
+    {
+        MainWindow window = Open();
+        window.KeepSettings();
+        SettingsDialog dialog = window.ShowSettings();
+        try
+        {
+            dialog.Page = SettingsDialog.GeneralPage;
+            Ui.Settle();
+            string[] offered = [.. Editor<ComboBox>(dialog, "Language").Items.Cast<object?>().Select(i => i?.ToString() ?? string.Empty)];
+            string[] expected = ["System (English)", "English", .. LanguageSetting.Carried.Select(c => LanguageSetting.NameOf(LanguageSetting.InForce(c.Name)).Shown)];
+            Assert.True(offered.SequenceEqual(expected), $"The Language row offers [{string.Join(", ", offered)}], not [{string.Join(", ", expected)}]");
+            TextBlock label = dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "Language");
+
+            UiLanguage.Put(UiLanguage.Of(UiLanguage.PseudoTag, LanguageSetting.Carried)!);
+            Ui.Settle();
+            Assert.True(label.Text?.StartsWith("[Ļåñĝûåĝé", StringComparison.Ordinal) == true && label.Text.EndsWith(']'),
+                $"The Language row's label reads \"{label.Text}\" under the pseudo-locale: words given through ShownWords are not said again as the language changes");
+            UiLanguage.Put(UiLanguage.English);
+            Ui.Settle();
+            Assert.True(label.Text == "Language", $"The Language row's label reads \"{label.Text}\" once English is in force again");
+            // Words given to a property the control lacks would be seen by nobody: refused at once, as an empty state's text is its own.
+            Assert.Throws<InvalidOperationException>(() => ShownWords.Set(new Passenger.App.ToolWindows.EmptyState(), TextBlock.TextProperty, Words.Verbatim("unseen")));
+
+            dialog.Change(s => s with { DisplayLanguage = LanguageSetting.English });
+            dialog.Apply();
+            Assert.True(UiLanguage.InForce is { IsEnglish: true, Tag: LanguageSetting.English } && window.Settings.DisplayLanguage == LanguageSetting.English,
+                $"English chosen puts {UiLanguage.InForce.Tag} in force and keeps {window.Settings.DisplayLanguage ?? "System"}");
+            dialog.Change(s => s with { DisplayLanguage = null });
+            dialog.Apply();
+            Assert.True(UiLanguage.InForce is { IsEnglish: true, Tag: "en-US" },
+                $"System puts {UiLanguage.InForce.Tag} in force, where the system's languages (the test run's stand-in) are en-US alone");
+        }
+        finally
+        {
+            dialog.Close();
+            window.Close();
+            UiLanguage.Put(LanguageSetting.InForce(null));
+        }
+    }
+
     private void Visual_edits_preview_without_saving_and_cancel_restores_the_last_apply()
     {
         MainWindow window = Open();
@@ -146,11 +193,16 @@ public sealed class SettingsTests : IDisposable
             Ui.Settle();
             Editor<NumericUpDown>(dialog, "Font size").Value = 19;
             Ui.Click(Editor<CheckBox>(dialog, "Show line numbers"));
-            dialog.Change(s => s with { CloseTags = false, TerminalFontSize = 21, SolutionWideAnalysis = true });
+            dialog.Page = SettingsDialog.AnalysisPage;
+            Ui.Settle();
+            Assert.True(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("takes more processor time and memory", StringComparison.Ordinal) == true && t.IsEffectivelyVisible),
+                "Solution-wide analysis's row does not say what it costs");
+            bool analysed = window.Settings.SolutionWideAnalysis;
+            dialog.Change(s => s with { CloseTags = false, TerminalFontSize = 21, SolutionWideAnalysis = !analysed });
             Assert.All(window.EditorArea.Groups, g => Assert.Equal(19, g.Editor.FontSize));
             Assert.False(window.EditorArea.CodeEditor.ShowLineNumbers);
             Assert.True(window.EditorArea.CodeEditor.ClosesTags);
-            Assert.False(window.Settings.SolutionWideAnalysis);
+            Assert.Equal(analysed, window.Settings.SolutionWideAnalysis);
             Assert.Equal(15, window.Settings.EditorFontSize);
             store.Settings.Flush();
             Assert.Equal(saved, File.ReadAllText(file));
@@ -573,7 +625,7 @@ public sealed class SettingsTests : IDisposable
         {
             Ui.Settle();
             dialog.Width = dialog.MinWidth;
-            foreach (string page in dialog.Pages.ToList())
+            foreach (string page in SettingsDialog.EveryPage)
             {
                 dialog.Page = page;
                 Ui.Settle();
@@ -588,26 +640,76 @@ public sealed class SettingsTests : IDisposable
         Assert.True(found.Count == 0, string.Join("\n", found.Distinct()));
     }
 
-    private void A_search_keeps_the_pages_and_options_it_matches()
+    private void The_pages_stand_in_a_tree_and_a_search_keeps_the_pages_and_options_it_matches_under_the_pages_above_them()
     {
         MainWindow window = Open();
         SettingsDialog dialog = window.ShowSettings();
         Ui.Settle();
+        Assert.True(dialog.RowsMade == dialog.Shown.Count, $"Opening Settings made {dialog.RowsMade} rows where its first page shows {dialog.Shown.Count}: "
+            + "every page's rows, the Keymap page's hundreds among them, are made as it opens");
+        string[] top = ["Appearance", "Accessibility", "General", "Keymap", "Editor", "Explorer", "Terminal", "Version Control", "Build, Run and Debug",
+            "Languages and Frameworks", "Agents"];
+        Assert.Equal(top, dialog.Listed);
+        Assert.Equal("Settings | Editor | Code Style | GDScript", SettingsDialog.PlaceOfPage(SettingsDialog.GDScriptCodeStylePage));
+        // A page with no rows of its own lists those under it, each saying what it is for.
+        string[] unsaid = [.. SettingsDialog.EveryPage.Except(dialog.Pages).SelectMany(group => SettingsDialog.EveryPage.Where(p => SettingsDialog.ParentOf(p) == group))
+            .Where(p => SettingsDialog.AboutOf(p) is null)];
+        Assert.True(unsaid.Length == 0, $"{string.Join(", ", unsaid)} would be listed under a page of no rows with nothing said of what each is for");
+
+        // The keys: Right opens Build, Run and Debug, Down goes to its first page, Left back to it, Left again closes it.
+        Ui.Click(PageRow(dialog, SettingsDialog.BuildRunDebugPage));
+        Assert.Equal([.. new[] { SettingsDialog.BuildPage, SettingsDialog.RunPage, SettingsDialog.DebuggerPage, SettingsDialog.HotReloadPage, SettingsDialog.TestsPage }
+            .Select(p => (p, SettingsDialog.AboutOf(p)!))], dialog.Links);
+        Ui.Press(dialog, "RIGHT");
+        Assert.Equal([.. top[..9], "  Build", "  Run", "  Debugger", "  Hot Reload", "  Unit Tests", .. top[9..]], dialog.Listed);
+        Ui.Press(dialog, "DOWN");
+        Assert.True(dialog.Page == SettingsDialog.BuildPage && dialog.Shown.Contains("Open the Build window as a build starts"),
+            $"Down from Build, Run and Debug chose {dialog.Page}, showing {string.Join(", ", dialog.Shown)}");
+        Ui.Press(dialog, "LEFT");
+        Ui.Press(dialog, "LEFT");
+        Assert.True(dialog.Page == SettingsDialog.BuildRunDebugPage && dialog.Listed.SequenceEqual(top),
+            $"Left twice from Build left {dialog.Page} chosen over {string.Join(", ", dialog.Listed)}");
+
+        // The pointer: a chevron opens a group, whose page lists the pages under it, each going to its own.
+        Ui.Click(PageRow(dialog, SettingsDialog.LanguagesPage).GetVisualDescendants().OfType<RowExpander>().Single());
+        Ui.Click(PageRow(dialog, SettingsDialog.LanguagesPage));
+        Button web = dialog.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, SettingsDialog.WebPage) && b.IsEffectivelyVisible);
+        Ui.Click(web);
+        Assert.True(dialog.Page == SettingsDialog.WebPage && dialog.Shown.Contains("Runtime") && dialog.Shown.Contains("Allow downloading JSON Schemas from remote sources")
+            && dialog.Listed.Contains("  Web"), $"Languages and Frameworks' link to Web chose {dialog.Page}, showing {string.Join(", ", dialog.Shown)}, under {string.Join(", ", dialog.Listed)}");
+
         dialog.Query = "font";
         Ui.Settle();
-        // The Keymap page has Increase, Decrease and Reset Font Size.
-        Assert.Equal([SettingsDialog.Appearance, SettingsDialog.EditorPage, SettingsDialog.TerminalPage, SettingsDialog.KeymapPage], dialog.Pages);
+        // The Keymap page has Increase, Decrease and Reset Font Size; Run's shows under its group, opened for it.
+        Assert.Equal([SettingsDialog.Appearance, SettingsDialog.KeymapPage, SettingsDialog.EditorPage, SettingsDialog.TerminalPage, SettingsDialog.RunPage], dialog.Pages);
+        Assert.Equal(["Appearance", "Keymap", "Editor", "Terminal", "Build, Run and Debug", "  Run"], dialog.Listed);
         Assert.Equal(SettingsDialog.Appearance, dialog.Page);
         Assert.Equal(["Font family", "Display scale"], dialog.Shown);
         dialog.Page = SettingsDialog.EditorPage;
         Ui.Settle();
         Assert.Contains("Font size", dialog.Shown);
         Assert.DoesNotContain("Show line numbers", dialog.Shown);
+        // A group a search keeps only for a page under it names what the search found there.
+        dialog.Page = SettingsDialog.BuildRunDebugPage;
+        Ui.Settle();
+        Assert.Equal([(SettingsDialog.RunPage, "Console font size")], dialog.Links);
+        dialog.Query = "code style";
+        Ui.Settle();
+        // The group's name finds the pages under it, whatever their own words.
+        Assert.True(string.Join("|", dialog.Listed).Contains("Editor|  Code Style|    C#|    XAML|    GDScript|    SQL", StringComparison.Ordinal),
+            $"A search for the pages' group found {string.Join(", ", dialog.Pages)} under {string.Join(", ", dialog.Listed)}");
+        dialog.Page = SettingsDialog.XamlCodeStylePage;
+        dialog.Query = string.Empty;
+        Ui.Settle();
+        Assert.True(dialog.Page == SettingsDialog.XamlCodeStylePage && dialog.Listed.Contains("    XAML") && dialog.Listed.Contains("  Web") && !dialog.Listed.Contains("  Build"),
+            $"The search cleared left {dialog.Page} chosen under {string.Join(", ", dialog.Listed)}, where the pages opened before it stay open and its page shows");
 
+        int made = dialog.RowsMade;
         dialog.Query = "split right";
         Ui.Settle();
         Assert.Equal([SettingsDialog.KeymapPage], dialog.Pages);
         Assert.Equal(["Split Right"], dialog.Shown);
+        Assert.True(dialog.RowsMade == made + 1, $"A search finding one action on the Keymap page, never shown, made {dialog.RowsMade - made} rows: a search makes every row of the page it shows");
         dialog.Close();
         window.Close();
     }
@@ -707,7 +809,7 @@ public sealed class SettingsTests : IDisposable
         again.Close();
     }
 
-    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it()
+    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_the_consoles_follow_it_until_given_their_own_and_the_next_window_opens_on_both()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
         window.Show();
@@ -717,7 +819,11 @@ public sealed class SettingsTests : IDisposable
         window.OpenFile(Path.Combine(folder, "One.cs"));
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
+        window.DockHost.Show(ToolWindowIds.Run);
+        Ui.Settle();
+        CodeEditor console = window.BottomPanel.Run.Editor;
         Assert.Equal(13, editor.FontSize);
+        Assert.Equal(13, console.FontSize);
 
         MenuEntry view = MainMenu.Build(window.Actions.All).Single(m => m.Title == "View");
         MenuEntry active = view.Items!.Single(m => m.Title == "Active Editor");
@@ -726,6 +832,7 @@ public sealed class SettingsTests : IDisposable
 
         Assert.True(window.RunFromMenu(AppActions.IncreaseFontSize));
         Assert.Equal(14, editor.FontSize);
+        Assert.True(console.FontSize == 14, $"The Run console, given no size of its own, is at {console.FontSize} where the editor went to 14");
         Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
         Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
         Assert.Equal(12, editor.FontSize);
@@ -754,14 +861,42 @@ public sealed class SettingsTests : IDisposable
         Ui.Settle();
         Assert.Equal(15, editor.FontSize);
         Assert.Equal(15, window.Settings.EditorFontSize);
+
+        // The consoles' own size: shown before Apply, kept apart from the editor's and the terminal's, held to the range.
+        dialog = window.ShowSettings();
+        dialog.Query = "console font size";
+        Ui.Settle();
+        Assert.Equal(["Console font size"], dialog.Shown);
+        CheckBox same = Editor<CheckBox>(dialog, "Console font size");
+        Assert.True(same.IsChecked == true && !Editor<NumericUpDown>(dialog, "Console font size").IsEnabled && Editor<NumericUpDown>(dialog, "Console font size").Value == 15,
+            "Console font size, never set, is not Same as the editor, greyed at the editor's 15");
+        Ui.Click(same);
+        Editor<NumericUpDown>(dialog, "Console font size").Value = 18;
+        Ui.Settle();
+        Assert.True(console.FontSize == 18 && editor.FontSize == 15, $"Console font size 18, unapplied, shows the Run console at {console.FontSize} and the editor at {editor.FontSize}");
+        dialog.Ok();
+        Ui.Settle();
+        Assert.True(window.Settings.ConsoleFontSize == 18 && window.Settings.EditorFontSize == 15 && window.Settings.TerminalFontSize == 13,
+            $"Console font size 18 kept the consoles' {window.Settings.ConsoleFontSize}, the editor's {window.Settings.EditorFontSize}, the terminal's {window.Settings.TerminalFontSize}");
+        Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
+        Assert.True(console.FontSize == 18, $"The Run console, given 18, went to {console.FontSize} with the editor's font");
+        window.ApplySettings(window.Settings with { ConsoleFontSize = 500 });
+        Assert.Equal(AppSettings.MaxFontSize, window.Settings.ConsoleFontSize);
+        window.ApplySettings(window.Settings with { ConsoleFontSize = 18, EditorFontSize = 15 });
         window.Close();
 
         MainWindow again = new() { Width = 1200, Height = 800, StateFolder = settings };
         again.Show();
         again.KeepSettings();
+        again.OpenFolder(folder);
+        again.DockHost.Show(ToolWindowIds.Build);
         Ui.Settle();
         Assert.Equal(15, again.Settings.EditorFontSize);
         Assert.Equal(15, again.EditorArea.CodeEditor.FontSize);
+        Assert.True(again.Settings.ConsoleFontSize == 18 && again.BottomPanel.Build.Editor.FontSize == 18,
+            $"The next window's consoles are at {again.BottomPanel.Build.Editor.FontSize}, kept as {again.Settings.ConsoleFontSize}, where 18 was set");
+        again.ApplySettings(again.Settings with { ConsoleFontSize = null });
+        Assert.True(again.BottomPanel.Build.Editor.FontSize == 15, $"Console font size Same as the editor left the Build console at {again.BottomPanel.Build.Editor.FontSize}, the editor at 15");
         again.Close();
     }
 
@@ -818,7 +953,7 @@ public sealed class SettingsTests : IDisposable
             Assert.True(Passenger.Core.GodotExecutables.SearchedOnThisThread == searched, "Settings looked for Godot on the window's thread as it opened, "
                 + "which walks every PATH folder and the Applications folders while the window draws nothing");
             string godot = GodotLaunch.Found(null) is { Exists: true } found ? found.Executable : "Not found";
-            Assert.Equal(godot, Editor<TextBox>(dialog, Declared.GodotExecutable.Row!.Label).PlaceholderText);
+            Assert.Equal(godot, Editor<TextBox>(dialog, Declared.GodotExecutable.Row!.Label.English).PlaceholderText);
             dialog.Page = SettingsDialog.RunPage;
             Ui.Settle();
             TextBox browser = Editor<TextBox>(dialog, PageBrowsers.Row);
@@ -1191,6 +1326,10 @@ public sealed class SettingsTests : IDisposable
         Ui.Settle();
         return dialog;
     }
+
+    /// <summary>A page's row in Settings' tree, as listed.</summary>
+    private static ListBoxItem PageRow(SettingsDialog dialog, string page) =>
+        dialog.GetVisualDescendants().OfType<ListBoxItem>().Single(i => i.DataContext is SettingsDialog.PageRow row && row.Page == page);
 
     internal static T Editor<T>(SettingsDialog dialog, string label) where T : Control =>
         ((Visual)dialog.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == label).Parent!).GetVisualDescendants().OfType<T>().First();

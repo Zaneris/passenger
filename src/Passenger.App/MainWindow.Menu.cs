@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Passenger.App.Settings;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App;
@@ -29,6 +30,23 @@ public partial class MainWindow
     {
         BuildMenuBar();
         MainMenuPlace.IsVisible = !SystemMenuBar;
+        EventHandler follow = (_, _) => FollowLanguage();
+        UiLanguage.Changed += follow;
+        Closed += (_, _) => UiLanguage.Changed -= follow;
+    }
+
+    /// <summary>The menu bar and the action buttons' tips said again in the language put in force, as Settings previews
+    /// or applies it.</summary>
+    private void FollowLanguage()
+    {
+        if (menuBar is not null)
+        {
+            BuildMenuBar();
+        }
+        foreach (Visual within in (Visual[])[this, .. OwnedWindows])
+        {
+            ActionTips.Follow(within);
+        }
     }
 
     /// <summary>The main menu as a bar on the toolbar or behind its button, as Settings says; its titles made once, each
@@ -40,7 +58,7 @@ public partial class MainWindow
         {
             foreach (string menu in MainMenu.Titles)
             {
-                Button title = new() { Content = menu, Tag = menu, Classes = { StyleClasses.Widget, StyleClasses.MenuBarItem } };
+                Button title = new() { [ShownWords.ContentProperty] = MainMenu.TitleOf(menu), Tag = menu, Classes = { StyleClasses.Widget, StyleClasses.MenuBarItem } };
                 title.Click += (_, _) => OnBarTitleClicked(title);
                 MainMenuPlace.Children.Add(title);
             }
@@ -324,16 +342,16 @@ public partial class MainWindow
             listed.NeedsUpdate += (_, _) =>
             {
                 listed.Items.Clear();
-                foreach (ListedItem item in Listed(entry.Title!))
+                foreach (NativeMenuItemBase item in Grouped<NativeMenuItemBase>(Listed(entry.Title!, actions!.Context()), NativeListed, () => new NativeMenuItemSeparator()))
                 {
-                    listed.Items.Add(NativeListed(item));
+                    listed.Items.Add(item);
                 }
                 if (listed.Items.Count == 0)
                 {
-                    listed.Items.Add(new NativeMenuItem("Nothing yet") { IsEnabled = false });
+                    listed.Items.Add(new NativeMenuItem(NativeWords(MenuTitles.NothingYet.Shown)) { IsEnabled = false });
                 }
             };
-            return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = listed };
+            return new NativeMenuItem(NativeWords(MainMenu.TitleOf(entry.Title!).Shown)) { Menu = listed };
         }
         if (entry.Items is { } items)
         {
@@ -356,15 +374,15 @@ public partial class MainWindow
                 {
                     IdeAction listed = actions[(string)item.CommandParameter!]!;
                     item.IsEnabled = listed.CanRun(now);
-                    item.Header = NativeWords(listed.TitleWhere(now));
+                    item.Header = NativeWords(listed.TitleWhere(now).Shown);
                     item.IsChecked = listed.IsChecked?.Invoke(now) == true;
                 }
                 FillInline(menu, inline);
             };
-            return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = menu };
+            return new NativeMenuItem(NativeWords(MainMenu.TitleOf(entry.Title!).Shown)) { Menu = menu };
         }
         IdeAction action = actions![entry.Action!]!;
-        NativeMenuItem actionItem = new(NativeWords(action.TitleWhere(context)))
+        NativeMenuItem actionItem = new(NativeWords(action.TitleWhere(context).Shown))
         {
             Command = new MenuCommand(() => RunFromMenu(action.Id)),
             CommandParameter = action.Id,
@@ -398,16 +416,18 @@ public partial class MainWindow
         flyout.ShowAt(MenuButton);
     }
 
-    /// <summary>What a listed submenu holds as it opens: every tool window the dock has, one serving nothing in the open folder
-    /// greyed with its action's why; the recent solutions; or the solution windows open.</summary>
-    private IReadOnlyList<ListedItem> Listed(string submenu) => submenu switch
+    /// <summary>What a listed submenu holds as it opens where it opened: every tool window the dock has, one serving nothing
+    /// in the open folder greyed with its action's why; the recent solutions; the solution windows open; or the kinds Add's
+    /// New makes where the Explorer's row is.</summary>
+    private IReadOnlyList<ListedItem> Listed(string submenu, ActionContext context) => submenu switch
     {
-        MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id))
+        MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title.Shown, StringComparer.Ordinal).Select(w => new ListedItem(w.Title.Shown, () => ShowToolWindow(w.Id))
         {
-            WhyNot = w.Action is { } shows ? actions!.WhyNot(shows, actions.Context()) : w.Unserved,
+            WhyNot = (w.Action is { } shows ? actions!.WhyNot(shows, actions.Context()) : w.Unserved)?.Shown,
         })],
         MainMenu.RecentSolutions => [.. RecentMenu().Select(r => new ListedItem(r.Title, r.Open))],
         MainMenu.OpenSolutionWindows => SolutionWindows(),
+        MainMenu.NewKinds => NewKinds(RowOf(context)),
         _ => throw new InvalidOperationException($"No window lists a submenu called {submenu}"),
     };
 
@@ -436,8 +456,8 @@ public partial class MainWindow
             {
                 menu.Items.RemoveAt(list.Start);
             }
-            IReadOnlyList<ListedItem> items = Listed(list.Title);
-            List<NativeMenuItemBase> now = items.Count == 0 ? [] : [new NativeMenuItemSeparator(), .. items.Select(NativeListed)];
+            IReadOnlyList<ListedItem> items = Listed(list.Title, actions!.Context());
+            List<NativeMenuItemBase> now = items.Count == 0 ? [] : [new NativeMenuItemSeparator(), .. Grouped<NativeMenuItemBase>(items, NativeListed, () => new NativeMenuItemSeparator())];
             for (int i = 0; i < now.Count; i++)
             {
                 menu.Items.Insert(list.Start + i, now[i]);
@@ -453,6 +473,22 @@ public partial class MainWindow
     {
         /// <summary>Why it cannot be chosen, which greys it and is its tip; null where it can.</summary>
         public string? WhyNot { get; init; }
+
+        /// <summary>Whether it begins a group of its own, a separator before it.</summary>
+        public bool Apart { get; init; }
+    }
+
+    /// <summary>A list's items as a menu shows them, a separator before each that begins a group.</summary>
+    private static IEnumerable<T> Grouped<T>(IReadOnlyList<ListedItem> items, Func<ListedItem, T> item, Func<T> separator)
+    {
+        foreach (ListedItem each in items)
+        {
+            if (each.Apart)
+            {
+                yield return separator();
+            }
+            yield return item(each);
+        }
     }
 
     /// <summary>Where an inline list's items stand in their native menu, and how many there are.</summary>
@@ -476,28 +512,28 @@ public partial class MainWindow
         }
         if (entry.IsListed)
         {
-            MenuItem listed = new() { Header = entry.Title };
-            foreach (ListedItem item in Listed(entry.Title!))
+            MenuItem listed = new() { [ShownWords.HeaderProperty] = MainMenu.TitleOf(entry.Title!) };
+            foreach (Control item in Grouped<Control>(Listed(entry.Title!, context), FlyoutListed, () => new Separator()))
             {
-                listed.Items.Add(FlyoutListed(item));
+                listed.Items.Add(item);
             }
             ToolWindows.ListMenus.Grey(listed, listed.Items.Count > 0 ? null : Refusals.NothingListed);
             return listed;
         }
         if (entry.Items is { } items)
         {
-            MenuItem menu = new() { Header = entry.Title };
+            MenuItem menu = new() { [ShownWords.HeaderProperty] = MainMenu.TitleOf(entry.Title!) };
             foreach (MenuEntry item in items)
             {
                 if (item is { IsListed: true, Inline: true })
                 {
-                    IReadOnlyList<ListedItem> listed = Listed(item.Title!);
+                    IReadOnlyList<ListedItem> listed = Listed(item.Title!, context);
                     if (listed.Count > 0)
                     {
                         menu.Items.Add(new Separator());
-                        foreach (ListedItem each in listed)
+                        foreach (Control each in Grouped<Control>(listed, FlyoutListed, () => new Separator()))
                         {
-                            menu.Items.Add(FlyoutListed(each));
+                            menu.Items.Add(each);
                         }
                     }
                     continue;
@@ -507,7 +543,7 @@ public partial class MainWindow
             return menu;
         }
         IdeAction action = actions![entry.Action!]!;
-        MenuItem actionItem = new() { Header = action.TitleWhere(context) };
+        MenuItem actionItem = new() { [ShownWords.HeaderProperty] = action.TitleWhere(context) };
         // Greyed, it says why on hover, as running it would (a library's Publish..., a project's tests).
         ToolWindows.ListMenus.Grey(actionItem, action.WhyNot(context));
         actions.ShowKeys(actionItem, action.Id);
@@ -526,12 +562,12 @@ public partial class MainWindow
     private MenuItem RowMenuItem(string id)
     {
         IdeAction action = actions![id]!;
-        MenuItem item = new() { Header = action.Title };
+        MenuItem item = new() { [ShownWords.HeaderProperty] = action.Title };
         actions.ShowKeys(item, action.Id);
         item.AttachedToVisualTree += (_, _) =>
         {
             ActionContext context = actions.Context();
-            item.Header = action.TitleWhere(context);
+            item[ShownWords.HeaderProperty] = action.TitleWhere(context);
             ToolWindows.ListMenus.Grey(item, actions.WhyNot(action.Id, context));
         };
         item.Click += (_, _) => Request(action.Id);
@@ -588,7 +624,7 @@ public partial class MainWindow
 
     /// <summary>Why words with the keys refuse an action they take (<see cref="WordsEdits"/>): Copy with none selected.</summary>
     private static string? WhyNotInWords(SelectableWords words, string action) =>
-        action == EditorActions.Copy && string.IsNullOrEmpty(words.SelectedText) ? Refusals.NothingSelected : null;
+        (action == EditorActions.Copy && string.IsNullOrEmpty(words.SelectedText) ? Refusals.NothingSelected : null)?.Shown;
 
     /// <summary>Runs an editing action on a text box, where it takes it (<see cref="TextBoxEdits"/>).</summary>
     private static bool Edit(TextBox box, string action)

@@ -60,8 +60,8 @@ public sealed class LiveTemplatesPane : ListPane
 
         ShortcutBox = new TextBox();
         DescriptionBox = new TextBox();
-        ShortcutBox.TextChanged += (_, _) => Edit(t => t with { Abbreviation = ShortcutBox.Text?.Trim() ?? string.Empty }, relist: true);
-        DescriptionBox.TextChanged += (_, _) => Edit(t => t with { Description = DescriptionBox.Text ?? string.Empty }, relist: true);
+        TypedText.Hear(ShortcutBox, () => Edit(t => t with { Abbreviation = ShortcutBox.Text?.Trim() ?? string.Empty }, relist: true));
+        TypedText.Hear(DescriptionBox, () => Edit(t => t with { Description = DescriptionBox.Text ?? string.Empty }, relist: true));
         ReformatBox = new CheckBox { Content = "Reformat" };
         ToolTip.SetTip(ReformatBox, "Its lines indented as the code it goes in, a tab in its text the file's indentation; otherwise it goes in as written");
         ReformatBox.IsCheckedChanged += (_, _) => Edit(t => t with { Reformat = ReformatBox.IsChecked == true });
@@ -73,7 +73,7 @@ public sealed class LiveTemplatesPane : ListPane
         SurroundButton = Use("Surround", TemplateUse.Surround);
         BothButton = Use("Both", TemplateUse.Both);
         MnemonicBox = new TextBox { Width = 44, [Avalonia.Automation.AutomationProperties.NameProperty] = "Mnemonic" };
-        MnemonicBox.TextChanged += (_, _) => Mnemonic();
+        TypedText.Hear(MnemonicBox, Mnemonic);
         EditVariablesButton = new Button { Content = "Edit variables" };
         EditVariablesButton.Click += (_, _) => IdeErrors.Observe(EditVariables());
         TextBox = new TextBox
@@ -85,7 +85,7 @@ public sealed class LiveTemplatesPane : ListPane
             Classes = { StyleClasses.Code },
             Margin = new Thickness(0, Gaps.Wide, 0, 0),
         };
-        TextBox.TextChanged += (_, _) => Edit(t => WithText(t, (TextBox.Text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal)));
+        TypedText.Hear(TextBox, () => Edit(t => WithText(t, (TextBox.Text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal))));
 
         StackPanel rows = new()
         {
@@ -379,11 +379,11 @@ public sealed class LiveTemplatesPane : ListPane
         showing = true;
         try
         {
-            ShortcutBox.Text = shown.Abbreviation;
-            DescriptionBox.Text = shown.Description;
-            TextBox.Text = shown.Text;
+            TypedText.Set(ShortcutBox, shown.Abbreviation);
+            TypedText.Set(DescriptionBox, shown.Description);
+            TypedText.Set(TextBox, shown.Text);
             ReformatBox.IsChecked = shown.Reformat;
-            MnemonicBox.Text = shown.Mnemonic?.ToString() ?? string.Empty;
+            TypedText.Set(MnemonicBox, shown.Mnemonic?.ToString() ?? string.Empty);
             mnemonicSaid.Text = string.Empty;
             TemplateUse use = LiveTemplates.Availability(shown).Use;
             GenerationButton.IsChecked = use == TemplateUse.Generation;
@@ -405,8 +405,7 @@ public sealed class LiveTemplatesPane : ListPane
         variablesSaid.Text = variables.Count == 0 ? "No variables" : string.Join(", ", variables.Select(v => v.Name));
         EditVariablesButton.IsEnabled = variables.Count > 0;
         MnemonicBox.IsEnabled = LiveTemplates.Availability(shown).Use != TemplateUse.Generation;
-        DeleteButton.IsEnabled = !shown.BuiltIn;
-        ToolTip.SetTip(DeleteButton, shown.BuiltIn ? "A built-in template is turned off by its check box, so it can be turned on again" : "Delete Template");
+        ToolButtons.Grey(DeleteButton, shown.BuiltIn ? "A built-in template is turned off by its check box, so it can be turned on again" : null, "Delete Template");
         RestoreButton.IsEnabled = shown.BuiltIn && LiveTemplates.BuiltIn.FirstOrDefault(t => t.Key == shown.Key) is { } shipped && !shipped.SameAs(shown);
     }
 

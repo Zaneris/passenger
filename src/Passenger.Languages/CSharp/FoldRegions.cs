@@ -9,12 +9,12 @@ using Passenger.Text;
 namespace Passenger.Languages.CSharp;
 
 /// <summary>What folds in one parse of a C# file: the comments it begins with (its header), the usings, a namespace's,
-/// a type's, a member's, an accessor's and a multi-line lambda's braces, #region to #endregion, and doc comments and
-/// block comments over several lines, each of its kind. A braced region starts at the end of the line before its brace
-/// when the brace stands alone, so folded it reads <c>void Run() {...}</c>. Lines are the editor's. Found from the
-/// parse before as well: a subtree the incremental parse took whole from the tree before keeps the regions it had
-/// there, moved, so a key reads the nodes it changed and the lists of their neighbours, never the whole file (whose
-/// every node a walk of the new tree would build anew).</summary>
+/// a type's, a member's, an accessor's, a multi-line lambda's, a switch's and a statement's braces, #region to
+/// #endregion, and doc comments and block comments over several lines, each of its kind. A braced region starts at the
+/// end of the line before its brace when the brace stands alone, so folded it reads <c>void Run() {...}</c>. Lines are
+/// the editor's. Found from the parse before as well: a subtree the incremental parse took whole from the tree before
+/// keeps the regions it had there, moved, so a key reads the nodes it changed and the lists of their neighbours, never
+/// the whole file (whose every node a walk of the new tree would build anew).</summary>
 public sealed class FoldRegions
 {
     private FoldRegions(SyntaxNode root, Made[] owned, FoldRegion[] comments, IReadOnlyList<FoldRegion> all)
@@ -147,7 +147,75 @@ public sealed class FoldRegions
             case AnonymousFunctionExpressionSyntax { Body: BlockSyntax body }:
                 Braced(text, body.OpenBraceToken, body.CloseBraceToken, found, FoldKind.Code);
                 break;
+            case SwitchStatementSyntax switched:
+                Statement(text, switched.OpenBraceToken, switched.CloseBraceToken, found, alone: false);
+                break;
+            case SwitchExpressionSyntax switched:
+                Braced(text, switched.OpenBraceToken, switched.CloseBraceToken, found, FoldKind.Code);
+                break;
+            case SwitchSectionSyntax { Statements: [BlockSyntax first, ..] }:
+                Statement(text, first.OpenBraceToken, first.CloseBraceToken, found, alone: false);
+                break;
+            case BlockSyntax block when block.Parent is BlockSyntax or GlobalStatementSyntax || (block.Parent is SwitchSectionSyntax section && section.Statements[0] != block):
+                Statement(text, block.OpenBraceToken, block.CloseBraceToken, found, alone: true);
+                break;
+            case StatementSyntax or ElseClauseSyntax or CatchClauseSyntax or FinallyClauseSyntax when BlockOf(node) is { } block:
+                Statement(text, block.OpenBraceToken, block.CloseBraceToken, found, alone: false);
+                break;
         }
+    }
+
+    /// <summary>The block a statement or clause runs, its own and none of a statement it holds: an if's, an else's, a loop's,
+    /// a try's, a catch's and a finally's, a using's, a lock's, a fixed's, a checked's and an unsafe's.</summary>
+    private static BlockSyntax? BlockOf(SyntaxNode node) => node switch
+    {
+        IfStatementSyntax { Statement: BlockSyntax block } => block,
+        ElseClauseSyntax { Statement: BlockSyntax block } => block,
+        CommonForEachStatementSyntax { Statement: BlockSyntax block } => block,
+        ForStatementSyntax { Statement: BlockSyntax block } => block,
+        WhileStatementSyntax { Statement: BlockSyntax block } => block,
+        DoStatementSyntax { Statement: BlockSyntax block } => block,
+        UsingStatementSyntax { Statement: BlockSyntax block } => block,
+        LockStatementSyntax { Statement: BlockSyntax block } => block,
+        FixedStatementSyntax { Statement: BlockSyntax block } => block,
+        LabeledStatementSyntax { Statement: BlockSyntax block } => block,
+        CheckedStatementSyntax checkedBlock => checkedBlock.Block,
+        UnsafeStatementSyntax unsafeBlock => unsafeBlock.Block,
+        TryStatementSyntax tried => tried.Block,
+        CatchClauseSyntax caught => caught.Block,
+        FinallyClauseSyntax { Block: var block } => block,
+        _ => null,
+    };
+
+    /// <summary>A statement's braces over several lines, as <see cref="Braced"/> folds a member's, but where code goes on
+    /// after the closing brace on its line (<c>} else {</c>, <c>} while (more);</c>) only the lines inside, that line left
+    /// showing; a block standing <paramref name="alone"/> among statements from its own brace's line, which shows.</summary>
+    private static void Statement(TextSnapshot text, SyntaxToken open, SyntaxToken close, List<FoldRegion> found, bool alone)
+    {
+        if (open.IsMissing || close.IsMissing)
+        {
+            return;
+        }
+        int braceLine = text.GetLineFromOffset(open.SpanStart);
+        bool braceAlone = !alone && braceLine > 0 && Blank(text, text.GetLineStart(braceLine), open.SpanStart);
+        int header = braceAlone ? braceLine - 1 : braceLine;
+        int closeLine = text.GetLineFromOffset(close.SpanStart);
+        SyntaxToken next = close.GetNextToken();
+        bool goesOn = next.RawKind != (int)SyntaxKind.None && !next.IsKind(SyntaxKind.EndOfFileToken) && text.GetLineFromOffset(next.SpanStart) == closeLine;
+        int last = goesOn ? closeLine - 1 : closeLine;
+        if (last <= header)
+        {
+            return;
+        }
+        int end = goesOn ? text.GetLine(last).End : close.Span.End;
+        string placeholder = (braceAlone, goesOn) switch
+        {
+            (true, true) => "{...",
+            (true, false) => "{...}",
+            (false, true) => "...",
+            (false, false) => "...}",
+        };
+        found.Add(new FoldRegion(text.GetLine(header).End, end, placeholder, Kind: FoldKind.Code));
     }
 
     /// <summary>Doc comments and block comments over several lines in a token's trivia, folded after their first.</summary>

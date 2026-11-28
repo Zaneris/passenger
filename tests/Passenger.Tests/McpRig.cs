@@ -304,7 +304,7 @@ public abstract class McpRig : IDisposable
         string[] said = Texts(asked);
         Assert.True(said.Contains($"Allow {tool}?") && said.Any(t => t.Contains($"wants to {what} (its {tool} tool)", StringComparison.Ordinal)),
             $"The question for the agent's {tool} said: {string.Join(" | ", said)}");
-        Press(asked, AgentToolDialog.AllowForSession);
+        Press(asked, McpWords.AllowForSession.English);
         return Await(calling, $"the agent's {tool}");
     }
 

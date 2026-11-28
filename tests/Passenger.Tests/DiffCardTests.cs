@@ -135,8 +135,7 @@ public sealed class DiffCardTests : IDisposable
     {
         int at = side.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 2;
         Assert.True(at >= 2, $"'{text}' is not in the diff's side");
-        TopLevel top = TopLevel.GetTopLevel(side)!;
-        top.MouseMove(side.TranslatePoint(side.PointOf(at) + new Vector(1, side.LineHeight / 2), top)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(side, at);
         return side.Document.Snapshot.GetLineFromOffset(at);
     }
 

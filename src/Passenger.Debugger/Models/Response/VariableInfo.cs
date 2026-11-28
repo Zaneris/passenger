@@ -16,6 +16,7 @@ public class VariableInfo
     public required string Value { get; set; }
     public required string? Type { get; set; }
     public required int VariablesReference { get; set; }
+    public string? MemoryReference { get; set; }
     public VariablePresentationHint? PresentationHint { get; set; }
 
     /// <summary>What other threads met and passed over while the evaluation that read this value ran with every thread let
@@ -25,6 +26,9 @@ public class VariableInfo
     /// <summary>Why implicit evaluation stays off once an evaluation with every thread let go has ended; null where it is on,
     /// or the others were held.</summary>
     public string? ImplicitOff { get; set; }
+
+    /// <summary>The label of the marked object this value is; null for any other.</summary>
+    public string? Mark { get; set; }
 
     /// <summary>The member this row is, by the name C# reaches it by from its owner's expression; null for a row reached
     /// otherwise.</summary>

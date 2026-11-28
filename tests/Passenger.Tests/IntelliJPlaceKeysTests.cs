@@ -11,7 +11,8 @@ namespace Passenger.Tests;
 
 /// <summary>The keys IntelliJ IDEA's keymap gives two actions told apart by where they are pressed: one action takes the
 /// key, the other takes it where it is (<see cref="AppActions.KeysIn"/>): Generate's in the Explorer is New Item, View
-/// Breakpoints' on a breakpoint's line Edit Breakpoint, and on the Mac Replace's Cmd+R in the Run window Rerun.</summary>
+/// Breakpoints' on a breakpoint's line Edit Breakpoint, Next Error in Solution's on an HTML page Open in Browser, and on the
+/// Mac Replace's Cmd+R in the Run window Rerun.</summary>
 [AboutMacOS]
 public sealed class IntelliJPlaceKeysTests : IDisposable
 {
@@ -73,6 +74,32 @@ public sealed class IntelliJPlaceKeysTests : IDisposable
             Ui.Press(window, viewBreakpoints);
             Assert.True(window.Popup is BreakpointsWindow, $"{viewBreakpoints} on a line with no breakpoint opened {window.Popup?.GetType().Name ?? "nothing"}, where it lists the breakpoints");
             Ui.Press(window, "ESCAPE");
+        }
+        finally
+        {
+            window.ApplySettings(new AppSettings());
+            window.Close();
+        }
+    }
+
+    internal void Open_in_browsers_key_on_an_html_page_opens_it_and_elsewhere_is_next_error_in_solutions()
+    {
+        string page = Path.Combine(folder, "page.html");
+        TestFolders.Write(folder, "page.html", "<p>Hello</p>\n");
+        MainWindow window = Open();
+        try
+        {
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, "alt F2");
+            string? why = window.Actions.WhyNot(AppActions.NextErrorInSolution, window.Actions.Context())?.Shown;
+            Assert.True(window.Browsed.Count == 0 && why is not null && window.Status == why,
+                $"Alt+F2 in Program.cs opened [{string.Join("; ", window.Browsed)}], the status bar saying \"{window.Status}\", where it is Next Error in Solution's, refused: {why}");
+
+            window.OpenFile(page);
+            Ui.Settle();
+            window.EditorArea.CodeEditor.Focus();
+            Ui.Press(window, "alt F2");
+            Assert.True(window.Browsed.Any(u => u.IsFile && PathNames.Same(u.LocalPath, page)), $"Alt+F2 on page.html opened [{string.Join("; ", window.Browsed)}], not the page");
         }
         finally
         {

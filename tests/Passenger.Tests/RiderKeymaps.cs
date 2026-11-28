@@ -5,7 +5,7 @@ using Passenger.Editor;
 namespace Passenger.Tests;
 
 /// <summary>Rider's keymaps as Passenger's presets follow them: each action's keys, double taps and mouse shortcuts in
-/// Rider's six keymaps, resolved as IntelliJ resolves them (the keymap's own list, the action it takes its shortcuts from,
+/// Rider's seven keymaps, resolved as IntelliJ resolves them (the keymap's own list, the action it takes its shortcuts from,
 /// its parent, and plugins' descriptors) by tools/rider-keymaps.py into RiderKeymaps.json; which of Rider's actions each
 /// of Passenger's takes the shortcuts of; and where a keymap here differs from Rider's on purpose, with why.</summary>
 internal static class RiderKeymaps
@@ -16,6 +16,7 @@ internal static class RiderKeymaps
     public const string VisualStudioMac = "Visual Studio OSX";
     public const string VSCode = "VSCode";
     public const string VSCodeMac = "VSCode OSX";
+    public const string Emacs = "Emacs";
 
     private static readonly Dictionary<string, Dictionary<string, string[]>> Resolved = Read();
 
@@ -33,8 +34,8 @@ internal static class RiderKeymaps
         ([EditorActions.PageUp], ["EditorPageUp"]), ([EditorActions.PageDown], ["EditorPageDown"]),
         ([EditorActions.ScrollUp], ["EditorScrollUp"]), ([EditorActions.ScrollDown], ["EditorScrollDown"]),
         ([EditorActions.Backspace], ["EditorBackSpace"]), ([EditorActions.Delete], ["$Delete", "EditorDelete"]),
-        ([EditorActions.DeleteWordLeft], ["EditorDeleteToWordStart"]),
-        ([EditorActions.DeleteWordRight], ["EditorDeleteToWordEnd"]), ([EditorActions.NewLine], ["EditorEnter"]),
+        ([EditorActions.DeleteWordLeft], ["EditorDeleteToWordStart", "EditorKillToWordStart"]),
+        ([EditorActions.DeleteWordRight], ["EditorDeleteToWordEnd", "EditorKillToWordEnd"]), ([EditorActions.NewLine], ["EditorEnter"]),
         ([EditorActions.StartNewLine], ["EditorStartNewLine"]),
         ([EditorActions.StartNewLineBefore], ["EditorStartNewLineBefore"]),
         ([EditorActions.Indent], ["EditorIndentSelection"]), ([EditorActions.Outdent], ["EditorUnindentSelection"]),
@@ -45,7 +46,7 @@ internal static class RiderKeymaps
         ([EditorActions.ToggleBlockComment], ["CommentByBlockComment"]),
         ([EditorActions.JoinLines], ["EditorJoinLines"]), ([EditorActions.ToggleCase], ["EditorToggleCase"]),
         ([EditorActions.CutToLineEnd], ["EditorCutLineEnd"]), ([EditorActions.Undo], ["$Undo"]),
-        ([EditorActions.Redo], ["$Redo"]), ([EditorActions.Cut], ["$Cut"]), ([EditorActions.Copy], ["$Copy"]),
+        ([EditorActions.Redo], ["$Redo"]), ([EditorActions.Cut], ["$Cut", "EditorKillRegion"]), ([EditorActions.Copy], ["$Copy", "EditorKillRingSave"]),
         ([EditorActions.Paste], ["$Paste"]), ([EditorActions.SelectAll], ["$SelectAll"]),
         ([EditorActions.SelectNextOccurrence], ["SelectNextOccurrence"]),
         ([EditorActions.UnselectOccurrence], ["UnselectPreviousOccurrence"]),
@@ -114,6 +115,14 @@ internal static class RiderKeymaps
         ([AppActions.CleanSolution], ["CleanSolutionAction"]), ([AppActions.BuildSelected], ["BuildCurrentProject"]),
         ([AppActions.RunProgram], ["Run"]), ([AppActions.Debug], ["Debug"]), ([AppActions.Stop], ["Stop"]),
         ([AppActions.Rerun], ["Rerun"]), ([AppActions.EditConfigurations], ["editRunConfigurations"]),
+        ([EditorActions.SplitLine], ["EditorSplitLine"]), ([EditorActions.DeleteToLineStart], ["EditorDeleteToLineStart"]),
+        ([EditorActions.DeleteToLineEnd], ["EditorDeleteToLineEnd"]), ([EditorActions.Transpose], ["EditorTranspose"]),
+        ([EditorActions.ToggleOverwrite], ["EditorToggleInsertState"]), ([EditorActions.ToggleColumnMode], ["EditorToggleColumnMode"]),
+        ([AppActions.MoveStatementUp], ["MoveStatementUp"]), ([AppActions.MoveStatementDown], ["MoveStatementDown"]),
+        ([AppActions.MoveElementLeft], ["MoveElementLeft"]), ([AppActions.MoveElementRight], ["MoveElementRight"]),
+        ([AppActions.Unwrap], ["Unwrap"]), ([AppActions.AutoIndentLines], ["AutoIndentLines"]),
+        ([AppActions.RunAnything], ["RunAnything"]), ([AppActions.ChooseRunConfiguration], ["ChooseRunConfiguration"]),
+        ([AppActions.ChooseDebugConfiguration], ["ChooseDebugConfiguration"]),
         ([AppActions.RunHere], ["RunClass"]), ([AppActions.DebugHere], ["DebugClass"]),
         ([AppActions.ShowBuild], ["ActivateBuildToolWindow"]), ([AppActions.ShowRun], ["ActivateRunToolWindow"]),
         ([AppActions.ShowProblems], ["ActivateProblemsViewToolWindow"]),
@@ -164,6 +173,8 @@ internal static class RiderKeymaps
         ([AppActions.RunToCursor], ["RunToCursor"]), ([AppActions.SetNextStatement], ["JumpToStatement"]),
         ([AppActions.ExtendSelection], ["EditorSelectWord"]), ([AppActions.ShrinkSelection], ["EditorUnSelectWord"]),
         ([AppActions.CallHierarchy], ["CallHierarchy"]), ([AppActions.TypeHierarchy], ["TypeHierarchy"]),
+        ([AppActions.NextErrorInSolution], ["ReSharperGotoNextErrorInSolution"]), ([AppActions.PreviousErrorInSolution], ["ReSharperGotoPrevErrorInSolution"]),
+        ([AppActions.InspectThis], ["InspectThis"]), ([AppActions.RunInspectionByName], ["RunInspection"]),
         ([AppActions.ShowExecutionPoint], ["ShowExecutionPoint"]),
         ([AppActions.AttachToProcess], ["XDebugger.AttachToProcess"]),
         ([AppActions.ReattachToProcess], ["RiderReattach"]), ([AppActions.Detach], ["RiderDetachDebuggerAction"]),
@@ -176,6 +187,10 @@ internal static class RiderKeymaps
         ([AppActions.RerunTests], ["RiderUnitTestRepeatPreviousRunAction"]),
         ([AppActions.RerunFailedTests], ["RiderUnitTestSessionRerunFailedTestsAction"]),
         ([AppActions.StopTests], ["RiderUnitTestSessionAbortAction"]), ([AppActions.SplitRight], ["SplitVertically"]),
+        ([AppActions.NewTestSession], ["RiderUnitTestNewSessionAction"]), ([AppActions.AppendToTestSession], ["RiderUnitTestAppendTestsAction"]),
+        ([AppActions.RunTestSession], ["RiderUnitTestRunCurrentSessionAction"]), ([AppActions.ShowAllTests], ["RiderUnitTestFocusExplorerAction"]),
+        ([AppActions.ShowTestSession], ["RiderUnitTestFocusSessionAction"]), ([AppActions.TestsQuickList], ["RiderUnitTestQuickListPopupAction"]),
+        ([AppActions.GoToTest], ["GotoTest", "RiderGoToLinkedTypesAction"]),
         ([AppActions.SplitDown], ["SplitHorizontally"]),
         ([AppActions.MoveToOppositeGroup], ["MoveEditorToOppositeTabGroup"]),
         ([AppActions.OpenInNewWindow], ["EditSourceInNewWindow"]), ([AppActions.ReopenClosedTab], ["ReopenClosedTab"]),
@@ -209,7 +224,33 @@ internal static class RiderKeymaps
         ([AppActions.CompareWithBranch], ["Git.CompareWithBranch"]),
         ([AppActions.ShowLocalHistory], ["LocalHistory.ShowHistory"]),
         ([AppActions.ShowProjectHistory], ["LocalHistory.ShowProjectHistory"]),
-        ([AppActions.RecentChanges], ["RecentChanges"]), ([AppActions.PutLabel], ["LocalHistory.PutLabel"])
+        ([AppActions.RecentChanges], ["RecentChanges"]), ([AppActions.PutLabel], ["LocalHistory.PutLabel"]),
+        ([AppActions.CommitMessageHistory], ["Vcs.ShowMessageHistory"]),
+        ([AppActions.CoverAllTests], ["RiderDotCoverUnitTestCoverSolutionAction"]),
+        ([AppActions.ToggleTemporaryBreakpoint], ["ToggleTemporaryLineBreakpoint"]),
+        ([AppActions.DatabaseRun], ["Console.Jdbc.Execute"]), ([AppActions.DatabaseHistory], ["Console.History.Browse"]),
+        ([AppActions.DatabaseCommit], ["Console.Transaction.Commit"]),
+        ([AppActions.MarkdownPreview], ["TextEditorWithPreview.Layout.EditorAndPreview"]),
+        ([AppActions.MarkdownPreviewOnly], ["TextEditorWithPreview.Layout.PreviewOnly"]),
+        ([AppActions.FormCodeOnly], ["SwitchDesignerToCode"]), ([AppActions.FormDesignOnly], ["SwitchCodeToDesigner", "OpenWinFormsDesignerAction"]),
+        ([AppActions.MethodUp], ["MethodUp"]), ([AppActions.MethodDown], ["MethodDown"]),
+        ([AppActions.NextUsage], ["GotoNextElementUnderCaretUsage"]), ([AppActions.PreviousUsage], ["GotoPrevElementUnderCaretUsage"]),
+        ([AppActions.GoToContainingDeclaration], ["ReSharperGotoContainingDeclaration"]),
+        ([AppActions.SelectContainingDeclaration], ["ReSharperSelectContainingDeclaration"]),
+        ([AppActions.CodeBlockStart], ["EditorCodeBlockStart"]), ([AppActions.CodeBlockEnd], ["EditorCodeBlockEnd"]),
+        ([AppActions.CodeBlockStartWithSelection], ["EditorCodeBlockStartWithSelection"]),
+        ([AppActions.CodeBlockEndWithSelection], ["EditorCodeBlockEndWithSelection"]), ([AppActions.GoToRegion], ["GotoCustomRegion"]),
+        ([AppActions.QuickImplementations], ["QuickImplementations"]), ([AppActions.ErrorDescription], ["ShowErrorDescription"]),
+        ([AppActions.ExpressionTypeInfo], ["ExpressionTypeInfo"]), ([AppActions.ShowFilePath], ["ShowFilePath"]),
+        ([AppActions.CollapseSelection], ["CollapseSelection"]), ([AppActions.CollapseBlock], ["CollapseBlock"]),
+        ([EditorActions.PasteAsPlainText], ["EditorPasteSimple"]), ([EditorActions.ExpandWord], ["HippieCompletion"]),
+        ([EditorActions.ExpandWordBackward], ["HippieBackwardCompletion"]), ([AppActions.PasteFromHistory], ["PasteMultiple"]),
+        ([AppActions.CopyReference], ["CopyReference"]), ([AppActions.SmartTypeCompletion], ["SmartTypeCompletion"]),
+        ([AppActions.NewBranch], ["Git.CreateNewBranch"]), ([AppActions.CommitAndPush], ["Git.Commit.And.Push.Executor"]),
+        ([AppActions.VcsOperations], ["Vcs.QuickListPopupAction"]), ([AppActions.ForceStepInto], ["ForceStepInto"]),
+        ([AppActions.ForceStepOver], ["ForceStepOver"]), ([AppActions.ForceRunToCursor], ["ForceRunToCursor"]),
+        ([AppActions.RemoveAllBreakpoints], ["RiderRemoveAllLineBreakpoints"]), ([AppActions.ExceptionSettings], ["OpenExceptionSettings"]),
+        ([AppActions.CancelBuild], ["CancelBuildAction"])
     ];
 
     /// <summary>Where a keymap here differs from Rider's on purpose: a shortcut it keeps that Rider's lacks, or one of Rider's
@@ -231,8 +272,18 @@ internal static class RiderKeymaps
         (VisualStudioMac, AppActions.ReformatWithPrettier, "meta alt shift P", false, "Previous Change's, which the keymap gives it too"),
         (VisualStudioMac, AppActions.SafeDelete, "alt DELETE", false, "Delete Word Right's in the editor, which the keymap gives it too"),
         (VisualStudioMac, AppActions.ShowContextMenu, "shift F10", true, "the keymap's one key to a place's menu, as VS Code's for macOS has it"),
-        (VisualStudio, EditorActions.MoveLineUp, "alt UP", true, "Visual Studio's own Move Line Up, where Rider has Method Up, no action here"),
-        (VisualStudio, EditorActions.MoveLineDown, "alt DOWN", true, "Visual Studio's own Move Line Down, where Rider has Method Down, no action here"),
+        (VisualStudioMac, AppActions.MethodUp, "control shift UP", false, "Clone Caret Above's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.MethodDown, "control shift DOWN", false, "Clone Caret Below's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.CodeBlockStart, "meta alt OPEN_BRACKET", false, "Select Containing Declaration's, which Rider's own descriptor gives it"),
+        (VisualStudioMac, AppActions.QuickImplementations, "meta Y", false, "Redo's, Visual Studio's own"),
+        (VisualStudioMac, EditorActions.ToggleColumnMode, "meta shift 8", false, "Show Tests', which the keymap gives it too"),
+        (VSCodeMac, EditorActions.ToggleColumnMode, "alt shift I", false, "Caret Per Line's, which the keymap gives it too"),
+        (VisualStudio, AppActions.CancelBuild, "control F9", false, "Toggle Breakpoint Enabled's, which the keymap gives it too"),
+        (VisualStudioMac, AppActions.CancelBuild, "meta F9", false, "Toggle Breakpoint Enabled's, which the keymap gives it too"),
+        (VisualStudio, EditorActions.MoveLineUp, "alt UP", true, "Visual Studio's own Move Line Up, over Rider's Method Up"),
+        (VisualStudio, EditorActions.MoveLineDown, "alt DOWN", true, "Visual Studio's own Move Line Down, over Rider's Method Down"),
+        (VisualStudio, AppActions.MethodUp, "alt UP", false, "Move Line Up's, Visual Studio's own"),
+        (VisualStudio, AppActions.MethodDown, "alt DOWN", false, "Move Line Down's, Visual Studio's own"),
         (VisualStudio, EditorActions.ToggleLineComment, "control SLASH", true, "the comment key every other keymap has"),
         (VisualStudio, EditorActions.ToggleLineComment, "control DIVIDE", true, "the keypad's / beside the comment key"),
         (VisualStudio, EditorActions.ToggleLineComment, "control K , U", true, "Uncomment's chord with its second key alone, as Comment's is"),
@@ -249,6 +300,8 @@ internal static class RiderKeymaps
         (VSCodeMac, AppActions.AttachToProcess, "alt shift F5", false, "Previous Change's, the keymap's own over the one it inherits"),
         (VSCodeMac, AppActions.RunTests, "control shift R", false, "Refactor This', the keymap's own over the one it inherits"),
         (VSCodeMac, AppActions.RunAllTests, "meta SEMICOLON , L", false, "Rerun's, the keymap's own over the one it inherits"),
+        (VSCodeMac, AppActions.CollapseSelection, "meta PERIOD", false, "Quick Fix's, as VS Code's"),
+        (VSCodeMac, AppActions.CollapseBlock, "meta alt OPEN_BRACKET", false, "Collapse's, the keymap's own"),
         (VSCode, EditorActions.ColumnSelectionDrag, "alt shift button1", false, "Column Selection from Caret's click, a drag going on with it"),
         (VSCode, AppActions.NextProjectWindow, "control W", false, "Close's, as VS Code's Ctrl+W"),
         (VSCode, AppActions.Debug, "F5", false, "Resume's, which starts debugging when nothing is debugged"),
@@ -256,6 +309,8 @@ internal static class RiderKeymaps
         (VSCode, AppActions.ShrinkSelection, "control shift W", false, "Close Solution's, the keymap's own over the one it inherits"),
         (VSCode, AppActions.RunAllTests, "control SEMICOLON , L", false, "Rerun's, the keymap's own over the one it inherits"),
         (VSCode, AppActions.FindPreviousWordAtCaret, "control shift F3", false, "Find Previous', the keymap's own over the one it inherits"),
+        (VSCode, AppActions.AppendToTestSession, "control SEMICOLON , A", false, "Choose Run Configuration's, which the keymap gives it too"),
+        (VSCodeMac, AppActions.AppendToTestSession, "meta SEMICOLON , A", false, "Choose Run Configuration's, which the keymap gives it too"),
         (MacOS, EditorActions.TextStart, "meta UP", true, "macOS's own key to the text's start"),
         (MacOS, EditorActions.TextEnd, "meta DOWN", true, "macOS's own key to the text's end"),
         (MacOS, EditorActions.Delete, "BACK_SPACE", false, "Backspace's, which Rider gives Delete in a list alone"),
@@ -266,6 +321,30 @@ internal static class RiderKeymaps
         (MacOS, AppActions.RunHere, "control shift R", false, "Run Tests', which Rider gives it at a test"),
         (MacOS, AppActions.DebugHere, "control shift D", false, "Debug Tests', which Rider gives it at a test"),
         (Default, AppActions.RunHere, "control shift F10", false, "Run Tests', which Rider gives it at a test"),
+        (VSCode, AppActions.DatabaseRun, "control ENTER", true, "Start New Line's, which a console takes to run its statement"),
+        (VSCodeMac, AppActions.DatabaseRun, "meta ENTER", true, "Start New Line's, which a console takes to run its statement"),
+        (Emacs, AppActions.RunHere, "control shift F10", false, "Run Tests', which Rider gives it at a test"),
+        (Emacs, AppActions.FindInSelection, "control alt E", false, "Method Down's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.DatabaseHistory, "control alt E", false, "Method Down's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.Stage, "control alt A", false, "Method Up's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.CompareFiles, "control D", false, "Delete's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.ShowDiff, "control D", false, "Delete's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.Commit, "control K", false, "Cut to Line End's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.ShowSettings, "control alt S", false, "Find's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.NextOverload, "control DOWN", false, "the paragraph move's, the keymap's own over the one it inherits"),
+        (Emacs, AppActions.PreviousOverload, "control UP", false, "the paragraph move's, the keymap's own over the one it inherits"),
+        (Emacs, EditorActions.ExpandWord, "alt SLASH", false, "Basic Completion's, the keymap's own over the one it inherits"),
+        .. (OperatingSystem.IsMacOS() ? MacEmacs : []),
+    ];
+
+    /// <summary>The Mac's own keys Emacs's keymap keeps there, which Rider's Emacs keymap leaves out, as Visual Studio OSX's.</summary>
+    private static (string Keymap, string Action, string Shortcut, bool Kept, string Why)[] MacEmacs =>
+    [
+        (Emacs, EditorActions.Copy, "meta C", true, "macOS's own Copy"), (Emacs, EditorActions.Paste, "meta V", true, "macOS's own Paste"),
+        (Emacs, EditorActions.Cut, "meta X", true, "macOS's own Cut"), (Emacs, EditorActions.Undo, "meta Z", true, "macOS's own Undo"),
+        (Emacs, EditorActions.Redo, "meta shift Z", true, "macOS's own Redo"), (Emacs, EditorActions.SelectAll, "meta A", true, "macOS's own Select All"),
+        (Emacs, AppActions.Save, "meta S", true, "macOS's own Save"), (Emacs, AppActions.CloseTab, "meta W", true, "macOS's own Close"),
+        (Emacs, AppActions.ShowSettings, "meta COMMA", true, "macOS's own Settings"),
     ];
 
     /// <summary>The keymap of Rider's that a preset is on this platform.</summary>
@@ -275,6 +354,7 @@ internal static class RiderKeymaps
         (KeymapPreset.VSCode, false) => VSCode,
         (KeymapPreset.IntelliJ, true) => MacOS,
         (KeymapPreset.IntelliJ, false) => Default,
+        (KeymapPreset.Emacs, _) => Emacs,
         (_, true) => VisualStudioMac,
         _ => VisualStudio,
     };

@@ -40,6 +40,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         Flow.StepApart("a parameter set where its key is there with no value is written in its place and read as one key", () => new AspireCodeHelpTests(project), t => t.A_parameter_set_where_its_key_is_there_with_no_value_is_written_in_its_place_and_read_as_one_key());
         Flow.StepApart("a parameter s value typed in appsettings and not saved takes its mark away", () => new AspireCodeHelpTests(project), t => t.A_parameter_s_value_typed_in_appsettings_and_not_saved_takes_its_mark_away());
         Flow.StepApart("a parameter only settings files the AppHost never reads give is marked", () => new AspireCodeHelpTests(project), t => t.A_parameter_only_settings_files_the_AppHost_never_reads_give_is_marked());
+        Flow.StepApart("a parameter made optional or given by Aspire s secrets of its environment is not marked", () => new AspireCodeHelpTests(project), t => t.A_parameter_made_optional_or_given_by_Aspire_s_secrets_of_its_environment_is_not_marked());
     }
 
     /// <summary>Connections as one flow, each step one test's check in an instance of its own: completion offering only
@@ -172,7 +173,7 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
             window.KeyTextInput(name);
             Ui.Press(window, "ENTER");
             bool Told(string words) => words.Contains($"{old} to {name}", StringComparison.Ordinal)
-                || words.StartsWith(Refusals.NotRenamed(old, string.Empty), StringComparison.Ordinal);
+                || words.StartsWith(Refusals.NotRenamed(old, string.Empty).Shown, StringComparison.Ordinal);
             Ui.WaitFor(() => said.Any(Told), () => $"the rename of {old} to {name} to be made, or say why not; the status bar said: {string.Join(" | ", said)}");
             string told = said.First(Told);
             Assert.True(told.StartsWith($"Renamed {old} to {name}", StringComparison.Ordinal), $"The rename of {old} to {name} was not made: {told}");
@@ -353,6 +354,34 @@ public sealed class AspireCodeHelpTests : IClassFixture<AspireCodeHelpTests.Proj
         finally
         {
             window.Close();
+        }
+    }
+
+    /// <summary>A parameter made optional (Aspire's AsOptional called on it last, in its chain or on the local it is kept in) is
+    /// not marked, as its AppHost asks for none, where one made required again is; nor is one Aspire's secrets of the
+    /// environment the AppHost runs in give (what aspire secret set writes, its file named in any letter case), where one
+    /// only another environment's secrets give is marked.</summary>
+    private void A_parameter_made_optional_or_given_by_Aspire_s_secrets_of_its_environment_is_not_marked()
+    {
+        string program = PathNames.Canonical(project.PathOf("Host/Program.cs"));
+        string secrets = Path.Combine(TestRun.AspireSecrets, Project.SecretsId);
+        project.Write("Host/Program.cs", Project.Host.Replace("builder.Build().Run();",
+            "var maybe = builder.AddParameter(\"maybe\").AsOptional();\nvar later = builder.AddParameter(\"later\");\nlater.AsOptional();\n"
+            + "var again = builder.AddParameter(\"again\").AsOptional().AsRequired();\nvar kept = builder.AddParameter(\"kept\", secret: true);\n"
+            + "var shipped = builder.AddParameter(\"shipped\", secret: true);\nbuilder.Build().Run();", StringComparison.Ordinal));
+        Directory.CreateDirectory(secrets);
+        File.WriteAllText(Path.Combine(secrets, "development.json"), "{\n  \"Parameters:kept\": \"k3pt\"\n}\n");
+        File.WriteAllText(Path.Combine(secrets, "Production.json"), "{\n  \"Parameters:shipped\": \"sh1pped\"\n}\n");
+        MainWindow window = project.Open(program);
+        try
+        {
+            Ui.WaitFor(() => UnsetParameters(window).SetEquals(["again", "shipped"]),
+                () => $"the parameter made required again and the one only Production's secrets give, and only those, to be marked: {string.Join(", ", UnsetParameters(window))}");
+        }
+        finally
+        {
+            window.Close();
+            Directory.Delete(secrets, recursive: true);
         }
     }
 

@@ -2,7 +2,7 @@ namespace Passenger.Workspace.GDScript;
 
 /// <summary>Which of Godot's built-in types converts strictly to another, as <c>Variant::can_convert_strict</c> of the Godot
 /// Engine's <c>core/variant/variant.cpp</c> (MIT) has them: what a built-in type's constructor of one argument takes beside
-/// its own type, said in Godot's order of its types. The same at 4.7.2 and at 4.8 beta 5.</summary>
+/// its own type, said in Godot's order of its types. The same at 4.7.2 and at 4.8 RC 1.</summary>
 public static class GDScriptConversions
 {
     private static readonly string[] PackedArrays =

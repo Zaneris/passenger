@@ -133,8 +133,7 @@ public sealed class GDScriptTypesTests
         window.MouseMove(new Point(0, 0), Avalonia.Input.RawInputModifiers.None);
         Ui.PumpUntil(() => window.Assist.HoverText is null, "the last card to go", TimeSpan.FromSeconds(30));
         int at = editor.Document.Snapshot.ToString().IndexOf(text, StringComparison.Ordinal) + 1;
-        Point point = editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value;
-        window.MouseMove(point, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.PumpUntil(() => window.Assist.HoverText is not null, $"the card on {text}", TimeSpan.FromSeconds(30));
         return window.Assist.HoverText!;
     }

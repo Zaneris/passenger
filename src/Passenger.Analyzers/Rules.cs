@@ -140,6 +140,43 @@ internal static class Rules
             + "formatted with the invariant culture. A whole number with no format sets nothing apart and passes, as does a "
             + "provider the code chose itself (content shown as its own program shows it, a program's values in its culture).");
 
+    public static readonly DiagnosticDescriptor UnextractedWord = new(
+        "PSG0012",
+        "Words a person reads are written in the code",
+        "{0}: say it through a resource's Words (a .resx beside its home class){1}",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: false,
+        description: "Every word a person reads comes from a resource, so it can be read in their language: a literal given "
+            + "where Words go or to a control's words would stay English, and Words joined into a string are said in one "
+            + "language and break the sentence a translation keeps whole, as Words said in one language and made Words again keep "
+            + "that language for every reader. Turned on folder by folder in .editorconfig as "
+            + "each area's words move into resources; a sweep's passenger_words_sweep there (messages, verbatim) asks for an "
+            + "exception's message made Words and any other string made Words as it is.");
+
+    public static readonly DiagnosticDescriptor WordsComparedWithString = new(
+        "PSG0013",
+        "Words are compared with a string",
+        "{0} compares Words with a string: it holds only while the Words are verbatim, so compare their English (.English), or Words made as they are",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "A string compared with Words (by a comparison's method, or == and !=) is made Words (verbatim) or compared as an object, so the check compiles "
+            + "and holds only while the Words compared are verbatim too: once they are a resource's, it fails, and only when "
+            + "run. A check of what Words say compares their English; one of which words they are compares Words made the "
+            + "same way.");
+
+    public static readonly DiagnosticDescriptor WordsForAgents = new(
+        "PSG0014",
+        "Words an agent reads are said in the person's language",
+        "{0}: an agent reads English, so say their English (.English)",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: false,
+        description: "An agent's answer is English whatever language the window is in, so tools and scripts read one language: "
+            + "Words made a string (by an interpolation, a +, ToString, a join or as an object) or read as Shown say the person's "
+            + "language, and an agent would read it. Turned on in .editorconfig for the code answering agents.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",
@@ -152,6 +189,22 @@ internal static class Rules
         "PSG9002",
         "A style classes file is not read",
         "{0}'s classes are not all in {1}: {2}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor WordsUnread = new(
+        "PSG9003",
+        "A words file is not read",
+        "{0}'s words are not all read: {1}",
+        Category,
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor WordsOutOfStep = new(
+        "PSG9004",
+        "A translation is out of step with its English",
+        "{0}: {1}",
         Category,
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);

@@ -35,6 +35,20 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// <see cref="SlowLoadVariable"/> gives; a value there that is no whole number of milliseconds above 0 is fatal.</summary>
     public static TimeSpan SlowLoad => EnvironmentValues.Milliseconds(SlowLoadVariable, TimeSpan.FromMinutes(5));
 
+    /// <summary>The variable that turns <see cref="SolutionWideByDefault"/> off.</summary>
+    [IdentifierHome]
+    public const string SolutionWideVariable = "PASSENGER_SOLUTION_ANALYSIS";
+
+    /// <summary>Settings' Solution-wide analysis where no settings.json says otherwise: on, unless <see
+    /// cref="SolutionWideVariable"/> is <c>off</c>, as a test run keeps it for the windows that never look at the
+    /// solution's problems; a value other than <c>off</c> or <c>on</c> is fatal as the IDE starts.</summary>
+    public static bool SolutionWideByDefault => Environment.GetEnvironmentVariable(SolutionWideVariable) switch
+    {
+        null or "" or "on" => true,
+        "off" => false,
+        string other => throw new FormatException($"{SolutionWideVariable} takes off or on, not '{other}'"),
+    };
+
     private readonly Dictionary<OpenDocument, CSharpDocument> documents = [];
     private readonly ServerRestarts restarts = new();
     private readonly WarmServer? warm;
@@ -1440,6 +1454,37 @@ public sealed partial class CSharpService : IAsyncDisposable
 
     public CSharpDocument? For(OpenDocument document) => documents.GetValueOrDefault(document);
 
+    /// <summary>The server's document for an open file once a server has taken the file in (<see cref="Connected"/>), any
+    /// but <paramref name="gone"/>, one whose server ended: at once where one has.</summary>
+    public async Task<LspDocument> TakenInAsync(OpenDocument document, LspDocument? gone, CancellationToken cancel)
+    {
+        UiThread.Check();
+        while (true)
+        {
+            if (For(document)?.Lsp is { } served && served != gone)
+            {
+                return served;
+            }
+            TaskCompletionSource taken = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void Heard(object? sender, OpenDocument connected)
+            {
+                if (connected == document)
+                {
+                    taken.TrySetResult();
+                }
+            }
+            Connected += Heard;
+            try
+            {
+                await taken.Task.WaitAsync(cancel);
+            }
+            finally
+            {
+                Connected -= Heard;
+            }
+        }
+    }
+
     /// <summary>A file's features let go of and made again: one gone too deep to give the server, closed there.</summary>
     internal void Reattach(OpenDocument document)
     {
@@ -2499,6 +2544,19 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// lacks, pulls its diagnostics again; no other file.</summary>
     internal void LocalizationChanged() => Each(document => document.LocalizationChanged());
 
+    /// <summary>The folder's layer rules (its passenger-layers.json) as they stand, which each open C# file is checked against
+    /// as it is pulled; none while the folder has none, or its file cannot be read.</summary>
+    public Func<Roslyn.Extension.LayerRules?>? LayersNow { get; init; }
+
+    /// <summary>The folder's layer rules as they stand (<see cref="LayersNow"/>).</summary>
+    internal Roslyn.Extension.LayerRules? Layers => LayersNow?.Invoke();
+
+    /// <summary>Reads the folder's layer rules again, as the window does when their file changes: for a fix that wrote it.</summary>
+    internal Action? ReadLayersAgain { get; set; }
+
+    /// <summary>The folder's layer rules changed: each open file pulled again.</summary>
+    internal void LayersChanged() => Each(document => document.RefreshDiagnostics());
+
     /// <summary>What the folder's pages link changed: each open Razor file's classes are checked again.</summary>
     internal void StylesheetsChanged() => Each(document => document.StylesheetsChanged());
 
@@ -2592,7 +2650,7 @@ public sealed partial class CSharpService : IAsyncDisposable
     /// files it changes, or why it changes none; a server failing throws <see cref="LanguageServerFailed"/>.</summary>
     internal Task<Roslyn.Extension.Refactored> GodotFixAsync(Roslyn.Extension.GodotFixRequest asked, CancellationToken cancel) =>
         session is { } roslyn ? roslyn.ExtensionAsync<Roslyn.Extension.Refactored>(Roslyn.Extension.Handlers.GodotFix, asked, cancel)
-            : Task.FromResult(new Roslyn.Extension.Refactored(Refusals.Sentence(Refusals.CSharpNotRunning), []));
+            : Task.FromResult(new Roslyn.Extension.Refactored(Refusals.CSharpNotRunningSentence.Shown, []));
 
     /// <summary>A Godot scene or resource came, went or was written: each open file of a Godot project pulls again.</summary>
     internal void GodotScenesChanged() => Each(document => document.GodotChanged());
@@ -2663,9 +2721,9 @@ public sealed partial class CSharpService : IAsyncDisposable
         {
             return $"{what} needs the C# language server: {State}";
         }
-        return features.TooDeep ? $"{what} cannot run: {Refusals.TooDeep(document.Name)}"
+        return (features.TooDeep ? $"{what} cannot run: {Refusals.TooDeep(document.Name)}"
             : Refusals.NotInServerYet(what, document.Name, arriving.TryGetValue(document.Path, out Arrival? arrival) && !arrival.Decided
-                ? Path.GetFileNameWithoutExtension(arrival.Project) : null);
+                ? Path.GetFileNameWithoutExtension(arrival.Project) : null)).Shown;
     }
 }
 

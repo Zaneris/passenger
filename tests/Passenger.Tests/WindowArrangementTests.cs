@@ -39,7 +39,7 @@ public sealed class WindowArrangementTests : IDisposable
     {
         Flow.StepApart<WindowArrangementTests>("editor tabs set down a side stand in a column there where a click a drag and the next tabs keys go between them", t => t.Editor_tabs_set_down_a_side_stand_in_a_column_there_where_a_click_a_drag_and_the_next_tabs_keys_go_between_them());
         Flow.StepApart<WindowArrangementTests>("a themes editor tabs place is the default the Settings row overrides and Theme default follows again", t => t.A_themes_editor_tabs_place_is_the_default_the_Settings_row_overrides_and_Theme_default_follows_again());
-        Flow.StepApart<WindowArrangementTests>("Titled tabs name the windows docked in a place where a click opens one and a drag takes it to another side", t => t.Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side());
+        Flow.StepApart<WindowArrangementTests>("Titled tabs name the windows docked in a place where a click opens one and a drag takes it to another side leaving the tab beside it open", t => t.Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side_leaving_the_tab_beside_it_open());
         Flow.StepApart<WindowArrangementTests>("Under titled tabs no stripe stands and a window docked beside another or opened again is named by a tab or its header", t => t.Under_titled_tabs_no_stripe_stands_and_a_window_docked_beside_another_or_opened_again_is_named_by_a_tab_or_its_header());
         Flow.StepApart<WindowArrangementTests>("every window of a place hidden is a click away by its icon or by its tab along the edge which opens it over the editors", t => t.Every_window_of_a_place_hidden_is_a_click_away_by_its_icon_or_by_its_tab_along_the_edge_which_opens_it_over_the_editors());
         Flow.StepApart<WindowArrangementTests>("a theme choosing either look gets that look whole", t => t.A_theme_choosing_either_look_gets_that_look_whole());
@@ -122,7 +122,7 @@ public sealed class WindowArrangementTests : IDisposable
                 $"The theme gives the tabs the right, where they stand {group.TabsPlace} at {Placed(window, group.TabStrip)}");
 
             SettingsDialog dialog = window.ShowSettings();
-            dialog.Page = SettingsDialog.Appearance;
+            dialog.Page = SettingsDialog.LayoutPage;
             Ui.Settle();
             ComboBox row = SettingsTests.Editor<ComboBox>(dialog, "Editor tabs");
             Assert.Equal("Theme default (Right)", row.SelectedItem as string);
@@ -133,7 +133,7 @@ public sealed class WindowArrangementTests : IDisposable
                 $"The person chose Top in Settings over the theme's right, and the tabs stand {group.TabsPlace}");
 
             dialog = window.ShowSettings();
-            dialog.Page = SettingsDialog.Appearance;
+            dialog.Page = SettingsDialog.LayoutPage;
             Ui.Settle();
             SettingsTests.Editor<ComboBox>(dialog, "Editor tabs").SelectedIndex = 0;
             dialog.Ok();
@@ -148,7 +148,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    private void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side()
+    private void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side_leaving_the_tab_beside_it_open()
     {
         MainWindow window = Open();
         try
@@ -162,18 +162,25 @@ public sealed class WindowArrangementTests : IDisposable
             window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.TitledTabs });
             Ui.Settle();
             string[] docked = [.. dock.Windows.Where(w => w.Anchor == place && w is { Mode: ToolMode.Docked, Unserved: null }).OrderBy(w => w.Order).Select(w => w.Id)];
-            string[] named = [.. ToolTabs(window).Select(t => (string)t.Tag!).Where(id => dock[id].Anchor == place)];
+            string[] named = [.. ToolTabs(window).Select(t => (string)t.Tag!).Where(id => dock[id] is { Mode: ToolMode.Docked } tool && tool.Anchor == place)];
             Assert.True(named.SequenceEqual(docked), $"The tabs along the place's foot name {string.Join(", ", named)}, where {string.Join(", ", docked)} dock there");
             Assert.True(ToolTab(window, ToolWindowIds.Build).Classes.Contains(StyleClasses.Active), "Build, open, has no open tab");
 
             Ui.Click(ToolTab(window, ToolWindowIds.Run));
             Assert.True(dock.IsShown(ToolWindowIds.Run) && !dock.IsShown(ToolWindowIds.Build), "A click on Run's tab did not open Run in Build's place");
 
+            string[] tabbed = [.. dock.Windows.Where(w => w.Anchor == place && w is { Mode: ToolMode.Docked, Unserved: null, IsClosed: false }).OrderBy(w => w.Order).Select(w => w.Id)];
+            string beside = tabbed.SkipWhile(id => id != ToolWindowIds.Run).Skip(1).FirstOrDefault() ?? tabbed.TakeWhile(id => id != ToolWindowIds.Run).Last();
             Ui.Drag(window, Ui.Centre(ToolTab(window, ToolWindowIds.Run), window), new Point(window.Bounds.Width - 20, 120));
             Assert.True(dock[ToolWindowIds.Run] is { Anchor: ToolAnchor.RightTop, IsShown: true },
                 $"Run's tab dragged to the right side left it {dock[ToolWindowIds.Run].Anchor}");
             Assert.True(Ui.Centre(ToolTab(window, ToolWindowIds.Run), window).X > window.Bounds.Width / 2,
                 "Run's tab did not go with it to the place it was dragged to, at the right");
+            // The place Run left stays open on the tab beside it, as a close leaves it, Run keeping the keys' turn.
+            string[] left = [.. dock.Windows.Where(w => w.Anchor == place && w.IsShown).Select(w => w.Id)];
+            Assert.True(left.SequenceEqual([beside]) && dock[beside].Content.IsEffectivelyVisible && ToolTab(window, beside).Classes.Contains(StyleClasses.Active) && dock.Active == dock[ToolWindowIds.Run],
+                $"Run dragged out of its place left it showing {(left.Length == 0 ? "nothing, the place gone to the edge" : string.Join(", ", left))} where {beside}, beside it, was to stay open, "
+                + $"the window last shown {dock.Active?.Id}");
 
             window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.StripeIcons });
             Ui.Settle();
@@ -228,7 +235,7 @@ public sealed class WindowArrangementTests : IDisposable
                 again.ApplySettings(again.Settings with { ClosedToolWindows = ClosedToolWindows.KeepIcons });
                 Ui.Settle();
                 // The setting says what × does: a window off its stripe stays off until opened or checked on the stripe again.
-                Assert.True(StripeButton(again, ToolWindowIds.Debug) is null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context()) == Refusals.ClosedKeepIcons,
+                Assert.True(StripeButton(again, ToolWindowIds.Debug) is null && again.Actions.WhyNot(AppActions.CloseToolWindow, again.Actions.Context())?.Shown == Refusals.ClosedKeepIcons.Shown,
                     "Keeping icons chosen, the closed Debug window came back to its stripe unasked, or Close was not greyed for it");
                 Assert.DoesNotContain(again.DockHost.GetVisualDescendants().OfType<Button>(), b => b.Name == AppActions.CloseToolWindow && b.IsEffectivelyVisible);
             }
@@ -310,6 +317,26 @@ public sealed class WindowArrangementTests : IDisposable
                 && window.Settings.FindResultsIn() == FindResults.FindWindow && ToolTabs(window).Length > 0,
                 $"Cubicle arranges the tabs {window.EditorArea.ActiveGroup.TabsPlace}, titled tabs {dock.TitledTabs}, closed windows leaving {dock.ClosesOffStripe}, "
                 + $"Find in Files' results {window.Settings.FindResultsIn()}, {ToolTabs(window).Length} tool tabs shown");
+
+            // Wide, the right side's lower tabs stand on the bottom area's line, else above it, never one tab over another.
+            dock.Show(ToolWindowIds.Structure);
+            foreach ((double width, double height, bool wide) in ((double, double, bool)[])[(2560, 1080, true), (1200, 800, false)])
+            {
+                (window.Width, window.Height) = (width, height);
+                Ui.Settle();
+                Rect build = Placed(window, ToolTab(window, ToolWindowIds.Build));
+                Rect problems = Placed(window, dock[ToolWindowIds.Problems].Content);
+                Rect structure = Placed(window, ToolTab(window, ToolWindowIds.Structure));
+                Rect explorer = Placed(window, ToolTab(window, ToolWindowIds.Explorer));
+                bool lined = explorer.Bottom <= structure.Top
+                    && (wide ? Math.Abs(structure.Bottom - build.Bottom) < 1 && problems.Right <= structure.Left : structure.Bottom <= problems.Top);
+                // A tab with no room in its row stands clipped past its end, as its row's More lists it.
+                Border[] tabs = [.. ToolTabs(window).Where(t => Placed(window, t).Right <= Placed(window, (Visual)t.Parent!).Right + 0.5)];
+                string[] over = [.. tabs.SelectMany((a, i) => tabs.Skip(i + 1).Where(b => Placed(window, a).Deflate(0.5).Intersects(Placed(window, b).Deflate(0.5))).Select(b => $"{a.Tag} and {b.Tag}"))];
+                Assert.True(dock.IsWide == wide && lined && over.Length == 0,
+                    $"At {width} by {height}, {(dock.IsWide ? "wide" : "not wide")}, Cubicle's tabs stand: Build {build}, Problems' view {problems}, Structure {structure}, Explorer {explorer}; "
+                    + $"overlapping: {(over.Length == 0 ? "none" : string.Join("; ", over))}");
+            }
         }
         finally
         {
@@ -463,7 +490,7 @@ public sealed class WindowArrangementTests : IDisposable
             Assert.Empty(cut);
             Button more = window.DockHost.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is "Hidden Tool Windows" && b.FindAncestorOfType<Border>() is { } strip
                 && strip.Classes.Contains(StyleClasses.ToolTabStrip) && strip.GetVisualDescendants().OfType<Border>().Any(t => Equals(t.Tag, ToolWindowIds.Build)));
-            string[] gone = [.. FootTabs(window).Where(t => dock[(string)t.Tag!].Anchor == ToolAnchor.BottomLeft && Seen(t) is null).Select(t => dock[(string)t.Tag!].Title)];
+            string[] gone = [.. FootTabs(window).Where(t => dock[(string)t.Tag!].Anchor == ToolAnchor.BottomLeft && Seen(t) is null).Select(t => dock[(string)t.Tag!].Title.English)];
             Assert.True(gone.Length > 0 && Seen(more) is not null, $"At 900 wide the bottom's tabs all fit, or no button lists those gone ({string.Join(", ", gone)})");
             Avalonia.Automation.Peers.AutomationPeer morePeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(more);
             Avalonia.Automation.Peers.AutomationPeer tabPeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(FootTab(window, ToolWindowIds.Build)!);
@@ -514,6 +541,18 @@ public sealed class WindowArrangementTests : IDisposable
             Assert.True(dock.Peeked is null && !dock.IsShown(ToolWindowIds.Run) && EdgeTab(window, ToolWindowIds.Run) is not null,
                 "A click in the editor left Run over it, or took its edge tab away");
 
+            // In the wide layout, it opens over the editors between the sides, as its area stands.
+            window.ApplySettings(window.Settings with { WideLayout = WideLayout.Always });
+            Ui.Settle();
+            Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
+            Rect between = Placed(window, dock[ToolWindowIds.Run].Content);
+            Rect explorer = Placed(window, dock[ToolWindowIds.Explorer].Content);
+            Assert.True(dock.Peeked == dock[ToolWindowIds.Run] && between.Left >= explorer.Right,
+                $"In the wide layout, Run's edge tab opened it {(dock.Peeked == dock[ToolWindowIds.Run] ? "over the editors" : "elsewhere")} at {between}, not right of the Explorer at {explorer}");
+            Ui.Click(window.EditorArea.CodeEditor);
+            window.ApplySettings(window.Settings with { WideLayout = WideLayout.OnceWide });
+            Ui.Settle();
+
             Ui.Click(EdgeTab(window, ToolWindowIds.Run)!);
             Ui.Click(dock.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) is "Options" && b.IsEffectivelyVisible && b.GetVisualAncestors().OfType<Border>().Any(a => a.Classes.Contains(StyleClasses.ToolPeek))));
             string[] options = [.. (dock.OpenOptions?.Items.OfType<MenuItem>() ?? []).Select(i => i.Header as string ?? "")];
@@ -541,7 +580,7 @@ public sealed class WindowArrangementTests : IDisposable
             Ui.Settle();
             DockHost dock = window.DockHost;
             Assert.True(!dock.IsShown(ToolWindowIds.Bookmarks) && EdgeTab(window, ToolWindowIds.Bookmarks) is not null, "Bookmarks is not hidden along the edge to begin with");
-            Assert.Null(window.Actions.RunForAgent(AppActions.ShowBookmarks));
+            Assert.Null(window.Actions.RunForAgent(AppActions.ShowBookmarks)?.English);
             Ui.Settle();
             Assert.True(dock.Peeked is null && dock.IsShown(ToolWindowIds.Bookmarks) && Header(window, "Bookmarks") is not null && window.EditorArea.CodeEditor.IsKeyboardFocusWithin,
                 $"An agent's call for Bookmarks left it over the editors {dock.Peeked?.Id}, shown in its place {Header(window, "Bookmarks") is not null}, "
@@ -715,7 +754,7 @@ public sealed class WindowArrangementTests : IDisposable
     /// left out.</summary>
     private static string[] Unnamed(MainWindow window) =>
         [.. window.DockHost.Windows.Where(w => !w.IsClosed && w is { Mode: ToolMode.Docked, Unserved: null } && EdgeTab(window, w.Id) is null && !FootTabs(window).Any(t => Equals(t.Tag, w.Id))
-            && !(w.IsShown && Header(window, w.Title) is not null)).Select(w => w.Id)];
+            && !(w.IsShown && Header(window, w.Title.English) is not null)).Select(w => w.Id)];
 
     /// <summary>A shown pane's header naming a window by its title.</summary>
     private static TextBlock? Header(MainWindow window, string title) =>

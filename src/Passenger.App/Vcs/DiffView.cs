@@ -10,14 +10,15 @@ using Passenger.Vcs;
 namespace Passenger.App.Vcs;
 
 /// <summary>The side-by-side diff: the last commit's text on the left (read-only), the file as it is on the right (the
-/// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band
-/// between them, the words that changed inside its lines marked stronger, the two kept level as either scrolls. A band's
-/// arrow puts that change back in the open file's text, or writes it to a file not open, as Rollback Lines does to the
-/// change at the caret (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8 and Shift+F8 too off the Mac) go to the
-/// next and previous one; F4 asks for its file at the caret's line (Jump to Source); Settings (its keys
-/// <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by words at first; Find searches the
-/// side with the caret (<see cref="ShowFind"/>). A side whose version has no such file (a file new since it, or gone) shows
-/// a pane saying so in place of its lines (<see cref="NoFile"/>). Made by <see cref="DiffPanes"/>.</summary>
+/// open file's own text, so an edit there is an edit to it), each change tinted on both sides and joined by a band on
+/// the strip between them, which a drag moves, the words that changed inside its lines marked stronger, the two kept
+/// level as either scrolls. A band's arrow puts that change back in the open file's text, or writes it to a file not
+/// open, as Rollback Lines does to the change at the caret (<see cref="RollBackAtCaretAsync"/>); F7 and Shift+F7 (F8
+/// and Shift+F8 too off the Mac) go to the next and previous one; F4 asks for its file at the caret's line (Jump to
+/// Source); Settings (its keys <see cref="AppActions.DiffSettings"/>'s) chooses how differences are highlighted, by
+/// words at first; Find searches the side with the caret (<see cref="ShowFind"/>). A side whose version has no such
+/// file (a file new since it, or gone) shows a pane saying so in place of its lines (<see cref="NoFile"/>). Made by
+/// <see cref="DiffPanes"/>.</summary>
 public sealed class DiffView : DockPanel, IOwnKeys
 {
     /// <summary>How long editing pauses before the differences are worked out again.</summary>
@@ -86,23 +87,19 @@ public sealed class DiffView : DockPanel, IOwnKeys
                 }
             }, AppActions.RollbackLines, band => HeldAt(band.Index), AppActions.Stage) { Width = 36 };
 
-        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
-        Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left);
-        Right.ReadOnlyWhy = editable ? null : Refusals.ReadOnly(named.Right);
+        Grid sides = new() { ColumnDefinitions = new ColumnDefinitions("*,Auto,*"), RowDefinitions = new RowDefinitions("Auto,*") };
+        Left.ReadOnlyWhy = Refusals.ReadOnly(named.Left).Shown;
+        Right.ReadOnlyWhy = (editable ? null : Refusals.ReadOnly(named.Right))?.Shown;
         sides.Children.Add(DiffLines.Title(named.Left, 0));
-        sides.Children.Add(DiffLines.Title(named.Right, 3));
+        sides.Children.Add(DiffLines.Title(named.Right, 2));
         Grid.SetRow(Left, 1);
-        Grid.SetRow(bands, 1);
-        Grid.SetColumn(bands, 1);
         Grid.SetRow(Right, 1);
-        Grid.SetColumn(Right, 3);
-        Grid.SetColumn(hunkBoxes, 2);
-        Grid.SetRow(hunkBoxes, 1);
+        Grid.SetColumn(Right, 2);
+        Grid.SetColumn(hunkBoxes, 1);
         hunkBoxes.SizeChanged += (_, _) => PlaceHunkBoxes();
-        sides.Children.Add(hunkBoxes);
         sides.Children.Add(Left);
-        sides.Children.Add(bands);
         sides.Children.Add(Right);
+        DiffLines.Divide(sides, new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto"), Children = { bands, hunkBoxes } }, 1);
         leftNone = NoFilePane(Left, "New file");
         rightNone = NoFilePane(Right, "Deleted file");
         sides.Children.Add(leftNone);
@@ -382,7 +379,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         if (opened || Find.IsVisible)
         {
-            Find.Attach(side, side == Left ? Right : Left, null, side == Right && IsEditable ? null : Refusals.ReadOnly(side == Left ? named.Left : named.Right));
+            Find.Attach(side, side == Left ? Right : Left, null, (side == Right && IsEditable ? null : Refusals.ReadOnly(side == Left ? named.Left : named.Right))?.Shown);
         }
     }
 
@@ -466,7 +463,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     public bool RollsBack => IsEditable || putsBackOnDisk is not null;
 
     /// <summary>Why no change of the diff can be put back: its file's side is a version of its own.</summary>
-    public string? WhyNotRollBack => RollsBack ? null : Refusals.ReadOnly(named.Right);
+    public Words? WhyNotRollBack => RollsBack ? null : Refusals.ReadOnly(named.Right);
 
     /// <summary>The copy of a file not open takes its text from disk (<paramref name="text"/>, null where it can't be read)
     /// where that differs, after something wrote it: a change put back, its Undo, another program.</summary>
@@ -539,7 +536,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         if (WhyNotRollBack is { } readOnly)
         {
-            return readOnly;
+            return readOnly.Shown;
         }
         TextSnapshot compared = shown.Text;
         if (!ReferenceEquals(Right.Document.Snapshot, compared) || !Hunks.Contains(hunk))
@@ -587,7 +584,7 @@ public sealed class DiffView : DockPanel, IOwnKeys
     {
         if (WhyNotRollBack is { } readOnly)
         {
-            return (false, readOnly);
+            return (false, readOnly.Shown);
         }
         bool head = Left.IsKeyboardFocusWithin;
         // Typed in just before, the differences shown are of an older text, whose changes may stand elsewhere now.
@@ -610,14 +607,27 @@ public sealed class DiffView : DockPanel, IOwnKeys
     /// <summary>What Rollback Lines says with no change at the caret.</summary>
     public const string NoChangeHere = "No change here to roll back";
 
-    /// <summary>The next or previous difference from the right side's caret, shown on both sides.</summary>
+    /// <summary>What a step past the file's last difference, or before its first, does instead of going round: true where it
+    /// went to another file's (the Commit window's next or previous changed file); null, or false, to go round.</summary>
+    public Func<int, bool>? CrossesFiles { get; set; }
+
+    /// <summary>Where the caret goes once the differences are first found: to the first (1) or the last (-1); 0 for neither.</summary>
+    public int ArriveAt { get; set; }
+
+    /// <summary>The next or previous difference from the right side's caret, shown on both sides; past the last or before
+    /// the first, another file's where <see cref="CrossesFiles"/> takes the step, else round to the other end.</summary>
     public void Step(int step)
     {
+        int line = Right.CaretPosition.Line;
+        bool beyond = step > 0 ? !Hunks.Any(h => h.NewStart > line) : !Hunks.Any(h => h.NewStart + Math.Max(1, h.NewCount) <= line);
+        if (beyond && CrossesFiles?.Invoke(step) == true)
+        {
+            return;
+        }
         if (Hunks.Count == 0)
         {
             return;
         }
-        int line = Right.CaretPosition.Line;
         DiffHunk target = step > 0
             ? Hunks.FirstOrDefault(h => h.NewStart > line, Hunks[0])
             : Hunks.LastOrDefault(h => h.NewStart + Math.Max(1, h.NewCount) <= line, Hunks[^1]);
@@ -666,6 +676,12 @@ public sealed class DiffView : DockPanel, IOwnKeys
         bands.Refresh();
         IdeErrors.Observe(ShowWordsAsync(diff));
         IdeErrors.Observe(ShowSeparatorsAsync(diff));
+        if (ArriveAt != 0 && Hunks.Count > 0)
+        {
+            DiffHunk end = ArriveAt > 0 ? Hunks[0] : Hunks[^1];
+            ArriveAt = 0;
+            Right.GoTo(new TextPosition(Math.Min(end.NewStart, Right.Document.Snapshot.LineCount - 1), 0));
+        }
     }
 
     /// <summary>What else differs than the lines, which the count says after theirs: the file's encoding or byte order

@@ -35,6 +35,34 @@ public sealed class ColourSwatchesTests : IDisposable
         Flow.StepApart<ColourSwatchesTests>("a colour chosen after a line was added above its call changes the call and keeps the line", t => t.A_colour_chosen_after_a_line_was_added_above_its_call_changes_the_call_and_keeps_the_line());
         Flow.StepApart<ColourSwatchesTests>("a colour chosen after its call's text was changed writes nothing and says so", t => t.A_colour_chosen_after_its_calls_text_was_changed_writes_nothing_and_says_so());
         Flow.StepApart<ColourSwatchesTests>("a picker closes as an editor window becomes active and the one opened there writes its own colour", t => t.A_picker_closes_as_an_editor_window_becomes_active_and_the_one_opened_there_writes_its_own_colour());
+        Flow.StepApart<ColourSwatchesTests>("a shade taken at the square's grey edge keeps the hue the picker had", t => t.A_shade_taken_at_the_squares_grey_edge_keeps_the_hue_the_picker_had());
+    }
+
+    /// <summary>A grey has no hue of its own, so a shade taken at the square's left edge leaves the hue as it was: the
+    /// square's full corner taken next is the brand's blue at its brightest, never the red a grey's hex reads as.</summary>
+    private void A_shade_taken_at_the_squares_grey_edge_keeps_the_hue_the_picker_had()
+    {
+        (MainWindow window, CodeEditor editor) = Open();
+        Pick(window, editor);
+        Passenger.App.Xaml.ColourPicker picker = window.GetVisualDescendants().OfType<Passenger.App.Xaml.ColourPicker>().Single(p => p.IsEffectivelyVisible);
+        Control shades = picker.Shades;
+        // Dragged past the square's edges, the pointer held there takes the edge itself.
+        void Drag(Point from, Point past)
+        {
+            window.MouseDown(shades.TranslatePoint(from, window)!.Value, Avalonia.Input.MouseButton.Left);
+            window.MouseMove(shades.TranslatePoint(past, window)!.Value, Avalonia.Input.RawInputModifiers.LeftMouseButton);
+            window.MouseUp(shades.TranslatePoint(past, window)!.Value, Avalonia.Input.MouseButton.Left);
+            Ui.Settle();
+        }
+        Drag(new Point(4, shades.Bounds.Height / 2), new Point(-20, shades.Bounds.Height / 2));
+        (int red, int green, int blue) = Channels(window.PickingColour);
+        Assert.True(red == green && green == blue, $"The square's left edge took {window.PickingColour}, not a grey");
+        Drag(new Point(shades.Bounds.Width / 2, shades.Bounds.Height / 2), new Point(shades.Bounds.Width + 20, -20));
+        (red, green, blue) = Channels(window.PickingColour);
+        Assert.True(red < 8 && green is > 120 and < 136 && blue > 247, $"The square's corner after its grey edge took {window.PickingColour}, not #336699's hue at its brightest");
+        Ui.Press(window, "ESCAPE");
+        Assert.Equal(Palette, editor.Document.Snapshot.ToString());
+        window.Close();
     }
 
     private void A_colour_chosen_after_a_line_was_added_above_its_call_changes_the_call_and_keeps_the_line()
@@ -116,6 +144,14 @@ public sealed class ColourSwatchesTests : IDisposable
         OpenDocument shown = window.EditorArea.Active!;
         Ui.WaitFor(() => shown.ColourMarks.Any(m => m.Line == 2), "the swatch of the colour FromRgb makes");
         return (window, editor);
+    }
+
+    /// <summary>A picker's opaque colour's red, green and blue, from its hex.</summary>
+    private static (int Red, int Green, int Blue) Channels(string? hex)
+    {
+        Assert.NotNull(hex);
+        int Of(int at) => int.Parse(hex.AsSpan(at, 2), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+        return (Of(1), Of(3), Of(5));
     }
 
     /// <summary>Opens the picker on the call's swatch, as a click on it does.</summary>

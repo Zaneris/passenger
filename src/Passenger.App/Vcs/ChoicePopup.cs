@@ -2,11 +2,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Passenger.Core;
+using Passenger.Editor;
 
 namespace Passenger.App.Vcs;
 
 /// <summary>One thing a <see cref="ChoicePopup"/> offers: what it is called, what it says beside that, and what it is.</summary>
-public sealed record Choice(string Label, string Detail, object Value);
+public sealed record Choice(Words Label, Words Detail, object Value);
 
 /// <summary>The popups that choose a version to compare with (Compare with Branch or Tag, Compare with Revision) or a
 /// change set (Recent Changes): a search box over the list, narrowed as words are typed; Enter or a double-click takes the
@@ -14,9 +16,9 @@ public sealed record Choice(string Label, string Detail, object Value);
 public sealed class ChoicePopup : SearchPopup<Choice>
 {
     private readonly IReadOnlyList<Choice> choices;
-    private readonly string nothing;
+    private readonly Words nothing;
 
-    public ChoicePopup(string title, string placeholder, IReadOnlyList<Choice> choices, string nothing)
+    public ChoicePopup(Words title, Words placeholder, IReadOnlyList<Choice> choices, Words nothing)
         : base(title, placeholder, PopupFrame.Medium)
     {
         this.choices = choices;
@@ -27,7 +29,7 @@ public sealed class ChoicePopup : SearchPopup<Choice>
     protected override void QueryChanged()
     {
         string[] words = Query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        Show([.. choices.Where(c => words.All(w => c.Label.Contains(w, StringComparison.OrdinalIgnoreCase) || c.Detail.Contains(w, StringComparison.OrdinalIgnoreCase)))], nothing);
+        Show([.. choices.Where(c => words.All(w => c.Label.Shown.Contains(w, StringComparison.OrdinalIgnoreCase) || c.Detail.Shown.Contains(w, StringComparison.OrdinalIgnoreCase)))], nothing);
     }
 
     /// <summary>A choice's row: its label, and what it says beside that at the right, muted.</summary>
@@ -40,8 +42,8 @@ public sealed class ChoicePopup : SearchPopup<Choice>
         row.Children.Add(label);
         return row.Showing<Choice>(choice =>
         {
-            detail.Text = choice.Detail;
-            label.Text = choice.Label;
+            ShownWords.Set(detail, TextBlock.TextProperty, choice.Detail);
+            ShownWords.Set(label, TextBlock.TextProperty, choice.Label);
         });
     }
 }

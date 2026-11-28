@@ -41,13 +41,13 @@ public static class TypeRename
     /// only the asked file's, as no other is its part; null when the name is not a type's declared in the folder. A
     /// definition at the start of a Razor component's file, of the name asked about, is the class Razor makes of it, where
     /// none of C#'s declares it.</summary>
-    public static async Task<Named?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset)
+    public static async Task<Named?> NamedAsync(EditorArea editors, string folder, LspDocument server, int offset, CancellationToken cancel = default)
     {
         // The open files as the question went: what is typed meanwhile moves the places the answer names in them.
         using Asked asked = WorkspaceEdits.Track(editors);
         TextSnapshot text = server.Text.Snapshot;
         string asking = text.GetText(TextNavigation.WordAt(text, offset));
-        IReadOnlyList<LspLocation> definitions = await server.DefinitionAsync(offset);
+        IReadOnlyList<LspLocation> definitions = await server.DefinitionAsync(offset, cancel);
         string? type = null;
         string? fullName = null;
         string? declaring = null;

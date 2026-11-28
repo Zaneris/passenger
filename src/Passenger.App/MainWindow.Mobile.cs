@@ -59,7 +59,7 @@ public partial class MainWindow
 
     private void AddMobile()
     {
-        actions!.Add(new IdeAction(AppActions.InstallWorkloads, "Install Workloads…", "IDE", context => IdeErrors.Observe(InstallWorkloadsAsync()))
+        actions!.Add(new IdeAction(AppActions.InstallWorkloads, ActionTitles.InstallWorkloads, ActionGroups.Ide, context => IdeErrors.Observe(InstallWorkloadsAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : MobileWant.Workloads.Count == 0 ? Refusals.NoWorkloadLacking
@@ -68,7 +68,7 @@ public partial class MainWindow
             Words = ["dotnet workload", "MAUI", "Android", "iOS"],
             Works = AppActions.InstallWorkloads,
         });
-        actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, "Install Android SDK and Java…", "IDE", _ => IdeErrors.Observe(InstallAndroidAsync()))
+        actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, ActionTitles.InstallAndroidDependencies, ActionGroups.Ide, _ => IdeErrors.Observe(InstallAndroidAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : Untrusted() ?? (!MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking : null),
@@ -76,13 +76,13 @@ public partial class MainWindow
             Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
             Works = AppActions.InstallAndroidDependencies,
         });
-        actions.Add(new IdeAction(AppActions.MakeMobileEdits, "Make the Mobile Edits", "IDE", _ => IdeErrors.Observe(MakeMobileEditsAsync(null)))
+        actions.Add(new IdeAction(AppActions.MakeMobileEdits, ActionTitles.MakeMobileEdits, ActionGroups.Ide, _ => IdeErrors.Observe(MakeMobileEditsAsync(null)))
         {
             WhyNot = _ => MobileWant.Heads.Any(h => h.Makes) ? null : Refusals.NoMobileEdits,
             Words = ["iOS", "Android", "Mac Catalyst", "Info.plist", MSBuildNames.SupportedOSPlatformVersion, AppManifests.MinimumOSVersion, AppManifests.SceneManifest],
             Works = AppActions.MakeMobileEdits,
         });
-        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, "Keep .NET's Assemblies Whole in Debug", "IDE",
+        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, ActionTitles.KeepAssembliesWhole, ActionGroups.Ide,
             _ => IdeErrors.Observe(KeepWholeAsync(wholeAsked ?? MobileWant.Trimmed.FirstOrDefault()?.Project)))
         {
             WhyNot = _ => wholeAsked is not null || MobileWant.Trimmed.Count > 0 ? null : Refusals.NothingTrimmed,
@@ -245,11 +245,11 @@ public partial class MainWindow
         List<HeadEdits> heads = [.. MobileWant.Heads.Where(h => h.Makes && (only is null || PathNames.Same(h.Project, only)))];
         if (heads.Count == 0)
         {
-            return (false, Refusals.NoMobileEdits);
+            return (false, Refusals.NoMobileEdits.Shown);
         }
         if (work.Begin(AppActions.MakeMobileEdits, "Making the mobile edits") is not { } making)
         {
-            return (false, ActionWork.Busy(work.Of(AppActions.MakeMobileEdits)!));
+            return (false, ActionWork.Busy(work.Of(AppActions.MakeMobileEdits)!).Shown);
         }
         using (making)
         {
@@ -325,11 +325,11 @@ public partial class MainWindow
         UiThread.Check();
         if (project is null || session.Projects.FirstOrDefault(p => PathNames.Same(p.Path, project)) is not { } model)
         {
-            return (false, Refusals.NothingTrimmed);
+            return (false, Refusals.NothingTrimmed.Shown);
         }
         if (work.Begin(AppActions.KeepAssembliesWhole, $"Keeping .NET's assemblies whole in {model.Name}'s Debug build") is not { } keeping)
         {
-            return (false, ActionWork.Busy(work.Of(AppActions.KeepAssembliesWhole)!));
+            return (false, ActionWork.Busy(work.Of(AppActions.KeepAssembliesWhole)!).Shown);
         }
         using (keeping)
         {
@@ -417,14 +417,14 @@ public partial class MainWindow
         CancellationToken stop)
     {
         UiThread.Check();
-        if (RefusedToAgentsInput(Refusals.AgentInstallsMobile))
+        if (RefusedToAgentsInput(Refusals.AgentInstallsMobile.Shown))
         {
-            return (false, Refusals.AgentInstallsMobile, null);
+            return (false, Refusals.AgentInstallsMobile.Shown, null);
         }
         string named = $"{Plural.Noun(ids.Count, "workload")} {Plural.Listed([.. ids])}";
         if (work.Begin(AppActions.InstallWorkloads, asks ? "Asking to install the .NET workloads" : $"Installing the .NET {named}") is not { } installing)
         {
-            return (false, ActionWork.Busy(work.Of(AppActions.InstallWorkloads)!), null);
+            return (false, ActionWork.Busy(work.Of(AppActions.InstallWorkloads)!).Shown, null);
         }
         using (installing)
         {
@@ -449,12 +449,12 @@ public partial class MainWindow
             if (folders.UserLocal is null && !await BackgroundWork.Run(() => Writable(folders.Root)))
             {
                 string asAdministrator = WorkloadInstalls.AsAdministrator(folders.Root, ids);
-                return Came(false, Refusals.WorkloadsNeedAdministrator(folders.Root, asAdministrator), asAdministrator);
+                return Came(false, Refusals.WorkloadsNeedAdministrator(folders.Root, asAdministrator).Shown, asAdministrator);
             }
             if (asks && !await ConfirmAsync($"Install the .NET {named}?",
                 $"Passenger runs {command}, which downloads them from NuGet and installs them {WorkloadInstalls.Into(folders)}. "
                 + $"{Plural.Listed([.. MobileWant.Projects])} then {Plural.Agreeing(MobileWant.Projects.Count, "loads", "load")} again.", "Install", null,
-                Refusals.AgentInstallsMobile))
+                Refusals.AgentInstallsMobile.Shown))
             {
                 return Came(false, $"The .NET {named} {Plural.Agreeing(ids.Count, "was", "were")} not installed");
             }
@@ -510,7 +510,7 @@ public partial class MainWindow
     {
         UiThread.Check();
         MobileWant want = MobileWant;
-        if (RefusedToAgentsInput(Refusals.AgentInstallsMobile) || !want.AndroidLacks || want.AndroidSdk is not { } sdk
+        if (RefusedToAgentsInput(Refusals.AgentInstallsMobile.Shown) || !want.AndroidLacks || want.AndroidSdk is not { } sdk
             || session.Projects.FirstOrDefault(p => want.Projects.Contains(p.Name, StringComparer.Ordinal)
                 && p.TargetFrameworks.Any(f => MobilePlatforms.Of(f) == FrameworkNames.Android)) is not { } project
             || work.Begin(AppActions.InstallAndroidDependencies, "Reading the Android SDK's licences") is not { } installing)
@@ -559,7 +559,7 @@ public partial class MainWindow
             }
             ProcessStartInfo install = MSBuildQuestions.Command(project.Path, framework, ProjectModels.Properties(session.Workspace, project),
                 new MSBuildQuestion([MSBuildNames.InstallAndroidDependencies]) { Given = given });
-            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(install, installing.Say, installing.Stopping);
+            (int code, IReadOnlyList<string> lines) = await RunInstallAsync(install, said => installing.Say(said), installing.Stopping);
             if (installing.IsStopped)
             {
                 Told(installing, false, "The Android SDK's install was stopped");
@@ -651,7 +651,7 @@ public partial class MainWindow
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             Height = 260,
         };
-        return new ConfirmDialog(title, text, "Accept and Install", "Decline", shown) { EnterAgrees = false, PersonsAlone = Refusals.AgentInstallsMobile }.ShowDialog<bool>(this);
+        return new ConfirmDialog(title, text, "Accept and Install", "Decline", shown) { EnterAgrees = false, PersonsAlone = Refusals.AgentInstallsMobile.Shown }.ShowDialog<bool>(this);
     }
 
     /// <summary>An install's program run, each line it writes <paramref name="heard"/> on the window's thread, ended once

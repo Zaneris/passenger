@@ -23,7 +23,7 @@ internal sealed partial class CSharpAssist
     /// <summary>Whether what a key types in the file shown is formatted once typed, asked before it is typed, at one caret
     /// in a C# file: a ';' or a '}' its language server formats around, a line break where it lays a block out after one,
     /// and, whatever Settings has, a doc comment's: the '/' that makes a line's '///' and a line break in one.</summary>
-    public bool FormatsTyped(string typed)
+    public override bool FormatsTyped(string typed)
     {
         if (context.Editor.Selections.HasMultiple || Formatting() is not { } lsp)
         {
@@ -105,7 +105,7 @@ internal sealed partial class CSharpAssist
 
     /// <summary>Enter that opened no block (<see cref="CodeEditor.LineBroken"/>) after a line of a doc comment: the comment
     /// goes on as the server writes it, joined to Enter's step of Undo.</summary>
-    public void FormatLineBreak()
+    public override void FormatLineBreak()
     {
         if (Formatting() is { } lsp && lsp.AutoInserts('\n') && context.Editors.Active is { } shown && !context.Editor.Selections.HasMultiple
             && context.Editor.Selections.Primary is { IsEmpty: true, Caret: int caret } && shown.Text.Snapshot.GetLineFromOffset(caret) is > 0 and int line

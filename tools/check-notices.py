@@ -2,7 +2,7 @@
 """Fails, naming each one, when a package Passenger restores or carries is missing from THIRD_PARTY_NOTICES.md.
 
 The packages are every one the solution's projects use, transitive ones included (so the solution must be restored
-first), every one Roslyn's language server carries under roslyn/, every one the container tools carry on one of their
+first), every one Roslyn's language server carries under roslyn/, every one Coverlet carries under coverage/, every one the container tools carry on one of their
 systems with its runtime pack, every npm package the web language servers' lock file and the tests' own pin, and every
 tool dotnet-tools.json pins. A package is named in the notices by its id in backticks.
 """
@@ -17,14 +17,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NOTICES = os.path.join(ROOT, "THIRD_PARTY_NOTICES.md")
 
 # Restored with the packages that use them, but in no app Passenger is published as nor in the container tools: their
-# natives are for the browser, 32-bit Arm Linux and 32-bit Windows. A system Passenger comes to ship for takes its own
-# out of here and into the notices; one the container tools carry is checked whatever this says.
+# natives are for the browser and 32-bit Arm Linux. A system Passenger comes to ship for takes its own out of here and
+# into the notices; one the container tools carry is checked whatever this says.
 NOT_SHIPPED = {
     "HarfBuzzSharp.NativeAssets.WebAssembly",
     "SkiaSharp.NativeAssets.WebAssembly",
     "Microsoft.Diagnostics.DbgShim.linux-arm",
     "Microsoft.Diagnostics.DbgShim.linux-musl-arm",
-    "Microsoft.Diagnostics.DbgShim.win-x86",
 }
 
 # The container tools' project and the systems they are published for.
@@ -69,6 +68,28 @@ def roslyn_packages():
         for name, library in libraries.items():
             if library.get("type") == "package":
                 used.setdefault(name.split("/", 1)[0], set()).add("roslyn/")
+    return used
+
+
+def coverage_packages():
+    """Coverlet's packages, carried under coverage/, and each package their .deps.json files name."""
+    properties = json.loads(dotnet("msbuild", "src/Passenger.App/Passenger.App.csproj", "-getProperty:CoverletVersion",
+                                   "-getProperty:NuGetPackageRoot"))["Properties"]
+    version, packages = properties["CoverletVersion"], properties["NuGetPackageRoot"]
+    used = {}
+    # The builds Passenger.App.csproj carries (FindCoverlet): the collector's for .NET 8, the console's for .NET 10.
+    for package, carried in (("coverlet.collector", ("build", "net8.0")), ("coverlet.console", ("tools", "net10.0", "any"))):
+        folder = os.path.join(packages, package, version.lower(), *carried)
+        deps = glob.glob(os.path.join(folder, "*.deps.json"))
+        if not deps:
+            sys.exit(f"check-notices: no .deps.json under {folder}; restore the solution first")
+        used.setdefault(package, set()).add("coverage/")
+        for path in deps:
+            with open(path, encoding="utf-8-sig") as f:
+                libraries = json.load(f).get("libraries", {})
+            for name, library in libraries.items():
+                if library.get("type") == "package":
+                    used.setdefault(name.split("/", 1)[0], set()).add("coverage/")
     return used
 
 
@@ -124,7 +145,7 @@ def named_in_notices():
 
 def main():
     used = solution_packages()
-    for package, users in [*roslyn_packages().items(), *web_packages().items(), *tool_packages().items()]:
+    for package, users in [*roslyn_packages().items(), *coverage_packages().items(), *web_packages().items(), *tool_packages().items()]:
         used.setdefault(package, set()).update(users)
     carried = container_tools_packages()
     for package, users in carried.items():

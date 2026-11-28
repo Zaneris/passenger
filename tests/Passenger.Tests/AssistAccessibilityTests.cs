@@ -281,7 +281,7 @@ public sealed class AssistAccessibilityTests : IClassFixture<AssistAccessibility
         CodeEditor editor = window.EditorArea.CodeEditor;
         List<(string Words, AutomationLiveSetting Live)> heard = AccessibilityTests.Listen(window);
         int at = editor.Document.Snapshot.ToString().IndexOf("Twice", StringComparison.Ordinal) + 2;
-        window.MouseMove(editor.TranslatePoint(editor.PointOf(at) + new Point(1, editor.LineHeight / 2), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+        Ui.RestOn(editor, at);
         Ui.WaitFor(() => window.Assist.HoverText is not null, "the hover card");
         Ui.Settle();
         Assert.True(heard.Count == 0, $"A card the pointer brought was heard as {AccessibilityTests.Said(heard)}");

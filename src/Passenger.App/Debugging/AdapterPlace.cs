@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Passenger.App.Containers;
+using Passenger.Core;
 
 namespace Passenger.App.Debugging;
 
@@ -34,8 +35,16 @@ public sealed record AdapterPlace(Func<IReadOnlyList<string>, ProcessStartInfo> 
 
     /// <summary>Whether a container runs now, as the engine says: what a container's place gives as its <see cref="Running"/>.</summary>
     public static Func<Task<bool>> Runs(ContainerEngine engine, string container) => async () =>
-        await engine.RunAsync(["inspect", "-f", "{{.State.Running}}", container]).ConfigureAwait(false) is { Succeeded: true } said
-        && said.Output.Trim() == "true";
+    {
+        try
+        {
+            return JsonMembers.Scalar(JsonMembers.Object(await engine.InspectedAsync(container).ConfigureAwait(false), "State"), "Running") == "true";
+        }
+        catch (Exception unsaid) when (unsaid is ContainerCommandException or System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    };
 
     /// <summary>A path of this machine as the program's names it.</summary>
     public string ToProgram(string path) => Paths.ToContainer(path) ?? path;

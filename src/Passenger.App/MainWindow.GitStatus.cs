@@ -54,7 +54,7 @@ public partial class MainWindow
     {
         if (session.Vcs.Branch is not { } branch || session.Vcs.Upstream is not { } upstream)
         {
-            status.Text = session.Vcs.Branch is { } untracked ? Refusals.Untracked(untracked) : "A detached head tracks no remote's branch";
+            status.Text = (session.Vcs.Branch is { } untracked ? Refusals.Untracked(untracked) : "A detached head tracks no remote's branch").Shown;
             return null;
         }
         string current = $"refs/heads/{branch}";

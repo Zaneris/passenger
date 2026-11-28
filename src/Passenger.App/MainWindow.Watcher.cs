@@ -1,4 +1,5 @@
 using Passenger.App.Editors;
+using Passenger.App.Vcs;
 using Passenger.App.Workspace;
 using Passenger.Core;
 using Passenger.Text;
@@ -126,6 +127,7 @@ public partial class MainWindow
         session.DesignTimeBuilds.FolderChanged(changes);
         session.FilesChanged(changes);
         session.Debug.FilesChanged(changes.Paths);
+        session.Continuous.FilesChanged(changes.Paths, every: changes.Lost);
         // What came or went is the index's to weigh against what the folder's read found (ProjectSession.ProjectsCameOrWent).
         string[] written = [.. changes.Written];
         (bool programsMade, bool programsWritten) = ProgramsChanged(written);
@@ -192,6 +194,16 @@ public partial class MainWindow
         {
             session.CSharp?.ConfigurationChanged();
         }
+        // C# files written on disk: the dependency map asks its open levels again once the code rests.
+        if (changes.Paths.Any(p => Languages.Language.ForPath(p) == Languages.Language.CSharp))
+        {
+            dependencyMap?.CodeMoved();
+        }
+        // The folder's layer rules written, made or deleted: read again, and every open C# file checked against them.
+        if (changes.Lost || changes.Paths.Any(p => Path.GetFileName(p) == Roslyn.Extension.LayerRules.FileName))
+        {
+            ReadLayers();
+        }
         // A .resx or XLIFF file written: the reads of localized keys are looked at again.
         if (changes.Lost || changes.Paths.Any(Passenger.Xaml.Localization.ResourceFiles.Holds))
         {
@@ -199,9 +211,11 @@ public partial class MainWindow
             session.Xaml.LocalizationChanged();
         }
         PackageSourcesChanged(changes);
+        RestoresWritten(changes);
         session.Tests.Finder.FolderChanged(changes);
         session.Xaml.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.Xaml.FilesChanged(changes.Paths.Concat(changes.Restored));
+        FormFilesChanged(changes.Paths, every: changes.Lost);
         IdeErrors.Observe(XamlWrittenAsync(changes.Paths));
         session.GodotScenes.CameOrWent(changes.ComeOrGone, every: changes.Lost);
         session.GodotScenes.FilesChanged(changes.Paths);
@@ -214,6 +228,14 @@ public partial class MainWindow
         if (changes.Paths.Count > 0 || changes.Git)
         {
             IdeErrors.Observe(session.Vcs.FolderChangedAsync(changes.Git || changes.Lost));
+        }
+        // Another repository the folder holds hears what changed under its top, its own Git's folder among it.
+        foreach (VcsController other in session.Others)
+        {
+            if (other.Repository is { } its && (changes.Lost || changes.Paths.Any(p => PathNames.Within(p, its.Root))))
+            {
+                IdeErrors.Observe(other.FolderChangedAsync(changes.Lost || changes.Paths.Any(p => PathNames.Within(p, its.GitDir))));
+            }
         }
     }
 

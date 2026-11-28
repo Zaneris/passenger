@@ -3,6 +3,10 @@ using Passenger.Workspace;
 
 namespace Passenger.App.Migrations;
 
+/// <summary>Why a folder typed for a migration's files is none of its project's: the text typed, and the system's words why
+/// it names no folder, or null where it names one outside the project.</summary>
+public sealed record EfFolderUnfit(string Typed, string? Problem);
+
 /// <summary>The folder Add Migration writes a context's migrations into, as dotnet ef's <c>--output-dir</c> takes it: a
 /// folder of the project, from its own, in forward slashes. None given, dotnet ef puts a migration beside the context's
 /// last one, else in <see cref="Default"/>. The folders offered are those holding the context's migrations as the
@@ -23,7 +27,7 @@ public static class EfOutputFolders
     /// <summary>A folder typed or picked for <c>--output-dir</c> as dotnet ef is given it: from the project's folder in forward
     /// slashes, one given whole taken from there; null for none (empty, dotnet ef's own choice), or why it is no folder of
     /// the project.</summary>
-    public static (string? Folder, string? Why) Read(string? typed, ProjectModel project)
+    public static (string? Folder, EfFolderUnfit? Unfit) Read(string? typed, ProjectModel project)
     {
         string text = typed?.Trim() ?? string.Empty;
         if (text.Length == 0)
@@ -39,9 +43,9 @@ public static class EfOutputFolders
         }
         catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return (null, $"\"{text}\" names no folder: {error.Message}");
+            return (null, new EfFolderUnfit(text, error.Message));
         }
-        return folder is null ? (null, $"{text} is outside {project.Name}: its migrations go in a folder of the project") : (folder, null);
+        return folder is null ? (null, new EfFolderUnfit(text, null)) : (folder, null);
     }
 
     /// <summary>Whether a kept folder names one inside a project, as <see cref="Read"/> gives one.</summary>
