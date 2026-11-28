@@ -17,14 +17,20 @@ internal static class Hits
     /// <summary>The key Coverlet's trackers find a collector's list of them under.</summary>
     private const string Registry = "Coverlet_RegisteredModuleTrackers";
 
-    private static readonly List<EventHandler> Trackers = [];
+    /// <summary>The list the trackers add themselves to, which <see cref="Take"/> reads: a collector's of Coverlet's where it
+    /// made one first, else this one's own.</summary>
+    private static List<EventHandler> trackers = [];
 
     /// <summary>The list each tracker adds itself to, made before any counts: Coverlet's own where a collector of its made it.</summary>
     public static void Register()
     {
-        if (AppDomain.CurrentDomain.GetData(Registry) is not List<EventHandler>)
+        if (AppDomain.CurrentDomain.GetData(Registry) is List<EventHandler> made)
         {
-            AppDomain.CurrentDomain.SetData(Registry, Trackers);
+            trackers = made;
+        }
+        else
+        {
+            AppDomain.CurrentDomain.SetData(Registry, trackers);
         }
     }
 
@@ -124,13 +130,14 @@ internal static class Hits
     /// <summary>Each tracker's places counted since the last take, as JSON: {"file": [index, …], …}.</summary>
     public static string Take()
     {
-        EventHandler[] trackers;
-        lock (Trackers)
+        List<EventHandler> registered = trackers;
+        EventHandler[] each;
+        lock (registered)
         {
-            trackers = [.. Trackers];
+            each = [.. registered];
         }
         StringBuilder line = new("{");
-        foreach (Type tracker in trackers.Select(t => t.Method.DeclaringType).OfType<Type>().Distinct())
+        foreach (Type tracker in each.Select(t => t.Method.DeclaringType).OfType<Type>().Distinct())
         {
             if (tracker.GetField("HitsArray", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) is not int[] counts
                 || tracker.GetField("HitsFilePath", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) is not string file)

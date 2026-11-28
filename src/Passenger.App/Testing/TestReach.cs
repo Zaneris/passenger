@@ -40,14 +40,16 @@ public sealed partial record TestReachState
     }
 
     /// <summary>The tests mapped now, each in place of what was kept of it, and the files they ran as they read now
-    /// (<paramref name="hashes"/> by path); every other test's lines in those files carried to where they stand now
-    /// (<see cref="Changed"/> has found them unchanged), within the bounds.</summary>
+    /// (<paramref name="hashes"/> by path); every other test's lines in those files, and the lines a test could run where
+    /// none are given afresh, carried to where they stand now (<see cref="Changed"/> has found them unchanged), within the
+    /// bounds.</summary>
     public TestReachState With(IReadOnlyDictionary<string, ReachedTest> mapped, IReadOnlyDictionary<string, uint[]> hashes, IReadOnlyDictionary<string, IReadOnlyList<int>>? coverable = null)
     {
         Dictionary<string, MappedFile> files = new(Files, StringComparer.Ordinal);
         Dictionary<string, ReachedTest> tests = new(Tests, StringComparer.Ordinal);
         foreach ((string path, uint[] now) in hashes)
         {
+            List<int> kept = files.GetValueOrDefault(path)?.Coverable ?? [];
             if (files.TryGetValue(path, out MappedFile? was) && !was.Hashes.AsSpan().SequenceEqual(now))
             {
                 int[] moved = Moved(was.Hashes, now);
@@ -55,11 +57,12 @@ public sealed partial record TestReachState
                 {
                     if (!mapped.ContainsKey(identity) && test.Lines.TryGetValue(path, out List<int>? stretches))
                     {
-                        tests[identity] = test with { Lines = new(test.Lines, StringComparer.Ordinal) { [path] = Stretches.Of(Stretches.Lines(stretches).Select(l => l <= moved.Length ? moved[l - 1] : 0).Where(l => l > 0)) } };
+                        tests[identity] = test with { Lines = new(test.Lines, StringComparer.Ordinal) { [path] = Carried(stretches, moved) } };
                     }
                 }
+                kept = Carried(kept, moved);
             }
-            files[path] = new MappedFile { Hashes = now, Coverable = coverable?.GetValueOrDefault(path) is { } lines ? Stretches.Of(lines) : files.GetValueOrDefault(path)?.Coverable ?? [] };
+            files[path] = new MappedFile { Hashes = now, Coverable = coverable?.GetValueOrDefault(path) is { } lines ? Stretches.Of(lines) : kept };
         }
         foreach ((string identity, ReachedTest test) in mapped)
         {
@@ -67,6 +70,11 @@ public sealed partial record TestReachState
         }
         return (this with { Tests = tests, Files = files }).Clamped();
     }
+
+    /// <summary>Stretches of a file's lines where they stand once it changed as <paramref name="moved"/> maps its lines, those
+    /// taken out gone.</summary>
+    private static List<int> Carried(List<int> stretches, int[] moved) =>
+        Stretches.Of(Stretches.Lines(stretches).Select(l => l <= moved.Length ? moved[l - 1] : 0).Where(l => l > 0));
 
     /// <summary>The tests a file's change reaches, as it reads now (<paramref name="now"/>, a hash of each line): those that
     /// ran a line changed or taken out since it was mapped, or the line before or after one put in; none for a file no test
