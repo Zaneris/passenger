@@ -18,8 +18,7 @@ public static class GodotLaunch
 
     /// <summary>What Hot Reload is to Godot's editor, which loads the project's C# (its tool scripts) into a context it can
     /// unload, and loads it again from each new build by itself (its assembly watcher): a build applies an edit there.</summary>
-    public const string EditorReloads = "Godot's editor loads the project's C# into a context it unloads, and loads it again from each new build: "
-        + "Build the project to apply an edit to its tool scripts, which start again with the new build";
+    public static Words EditorReloads => LaunchWords.EditorReloads;
 
     /// <summary>What a setting's line runs, as Settings says it under the box: the Godot found (or chosen) with its version as
     /// it answers, and that it is a .NET build, which runs C#; or why none would run a C# game.</summary>

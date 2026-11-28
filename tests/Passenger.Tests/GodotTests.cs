@@ -168,7 +168,7 @@ public sealed class GodotTests : IClassFixture<GodotTests.Game>
 
             RunConfigurationsDialog dialog = window.ShowRunConfigurations();
             Assert.True(dialog.Choose(edited.Name), $"Edit Configurations lists no {edited.Name}");
-            Ui.WaitFor(() => dialog.Note.Contains($"Hot Reload: {GodotLaunch.EditorReloads}.", StringComparison.Ordinal),
+            Ui.WaitFor(() => dialog.Note.Contains($"Hot Reload: {GodotLaunch.EditorReloads.English}.", StringComparison.Ordinal),
                 () => $"the editor's configuration to say what Hot Reload is to Godot's editor ({dialog.Note})");
             dialog.Close();
             Ui.Settle();

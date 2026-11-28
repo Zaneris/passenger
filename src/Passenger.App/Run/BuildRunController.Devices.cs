@@ -42,7 +42,7 @@ public sealed partial class BuildRunController
         {
             return;
         }
-        work.Say($"Putting Passenger's inspector in {start.App.Package}…");
+        work.Say(LaunchWords.PuttingInspectorIn(start.App.Package));
         if (await start.PutInspectorAsync(device, work.Stopping) is { } problem)
         {
             device.Unreached(problem);
@@ -54,16 +54,16 @@ public sealed partial class BuildRunController
     /// Avalonia app's and the hook that calls its update handlers after each update, so the debugger attaches quietly as its
     /// start waits there (<see cref="AttachOnDeviceForHotReloadAsync"/>): the relay and the hook, else why not, the app then
     /// running without Hot Reload.</summary>
-    private async Task<(RelaySession? Relay, UpdateHandlerHook? Handlers, string? Problem)> RelayOnDeviceAsync(LaunchPlan plan, DeviceStart start, LiveApp? inspected,
+    private async Task<(RelaySession? Relay, UpdateHandlerHook? Handlers, Words? Problem)> RelayOnDeviceAsync(LaunchPlan plan, DeviceStart start, LiveApp? inspected,
         Working work)
     {
-        work.Say($"Putting Passenger's debugger in {start.App.Package} for Hot Reload…");
+        work.Say(LaunchWords.PuttingDebuggerForReload(start.App.Package));
         UpdateHandlerHook? handlers = HandlersOnDevice(plan);
         (RelaySession? relay, string? unrelayed) = await start.PutRelayAsync(inspected?.Device, handlers, work.Stopping);
         if (relay is null)
         {
             handlers?.Dispose();
-            return (null, null, unrelayed ?? "Passenger's debugger could not be put in the app");
+            return (null, null, unrelayed ?? LaunchWords.DebuggerNotPut);
         }
         return (relay, handlers, null);
     }
@@ -87,7 +87,7 @@ public sealed partial class BuildRunController
     private async Task AttachOnDeviceForHotReloadAsync(string name, DeviceStart start, RelaySession relay, OutputView? console, Working work, BuiltEdits? edits,
         Words running, LiveApp? app, ProgramBuild? builds, UpdateHandlerHook? handlers)
     {
-        work.Say($"Attaching to {name} on its device for Hot Reload…");
+        work.Say(LaunchWords.AttachingOnDevice(name));
         Words? refused = await session.Debug.AttachForHotReloadThroughRelayAsync(relay, name, (line, error) =>
         {
             console?.Append($"{line}\n", error);

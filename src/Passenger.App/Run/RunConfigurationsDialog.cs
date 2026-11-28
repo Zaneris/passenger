@@ -1439,7 +1439,7 @@ public sealed class RunConfigurationsDialog : IdeWindow
         }
         if (shown.GodotEditor && project?.GodotFolder is not null)
         {
-            origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads}.".Trim();
+            origin = $"{origin} Hot Reload: {GodotLaunch.EditorReloads.Shown}.".Trim();
         }
         if (shown is { Generated: true, Console: ConsoleKind.Terminal, DrawsWith: { } package })
         {

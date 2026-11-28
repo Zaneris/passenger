@@ -55,7 +55,7 @@ public sealed class MissingSdkTests : IDisposable
         Ui.Settle();
         Assert.True(window.Status == Missing && window.StatusSeverity == ProblemSeverity.Error,
             $"Without the SDK global.json asks for, the status bar said ({window.StatusSeverity}): {window.Status}");
-        Assert.Equal("download the .NET SDK 1.0.100", window.StatusPlace?.Name);
+        Assert.Equal("download the .NET SDK 1.0.100", window.StatusPlace?.Name.English);
         Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
         Assert.Equal("https://dotnet.microsoft.com/download/dotnet/1.0", Assert.Single(window.Browsed).AbsoluteUri);
 

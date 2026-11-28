@@ -49,7 +49,7 @@ public sealed partial class BuildRunController
             return Said(AlreadyRunning());
         }
         string action = how == RunStart.Debug ? AppActions.Debug : AppActions.RunProgram;
-        if (parts.Work.Begin(action, $"Working out how to {(how == RunStart.Debug ? "debug" : "run")} {configuration.Name}…") is not { } work)
+        if (parts.Work.Begin(action, LaunchWords.WorkingOut(how == RunStart.Debug ? "debug" : "run", configuration.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(action)!));
         }
@@ -139,7 +139,7 @@ public sealed partial class BuildRunController
             return Said(LaunchWords.NoDockerfile(chosen.Name, project.Name));
         }
         ContainerEngine engine = session.Containers.Engine;
-        work.Say("Asking the container engine…");
+        work.Say(LaunchWords.AskingEngine);
         EngineState state;
         try
         {
@@ -172,7 +172,7 @@ public sealed partial class BuildRunController
                 return Said(Canceled(work, chosen.Name));
             }
         }
-        work.Say($"Reading {chosen.Name}'s compose files…");
+        work.Say(LaunchWords.ReadingCompose(chosen.Name));
         (WorkspaceModel? configured, Words? unconfigured) = await session.WorkspaceOfAsync(chosen);
         if (unconfigured is not null)
         {
@@ -241,7 +241,7 @@ public sealed partial class BuildRunController
             .Select(h => (h.Service.Service, h.How == RunStart.HotReload || session.Debug.HotReloadOn()))];
         if (plan.Builds.Count > 0)
         {
-            work.Say($"Building {string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))}…");
+            work.Say(BuildWords.Doing("build", string.Join(", ", plan.Builds.Select(Path.GetFileNameWithoutExtension))));
             BuildOutcome built = await BuildForAsync(plan.Builds, work.Stopping, work, reading: () => FollowBuilt(sessions), configured: plan.Workspace);
             if (!built.Succeeded)
             {
@@ -278,7 +278,7 @@ public sealed partial class BuildRunController
         if (debugged.Count > 0)
         {
             // Each held service's image is built to read whether its own environment turns its debugger off.
-            work.Say($"Building {Plural.Listed([.. debugged.Select(d => d.Service)])}'s {Plural.Noun(debugged.Count, "image")}…");
+            work.Say(LaunchWords.BuildingImages(services: Plural.Listed(Words.Names(debugged.Select(d => d.Service))), count: debugged.Count));
         }
         try
         {
@@ -297,7 +297,7 @@ public sealed partial class BuildRunController
         {
             return Said(written);
         }
-        work.Say($"Bringing {chosen.Name}'s services up…");
+        work.Say(LaunchWords.BringingServicesUp(chosen.Name));
         ran = chosen.Name;
         RunProject = plan.Folder;
         DebugProject = plan.Folder;
@@ -310,7 +310,7 @@ public sealed partial class BuildRunController
         {
             parts.Views.Debug.ShowTab(console: true);
         }
-        parts.Say($"Bringing {chosen.Name} up…");
+        parts.Say(LaunchWords.BringingUp(chosen.Name));
         // Held to the CLI that brings it up: a CLI chosen in Settings while it runs reaches and takes down what this one made.
         ContainerRun run = new(plan, engine.Pinned(), parts.Views.Run.Sink)
         {
@@ -384,7 +384,7 @@ public sealed partial class BuildRunController
                 return Refusals.SolutionClosed;
             }
             // A run that did not start leaves nothing running, its own alone: a start that replaced it has its own.
-            IdeLog.Write(IdeLog.Ide, $"Containers: {chosen.Name} did not start ({failed}): what came up is taken down");
+            IdeLog.Write(IdeLog.Ide, $"Containers: {chosen.Name} did not start ({failed.English}): what came up is taken down");
             await session.StopContainersAsync(run);
             if (session.ContainerRun == run && !session.IsEnded)
             {
@@ -401,10 +401,12 @@ public sealed partial class BuildRunController
         }
         // Up: what its services publish is reached now.
         RunningChanged?.Invoke(this, EventArgs.Empty);
-        string what = ServicesStarted(chosen.Name, how, Plural.Listed(Words.Names(debugged.Select(s => s.Service)))).Shown;
-        parts.Say($"{what}{(how == RunStart.Run ? ":" : ";")} {Plural.Of(plan.Running.Count(), ".NET service")} from Passenger's build"
-            + $"{(plan.Mode == ContainerMode.Images ? " images" : string.Empty)}, {Plural.Of(plan.Backing.Count(plan.Touched.Contains), "other service")}; Stop takes them down"
-            + (notes.Count > 0 ? $" ({string.Join("; ", notes)})" : string.Empty),
+        Words what = ServicesStarted(chosen.Name, how, Plural.Listed(Words.Names(debugged.Select(s => s.Service))));
+        string kind = how == RunStart.Run ? "run" : "other";
+        int others = plan.Backing.Count(plan.Touched.Contains);
+        Words up = plan.Mode == ContainerMode.Images ? LaunchWords.ContainersUpImages(how: kind, started: what, count: plan.Running.Count(), others: others)
+            : LaunchWords.ContainersUp(how: kind, started: what, count: plan.Running.Count(), others: others);
+        parts.Say(notes.Count > 0 ? LaunchWords.Noted(up, string.Join("; ", notes)) : up,
             // What dev-certs said of a certificate that did not come is in the Run window.
             unexported ? StatusPlace.Window(parts.Dock, ToolWindowIds.Run) : null);
         parts.Reveal?.Invoke(plan.ProjectName);
@@ -559,8 +561,8 @@ public sealed partial class BuildRunController
             {
                 return Said(refused);
             }
-            string one = $"Detached from {service.Name} of {of.Name}: the debugger let go of it alone, and the run goes on as it was";
-            parts.Views.Run.Append($"{one}\n");
+            Words one = LaunchWords.DetachedService(service.Name, of.Name);
+            parts.Views.Run.Append($"{one.English}\n");
             parts.Say(one, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
             return null;
         }
@@ -570,7 +572,7 @@ public sealed partial class BuildRunController
         }
         run.LetGo();
         session.RunsLetGo.Add(run);
-        parts.Views.Run.Append($"{LetGoSaid(run.Name)}\n");
+        parts.Views.Run.Append($"{LetGoSaid(run.Name).English}\n");
         // Its log's end is said as the run's (RunLogEnded): what Detach did.
         session.Runner.Stop();
         RunningChanged?.Invoke(this, EventArgs.Empty);
@@ -578,14 +580,14 @@ public sealed partial class BuildRunController
     }
 
     /// <summary>What Detach of a container run whole says.</summary>
-    private static string LetGoSaid(string name) => $"Detached from {name}: its containers run on until the Containers window stops them or the folder closes";
+    private static Words LetGoSaid(string name) => LaunchWords.DetachedRun(name);
 
     /// <summary>How a container run whose log stopped is said: let go of by Detach, taken down by Stop, its backing services
     /// kept, or its services all ended by themselves.</summary>
-    private string ContainersEnded(ContainerRun run) => run.IsLetGo ? LetGoSaid(ran)
-        : !run.IsStopped ? $"{ran}'s services have all ended"
-        : run.Plan.KeepBacking && run.Plan.Backing.Count > 0 ? $"{ran} stopped: its .NET services were taken down, {string.Join(", ", run.Plan.Backing)} kept running"
-        : $"{ran} stopped: its containers were taken down";
+    private Words ContainersEnded(ContainerRun run) => run.IsLetGo ? LetGoSaid(ran)
+        : !run.IsStopped ? LaunchWords.ServicesAllEnded(ran)
+        : run.Plan.KeepBacking && run.Plan.Backing.Count > 0 ? LaunchWords.StoppedBackingKept(ran, string.Join(", ", run.Plan.Backing))
+        : LaunchWords.StoppedTakenDown(ran);
 
     /// <summary>Rerun of a container run in fast mode (<see cref="RestartedInPlace"/>): its .NET services built again on the
     /// host, and only those whose build changed restarted (their containers kept, reading the new build through the same
@@ -593,7 +595,7 @@ public sealed partial class BuildRunController
     /// the build saved the files. Null once done, else why not.</summary>
     private async Task<Words?> RerunContainersAsync(ContainerRun run)
     {
-        if (parts.Work.Begin(AppActions.RunProgram, $"Building {run.Plan.Name} again…") is not { } work)
+        if (parts.Work.Begin(AppActions.RunProgram, LaunchWords.BuildingAgain(run.Plan.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
         }
@@ -614,12 +616,12 @@ public sealed partial class BuildRunController
                     return Said(built.Message);
                 }
                 IReadOnlyList<DotnetService> changed = run.Changed();
-                work.Say(changed.Count == 0 ? "No service's build changed" : $"Restarting {string.Join(", ", changed.Select(c => c.Service))}…");
+                work.Say(changed.Count == 0 ? LaunchWords.NoBuildChanged : LaunchWords.Restarting(string.Join(", ", changed.Select(c => c.Service))));
                 Words? failed = await RestartServicesAsync(run, changed, work);
                 // Passenger pins the ports it can; with an older Compose the engine may have chosen another at the restart.
-                string moved = failed is null && changed.Count > 0 && run.Address is { } before && await run.BrowserUrlAsync(CancellationToken.None) is { } now && now != before
-                    ? $"; it now answers at {run.Address = now}" : string.Empty;
-                return Said(failed ?? Reran(run.Plan.Name, [.. changed.Select(c => c.Service)], moved));
+                string? moved = failed is null && changed.Count > 0 && run.Address is { } before && await run.BrowserUrlAsync(CancellationToken.None) is { } now && now != before
+                    ? run.Address = now : null;
+                return Said(failed ?? Reran(run.Plan.Name, [.. changed.Select(c => Words.Verbatim(c.Service))], moved));
             }
             finally
             {
@@ -645,7 +647,7 @@ public sealed partial class BuildRunController
             await session.StopContainersAsync(run);
             return null;
         }
-        if (parts.Work.Begin(AppActions.ContainerRestart, $"Restarting {run.Plan.ProjectName}…") is not { } work)
+        if (parts.Work.Begin(AppActions.ContainerRestart, LaunchWords.Restarting(run.Plan.ProjectName)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.ContainerRestart)!));
         }
@@ -666,7 +668,7 @@ public sealed partial class BuildRunController
             {
                 return Said(StoppedRestarting(run.Plan.Name));
             }
-            return Done(await RestartServicesAsync(run, dotnet, work, "restarted from the Containers window"), $"{run.Plan.Name}: restarted its services");
+            return Done(await RestartServicesAsync(run, dotnet, work, "restarted from the Containers window"), LaunchWords.RestartedItsServices(run.Plan.Name));
         }
     }
 }

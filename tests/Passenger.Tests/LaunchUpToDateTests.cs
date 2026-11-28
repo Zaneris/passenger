@@ -551,7 +551,7 @@ public sealed class LaunchUpToDateTests
         }
         window.BottomPanel.Build.Flush();
         string console = window.BottomPanel.Build.Document.Snapshot.ToString();
-        bool skipped = console.Contains(BuildRunController.UpToDateSaid("App"), StringComparison.Ordinal);
+        bool skipped = console.Contains(BuildRunController.UpToDateSaid("App").English, StringComparison.Ordinal);
         Assert.True(built ? ran == 1 && !skipped : ran == 0 && skipped,
             $"{what} {(built ? "was not built first" : "was built though nothing it reads changed")}: {ran} dotnet builds started, and the Build window says:\n{console}");
         Assert.True(Output(window).Contains($"said: {said}", StringComparison.Ordinal), $"{what} did not run what was built, saying:\n{Output(window)}");

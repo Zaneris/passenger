@@ -51,7 +51,7 @@ public sealed class GlobalJsonSdkTests : IDisposable
             Ui.WaitFor(() => !window.IsBuilding && window.Status?.StartsWith("Build failed", StringComparison.Ordinal) == true,
                 () => $"the build to fail on the SDK global.json chose ({window.Status})", TimeSpan.FromMinutes(2));
             Assert.True(window.Status == $"Build failed: {said}", $"The build's failure does not say global.json chose the SDK, in the banner's words: {window.Status}");
-            Assert.Equal("open global.json", window.StatusPlace?.Name);
+            Assert.Equal("open global.json", window.StatusPlace?.Name.English);
             Problem error = Assert.Single(window.BottomPanel.Problems.Problems, p => p.Code == SdkChosen.TooOld);
             Assert.True(error.Path == globalJson && error.Position == asks && error.Message.StartsWith(said + "\n", StringComparison.Ordinal),
                 $"Problems lists the SDK's error at {error.Where}, not at global.json's version, saying: {error.Message}");

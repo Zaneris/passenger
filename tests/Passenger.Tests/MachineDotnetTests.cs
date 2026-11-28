@@ -172,7 +172,7 @@ public sealed class MachineDotnetTests : IDisposable
 
             Ui.ClickButton(window, OperatingSystem.IsMacOS() ? "Download Passenger for Apple Silicon" : "Download Passenger for Arm64");
             Assert.Equal(Releases.ThisSystemsDownload, Assert.Single(window.Browsed));
-            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name);
+            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name.English);
             window.StatusPlace!.Go();
             Assert.Equal([Releases.ThisSystemsDownload, Releases.ThisSystemsDownload], window.Browsed);
         }
@@ -227,7 +227,7 @@ public sealed class MachineDotnetTests : IDisposable
 
             Ui.ClickButton(window, SystemsOwnLink);
             Assert.Equal(Releases.ThisSystemsDownload, Assert.Single(window.Browsed));
-            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name);
+            Assert.Equal("download the Passenger built for this computer", window.StatusPlace?.Name.English);
             window.StatusPlace!.Go();
             Assert.Equal([Releases.ThisSystemsDownload, Releases.ThisSystemsDownload], window.Browsed);
         }

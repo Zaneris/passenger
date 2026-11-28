@@ -14,14 +14,14 @@ namespace Passenger.App;
 
 /// <summary>Where what the status bar says has more to see, and the way there: a click on the words goes, while they are
 /// said. <see cref="Name"/> is what the click does, as the tooltip words it after "Click to".</summary>
-public sealed record StatusPlace(string Name, Action Go)
+public sealed record StatusPlace(Words Name, Action Go)
 {
     /// <summary>A tool window, shown in its place.</summary>
-    public static StatusPlace Window(DockHost dock, string id) => new($"open the {dock[id].Title} window", () => dock.Show(id));
+    public static StatusPlace Window(DockHost dock, string id) => new(SharedWords.OpenWindow(dock[id].Title), () => dock.Show(id));
 
     /// <summary>Problems on one of its tabs, the first problem <paramref name="which"/> picks chosen.</summary>
     public static StatusPlace Problems(DockHost dock, ProblemsModel problems, ProblemsTab tab, Func<Problem, bool>? which = null) =>
-        new($"see it in Problems, {ProblemsModel.TitleOf(tab)}", () =>
+        new(SharedWords.SeeInProblems(ProblemsModel.TitleOf(tab)), () =>
         {
             dock.Show(ToolWindowIds.Problems);
             problems.Reveal(tab, which);
@@ -192,7 +192,7 @@ public sealed class StatusBar
         StatusPlace? place = Place;
         message.Classes.Set(StyleClasses.Place, place is not null);
         string? said = text.Text;
-        ToolTip.SetTip(message, string.IsNullOrEmpty(said) ? null : place is null ? said : $"{said}\n\nClick to {place.Name}");
+        ToolTip.SetTip(message, string.IsNullOrEmpty(said) ? null : place is null ? said : $"{said}\n\nClick to {place.Name.Shown}");
     }
 
     /// <summary>An action's work begun, at a new stage, or ended: its stage said beside the turning ring while it is under

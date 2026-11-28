@@ -432,7 +432,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Ui.WaitFor(() => window.Status?.Contains("nothing changed, nothing restarted", StringComparison.Ordinal) == true, "Rerun with nothing changed", TimeSpan.FromMinutes(2));
             window.BottomPanel.Build.Flush();
             string console = window.BottomPanel.Build.Document.Snapshot.ToString();
-            Assert.True(Builds().Length == 2 && console.Contains(BuildRunController.UpToDateSaid(["Api", "Web"]), StringComparison.Ordinal),
+            Assert.True(Builds().Length == 2 && console.Contains(BuildRunController.UpToDateSaid(["Api", "Web"]).English, StringComparison.Ordinal),
                 $"Rerun with nothing changed was to build nothing and say so, but started {Builds().Length - 2} more dotnet builds, the Build window saying:\n{console}");
         }
         finally
@@ -1025,7 +1025,7 @@ public sealed class ContainerRunsTests(RestoredFolders folders) : IClassFixture<
             Assert.Null(window.CertificateQuestion);
             Assert.Contains("web over HTTP for this run: the development certificate could not be exported: dotnet dev-certs https -ep ended with exit code 3: The keychain is locked",
                 window.Status, StringComparison.Ordinal);
-            Assert.Equal("open the Run window", window.StatusPlace?.Name);
+            Assert.Equal("open the Run window", window.StatusPlace?.Name.English);
             Assert.Contains("web serves HTTP for this run: the development certificate could not be exported", Run(window), StringComparison.Ordinal);
             Assert.Contains("\"ASPNETCORE_HTTP_PORTS=8081\"", Env(), StringComparison.Ordinal);
             Stopped(window, project);

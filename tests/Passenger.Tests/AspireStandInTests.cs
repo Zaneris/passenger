@@ -3241,7 +3241,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Ui.WaitFor(() => window.BottomPanel.Problems.ContainerProblems.Any(problem => problem.Message.StartsWith(Down, StringComparison.Ordinal)),
                 "the stopped engine listed in Problems' Containers tab", TimeSpan.FromMinutes(1));
             Assert.StartsWith(Down, window.Status, StringComparison.Ordinal);
-            Assert.Equal(Passenger.App.Containers.EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", window.StatusPlace?.Name);
+            Assert.Equal(Passenger.App.Containers.EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", window.StatusPlace?.Name.English);
             Assert.Single(window.BottomPanel.Problems.ContainerProblems);
 
             File.WriteAllText(state, "up");

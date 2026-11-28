@@ -1254,7 +1254,7 @@ public sealed class ContainersTests
         Assert.Equal(EngineStatus.NoCli, view.State!.Status);
         Assert.StartsWith("No docker command was found", none.Status, StringComparison.Ordinal);
         Assert.Contains(none.BottomPanel.Problems.ContainerProblems, p => p.Message.StartsWith("No docker command was found", StringComparison.Ordinal));
-        Assert.Equal("see it in Problems, Containers", none.StatusPlace?.Name);
+        Assert.Equal("see it in Problems, Containers", none.StatusPlace?.Name.English);
         none.Close();
 
         string folder = TestFolders.Create("ctr-down-");
@@ -1266,7 +1266,7 @@ public sealed class ContainersTests
         Ui.WaitFor(() => downView.HasRead, "the stand-in engine's state read");
         Assert.Equal(EngineStatus.NotRunning, downView.State!.Status);
         Assert.StartsWith("Docker isn't running (context stand-in)", down.Status, StringComparison.Ordinal);
-        Assert.Equal(EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", down.StatusPlace?.Name);
+        Assert.Equal(EngineState.DesktopApp is null ? "see it in Problems, Containers" : "start Docker Desktop", down.StatusPlace?.Name.English);
         Assert.Single(down.BottomPanel.Problems.ContainerProblems);
         down.Close();
     }

@@ -138,7 +138,7 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Ui.WaitFor(() => !window.Tests.IsBusy, "the run to end at its build", TimeSpan.FromSeconds(120));
         Assert.StartsWith("Build failed", window.Status, StringComparison.Ordinal);
         Assert.True(window.DockHost.IsShown(ToolWindowIds.Build), "The tests' build failed, but the Build window did not come forward with its error as Rider's does");
-        Assert.True(window.StatusPlace?.Name == "see it in Problems, Build", $"\"{window.Status}\" in the status bar goes to '{window.StatusPlace?.Name}', not to the build's errors in Problems");
+        Assert.True(window.StatusPlace?.Name.English == "see it in Problems, Build", $"\"{window.Status}\" in the status bar goes to '{window.StatusPlace?.Name.English}', not to the build's errors in Problems");
         Assert.Contains("Broken.cs(5,32): error CS0029", window.BottomPanel.Build.Document.Snapshot.ToString(), StringComparison.Ordinal);
         window.Close();
     }

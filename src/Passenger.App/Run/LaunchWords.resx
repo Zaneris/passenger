@@ -624,4 +624,248 @@
     <value>Running {name} again with Hot Reload: a save applies its changes</value>
     <comment>dotnet watch's program running again with Hot Reload after its build was mended.</comment>
   </data>
+  <data name="Ended" xml:space="preserve">
+    <value>{name} ended with {exit}</value>
+    <comment>A program that ran and ended, and how ({exit}, as "exit code 1").</comment>
+  </data>
+  <data name="EndedUncoded" xml:space="preserve">
+    <value>{name} ended</value>
+    <comment>A program that ended, where how it ended is not known.</comment>
+  </data>
+  <data name="NothingRestarted" xml:space="preserve">
+    <value>{name}: nothing changed, nothing restarted</value>
+    <comment>Rerun of a run of services where no service's build changed.</comment>
+  </data>
+  <data name="Reran" xml:space="preserve">
+    <value>{name}: restarted {services} with the new build</value>
+    <comment>Rerun of a run of services: the services it restarted with their new build.</comment>
+  </data>
+  <data name="ReranAnswering" xml:space="preserve">
+    <value>{name}: restarted {services} with the new build; it now answers at {address}</value>
+    <comment>Rerun of a run of services, which now answers at another address.</comment>
+  </data>
+  <data name="Replicas" xml:space="preserve">
+    <value>{name} ({count, plural, one {# replica} other {# replicas}})</value>
+    <comment>A service restarted with its replicas, and how many.</comment>
+  </data>
+  <data name="EditorReloads" xml:space="preserve">
+    <value>Godot's editor loads the project's C# into a context it unloads, and loads it again from each new build: Build the project to apply an edit to its tool scripts, which start again with the new build</value>
+    <comment>What Hot Reload is to Godot's editor, which loads a new build of the project's C# by itself.</comment>
+  </data>
+  <data name="RunsUnreloaded" xml:space="preserve">
+    <value>{name} runs without Hot Reload: {why}</value>
+    <comment>A program that runs without Hot Reload, and why.</comment>
+  </data>
+  <data name="WatchRestarts" xml:space="preserve">
+    <value>Hot Reload: {ended}; dotnet watch starts it again when a change is saved, or Rerun starts it now</value>
+    <comment>Under Run with Hot Reload, the program dotnet watch ran ended ({ended}, as "Api ended with exit code 1"), and dotnet watch waits for a change.</comment>
+  </data>
+  <data name="WatchRestartsShown" xml:space="preserve">
+    <value>{ended}: dotnet watch starts it again when a change is saved</value>
+    <comment>The Run window's line while dotnet watch waits for a change to start the program that ended.</comment>
+  </data>
+  <data name="WatchBuildFailed" xml:space="preserve">
+    <value>Hot Reload: {name}'s build failed; dotnet watch builds it again when a change is saved</value>
+    <comment>Under Run with Hot Reload, dotnet watch's build of the program failed with no error read, and it waits for a change.</comment>
+  </data>
+  <data name="WatchBuildFailedShown" xml:space="preserve">
+    <value>{name}'s build failed: dotnet watch builds it again when a change is saved</value>
+    <comment>The Run window's line while dotnet watch waits for a change to build again.</comment>
+  </data>
+  <data name="WatchBuildError" xml:space="preserve">
+    <value>Hot Reload: {name}'s build failed: {error}; dotnet watch builds it again when a change is saved</value>
+    <comment>Under Run with Hot Reload, dotnet watch's build of the program failed with one error, said.</comment>
+  </data>
+  <data name="WatchBuildErrors" xml:space="preserve">
+    <value>Hot Reload: {name}'s build failed: {error}, and {more, plural, one {# more error} other {# more errors}}; dotnet watch builds it again when a change is saved</value>
+    <comment>Under Run with Hot Reload, dotnet watch's build of the program failed: its first error, and how many more.</comment>
+  </data>
+  <data name="WatchBuildErrorsShown" xml:space="preserve">
+    <value>{name}'s build failed with {count, plural, one {# error} other {# errors}}: dotnet watch builds it again when a change is saved</value>
+    <comment>The Run window's line while dotnet watch waits for a change after a build with errors.</comment>
+  </data>
+  <data name="ErrorAt" xml:space="preserve">
+    <value>{error} ({where})</value>
+    <comment>A build's error, the compiler's words, and where it is.</comment>
+  </data>
+  <data name="AskingEngine" xml:space="preserve">
+    <value>Asking the container engine…</value>
+    <comment>A start or a publish asking the container engine whether it answers.</comment>
+  </data>
+  <data name="PuttingInspectorIn" xml:space="preserve">
+    <value>Putting Passenger's inspector in {app}…</value>
+    <comment>A start's stage while Passenger's inspector goes into an app on a device ({app}, its package).</comment>
+  </data>
+  <data name="PuttingDebuggerForReload" xml:space="preserve">
+    <value>Putting Passenger's debugger in {app} for Hot Reload…</value>
+    <comment>A start's stage while Passenger's debugger goes into an app on a device for Hot Reload ({app}, its package).</comment>
+  </data>
+  <data name="DebuggerNotPut" xml:space="preserve">
+    <value>Passenger's debugger could not be put in the app</value>
+    <comment>Why an app on a device runs without Hot Reload, where its device said nothing of why.</comment>
+  </data>
+  <data name="AttachingOnDevice" xml:space="preserve">
+    <value>Attaching to {name} on its device for Hot Reload…</value>
+    <comment>A start's stage while the debugger attaches to an app on a device for Hot Reload.</comment>
+  </data>
+  <data name="EndingLastStart" xml:space="preserve">
+    <value>Ending {name}'s last start…</value>
+    <comment>A run of several programs ending what its last start runs before it starts them again.</comment>
+  </data>
+  <data name="PartsStarted" xml:space="preserve">
+    <value>{doing, select, debug {Debugging {name}: {parts}} other {Running {name}: {parts}}}</value>
+    <comment>A run of several programs up ({parts}: where each runs, as "Api under the debugger, in a Debug tab; Web without it, in a tab of the Run window").</comment>
+  </data>
+  <data name="PartsDebugged" xml:space="preserve">
+    <value>{count, plural, one {{names} under the debugger, in a Debug tab} other {{names} under the debugger, each in a Debug tab of its own}}</value>
+    <comment>The programs of a run debugged, in Debug tabs.</comment>
+  </data>
+  <data name="PartsInRun" xml:space="preserve">
+    <value>{without, select, without {{count, plural, one {{names} without it, in a tab of the Run window} other {{names} without it, each in a tab of the Run window}}} other {{count, plural, one {{names}, in a tab of the Run window} other {{names}, each in a tab of the Run window}}}}</value>
+    <comment>The programs of a run in tabs of the Run window, without the debugger where others are debugged.</comment>
+  </data>
+  <data name="PartsInTerminal" xml:space="preserve">
+    <value>{without, select, without {{count, plural, one {{names} without it, in a tab of the Terminal window} other {{names} without it, each in a tab of the Terminal window}}} other {{count, plural, one {{names}, in a tab of the Terminal window} other {{names}, each in a tab of the Terminal window}}}}</value>
+    <comment>The programs of a run in tabs of the Terminal window, without the debugger where others are debugged.</comment>
+  </data>
+  <data name="RestartedPart" xml:space="preserve">
+    <value>{kind, select, copy {Restarted {name}, {run}'s other copies running on} other {Restarted {name}, {run}'s other parts running on}}</value>
+    <comment>A program of a run of several, or a copy of a program, restarted alone.</comment>
+  </data>
+  <data name="AttachingTool" xml:space="preserve">
+    <value>{tool, select, profiler {Attaching the profiler to {names}…} other {Attaching the debugger to {names}…}}</value>
+    <comment>A run of services attaching the debugger or the profiler to the services held at their start.</comment>
+  </data>
+  <data name="AttachingForReload" xml:space="preserve">
+    <value>Attaching for Hot Reload…</value>
+    <comment>A run of services attaching quietly to its services for Hot Reload.</comment>
+  </data>
+  <data name="DebuggingFromStartNow" xml:space="preserve">
+    <value>Debugging {name} of {run} from its start, started now; the rest run on as they were</value>
+    <comment>Debug of one service a run left unstarted: started now, held for the debugger.</comment>
+  </data>
+  <data name="DebuggingFromStart" xml:space="preserve">
+    <value>Debugging {name} of {run} from its start; the rest run on as they were</value>
+    <comment>Debug of one service of a run: restarted held for the debugger, the others running on.</comment>
+  </data>
+  <data name="DebuggedAlready" xml:space="preserve">
+    <value>{name} of {run} is debugged already, in the Debug tab shown</value>
+    <comment>Attach to a service a Debug tab debugs already: that tab shown.</comment>
+  </data>
+  <data name="DebuggingAsItRuns" xml:space="preserve">
+    <value>Debugging {name} of {run} as it runs: its startup has run already, which Debug catches by restarting it held</value>
+    <comment>Attach to a service as it runs.</comment>
+  </data>
+  <data name="DebuggingAsItRunsNoted" xml:space="preserve">
+    <value>Debugging {name} of {run} as it runs: its startup has run already, which Debug catches by restarting it held ({notes})</value>
+    <comment>Attach to a service as it runs, with what its start says of itself.</comment>
+  </data>
+  <data name="DebuggingByReloadSession" xml:space="preserve">
+    <value>Debugging {name} of {run} as it runs by its Hot Reload session, as Hot Reload changed its code: its startup has run already, which Debug catches by restarting it held</value>
+    <comment>Attach to a service Hot Reload changed, through the quiet session that applied its changes.</comment>
+  </data>
+  <data name="StartedUndebugged" xml:space="preserve">
+    <value>{name} of {run} started, without the debugger; the rest run on as they were</value>
+    <comment>Run without debugger of a service a run left unstarted: started now.</comment>
+  </data>
+  <data name="RunsUndebuggedAlready" xml:space="preserve">
+    <value>{name} of {run} already runs without the debugger: nothing restarted</value>
+    <comment>Run without debugger of a service no debugger holds.</comment>
+  </data>
+  <data name="RestartedUndebugged" xml:space="preserve">
+    <value>{name} of {run} restarted without the debugger</value>
+    <comment>Run without debugger of a service: restarted unheld.</comment>
+  </data>
+  <data name="RestartedUndebuggedChanged" xml:space="preserve">
+    <value>{name} of {run} restarted without the debugger, as its runtime lets no debugger go once Hot Reload has changed its code</value>
+    <comment>Run without debugger of a service Hot Reload changed: restarted unheld, as its runtime keeps its debugger.</comment>
+  </data>
+  <data name="RunsOnUndebugged" xml:space="preserve">
+    <value>{name} of {run} runs on without the debugger, not restarted; its next restart starts it unheld</value>
+    <comment>Run without debugger of a service: its session let go, the program running on.</comment>
+  </data>
+  <data name="StartedService" xml:space="preserve">
+    <value>{run}: started {name}</value>
+    <comment>A service a run left unstarted, started from its window.</comment>
+  </data>
+  <data name="RestartedService" xml:space="preserve">
+    <value>{run}: restarted {name}</value>
+    <comment>A service of a run restarted from its window.</comment>
+  </data>
+  <data name="NextRunDebugs" xml:space="preserve">
+    <value>the next run debugs every replica of {name}</value>
+    <comment>What a choice to debug one replica of a service keeps for the configuration's next run, said after what it did.</comment>
+  </data>
+  <data name="NextRunUndebugged" xml:space="preserve">
+    <value>the next run runs every replica of {name} without it</value>
+    <comment>What a choice to run one replica of a service without the debugger keeps for the configuration's next run, said after what it did.</comment>
+  </data>
+  <data name="RestartingToApplyServices" xml:space="preserve">
+    <value>Restarting {names} to apply changes…</value>
+    <comment>Hot Reload restarting services of a run for edits it could not apply.</comment>
+  </data>
+  <data name="RestartedToApply" xml:space="preserve">
+    <value>{run}: restarted {names} to apply changes</value>
+    <comment>Hot Reload's restart of services of a run for edits it could not apply, done.</comment>
+  </data>
+  <data name="ReadingCompose" xml:space="preserve">
+    <value>Reading {name}'s compose files…</value>
+    <comment>A container run reading its compose files.</comment>
+  </data>
+  <data name="BuildingImages" xml:space="preserve">
+    <value>{count, plural, one {Building {services}'s image…} other {Building {services}'s images…}}</value>
+    <comment>A container run building the images of the services it debugs.</comment>
+  </data>
+  <data name="BringingServicesUp" xml:space="preserve">
+    <value>Bringing {name}'s services up…</value>
+    <comment>A container run's stage while its services come up.</comment>
+  </data>
+  <data name="BringingUp" xml:space="preserve">
+    <value>Bringing {name} up…</value>
+    <comment>A container run coming up, in the status bar.</comment>
+  </data>
+  <data name="ContainersUp" xml:space="preserve">
+    <value>{how, select, run {{started}: {count, plural, one {# .NET service} other {# .NET services}} from Passenger's build, {others, plural, one {# other service} other {# other services}}; Stop takes them down} other {{started}; {count, plural, one {# .NET service} other {# .NET services}} from Passenger's build, {others, plural, one {# other service} other {# other services}}; Stop takes them down}}</value>
+    <comment>A container run up ({started}: what it runs or debugs, as "Debugging Stack: web under the debugger"), its .NET services from Passenger's build and the others.</comment>
+  </data>
+  <data name="ContainersUpImages" xml:space="preserve">
+    <value>{how, select, run {{started}: {count, plural, one {# .NET service} other {# .NET services}} from Passenger's build images, {others, plural, one {# other service} other {# other services}}; Stop takes them down} other {{started}; {count, plural, one {# .NET service} other {# .NET services}} from Passenger's build images, {others, plural, one {# other service} other {# other services}}; Stop takes them down}}</value>
+    <comment>A container run up in images mode, its .NET services from images of Passenger's build and the others.</comment>
+  </data>
+  <data name="Noted" xml:space="preserve">
+    <value>{said} ({notes})</value>
+    <comment>What a start came to, with what it says of itself (a service its runtime keeps from the debugger).</comment>
+  </data>
+  <data name="DetachedService" xml:space="preserve">
+    <value>Detached from {service} of {run}: the debugger let go of it alone, and the run goes on as it was</value>
+    <comment>Detach of one debugged service of a container run.</comment>
+  </data>
+  <data name="DetachedRun" xml:space="preserve">
+    <value>Detached from {name}: its containers run on until the Containers window stops them or the folder closes</value>
+    <comment>Detach of a container run whole.</comment>
+  </data>
+  <data name="ServicesAllEnded" xml:space="preserve">
+    <value>{name}'s services have all ended</value>
+    <comment>A container run whose services all ended by themselves.</comment>
+  </data>
+  <data name="StoppedBackingKept" xml:space="preserve">
+    <value>{name} stopped: its .NET services were taken down, {kept} kept running</value>
+    <comment>A container run Stop took down, its backing services kept running.</comment>
+  </data>
+  <data name="StoppedTakenDown" xml:space="preserve">
+    <value>{name} stopped: its containers were taken down</value>
+    <comment>A container run Stop took down.</comment>
+  </data>
+  <data name="BuildingAgain" xml:space="preserve">
+    <value>Building {name} again…</value>
+    <comment>Rerun of a container run building its .NET services again.</comment>
+  </data>
+  <data name="NoBuildChanged" xml:space="preserve">
+    <value>No service's build changed</value>
+    <comment>Rerun of a container run where no service's build changed.</comment>
+  </data>
+  <data name="RestartedItsServices" xml:space="preserve">
+    <value>{name}: restarted its services</value>
+    <comment>A container run's services restarted from the Containers window.</comment>
+  </data>
 </root>

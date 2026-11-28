@@ -818,7 +818,7 @@ public sealed class IdeErrorsTests : IDisposable
         Assert.True(said.Contains("The C# language server ended as it started; starting it again"),
             $"The status bar never said the server that ended as it started was started again; it said: {string.Join(" | ", said)}");
         Assert.True(window.Status == LeftStopped, $"The status bar says \"{window.Status}\" of C# left stopped, having said: {string.Join(" | ", said)}");
-        Assert.Equal("start it again", window.StatusPlace?.Name);
+        Assert.Equal("start it again", window.StatusPlace?.Name.English);
 
         Ui.Click(window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StatusMessage"));
         Ui.WaitFor(() => csharp.IsReady, () => $"C# left stopped to be started again by the status bar's words ({csharp.State}; the status bar says {window.Status})");
