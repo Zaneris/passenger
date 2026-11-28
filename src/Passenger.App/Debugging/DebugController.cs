@@ -1425,7 +1425,9 @@ public sealed partial class DebugController : IDisposable
                     || plan.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, built))?.Property(MSBuildNames.UseMaui) is { } maui
                         && maui.Equals("true", StringComparison.OrdinalIgnoreCase)))
                 {
-                    made.MauiXaml = (BackgroundWork.Run(() => MauiXamlCode.Read(program, Path.GetDirectoryName(built)!)), path => CSharp.ServerPlaces.TextOf(editors, path));
+                    Passenger.Workspace.WorkspaceModel? read = plan.Workspace;
+                    made.MauiXaml = (BackgroundWork.Run(() => MauiXamlCode.Read(program, Path.GetDirectoryName(built)!, MauiXamlCode.Libraries(read, built, program))),
+                        path => CSharp.ServerPlaces.TextOf(editors, path));
                 }
                 made.XamlElementPlace = (path, line, attribute, place) => CSharp.ServerPlaces.TextOf(editors, path) is { } text ? XamlBreakpoints.ElementPlace(text, line, attribute, place) : null;
                 if (made.XamlAtRunTime && plan is { Project: { } wpf } && plan.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, wpf)) is { Evaluated: not null } evaluated
