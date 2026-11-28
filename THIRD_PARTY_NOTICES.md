@@ -1002,9 +1002,11 @@ spoof check reads, is derived from Unicode 17.0.0's `security/IdentifierStatus.t
 #39) and its Character Database's `Scripts.txt`, `ScriptExtensions.txt`, `PropertyValueAliases.txt`, `UnicodeData.txt`,
 `PropList.txt` and `DerivedCoreProperties.txt` (https://www.unicode.org/Public/17.0.0/), written by
 `tools/unicode-identifiers.py`.
-`src/Passenger.Core/PluralRules.Cldr.cs`, each language's plural rules, and `src/Passenger.Core/LikelyScripts.Cldr.cs`,
-the script each language is likely written in, are derived from the Unicode CLDR 49's `supplemental/plurals.xml` and
-`supplemental/likelySubtags.xml` (https://github.com/unicode-org/cldr at tag release-49), written by `tools/cldr.py`.
+`src/Passenger.Core/PluralRules.Cldr.cs`, each language's plural rules, `src/Passenger.Core/LikelyScripts.Cldr.cs`, the
+script each language is likely written in, and `src/Passenger.Core/LanguagePatterns.Cldr.cs`, how each language Passenger
+carries joins a list and writes the units of a while and a size, are derived from the Unicode CLDR 49's
+`supplemental/plurals.xml`, `supplemental/likelySubtags.xml` and `main/<language>.xml`
+(https://github.com/unicode-org/cldr at tag release-49), written by `tools/cldr.py`.
 `src/Passenger.Workspace/GDScript/IdentifierSpoofing.cs` is a port to C# of International Components for Unicode (ICU)
 78.3's spoof check, `icu4c/source/i18n/uspoof.cpp` (`checkImpl`) and `uspoof_impl.cpp` (its script sets, restriction
 level, numerics and hidden overlay) of https://github.com/unicode-org/icu at tag release-78.3, under the same licence.

@@ -367,9 +367,9 @@ public sealed class MigrationsTests
             string said = $"{ShopApp.Provider} 1.0.0 supports EF Core {ShopApp.Older}";
             Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
             EfFix align = window.Migrations.Gaps.SelectMany(g => g.Fixes).First(f => f.Kind == EfFixKind.AlignProvider);
-            Task<string?> fixing = window.Migrations.FixAsync(align);
+            Task<Passenger.Core.Words?> fixing = window.Migrations.FixAsync(align);
             Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title);
-            string? why = Ui.Await(fixing, "the alignment's end", Slow);
+            string? why = Ui.Await(fixing, "the alignment's end", Slow)?.English;
             string written = File.ReadAllText(project);
             Assert.True(why is null && written.Contains($"{ShopApp.Provider}\" Version=\"1.0.0\"", StringComparison.Ordinal)
                 && written.Contains($"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"{ShopApp.Older}\"", StringComparison.Ordinal),
@@ -398,9 +398,9 @@ public sealed class MigrationsTests
             string said = $"{ShopApp.Provider} 1.0.0 supports EF Core {ShopApp.Older}";
             Ui.WaitFor(() => Gaps(window).Contains(said, StringComparison.Ordinal) && window.Migrations.Busy is null, $"the provider behind ({Gaps(window)})", Slow);
             EfFix align = window.Migrations.Gaps.SelectMany(g => g.Fixes).First(f => f.Kind == EfFixKind.AlignProvider);
-            Task<string?> fixing = window.Migrations.FixAsync(align);
+            Task<Passenger.Core.Words?> fixing = window.Migrations.FixAsync(align);
             Ui.ClickButton(Asked<ChoiceDialog>(window, "the fix's question"), align.Title);
-            string? why = Ui.Await(fixing, "the alignment's end", Slow);
+            string? why = Ui.Await(fixing, "the alignment's end", Slow)?.English;
 
             Assert.True(File.ReadAllBytes(project).AsSpan().SequenceEqual(before), $"The alignment whose restore failed left the project as:\n{File.ReadAllText(project)}\n(it said: {why})");
             Assert.True(why is not null && why.EndsWith("; Shop.csproj put back as before", StringComparison.Ordinal),

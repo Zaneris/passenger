@@ -547,7 +547,7 @@ public partial class MainWindow
         }
         // The restart's build took Problems to its own tab; the edits that needed the restart are what to see.
         Bottom.Problems.Shown = ProblemsTab.HotReload;
-        Words said = Debugging.DebuggingWords.RestartedToApply(Durations.Said(took.Elapsed), outcome.Said);
+        Words said = Debugging.DebuggingWords.RestartedToApply(Durations.Words(took.Elapsed), outcome.Said);
         IdeLog.Write(IdeLog.Debugger, said.English);
         tab.Console.Append(Debugging.DebuggingWords.HotReloadSaid(said).Shown + "\n");
         // Each edit that needed it, in a compiler message's shape, at the compiler's line, which the console links to its line.

@@ -95,7 +95,7 @@ public partial class MainWindow
         VcsController vcs = session.Vcs;
         int branches = (await vcs.BranchTreeAsync()).Branches.Count(b => b.Kind == RefKind.Remote && b.Name.StartsWith(remote.Name + "/", StringComparison.Ordinal));
         IReadOnlyList<string> tracking = await vcs.TrackingAsync(remote.Name);
-        string text = VcsWords.RemoveRemoteAsks(remote.Name, branches, tracking.Count, Plural.Listed(tracking), VcsController.UrlShown(remote.Url)).Shown;
+        string text = VcsWords.RemoveRemoteAsks(remote.Name, branches, tracking.Count, Plural.Listed(Words.Names(tracking)), VcsController.UrlShown(remote.Url)).Shown;
         if (await ConfirmAsync("Remove Remote", text, "Remove", null) && vcs == session.Vcs)
         {
             await vcs.RemoveRemoteAsync(remote.Name);

@@ -156,7 +156,7 @@ public partial class MainWindow
     /// of it.</summary>
     private async Task<EfDone> OpenMigrationsDatabaseAsync()
     {
-        (EfConnection? connection, string? unfound) = await Migrations.ConnectionAsync(A.MigrationsDatabase);
+        (EfConnection? connection, Words? unfound) = await Migrations.ConnectionAsync(A.MigrationsDatabase);
         if (connection is null)
         {
             return new EfDone(false, unfound!);
@@ -164,7 +164,7 @@ public partial class MainWindow
         if (Passenger.App.Database.DatabaseDiscovery.Source(connection.Name, connection.Used, connection.Value, connection.Folder, connection.Packages) is not { } wanted)
         {
             Refuse(Refusals.NoDatabaseOf(connection.Name));
-            return new EfDone(false, Refusals.NoDatabaseOf(connection.Name).Shown);
+            return new EfDone(false, Refusals.NoDatabaseOf(connection.Name));
         }
         (Passenger.App.Database.DatabaseSource? used, string? why) = await ShowDatabaseOfAsync(wanted, lasting: !connection.Running);
         return used is null ? new EfDone(false, why!)
@@ -344,7 +344,7 @@ public partial class MainWindow
             case A.AddMigration:
                 if (await ListedForAsync(controller, action, cancel) is { } unlisted)
                 {
-                    throw new InvalidOperationException($"{action} did not run: {unlisted.Said}\n{MigrationsShown(controller)}");
+                    throw new InvalidOperationException($"{action} did not run: {unlisted.Said.English}\n{MigrationsShown(controller)}");
                 }
                 // Its name, then the folder its files go in, else the one last given for the context, as the question fills in.
                 string[] named = given?.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
@@ -391,7 +391,7 @@ public partial class MainWindow
         // The folders holding the context's migrations as the command left them, which its build has read again.
         await session.EfProjects.WholeAsync(() => session.Projects);
         string shown = MigrationsShown(controller);
-        return done.Done ? $"{done.Said}\n{shown}" : throw new InvalidOperationException($"{done.Said}\n{shown}");
+        return done.Done ? $"{done.Said.English}\n{shown}" : throw new InvalidOperationException($"{done.Said.English}\n{shown}");
     }
 
     /// <summary>The Migrations window as an agent reads it: the context and its migrations, then what keeps dotnet ef from

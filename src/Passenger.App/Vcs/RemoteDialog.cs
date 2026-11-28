@@ -183,7 +183,7 @@ public sealed class RemoteDialog : IdeWindow
         }
         if (plan.Name != editing.Name)
         {
-            yield return VcsWords.RenamesRemote(editing.Name, plan.Name, start.Branches.Count, start.Tracking.Count, Plural.Listed(start.Tracking)).Shown;
+            yield return VcsWords.RenamesRemote(editing.Name, plan.Name, start.Branches.Count, start.Tracking.Count, Plural.Listed(Words.Names(start.Tracking))).Shown;
         }
         if (plan.Url != editing.Url)
         {

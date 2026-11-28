@@ -183,8 +183,8 @@ unicode-widths:
 unicode-identifiers:
     python3 -I tools/unicode-identifiers.py
 
-# Rewrite each language's plural rules and the script each language is likely written in from the Unicode CLDR
-# (tools/cldr.py).
+# Rewrite each language's plural rules, the script each language is likely written in, and how each language Passenger
+# carries joins a list and writes a while's and a size's units, from the Unicode CLDR (tools/cldr.py).
 cldr:
     python3 -I tools/cldr.py
 

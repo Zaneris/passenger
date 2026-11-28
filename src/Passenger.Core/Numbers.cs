@@ -5,8 +5,9 @@ namespace Passenger.Core;
 /// <summary>A number as a person reads it, written one way wherever the IDE says one: its digits the IDE's own whatever the
 /// person's culture, thousands set apart by a comma and a fraction by a point ("1,234", "1,234.5", "12.0"), as sizes and
 /// whiles are said. A number naming something (a line, a column, a port, a process) or a picture's size in pixels
-/// ("1920 × 1080") is written plain, in the invariant culture.</summary>
-public static class Numbers
+/// ("1920 × 1080") is written plain, in the invariant culture. As Words (Numbers.Words.cs), a carried language writes it
+/// in its asked culture.</summary>
+public static partial class Numbers
 {
     /// <summary>The formats of each number of places, from none to the most a measure is said to.</summary>
     private static readonly string[] AtMost = ["#,0", "#,0.#", "#,0.##", "#,0.###"];

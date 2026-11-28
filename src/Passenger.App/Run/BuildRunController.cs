@@ -1634,7 +1634,7 @@ public sealed partial class BuildRunController
                     {
                         waiting.Set(PartState.Ended);
                     }
-                    return Said(copy == 1 ? refused : LaunchWords.CopyDidNotStart(CopyName(chosen, copy), refused, Plural.Listed(started)));
+                    return Said(copy == 1 ? refused : LaunchWords.CopyDidNotStart(CopyName(chosen, copy), refused, Plural.Listed(Words.Names(started))));
                 }
                 started.Add(CopyName(chosen, copy));
             }
@@ -2790,7 +2790,7 @@ public sealed partial class BuildRunController
                 debugged[copy.Name] = (chosen, arguments);
                 if (await LaunchDebuggedAsync(chosen, copy, work, each[i], copies: chosen.Name) is { } refused)
                 {
-                    return i == 0 ? refused : LaunchWords.CopyDidNotStart(copy.Name, refused, Plural.Listed([.. numbers.Take(i).Select(n => CopyName(chosen, n))]));
+                    return i == 0 ? refused : LaunchWords.CopyDidNotStart(copy.Name, refused, Plural.Listed(Words.Names(numbers.Take(i).Select(n => CopyName(chosen, n)))));
                 }
             }
             return null;

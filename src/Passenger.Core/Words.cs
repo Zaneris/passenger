@@ -12,7 +12,8 @@ namespace Passenger.Core;
 /// (<see cref="MessagePattern"/>): its arguments named, a count choosing its words by the language's CLDR plural rules,
 /// numbers and dates written in the asked culture. A translation is read from the nearest carried culture of the chain that
 /// gives the key, and passed over where its arguments are not the English's. A string converts into verbatim words: a
-/// name, said as it is in every language.</summary>
+/// name, said as it is in every language. A while, a size, a number or a list is said by each language's own patterns
+/// (<see cref="LanguagePatterns"/>), Passenger's own in English.</summary>
 public sealed class Words : IEquatable<Words>
 {
     private static readonly ConcurrentDictionary<(ResourceManager Resources, string Culture), ResourceSet?> Sets = new();
@@ -22,6 +23,7 @@ public sealed class Words : IEquatable<Words>
     private readonly ResourceManager? resources;
     private readonly string name;
     private readonly (string Name, object? Value)[] arguments;
+    private readonly ISaid? patterned;
 
     /// <summary>A resource's words with its arguments by name, as the generated members make them.</summary>
     public Words(ResourceManager resources, string name, params (string Name, object? Value)[] arguments)
@@ -37,6 +39,20 @@ public sealed class Words : IEquatable<Words>
         arguments = [];
     }
 
+    private Words(ISaid said)
+    {
+        name = string.Empty;
+        arguments = [];
+        patterned = said;
+    }
+
+    /// <summary>Words said by each language's own patterns rather than a resource's message.</summary>
+    internal static Words Of(ISaid said) => new(said);
+
+    /// <summary>Names as verbatim words each, for a list said in the person's language
+    /// (<see cref="Plural.Listed(IReadOnlyList{Words})"/>).</summary>
+    public static IReadOnlyList<Words> Names(IEnumerable<string> names) => [.. names.Select(Verbatim)];
+
     /// <summary>Verbatim words: a name, a path, a program's message, said as written in every language.</summary>
     public static Words Verbatim(string text) => new(text);
 
@@ -44,11 +60,11 @@ public sealed class Words : IEquatable<Words>
     [return: NotNullIfNotNull(nameof(verbatim))]
     public static implicit operator Words?(string? verbatim) => verbatim is null ? null : new(verbatim);
 
-    /// <summary>Whether these are verbatim words rather than a resource's.</summary>
-    public bool IsVerbatim => resources is null;
+    /// <summary>Whether these are verbatim words rather than a resource's or a language's patterns'.</summary>
+    public bool IsVerbatim => resources is null && patterned is null;
 
     /// <summary>Whether these are verbatim words with nothing in them: nothing to say.</summary>
-    public bool IsEmpty => resources is null && name.Length == 0;
+    public bool IsEmpty => IsVerbatim && name.Length == 0;
 
     /// <summary>The resource's key, or the verbatim text.</summary>
     public string Key => name;
@@ -62,6 +78,11 @@ public sealed class Words : IEquatable<Words>
     /// <summary>The words in <paramref name="language"/>.</summary>
     public string In(UiLanguage language)
     {
+        if (patterned is not null)
+        {
+            string text = patterned.In(language);
+            return language.Pseudo is null ? text : PseudoWords.Padded(PseudoWords.Accented(text));
+        }
         if (resources is null)
         {
             return name;
@@ -74,12 +95,12 @@ public sealed class Words : IEquatable<Words>
 
     public override string ToString() => Shown;
 
-    public bool Equals(Words? other) =>
-        other is not null && ReferenceEquals(resources, other.resources) && name == other.name && arguments.SequenceEqual(other.arguments);
+    public bool Equals(Words? other) => other is not null && ReferenceEquals(resources, other.resources) && name == other.name
+        && Equals(patterned, other.patterned) && arguments.SequenceEqual(other.arguments);
 
     public override bool Equals(object? obj) => obj is Words other && Equals(other);
 
-    public override int GetHashCode() => HashCode.Combine(resources, name, arguments.Length);
+    public override int GetHashCode() => HashCode.Combine(resources, name, patterned, arguments.Length);
 
     /// <summary>The message read in the nearest culture of <paramref name="language"/>'s chain that gives the key with the
     /// English's arguments, else the English, and the culture it is written in (the invariant one for English).</summary>
@@ -225,6 +246,14 @@ public sealed class Words : IEquatable<Words>
         };
         return moment.ToString(pattern, language.Formats);
     }
+}
+
+/// <summary>What words say by a language's own patterns rather than a resource's message (a while, a size, a number, a list),
+/// equal to another saying the same.</summary>
+internal interface ISaid
+{
+    /// <summary>What it says in <paramref name="language"/>: Passenger's own English where no carried language is reached.</summary>
+    string In(UiLanguage language);
 }
 
 /// <summary>The pseudo-locale's words: each letter accented, the whole made 40% longer and bracketed, so words that are

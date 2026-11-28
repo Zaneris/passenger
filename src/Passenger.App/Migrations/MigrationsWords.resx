@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Going" xml:space="preserve">
+    <value>{stage}…</value>
+    <comment>A stage of the Migrations window's work under way, as its progress says it ({stage}, the stage's words).</comment>
+  </data>
+  <data name="ListingStage" xml:space="preserve">
+    <value>Listing migrations</value>
+    <comment>The stage of listing a context's migrations.</comment>
+  </data>
+  <data name="AddingStage" xml:space="preserve">
+    <value>Adding migration {name}</value>
+    <comment>The stage of adding a migration of that name.</comment>
+  </data>
+  <data name="RemovingStage" xml:space="preserve">
+    <value>Removing the last migration</value>
+    <comment>The stage of removing a context's last migration.</comment>
+  </data>
+  <data name="UpdatingStage" xml:space="preserve">
+    <value>{target, select, latest {Updating the database to the latest migration} none {Updating the database to before the first migration} other {Updating the database to {migration}}}</value>
+    <comment>The stage of updating the database: to the latest migration, to before the first (none), or to the migration named.</comment>
+  </data>
+  <data name="ScriptingStage" xml:space="preserve">
+    <value>Scripting migrations</value>
+    <comment>The stage of writing a SQL script of migrations.</comment>
+  </data>
+  <data name="BundlingStage" xml:space="preserve">
+    <value>Bundling migrations</value>
+    <comment>The stage of bundling migrations into a program that applies them.</comment>
+  </data>
+  <data name="NoDbContext" xml:space="preserve">
+    <value>{project} has no DbContext</value>
+    <comment>A listing that found no EF Core context in the project.</comment>
+  </data>
+  <data name="NoMigrations" xml:space="preserve">
+    <value>{context} has no migrations</value>
+    <comment>A listing of a context with no migration.</comment>
+  </data>
+  <data name="MigrationsUnread" xml:space="preserve">
+    <value>{context}: {count, plural, one {# migration} other {# migrations}}; the database could not be read</value>
+    <comment>A listing of a context's migrations whose database could not be read, so which are applied is not known.</comment>
+  </data>
+  <data name="MigrationsApplied" xml:space="preserve">
+    <value>{context}: {count, plural, one {# migration} other {# migrations}}, all applied</value>
+    <comment>A listing of a context's migrations, every one applied to the database.</comment>
+  </data>
+  <data name="MigrationsPending" xml:space="preserve">
+    <value>{context}: {count, plural, one {# migration} other {# migrations}}, {pending, number} pending</value>
+    <comment>A listing of a context's migrations, and how many the database lacks.</comment>
+  </data>
+  <data name="Added" xml:space="preserve">
+    <value>Added migration {name} to {context}</value>
+    <comment>A migration added to a context.</comment>
+  </data>
+  <data name="AddedIn" xml:space="preserve">
+    <value>Added migration {name} to {context}, in {folder}</value>
+    <comment>A migration added to a context, and the project's folder its files are in.</comment>
+  </data>
+  <data name="RemoveCancelled" xml:space="preserve">
+    <value>Remove cancelled</value>
+    <comment>The person cancelled Remove Last Migration's question.</comment>
+  </data>
+  <data name="Removed" xml:space="preserve">
+    <value>Removed the last migration of {context}</value>
+    <comment>A context's last migration removed.</comment>
+  </data>
+  <data name="UpdateCancelled" xml:space="preserve">
+    <value>Update cancelled</value>
+    <comment>The person cancelled the question about rolling migrations back.</comment>
+  </data>
+  <data name="Updated" xml:space="preserve">
+    <value>{target, select, latest {Updated the database of {context} to the latest migration} none {Updated the database of {context} to before the first migration} other {Updated the database of {context} to {migration}}}</value>
+    <comment>The database updated: to the latest migration, to before the first (none), or to the migration named.</comment>
+  </data>
+  <data name="Scripted" xml:space="preserve">
+    <value>{idempotent, select, yes {Scripted the migrations of {context}, idempotent, into {file}} other {Scripted the migrations of {context} into {file}}}</value>
+    <comment>A SQL script of a context's migrations written into a file, idempotent (yes) or not.</comment>
+  </data>
+  <data name="Bundled" xml:space="preserve">
+    <value>Bundled the migrations of {context} into {file}</value>
+    <comment>A program applying a context's migrations made at that path.</comment>
+  </data>
+  <data name="ReadingContexts" xml:space="preserve">
+    <value>Reading the projects' contexts…</value>
+    <comment>The stage of reading which contexts the projects declare.</comment>
+  </data>
+  <data name="NoEfCoreIn" xml:space="preserve">
+    <value>{project} does not use EF Core: choose the startup project that runs the context</value>
+    <comment>The chosen startup project's restore names no EF Core.</comment>
+  </data>
+  <data name="FixFirst" xml:space="preserve">
+    <value>{gap}: {fix} first</value>
+    <comment>What keeps dotnet ef from working ({gap}), and its fix's title, to run first.</comment>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>Stopped</value>
+    <comment>A command stopped before it was done.</comment>
+  </data>
+  <data name="NoEfTool" xml:space="preserve">
+    <value>dotnet ef is not installed here: {fix} first</value>
+    <comment>dotnet ef is not found for the startup project's folder, and the fix's title to run first.</comment>
+  </data>
+  <data name="FindingDatabase" xml:space="preserve">
+    <value>Finding {context}'s database…</value>
+    <comment>The stage of finding the database a context's migrations go to.</comment>
+  </data>
+  <data name="MigrationsUse" xml:space="preserve">
+    <value>{context}'s migrations use {connection}</value>
+    <comment>The connection a context's migrations go to, found.</comment>
+  </data>
+  <data name="BuildStartupFirst" xml:space="preserve">
+    <value>Build the startup project first: its restore says which EF Core it has</value>
+    <comment>A fix asked for before the startup project was ever restored.</comment>
+  </data>
+  <data name="FixCancelled" xml:space="preserve">
+    <value>Fix cancelled</value>
+    <comment>The person cancelled a fix's question.</comment>
+  </data>
+  <data name="FixDone" xml:space="preserve">
+    <value>{fix}: done</value>
+    <comment>A fix of what kept dotnet ef from working, done ({fix}, its title).</comment>
+  </data>
+  <data name="ToolEnded" xml:space="preserve">
+    <value>dotnet {verb} {noun} ended with {code}</value>
+    <comment>A dotnet tool command (dotnet tool install, update or restore) that failed saying nothing, and its exit code said.</comment>
+  </data>
+  <data name="ReadingVersions" xml:space="preserve">
+    <value>Reading which versions of {package} and EF Core fit…</value>
+    <comment>The stage of reading the package feeds for the versions of a provider and EF Core that fit together.</comment>
+  </data>
+  <data name="FeedsUnread" xml:space="preserve">
+    <value>The feeds could not say which versions fit: {problem}</value>
+    <comment>The package feeds did not answer which versions fit.</comment>
+  </data>
+  <data name="NoFittingVersion" xml:space="preserve">
+    <value>No version of {package} in the feeds supports EF Core {version}, and none of EF Core it supports is there</value>
+    <comment>No version of a provider package fits the EF Core version, nor any EF Core it supports.</comment>
+  </data>
+  <data name="PartlyAligned" xml:space="preserve">
+    <value>{failed}; {changed} changed already, which Undo takes back</value>
+    <comment>A move of packages that failed partway ({failed}, what failed), and the projects it had changed already.</comment>
+  </data>
+  <data name="FileThere" xml:space="preserve">
+    <value>{file} is already there</value>
+    <comment>A design-time factory's file, already in the project.</comment>
+  </data>
+  <data name="FactoryAdded" xml:space="preserve">
+    <value>Added {file}, which reads the connection string {connection}, as {told} names it, from the configuration</value>
+    <comment>A design-time factory added, reading the connection string the code names (told, where it is named).</comment>
+  </data>
+  <data name="FactoryAddedUnnamed" xml:space="preserve">
+    <value>Added {file}, which reads the connection string {connection}: nothing in {startup} names {context}'s connection, so give it in appsettings.json's ConnectionStrings or as ConnectionStrings__{connection}</value>
+    <comment>A design-time factory added, reading a connection string of the context's name, which nothing in the startup project names.</comment>
+  </data>
+  <data name="Building" xml:space="preserve">
+    <value>Building {project}…</value>
+    <comment>The stage of building the startup project before dotnet ef runs.</comment>
+  </data>
+  <data name="ReadingRun" xml:space="preserve">
+    <value>Reading how {configuration} runs…</value>
+    <comment>The stage of reading the run configuration that runs the startup project.</comment>
+  </data>
+  <data name="RunningEf" xml:space="preserve">
+    <value>{stage}: dotnet ef {verb}…</value>
+    <comment>The stage of running dotnet ef for a command ({stage}, the command's own stage; {verb}, dotnet ef's verbs).</comment>
+  </data>
+  <data name="FailedFix" xml:space="preserve">
+    <value>{failed} ({fix} in the Migrations window)</value>
+    <comment>A command that failed ({failed}, why) with the title of the fix the Migrations window offers.</comment>
+  </data>
+  <data name="Unnamed" xml:space="preserve">
+    <value>A migration needs a name</value>
+    <comment>Add Migration given no name.</comment>
+  </data>
+  <data name="NoClassName" xml:space="preserve">
+    <value>{name} is no C# name: a migration is a class of that name</value>
+    <comment>Add Migration given a name that is no C# class name.</comment>
+  </data>
+</root>

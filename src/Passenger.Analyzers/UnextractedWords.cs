@@ -91,15 +91,23 @@ public sealed class UnextractedWords() : HomeOnlyRule(Rules.UnextractedWord, "Pa
         _ => null,
     }) is { } name && (name == "name" || name.EndsWith("Name", StringComparison.Ordinal));
 
-    /// <summary>Whether an operation is words written in the code: a literal, or an interpolation, with a letter in its text.</summary>
+    /// <summary>Whether an operation is words written in the code: a literal, or an interpolation, with a letter in its text,
+    /// or a choice among values (?:, ??, a switch) one of which is.</summary>
     private static bool Written(IOperation operation) => Text(operation) is { } text && text.Any(char.IsLetter);
 
+    /// <summary>The text of a literal or an interpolation, its holes as {}; of a choice, its first written value's.</summary>
     private static string? Text(IOperation operation) => operation switch
     {
         ILiteralOperation { ConstantValue: { HasValue: true, Value: string text } } => text,
         IInterpolatedStringOperation interpolated => string.Concat(interpolated.Parts.Select(p => p is IInterpolatedStringTextOperation t ? Text(t.Text) : "{}")),
+        IConversionOperation { IsImplicit: true } conversion => Text(conversion.Operand),
+        IConditionalOperation chosen => Lettered(chosen.WhenTrue) ?? (chosen.WhenFalse is { } otherwise ? Lettered(otherwise) : null),
+        ICoalesceOperation coalesced => Lettered(coalesced.Value) ?? Lettered(coalesced.WhenNull),
+        ISwitchExpressionOperation switched => switched.Arms.Select(a => Lettered(a.Value)).FirstOrDefault(t => t is not null),
         _ => null,
     };
+
+    private static string? Lettered(IOperation operation) => Text(operation) is { } text && text.Any(char.IsLetter) ? text : null;
 
     private static IOperation Unconverted(IOperation operation) => operation is IConversionOperation { IsImplicit: true } conversion ? Unconverted(conversion.Operand) : operation;
 

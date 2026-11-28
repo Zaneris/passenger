@@ -28,6 +28,7 @@ public class UnextractedWordsTests
         ("string s = \"in \" + Words.Verbatim(name);", "Words are joined into a string", null),
         ("string s = Words.Verbatim(name).ToString();", "Words are made a string", null),
         ("Words w = Words.Verbatim(name).English;", "Words said in one language (English) are made Words again", null),
+        ("Words w = name.Length > 0 ? name : \"Unnamed\";", "\"Unnamed\" is made Words", null),
         ("Words w = name;", null, null),
         ("Words w = \"…\";", null, null),
         ("TextBlock t = new() { Text = name };", null, null),
