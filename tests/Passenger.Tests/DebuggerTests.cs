@@ -355,10 +355,11 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
     /// <summary>Add Snapshot Point in the gutter's menu marks a loop's line with a lens; given an expression of its own in its
     /// popup, it captures each of the loop's three turns as the program runs to its end without a stop. The Snapshots tab
     /// lists them newest first, and the oldest opened shows its frame and its values as they were at the first turn (a list and
-    /// a record as a stop shows them), its expression above them, Variables saying which snapshot it is, Set Value greyed.</summary>
+    /// a record as a stop shows them), its expression above them, Variables saying which snapshot it is, Set Value greyed; a
+    /// large array keeps no more of its ranges than the snapshot's values reach.</summary>
     private void A_snapshot_point_from_the_gutters_menu_captures_each_turn_without_a_stop_and_a_snapshot_opens_as_a_past_stop()
     {
-        Write("Program.cs", "int total = 0; List<int> seen = [];\nfor (int i = 1; i <= 3; i++)\n{\n    total += i; seen.Add(i); Turn turn = new($\"turn {i}\", total);\n"
+        Write("Program.cs", "int total = 0; List<int> seen = []; int[] big = new int[1_000_000];\nfor (int i = 1; i <= 3; i++)\n{\n    total += i; seen.Add(i); Turn turn = new($\"turn {i}\", total);\n"
             + "    Console.WriteLine($\"at {i}\");\n}\nConsole.WriteLine($\"total {total}\");\n\nrecord Turn(string Name, int Total);\n");
         MainWindow window = Open();
         CodeEditor editor = window.EditorArea.CodeEditor;
@@ -378,6 +379,24 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
         window.KeyTextInput("total * 10");
         Ui.Click(Button(popup, "Done"));
         Assert.Equal(["total * 10"], window.Debugger.Breakpoints.In(Program).Single().Snapshot!.Expressions);
+        // A limit given and then cleared is the default again.
+        foreach ((string given, int? kept) in new (string, int?)[] { ("2", 2), (string.Empty, null) })
+        {
+            Ui.Run(window, AppActions.EditBreakpoint);
+            BreakpointPopup again = Assert.IsType<BreakpointPopup>(window.Popup);
+            Ui.Settle();
+            TextBox most = again.GetVisualDescendants().OfType<TextBox>().Single(t => t.PlaceholderText == $"{BreakpointHits.CaptureLimit}");
+            Ui.Click(most);
+            most.SelectAll();
+            Ui.Press(window, "BACK_SPACE");
+            if (given.Length > 0)
+            {
+                window.KeyTextInput(given);
+            }
+            Ui.Click(Button(again, "Done"));
+            Assert.True(window.Debugger.Breakpoints.In(Program).Single().Snapshot!.Limit == kept,
+                $"The snapshot point's limit given as '{given}' is {window.Debugger.Breakpoints.In(Program).Single().Snapshot!.Limit}, not {kept?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "the default"}");
+        }
 
         StartDebugging(window);
         WaitDebugging(window, () => window.Debugger.Session?.State == DebugState.Ended, "the program to run to its end without stopping");
@@ -400,6 +419,11 @@ public sealed class DebuggerTests : IClassFixture<DebuggerTests.Sum>, IClassFixt
             $"The snapshot shows seen as {seen.TypeLabel}{seen.Value} and turn as {turn.TypeLabel}{turn.Value}");
         Ui.Await(debug.Tree.Expand(seen), "seen's items to open");
         Assert.Equal(["1"], debug.Tree.Rows.Where(r => r.Parent == seen && r.Name.StartsWith('[')).Select(r => r.Value));
+        // A million elements' ranges kept only as far as the snapshot's thousand values reach.
+        VariableNode big = Row(window, "big")!;
+        Ui.Await(debug.Tree.Expand(big), "big's ranges to open");
+        int ranges = debug.Tree.Rows.Count(r => r.Parent == big);
+        Assert.True(ranges is > 0 and < 1_000, $"The snapshot kept {ranges} of the million-element array's ten thousand ranges, where it reads a thousand values");
         window.Close();
     }
 
