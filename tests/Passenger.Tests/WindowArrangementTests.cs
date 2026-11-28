@@ -39,7 +39,7 @@ public sealed class WindowArrangementTests : IDisposable
     {
         Flow.StepApart<WindowArrangementTests>("editor tabs set down a side stand in a column there where a click a drag and the next tabs keys go between them", t => t.Editor_tabs_set_down_a_side_stand_in_a_column_there_where_a_click_a_drag_and_the_next_tabs_keys_go_between_them());
         Flow.StepApart<WindowArrangementTests>("a themes editor tabs place is the default the Settings row overrides and Theme default follows again", t => t.A_themes_editor_tabs_place_is_the_default_the_Settings_row_overrides_and_Theme_default_follows_again());
-        Flow.StepApart<WindowArrangementTests>("Titled tabs name the windows docked in a place where a click opens one and a drag takes it to another side", t => t.Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side());
+        Flow.StepApart<WindowArrangementTests>("Titled tabs name the windows docked in a place where a click opens one and a drag takes it to another side leaving the tab beside it open", t => t.Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side_leaving_the_tab_beside_it_open());
         Flow.StepApart<WindowArrangementTests>("Under titled tabs no stripe stands and a window docked beside another or opened again is named by a tab or its header", t => t.Under_titled_tabs_no_stripe_stands_and_a_window_docked_beside_another_or_opened_again_is_named_by_a_tab_or_its_header());
         Flow.StepApart<WindowArrangementTests>("every window of a place hidden is a click away by its icon or by its tab along the edge which opens it over the editors", t => t.Every_window_of_a_place_hidden_is_a_click_away_by_its_icon_or_by_its_tab_along_the_edge_which_opens_it_over_the_editors());
         Flow.StepApart<WindowArrangementTests>("a theme choosing either look gets that look whole", t => t.A_theme_choosing_either_look_gets_that_look_whole());
@@ -148,7 +148,7 @@ public sealed class WindowArrangementTests : IDisposable
         }
     }
 
-    private void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side()
+    private void Titled_tabs_name_the_windows_docked_in_a_place_where_a_click_opens_one_and_a_drag_takes_it_to_another_side_leaving_the_tab_beside_it_open()
     {
         MainWindow window = Open();
         try
@@ -169,11 +169,18 @@ public sealed class WindowArrangementTests : IDisposable
             Ui.Click(ToolTab(window, ToolWindowIds.Run));
             Assert.True(dock.IsShown(ToolWindowIds.Run) && !dock.IsShown(ToolWindowIds.Build), "A click on Run's tab did not open Run in Build's place");
 
+            string[] tabbed = [.. dock.Windows.Where(w => w.Anchor == place && w is { Mode: ToolMode.Docked, Unserved: null, IsClosed: false }).OrderBy(w => w.Order).Select(w => w.Id)];
+            string beside = tabbed.SkipWhile(id => id != ToolWindowIds.Run).Skip(1).FirstOrDefault() ?? tabbed.TakeWhile(id => id != ToolWindowIds.Run).Last();
             Ui.Drag(window, Ui.Centre(ToolTab(window, ToolWindowIds.Run), window), new Point(window.Bounds.Width - 20, 120));
             Assert.True(dock[ToolWindowIds.Run] is { Anchor: ToolAnchor.RightTop, IsShown: true },
                 $"Run's tab dragged to the right side left it {dock[ToolWindowIds.Run].Anchor}");
             Assert.True(Ui.Centre(ToolTab(window, ToolWindowIds.Run), window).X > window.Bounds.Width / 2,
                 "Run's tab did not go with it to the place it was dragged to, at the right");
+            // The place Run left stays open on the tab beside it, as a close leaves it, Run keeping the keys' turn.
+            string[] left = [.. dock.Windows.Where(w => w.Anchor == place && w.IsShown).Select(w => w.Id)];
+            Assert.True(left.SequenceEqual([beside]) && dock[beside].Content.IsEffectivelyVisible && ToolTab(window, beside).Classes.Contains(StyleClasses.Active) && dock.Active == dock[ToolWindowIds.Run],
+                $"Run dragged out of its place left it showing {(left.Length == 0 ? "nothing, the place gone to the edge" : string.Join(", ", left))} where {beside}, beside it, was to stay open, "
+                + $"the window last shown {dock.Active?.Id}");
 
             window.ApplySettings(window.Settings with { ToolWindowLook = ToolWindowLook.StripeIcons });
             Ui.Settle();

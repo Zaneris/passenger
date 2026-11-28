@@ -924,8 +924,8 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>Closes a window: hidden as <see cref="Hide"/> hides it, and, while <see cref="ClosesOffStripe"/>, taken off its
-    /// stripe and its place's tabs until it is opened again (its place kept for then). Under titled tabs, one shown in its
-    /// place leaves the tab beside it shown there, the next in its order, else the one before, so the place stays open.</summary>
+    /// stripe and its place's tabs until it is opened again (its place kept for then), leaving its place to the tab beside
+    /// it (<see cref="TabLeftShown"/>).</summary>
     public void Close([IdentifierOf(typeof(ToolWindowIds))] string id)
     {
         if (!closesOffStripe)
@@ -933,16 +933,25 @@ public sealed class DockHost : Grid
             Hide(id);
             return;
         }
-        ToolWindow window = this[id];
-        List<ToolWindow> tabbed = titledTabs && window is { IsShown: true, Mode: ToolMode.Docked } && window != peeked
-            ? [.. OnStripes.Where(w => w.Anchor == window.Anchor && w.Mode == ToolMode.Docked && w != window).OrderBy(w => w.Order)]
-            : [];
-        ToolWindow? beside = tabbed.FirstOrDefault(w => w.Order > window.Order) ?? tabbed.LastOrDefault();
+        ToolWindow? beside = TabLeftShown(this[id]);
         SetOnStripe(id, false);
         if (beside is not null)
         {
             Show(beside.Id);
         }
+    }
+
+    /// <summary>Under titled tabs, the tab a window shown docked in its place leaves it to as it goes (closed, moved to
+    /// another place or out of the places): the next in its order, else the one before, so the place stays open; null
+    /// where none other is tabbed there.</summary>
+    private ToolWindow? TabLeftShown(ToolWindow leaving)
+    {
+        if (!titledTabs || leaving is not { IsShown: true, Mode: ToolMode.Docked } || leaving == peeked)
+        {
+            return null;
+        }
+        List<ToolWindow> tabbed = [.. OnStripes.Where(w => w.Anchor == leaving.Anchor && w.Mode == ToolMode.Docked && w != leaving).OrderBy(w => w.Order)];
+        return tabbed.FirstOrDefault(w => w.Order > leaving.Order) ?? tabbed.LastOrDefault();
     }
 
     /// <summary>A window's stripe icon, as its stripe's checklist sets it whatever <see cref="ClosesOffStripe"/> says: taken
@@ -1004,7 +1013,7 @@ public sealed class DockHost : Grid
     }
 
     /// <summary>Puts a window in its place, over the IDE in a window of its own, or in an independent window (its View
-    /// Mode); it stays open if it was.</summary>
+    /// Mode); it stays open if it was, the place it leaves to the tab beside it (<see cref="TabLeftShown"/>).</summary>
     public void SetMode(ToolWindow window, ToolMode mode)
     {
         if (window.Mode == mode)
@@ -1012,11 +1021,16 @@ public sealed class DockHost : Grid
             return;
         }
         bool shown = window.IsShown;
+        ToolWindow? beside = TabLeftShown(window);
         if (shown)
         {
             Hide(window.Id);
         }
         window.Mode = mode;
+        if (beside is not null)
+        {
+            beside.IsShown = true;
+        }
         if (shown)
         {
             Show(window.Id);
@@ -1218,15 +1232,18 @@ public sealed class DockHost : Grid
     internal IEnumerable<(ToolWindow Window, Control Place)> ShownAt(IEnumerable<ToolAnchor> places) =>
         places.Select(anchor => panes[anchor]).Where(pane => pane.Window is not null && pane.IsEffectivelyVisible).Select(pane => (pane.Window!, (Control)pane));
 
-    /// <summary>Moves a window to another place (at an index among its buttons there), docked there, shown if it was.</summary>
+    /// <summary>Moves a window to another place (at an index among its buttons there), docked there, shown if it was, the
+    /// place it leaves to the tab beside it (<see cref="TabLeftShown"/>).</summary>
     public void Move(ToolWindow window, ToolAnchor anchor, int? index = null)
     {
-        // A window among the editors moved to a place docks there.
+        bool shown = window.IsShown;
+        ToolWindow? beside = window.Anchor != anchor ? TabLeftShown(window) : null;
+        // A window among the editors moved to a place docks there, the place it last stood in left as it stands.
         if (window.Mode == ToolMode.Editor)
         {
-            SetMode(window, ToolMode.Docked);
+            Hide(window.Id);
+            window.Mode = ToolMode.Docked;
         }
-        bool shown = window.IsShown;
         Remember();
         List<ToolWindow> there = [.. windows.Where(w => w.Anchor == anchor && w != window).OrderBy(w => w.Order)];
         there.Insert(Math.Clamp(index ?? there.Count, 0, there.Count), window);
@@ -1237,6 +1254,10 @@ public sealed class DockHost : Grid
         }
         Renumber();
         window.IsShown = false;
+        if (beside is not null)
+        {
+            beside.IsShown = true;
+        }
         if (shown)
         {
             Show(window.Id);
