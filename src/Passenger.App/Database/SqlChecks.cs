@@ -164,7 +164,7 @@ public static class SqlChecks
             return (first, second);
         }
         at++;
-        return (catalog.Usual, first);
+        return (catalog.Usual ?? string.Empty, first);
     }
 
     private static bool Same(string one, string other, DatabaseKind kind) =>

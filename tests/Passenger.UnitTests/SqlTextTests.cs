@@ -45,6 +45,9 @@ public sealed class SqlTextTests
                 ["db.orders.find({ n: 'a;b' }) // c;d\n  .sort({ n: 1 })", "db.orders.countDocuments({})", "db.x.drop()"]),
             ("Redis's commands a line each, a # line a comment and a blank one passed over, a # in a word its own", DatabaseKind.Redis,
                 "# seed\n  SET a \"x;y\"\n\nHSET h #f 1\n", ["SET a \"x;y\"", "HSET h #f 1"]),
+            ("MySQL's -- begins a comment only before white space, and what its /*! */ holds is a statement's, run with it", DatabaseKind.MySql,
+                "UPDATE accounts SET balance=10--1 WHERE id=1; -- note\n/*!40101 SET NAMES utf8 */;\nSELECT 1 /*! INTO OUTFILE 'x' */",
+                ["UPDATE accounts SET balance=10--1 WHERE id=1", "/*!40101 SET NAMES utf8 */", "SELECT 1 /*! INTO OUTFILE 'x' */"]),
         }, row => Assert.Equal(row.Runs, SqlText.Runs(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Sql, int Caret, string? At)[]
         {
@@ -73,6 +76,10 @@ public sealed class SqlTextTests
             ("MongoDB's call on a collection named in a string reads as the call it makes, whatever its filter's words", DatabaseKind.MongoDb,
                 "db.getCollection('orders').find({ op: 'deleteMany' })", SqlEffect.Reads),
             ("MongoDB's pipeline writing out with $out changes data", DatabaseKind.MongoDb, "db.orders.aggregate([{ $match: {} }, { \"$out\": 'copy' }])", SqlEffect.ChangesData),
+            ("MongoDB's $out written with an escape is the stage its reader decodes", DatabaseKind.MongoDb, "db.orders.aggregate([{ \"\\u0024out\": \"archive\" }])",
+                SqlEffect.ChangesData),
+            ("MongoDB's pipeline writing nothing out reads", DatabaseKind.MongoDb, "db.orders.aggregate([{ $match: { qty: { $gt: 1 } } }, { $group: { _id: '$sku' } }])",
+                SqlEffect.Reads),
             ("MongoDB's index made changes the schema", DatabaseKind.MongoDb, "db.orders.createIndex({ name: 1 })", SqlEffect.ChangesSchema),
             ("runCommand reads only for a command known to", DatabaseKind.MongoDb, "db.runCommand({ ping: 1 })", SqlEffect.Reads),
             ("Cosmos DB's SQL only reads", DatabaseKind.CosmosDb, "SELECT * FROM c WHERE c.op = 'DELETE'", SqlEffect.Reads),
@@ -81,6 +88,11 @@ public sealed class SqlTextTests
             ("Redis's read of a key named as a command reads", DatabaseKind.Redis, "HGET DEL field", SqlEffect.Reads),
             ("Redis's write, and one it does not know, change data", DatabaseKind.Redis, "frobnicate x", SqlEffect.ChangesData),
             ("CONFIG GET reads and CONFIG SET or FLUSHDB change the server", DatabaseKind.Redis, "CONFIG SET maxmemory 1mb", SqlEffect.ChangesSchema),
+            ("SLOWLOG GET reads and SLOWLOG RESET changes the server, as LATENCY RESET", DatabaseKind.Redis, "SLOWLOG RESET", SqlEffect.ChangesSchema),
+            ("a sequence's next value taken changes data, which no rollback gives back", DatabaseKind.SqlServer, "SELECT NEXT VALUE FOR dbo.numbers", SqlEffect.ChangesData),
+            ("PostgreSQL's nextval changes data", DatabaseKind.Postgres, "SELECT nextval('orders_id_seq')", SqlEffect.ChangesData),
+            ("MySQL's executable comment runs: INTO OUTFILE in one writes a file", DatabaseKind.MySql, "SELECT 1 /*! INTO OUTFILE '/tmp/demo.txt' */ FROM DUAL",
+                SqlEffect.ChangesData),
         }, row => Assert.Equal(row.Effect, SqlText.EffectOf(row.Sql, row.Kind)), row => row.Holds);
         Cases.Each(new (string Holds, string Run, string[] Words)[]
         {
@@ -107,7 +119,14 @@ public sealed class SqlTextTests
             ("SQLite's ?, ?NNN, :name, @name and $name, none in a comment", DatabaseKind.Sqlite,
                 ["SELECT ?, ?5, :a, @b, $c FROM t -- :no"], [":a", "@b", "$c", "?1", "?5"]),
             ("a routine's definition declares its own", DatabaseKind.SqlServer, ["CREATE PROCEDURE p @id int AS SELECT @id"], []),
+            ("SQL Server's DECLAREd variable lives through its GO batch alone", DatabaseKind.SqlServer, ["DECLARE @x int = 1; SELECT @x", "SELECT @x"], ["@x"]),
         }, row => Assert.Equal(row.Asked, SqlParameters.Asked(SqlParameters.Of(row.Runs, row.Kind))), row => row.Holds);
+        Cases.Each(new (string Holds, string[] Runs, string[] Places)[]
+        {
+            ("SQLite's numbered places are each run's own from its first, a name taking its place in turn, so none is skipped or shared",
+                ["SELECT ?", "SELECT :a, ?, ?5, ?, ?5"], ["?1 at ?1", "?2 at ?2, ?5 at ?3, ?3 at ?4"]),
+        }, row => Assert.Equal(row.Places, SqlParameters.Of(row.Runs, DatabaseKind.Sqlite).Select(found => string.Join(", ", SqlParameters.Places(found).Select(p => $"{p.Key} at {p.Value}")))),
+            row => row.Holds);
         Cases.Each(new (string Holds, DatabaseKind Kind, string Written, object Value)[]
         {
             ("NULL is no value", DatabaseKind.MySql, " null ", DBNull.Value),
@@ -138,6 +157,14 @@ public sealed class SqlTextTests
             ("a schema's table named whole, quoted", DatabaseKind.Postgres,
                 "ALTER TABLE \"public\".\"products\" ADD COLUMN \"price\" numeric(6,2);\nCREATE VIEW \"public\".\"cheap\" AS SELECT products.id FROM products WHERE products.price < 3 AND price > 1", []),
         }, row => Assert.Equal(row.Marked, SqlChecks.Of(row.Sql, row.Kind, row.Kind == DatabaseKind.Postgres ? served : shop).Select(p => row.Sql[p.Start..p.End])), row => row.Holds);
+        SqlCatalog schemas = new([new SqlTableInfo("other", "orders", [("id", "integer")]), new SqlTableInfo("other", "items", [("id", "integer")]),
+            new SqlTableInfo("public", "orders", [("id", "integer")])]);
+        Cases.Each(new (string Holds, string? Default, string[] Inserts)[]
+        {
+            ("the session's schema's table written bare, another schema's of its name with its schema, both offered", "public", ["other.orders", "orders"]),
+            ("where the session says no schema of several, each table written with its own", null, ["other.orders", "public.orders"]),
+        }, row => Assert.Equal(row.Inserts, SqlCompletions.At("SELECT * FROM ord", 17, DatabaseKind.Postgres, schemas with { Default = row.Default }).Items
+            .Where(i => i is { Kind: SqlCompletions.Kind.Table, Label: "orders" }).Select(i => i.Insert)), row => row.Holds);
         Cases.Each(new (string Holds, Func<PlanStep> Read, string[] Steps, string? Costliest)[]
         {
             ("PostgreSQL's JSON, a join's type with its node's, each step's cost its own less its steps'", () => SqlPlans.FromPostgres("""
@@ -203,6 +230,9 @@ public sealed class SqlTextTests
                 "INSERT INTO t (a, b)\nVALUES (1, 'x'),\n       (2, 'y');\nDELETE FROM t\nWHERE a IN (\n    SELECT a\n    FROM u\n    WHERE b = -1\n);"),
             ("a table's columns one to a line", DatabaseKind.Sqlite, "create table t (id integer primary key, name text not null, price decimal(6,2))",
                 "CREATE TABLE t (\n    id integer PRIMARY KEY,\n    name text NOT NULL,\n    price decimal(6, 2)\n)"),
+            ("an operator of several characters kept whole, SQLite's == and the shifts", DatabaseKind.Sqlite, "select 4<<1, 8>>1 where 1==1", "SELECT 4 << 1,\n       8 >> 1\nWHERE 1 == 1"),
+            ("PostgreSQL's operators read as its lexer reads them, a sign after one its number's", DatabaseKind.Postgres, "select a<<=b, c @-d where e=-1 and f<->g",
+                "SELECT a <<= b,\n       c @- d\nWHERE e = -1\n    AND f <-> g"),
         }, row =>
         {
             Assert.Equal(row.Laid, SqlFormatter.Format(row.Sql, row.Kind));
@@ -313,6 +343,11 @@ public sealed class SqlTextTests
             ("a key revoked is refused, though a line knows it", $"j* ssh-ed25519 {known}\n@revoked * ssh-ed25519 {known}", "jump", 22, KnownHostKey.Revoked),
             ("another kind's key leaves the host unknown", $"jump ssh-rsa {other}", "jump", 22, KnownHostKey.Unknown),
         }, row => Assert.Equal(row.Said, KnownHosts.Judge(row.Text, row.Host, row.Port, "ssh-ed25519", key)), row => row.Holds);
+        Cases.Each(new (string Holds, KnownHostKey[] Said, bool Trusted, KnownHostKey Verdict)[]
+        {
+            ("a key the person trusted before is refused once a file revokes it", [KnownHostKey.Unknown, KnownHostKey.Revoked], true, KnownHostKey.Revoked),
+            ("a key the person trusted is taken where a file knows another, as ssh's own trust would", [KnownHostKey.Changed], true, KnownHostKey.Known),
+        }, row => Assert.Equal(row.Verdict, KnownHosts.Verdict(row.Said, row.Trusted)), row => row.Holds);
         TableShape products = new("products", [new("id", "integer", false), new("name", "varchar(40)", false), new("price", "numeric(6,2)", true)], ["id"], [], []);
         TableShape orders = new("orders", [new("id", "integer", false), new("product_id", "integer", true)], ["id"],
             [new ForeignKeyShape("orders_product", ["product_id"], "products", ["id"])], []);
@@ -322,22 +357,22 @@ public sealed class SqlTextTests
         {
             ("PostgreSQL: keys dropped first, tables made, columns added, changed and dropped, indexes, keys added, views, tables dropped last",
                 DatabaseKind.Postgres, "public",
-                ["CREATE TABLE \"public\".\"orders\" (\n  \"id\" integer NOT NULL,\n  \"product_id\" integer,\n  PRIMARY KEY (\"id\")\n)",
+                ["DROP INDEX \"public\".\"named\"", "CREATE TABLE \"public\".\"orders\" (\n  \"id\" integer NOT NULL,\n  \"product_id\" integer,\n  PRIMARY KEY (\"id\")\n)",
                     "ALTER TABLE \"public\".\"products\" ALTER COLUMN \"name\" TYPE varchar(40)", "ALTER TABLE \"public\".\"products\" ADD COLUMN \"price\" numeric(6,2)",
-                    "ALTER TABLE \"public\".\"products\" DROP COLUMN \"note\"", "DROP INDEX \"public\".\"named\"",
+                    "ALTER TABLE \"public\".\"products\" DROP COLUMN \"note\"",
                     "ALTER TABLE \"public\".\"orders\" ADD CONSTRAINT \"orders_product\" FOREIGN KEY (\"product_id\") REFERENCES \"public\".\"products\" (\"id\")",
                     "CREATE VIEW \"public\".\"cheap\" AS SELECT id FROM products", "DROP TABLE \"public\".\"legacy\""]),
             ("MySQL: a column changed whole, its key's index dropped on its table, a view made or replaced", DatabaseKind.MySql, "shop",
-                ["CREATE TABLE `shop`.`orders` (\n  `id` integer NOT NULL,\n  `product_id` integer,\n  PRIMARY KEY (`id`)\n)",
+                ["DROP INDEX `named` ON `shop`.`products`", "CREATE TABLE `shop`.`orders` (\n  `id` integer NOT NULL,\n  `product_id` integer,\n  PRIMARY KEY (`id`)\n)",
                     "ALTER TABLE `shop`.`products` MODIFY COLUMN `name` varchar(40) NOT NULL", "ALTER TABLE `shop`.`products` ADD COLUMN `price` numeric(6,2)",
-                    "ALTER TABLE `shop`.`products` DROP COLUMN `note`", "DROP INDEX `named` ON `shop`.`products`",
+                    "ALTER TABLE `shop`.`products` DROP COLUMN `note`",
                     "ALTER TABLE `shop`.`orders` ADD CONSTRAINT `orders_product` FOREIGN KEY (`product_id`) REFERENCES `shop`.`products` (`id`)",
                     "CREATE OR REPLACE VIEW `shop`.`cheap` AS SELECT id FROM products", "DROP TABLE `shop`.`legacy`"]),
-            ("SQLite: what it cannot change in place said as a comment", DatabaseKind.Sqlite, "",
-                ["CREATE TABLE \"orders\" (\n  \"id\" integer NOT NULL,\n  \"product_id\" integer,\n  PRIMARY KEY (\"id\")\n)",
+            ("SQLite: what it cannot change in place said as a comment, a new table made with its foreign keys", DatabaseKind.Sqlite, "",
+                ["DROP INDEX \"named\"", "CREATE TABLE \"orders\" (\n  \"id\" integer NOT NULL,\n  \"product_id\" integer,\n  PRIMARY KEY (\"id\"),\n"
+                    + "  FOREIGN KEY (\"product_id\") REFERENCES \"products\" (\"id\")\n)",
                     "-- SQLite cannot change the column name in place: make the table again with it as the source has it", "ALTER TABLE \"products\" ADD COLUMN \"price\" numeric(6,2)",
-                    "ALTER TABLE \"products\" DROP COLUMN \"note\"", "DROP INDEX \"named\"", "-- SQLite cannot add the foreign key orders_product to a table: make the table again with it",
-                    "CREATE VIEW \"cheap\" AS SELECT id FROM products", "DROP TABLE \"legacy\""]),
+                    "ALTER TABLE \"products\" DROP COLUMN \"note\"", "CREATE VIEW \"cheap\" AS SELECT id FROM products", "DROP TABLE \"legacy\""]),
         }, row =>
         {
             string view = row.Kind == DatabaseKind.Sqlite ? "CREATE VIEW cheap AS SELECT id FROM products" : "SELECT id FROM products";
@@ -387,6 +422,23 @@ public sealed class SqlTextTests
                     "ALTER TABLE \"public\".\"notes\" DROP CONSTRAINT \"PK_b\", ADD PRIMARY KEY (\"id\")",
                     "CREATE OR REPLACE FUNCTION public.keep() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
                     "CREATE OR REPLACE TRIGGER stamp BEFORE UPDATE ON public.notes FOR EACH ROW EXECUTE FUNCTION keep()", "DROP SEQUENCE \"public\".\"old\""]),
+            ("SQLite: an index dropped before the column it holds, and of two tables dropped the one referring to the other first", DatabaseKind.Sqlite,
+                new SchemaShape(DatabaseKind.Sqlite, string.Empty, [new TableShape("t", [new("id", "integer", false)], ["id"], [], [])], []),
+                new SchemaShape(DatabaseKind.Sqlite, string.Empty, [new TableShape("t", [new("id", "integer", false), new("gone", "text", true)], ["id"], [], [new IndexShape("held", false, ["gone"])]),
+                    new TableShape("parent", [new("id", "integer", false)], ["id"], [], []),
+                    new TableShape("child", [new("id", "integer", false), new("parent_id", "integer", true)], ["id"], [new ForeignKeyShape("child_parent", ["parent_id"], "parent", ["id"])], [])], []),
+                ["DROP INDEX \"held\"", "ALTER TABLE \"t\" DROP COLUMN \"gone\"", "DROP TABLE \"child\"", "DROP TABLE \"parent\""]),
+            ("PostgreSQL: a key to another schema's table kept to it, a partial index's WHERE, and a view's string in its letter case", DatabaseKind.Postgres,
+                new SchemaShape(DatabaseKind.Postgres, "sales", [new TableShape("orders", [new("id", "integer", false), new("customer_id", "integer", true), new("email", "text", true)], ["id"],
+                    [new ForeignKeyShape("orders_customer", ["customer_id"], "customers", ["id"], "shared")], [new IndexShape("active_email", true, ["email"], "USING btree (email) WHERE active")])],
+                    [new ViewShape("states", "SELECT 'OPEN'::text AS state")]),
+                new SchemaShape(DatabaseKind.Postgres, "sales", [new TableShape("orders", [new("id", "integer", false), new("customer_id", "integer", true), new("email", "text", true)], ["id"],
+                    [new ForeignKeyShape("orders_customer", ["customer_id"], "customers", ["id"])], [new IndexShape("active_email", true, ["email"], "USING btree (email)")])],
+                    [new ViewShape("states", "SELECT 'open'::text AS state")]),
+                ["ALTER TABLE \"sales\".\"orders\" DROP CONSTRAINT \"orders_customer\"", "DROP INDEX \"sales\".\"active_email\"",
+                    "CREATE UNIQUE INDEX \"active_email\" ON \"sales\".\"orders\" USING btree (email) WHERE active",
+                    "ALTER TABLE \"sales\".\"orders\" ADD CONSTRAINT \"orders_customer\" FOREIGN KEY (\"customer_id\") REFERENCES \"shared\".\"customers\" (\"id\")",
+                    "DROP VIEW \"sales\".\"states\"", "CREATE VIEW \"sales\".\"states\" AS SELECT 'OPEN'::text AS state"]),
             ("MySQL: a primary key changed in one statement, a trigger said again from its parts under the target's names", DatabaseKind.MySql,
                 new SchemaShape(DatabaseKind.MySql, "shop", [keyed with { Columns = [.. keyed.Columns.Take(2)] }], [])
                 {

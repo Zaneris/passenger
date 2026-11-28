@@ -123,6 +123,8 @@ public sealed class RowExport
                 parameter.Value = value ?? DBNull.Value;
                 command.Parameters.Add(parameter);
             }
+            // A table's filter is written as @filter, which DuckDB, ClickHouse and Snowflake bind at places of their own.
+            DatabaseClient.Place(command);
             using CancellationTokenRegistration interrupt = DatabaseClient.Interrupt(connection, cancel);
             await using (reader = await command.ExecuteReaderAsync(cancel))
             {

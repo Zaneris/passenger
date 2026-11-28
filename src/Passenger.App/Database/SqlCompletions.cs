@@ -3,11 +3,14 @@ namespace Passenger.App.Database;
 /// <summary>A table or view of a connection's database, with its columns and their types, as completion offers them.</summary>
 public sealed record SqlTableInfo(string Schema, string Name, IReadOnlyList<(string Name, string Type)> Columns);
 
-/// <summary>What a connection's database holds for completion: its tables and views with their columns, read once.</summary>
-public sealed record SqlCatalog(IReadOnlyList<SqlTableInfo> Tables)
+/// <summary>What a connection's database holds for completion: its tables and views with their columns, read once, and the
+/// schema its session reads a name with no schema in (PostgreSQL's current_schema(), SQL Server's SCHEMA_NAME()), where it
+/// said one.</summary>
+public sealed record SqlCatalog(IReadOnlyList<SqlTableInfo> Tables, string? Default = null)
 {
-    /// <summary>The schema a name needs no prefix in: the one most of the tables stand in (public, dbo, the database's own).</summary>
-    public string Usual { get; } = Tables.GroupBy(t => t.Schema).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? string.Empty;
+    /// <summary>The schema a name needs no prefix in: the session's own; where it said none, the one schema every table
+    /// stands in, else none, every table's name then written with its schema.</summary>
+    public string? Usual => Default ?? (Tables.Select(t => t.Schema).Distinct().Take(2).ToArray() is [string only] ? only : null);
 }
 
 /// <summary>What completion offers at a caret in a console's SQL, from the live schema: after a name and a dot, a table's
@@ -110,12 +113,14 @@ public static class SqlCompletions
         {
             items.AddRange(table.Columns.Select(c => new Candidate(c.Name, Quoted(c.Name, kind), Kind.Column, $"{table.Name}, {c.Type}")));
         }
-        items.AddRange(catalog.Tables.Select(t => new Candidate(t.Name, t.Schema == catalog.Usual ? Quoted(t.Name, kind) : $"{Quoted(t.Schema, kind)}.{Quoted(t.Name, kind)}",
+        string? usual = catalog.Usual;
+        items.AddRange(catalog.Tables.Select(t => new Candidate(t.Name, t.Schema == usual ? Quoted(t.Name, kind) : $"{Quoted(t.Schema, kind)}.{Quoted(t.Name, kind)}",
             Kind.Table, t.Schema.Length > 0 ? t.Schema : "table")));
-        items.AddRange(catalog.Tables.Select(t => t.Schema).Where(s => s.Length > 0 && s != catalog.Usual).Distinct()
+        items.AddRange(catalog.Tables.Select(t => t.Schema).Where(s => s.Length > 0 && s != usual).Distinct()
             .Select(s => new Candidate(s, Quoted(s, kind), Kind.Schema, "schema")));
         items.AddRange(Keywords(kind).Select(k => new Candidate(k, k, Kind.Keyword, "keyword")));
-        return (start, [.. items.DistinctBy(i => (i.Label, i.Kind))]);
+        // Two schemas' tables of one name are two choices, each written as it reaches its own.
+        return (start, [.. items.DistinctBy(i => (i.Label, i.Kind, i.Insert))]);
     }
 
     /// <summary>A name as the database reads it: as written where it is a plain name (lower case alone for PostgreSQL, which

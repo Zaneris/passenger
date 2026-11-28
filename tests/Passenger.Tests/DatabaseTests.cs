@@ -7,6 +7,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using Microsoft.Data.Sqlite;
 using Passenger.App;
+using Passenger.App.Containers;
 using Passenger.App.Database;
 using Passenger.App.Tables;
 using Passenger.Core;
@@ -46,6 +47,7 @@ public sealed class DatabaseTests
             CREATE TRIGGER Noted AFTER INSERT ON Orders BEGIN UPDATE Products SET Note = 'ordered' WHERE Id = NEW.Product; END;
             WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<105)
             INSERT INTO Products SELECT x, 'Product '||x, NULL FROM n;
+            UPDATE Products SET Note = 'https://alice:kept-in-cell@example.com/old' WHERE Id = 5;
             """);
         string settings = TestFolders.Create("database-settings-");
         MainWindow window = Open(folder, settings);
@@ -159,6 +161,13 @@ public sealed class DatabaseTests
                 Assert.True(window.Perform(Passenger.Editor.EditorActions.Undo), "Undo did not take back the revert");
                 Assert.Equal("2 rows changed, 1 row deleted, 1 row added pending", data.Edits.Said);
                 Assert.Equal("Product 1", Scalar(folder, "SELECT Name FROM Products WHERE Id=1"));
+                // A cell shown with a secret masked is written as shown, what the mask hid kept where the mask still stands.
+                int masked = Enumerable.Range(0, data.Shown.RowCount).First(r => data.Shown.Cell(r, 0) == "5");
+                grid.Choose((masked, 2), (masked, 2));
+                Assert.True(grid.BeginWriting(), "The masked cell could not be written");
+                Assert.Equal($"https://alice:{ContainerSecrets.Masked}@example.com/old", grid.Writing!.Text);
+                grid.Writing.Text = grid.Writing.Text.Replace("/old", "/new", StringComparison.Ordinal);
+                Ui.Press(window, "ENTER");
                 grid.Focus();
                 Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseSubmit))[0].First.Notation());
                 Ui.WaitFor(() => data.Edits.IsEmpty && !data.Reading, () => data.Said);
@@ -168,6 +177,7 @@ public sealed class DatabaseTests
                 Assert.Equal("a note", Scalar(folder, "SELECT Note FROM Products WHERE Id=2"));
                 Assert.Null(Scalar(folder, "SELECT Name FROM Products WHERE Id=4"));
                 Assert.Equal("Added", Scalar(folder, "SELECT Name FROM Products WHERE Id=500"));
+                Assert.Equal("https://alice:kept-in-cell@example.com/new", Scalar(folder, "SELECT Note FROM Products WHERE Id=5"));
             });
             Flow.Step("a row changed elsewhere since it was read refuses the changes, none written, and the tab asks before it closes with them", () =>
             {
@@ -299,6 +309,17 @@ public sealed class DatabaseTests
                 Ui.ClickButton(asked, "Cancel");
                 Ui.WaitFor(() => sql.Said == "Not run.", () => sql.Said);
 
+                // Each statement's numbered places are its own, SQLite refusing one whose first place is never bound.
+                Replace(window, "SELECT Name FROM Products WHERE Id = ?;\nSELECT Name FROM Products WHERE Id = ?5;");
+                window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+                Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");
+                asked = Confirm(window);
+                asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter0").Text = "3";
+                asked.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "SqlParameter1").Text = "6";
+                Ui.ClickButton(asked, "Run");
+                Ui.WaitFor(() => !sql.Running && sql.Results.Count == 2, () => sql.Said);
+                Assert.Equal(["Product 3", "Product 6"], sql.Results.Select(r => r.Error ?? r.Sets[0].Cell(0, 0)));
+
                 Replace(window, "UPDATE Products SET Note = 'one' WHERE Id = 3;\nSELECT Note FROM Products WHERE Id = 3;\nSELECT * FROM Nope;\nUPDATE Products SET Note = 'never' WHERE Id = 3;");
                 window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
                 Assert.True(window.Perform(AppActions.DatabaseRunFile), "Run SQL File did not run");
@@ -309,7 +330,7 @@ public sealed class DatabaseTests
                 Assert.Contains("-- 1 row changed", output, StringComparison.Ordinal);
                 Assert.Contains("no such table: Nope", output, StringComparison.Ordinal);
 
-                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.DatabaseHistory)[0].First.Notation());
+                Ui.Press(window, window.Actions.Keymap.ShortcutsFor(AppActions.KeysIn(AppActions.DatabaseHistory))[0].First.Notation());
                 SqlConsoleView view = window.EditorArea.ActiveGroup.Console!;
                 Ui.WaitFor(() => Tab<ListBox>(window, "ConsoleHistory").IsEffectivelyVisible, "the console's history");
                 Assert.Equal(["SELECT * FROM Nope", "SELECT Note FROM Products WHERE Id = 3", "UPDATE Products SET Note = 'one' WHERE Id = 3"],
@@ -514,6 +535,21 @@ public sealed class DatabaseTests
                 Assert.Equal("has \"quotes\"", Scalar(folder, "SELECT Note FROM Products WHERE Id = 900"));
                 Assert.Null(Value(folder, "SELECT Note FROM Products WHERE Id = 901"));
 
+                // The columns are the table chosen last's, however late an earlier choice's read answers.
+                TaskCompletionSource<DatabaseSchema> slow = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                DatabaseTable[] two = [new(string.Empty, "Early"), new(string.Empty, "Late")];
+                DatabaseImportDialog racing = new(DatabaseKind.Sqlite, imports, string.Empty, two, two[0], (table, _) => table == two[0] ? slow.Task
+                    : Task.FromResult(new DatabaseSchema(table, [new DatabaseColumn("Note", "TEXT", true, false, false)], [], [])));
+                racing.Show(window);
+                Ui.Settle();
+                racing.File = Path.Combine(imports, "more.csv");
+                Field<ComboBox>(racing, "ImportInto").SelectedIndex = 2;
+                Ui.WaitFor(() => !racing.IsReading && racing.Columns.Count == 3, () => $"the file and Late read: {racing.Problem}");
+                slow.SetResult(new DatabaseSchema(two[0], [new DatabaseColumn("Name", "TEXT", true, false, false)], [], []));
+                Ui.Settle();
+                Assert.Equal(", Note, ", string.Join(", ", racing.Columns.Select(c => c.Into)));
+                racing.Close();
+
                 File.WriteAllText(Path.Combine(imports, "again.csv"), "Id,Name\n902,Fine\n900,Taken\n");
                 Assert.True(window.Perform(AppActions.DatabaseImport), "Import Data did not run again");
                 dialog = Dialog<DatabaseImportDialog>(window);
@@ -649,25 +685,133 @@ public sealed class DatabaseTests
                 Field<TextBox>("DatabaseName").Text = "reports";
                 Field<TextBox>("DatabaseUser").Text = "app";
                 Field<TextBox>("DatabasePassword").Text = "kept-elsewhere-secret";
+                // A test run keeps secrets in memory, as a system with no credential store does: the dialog and the window say so.
+                Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.Text?.Contains("kept for this session alone", StringComparison.Ordinal) == true);
+                List<string> said = [];
+                window.Database.Changed += (_, _) => said.Add(window.Database.Said);
                 Ui.ClickButton(dialog, "Connect");
                 Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Reports"), () => window.Database.Said);
+                Assert.Contains(said, s => s.StartsWith("Reports's secrets are kept for this session alone", StringComparison.Ordinal));
                 DatabaseSource reports = window.Database.Sources.Single(s => s.Name == "Reports");
                 Assert.Contains("kept-elsewhere-secret", SystemCredentials.Read(DatabaseController.CredentialService, reports.Account), StringComparison.Ordinal);
                 Assert.DoesNotContain("kept-elsewhere-secret", window.Database.Said, StringComparison.Ordinal);
+                // A password written inside a MongoDB URI or a Redis configuration is kept apart as one in a field of its own.
+                foreach ((DatabaseKind kind, string name, string written) in (ReadOnlySpan<(DatabaseKind, string, string)>)[
+                    (DatabaseKind.MongoDb, "Docs", "mongodb://app:kept-in-uri@127.0.0.1:9/shop"), (DatabaseKind.Redis, "Keys", "127.0.0.1:9,password=kept-in-configuration")])
+                {
+                    Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                    Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                    dialog = window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                    Field<ComboBox>("DatabaseProvider").SelectedIndex = (int)kind;
+                    Field<TextBox>("DatabaseConnectionName").Text = name;
+                    Field<TextBox>("DatabaseConnectionString").Text = written;
+                    Ui.ClickButton(dialog, "Connect");
+                    Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == name), () => window.Database.Said);
+                }
+                Assert.Contains("kept-in-uri", SystemCredentials.Read(DatabaseController.CredentialService, window.Database.Sources.Single(s => s.Name == "Docs").Account),
+                    StringComparison.Ordinal);
                 window.Close();
                 Ui.Settle();
                 string kept = File.ReadAllText(Assert.Single(Directory.GetFiles(Path.Combine(settings, "workspaces"), "database.json", SearchOption.AllDirectories)));
                 Assert.Contains("Reports", kept, StringComparison.Ordinal);
                 Assert.DoesNotContain("kept-elsewhere-secret", kept, StringComparison.Ordinal);
+                Assert.DoesNotContain("kept-in-uri", kept, StringComparison.Ordinal);
+                Assert.DoesNotContain("kept-in-configuration", kept, StringComparison.Ordinal);
+                Assert.Contains("mongodb://app@127.0.0.1:9/shop", kept, StringComparison.Ordinal);
                 Assert.DoesNotContain("Password", JsonDocument.Parse(kept).RootElement.ToString(), StringComparison.OrdinalIgnoreCase);
                 window = Open(folder, settings);
                 window.ShowToolWindow(ToolWindowIds.Database);
                 Ui.WaitFor(() => window.Database.Discovered && !window.Database.Busy, () => window.Database.Said);
-                Assert.Equal("Reports", window.Database.Sources[0].Name);
+                Assert.Equal(["Reports", "Docs", "Keys"], window.Database.Sources.Take(3).Select(s => s.Name));
                 Assert.True(window.Database.Sources[0].SecretKept);
                 Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Name == "Shop"),
                     () => $"{window.Database.Said} [{string.Join(", ", window.Database.Sources.Select(s => s.Name))}] of {window.Session.Projects.Count} projects");
                 Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
+            });
+            Flow.Step("connections of one name are told apart, each run and given a console as its own; an edited one's held session opened again; and a failed commit keeps the folder", () =>
+            {
+                foreach ((string file, string value) in (ReadOnlySpan<(string, string)>)[("a.db", "a"), ("b.db", "b")])
+                {
+                    using SqliteConnection seeded = new($"Data Source={Path.Combine(folder, file)};Pooling=False");
+                    seeded.Open();
+                    using SqliteCommand command = seeded.CreateCommand();
+                    command.CommandText = $"CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('{value}'); CREATE TABLE parent (id INTEGER PRIMARY KEY); "
+                        + "CREATE TABLE child (p INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED);";
+                    command.ExecuteNonQuery();
+                }
+                T Field<T>(DatabaseConnectionDialog dialog, string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+                DatabaseConnectionDialog AskedConnection()
+                {
+                    Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                    return window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                }
+                Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                DatabaseConnectionDialog dialog = AskedConnection();
+                Field<ComboBox>(dialog, "DatabaseProvider").SelectedIndex = (int)DatabaseKind.Sqlite;
+                Field<TextBox>(dialog, "DatabaseConnectionName").Text = "Shop";
+                Field<TextBox>(dialog, "DatabaseConnectionString").Text = "Data Source=a.db;Foreign Keys=True";
+                Ui.ClickButton(dialog, "Connect");
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Count(s => s.Name == "Shop") == 2, () => window.Database.Said);
+                DatabaseSource made = window.Database.Sources.Single(s => s.Name == "Shop" && s.Found is null);
+                DatabaseSource found = window.Database.Sources.Single(s => s.Name == "Shop" && s.Found is not null);
+
+                // A file run first asks which connection, each of one name told apart, and runs against the one chosen.
+                TestFolders.Write(folder, "pick.sql", "SELECT v FROM t;\n");
+                Assert.Null(window.EditorArea.Open(Path.Combine(folder, "pick.sql")));
+                window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                ChoiceDialog which = Question(window);
+                string[] shops = [.. which.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).OfType<string>().Where(c => c.StartsWith("Shop", StringComparison.Ordinal))];
+                Assert.Equal(["Shop (made by hand) · SQLite", $"Shop ({found.Found}) · SQLite"], shops);
+                Ui.ClickButton(which, "Shop (made by hand) · SQLite");
+                SqlConsole picked = window.Database.ConsoleOf(Path.Combine(folder, "pick.sql"))!;
+                Ui.WaitFor(() => !picked.Running && picked.Results.Count == 1, () => picked.Said);
+                Assert.Equal((made.Id, "a"), (picked.Connection!.Value, picked.Results[0].Sets[0].Cell(0, 0)));
+
+                // Each of them opens a console of its own.
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == made.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console?.Connection == made.Id, "the console of the Shop made by hand");
+                SqlConsole own = window.EditorArea.ActiveGroup.Console!.Console!;
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == found.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console?.Connection == found.Id, "the console of the Shop found");
+                Assert.NotEqual(own.Path, window.EditorArea.ActiveGroup.Console!.Console!.Path);
+                Assert.Equal(made.Id, own.Connection);
+
+                // A session held in manual commit, its transaction ended, is opened again on the connection as it was edited.
+                window.EditorArea.Activate(window.EditorArea.Documents.Single(d => PathNames.Same(d.Path, own.Path)));
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console == own, "the console of the Shop made by hand again");
+                Tab<ComboBox>(window, "ConsoleCommit").SelectedIndex = 1;
+                Run(window, "SELECT v FROM t");
+                Assert.Equal("a", own.Results[0].Sets[0].Cell(0, 0));
+                Assert.True(window.Perform(AppActions.DatabaseCommit), "Commit did not run");
+                Ui.WaitFor(() => !own.InTransaction && !own.Running, () => own.Said);
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == made.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConnectionEdit), "Edit Database Connection did not run");
+                dialog = AskedConnection();
+                Field<TextBox>(dialog, "DatabaseConnectionString").Text = "Data Source=b.db;Foreign Keys=True";
+                Ui.ClickButton(dialog, "Save and Connect");
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Find(made.Id)?.Database == "b.db", () => window.Database.Said);
+                window.EditorArea.Activate(window.EditorArea.Documents.Single(d => PathNames.Same(d.Path, own.Path)));
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console == own, "the console of the Shop made by hand again");
+                Run(window, "SELECT v FROM t");
+                Assert.Equal("b", own.Results[0].Sets[0].Cell(0, 0));
+
+                // A commit the database refuses keeps the folder open, said, where it went on as if committed.
+                Run(window, "INSERT INTO child VALUES (99)");
+                Assert.True(own.InTransaction, own.Said);
+                Assert.NotNull(window.CloseSolution());
+                Ui.ClickButton(Question(window), "Write and Commit");
+                Ui.WaitFor(() => !own.Running && !own.InTransaction, () => own.Said);
+                Ui.Settle();
+                Assert.NotNull(window.Folder);
+                Assert.Contains("FOREIGN KEY", own.Said, StringComparison.Ordinal);
+                Tab<ComboBox>(window, "ConsoleCommit").SelectedIndex = 0;
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == made.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConnectionRemove), "Remove Database Connection did not run");
+                Ui.ClickButton(Confirm(window), "Remove");
+                Ui.WaitFor(() => window.Database.Find(made.Id) is null, "the Shop made by hand removed");
             });
             Flow.Step("a DuckDB file of the folder opens down to its table's columns, and the folder's CSV reads through it as a table and in its console", () =>
             {
@@ -702,6 +846,34 @@ public sealed class DatabaseTests
                 SqlConsole duckConsole = window.EditorArea.ActiveGroup.Console!.Console!;
                 Assert.True(duckConsole.Results is [{ Error: null }], duckConsole.Said);
                 Assert.Equal(["bolt 120", "nut 60"], Enumerable.Range(0, 2).Select(r => $"{duckConsole.Results[0].Sets[0].Cell(r, 0)} {duckConsole.Results[0].Sets[0].Cell(r, 1)}"));
+
+                // DuckDB binds an import's values, and a filtered table's export its filter, at its own $name places.
+                string duckFiles = TestFolders.Create("database-duck-");
+                File.WriteAllText(Path.Combine(duckFiles, "more.csv"), "id,item,count\n3,washer,9\n");
+                List<string> told = Told(window);
+                ListBox tree = Explorer(window).GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "DatabaseTree");
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "stock" && r.Source.Kind == DatabaseKind.DuckDb));
+                Ui.ChooseFromMenu(tree, "Import Data…");
+                DatabaseImportDialog importing = Dialog<DatabaseImportDialog>(window);
+                importing.File = Path.Combine(duckFiles, "more.csv");
+                Ui.WaitFor(() => !importing.IsReading && importing.Columns.Count == 3, () => importing.Problem);
+                Ui.ClickButton(importing, "Import");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Imported 1 row of more.csv into", StringComparison.Ordinal)), () => string.Join("; ", told));
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Table && r.Title == "stock" && r.Source.Kind == DatabaseKind.DuckDb));
+                Assert.True(window.Perform(AppActions.DatabaseOpenTable), $"Open Table Data did not run: {window.Status}");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 3 }, () => $"stock's rows among the editors ({window.Database.Said})");
+                Tab<ComboBox>(window, "DatabaseFilterColumn").SelectedItem = "item";
+                Filter(window, "wash");
+                Ui.WaitFor(() => Data(window) is { Reading: false, Rows.RowCount: 1 }, "stock's washer alone");
+                Tab<CellGrid>(window, "DatabaseTabResults").Focus();
+                Assert.True(window.Perform(AppActions.DatabaseExport), "Export Data did not run from the table");
+                DatabaseExportDialog exporting = Dialog<DatabaseExportDialog>(window);
+                Field<ComboBox>(exporting, "ExportFormat").SelectedIndex = (int)ExportFormat.Csv;
+                Field<TextBox>(exporting, "ExportFile").Text = Path.Combine(duckFiles, "washers.csv");
+                Ui.ClickButton(exporting, "Export");
+                Ui.WaitFor(() => told.Any(t => t.StartsWith("Exported 1 row of ", StringComparison.Ordinal) && t.Contains("washers.csv", StringComparison.Ordinal)),
+                    () => string.Join("; ", told));
+                Assert.Equal("id,item,count\n3,washer,9\n", File.ReadAllText(Path.Combine(duckFiles, "washers.csv")).ReplaceLineEndings("\n"));
             });
             Flow.Step("a release downloads DuckDB's engine as a DuckDB connection first opens, checked against its SHA256SUMS, a wrong one refused and Stop ending one, and keeps it", () =>
             {

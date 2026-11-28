@@ -18,10 +18,10 @@ internal static partial class DatabaseClient
 {
     internal const int PageSize = 100;
 
-    /// <summary>Opens a connection, its secret parts read from the system's store where they are kept there, through its SSH
-    /// tunnel where it has one (its certificate still checked against its server's own name). A read-only connection is
-    /// one the server holds read-only too where it can: SQLite's file opened read-only, PostgreSQL's and MySQL's sessions'
-    /// transactions read-only, SQL Server's asked for a read-only session.</summary>
+    /// <summary>Opens a connection, whole (<see cref="Whole"/>), through its SSH tunnel where it has one (its certificate still
+    /// checked against its server's own name). A read-only connection is one the server holds read-only too where it can:
+    /// SQLite's file opened read-only, PostgreSQL's and MySQL's sessions' transactions read-only, SQL Server's asked for a
+    /// read-only session.</summary>
     internal static async Task<DbConnection> OpenAsync(DatabaseSource source, CancellationToken cancel)
     {
         if (!DatabaseKinds.SpeaksSql(source.Kind))
@@ -39,18 +39,7 @@ internal static partial class DatabaseClient
                 throw new IOException(Refusals.NoDuckDbEngine(failed.Message), failed);
             }
         }
-        string whole = source.ConnectionString;
-        if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
-        {
-            MarkSecrets(secret);
-            whole = KeptConnection.Joined(source.Kind, whole, secret);
-        }
-        if (source.Over.Length > 0)
-        {
-            string? overSecret = SystemCredentials.Read(DatabaseController.CredentialService, source.OverAccount);
-            MarkSecrets(overSecret);
-            whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
-        }
+        string whole = Whole(source);
         string? accessToken = null;
         if (source.SignIn is { } signIn)
         {
@@ -117,6 +106,25 @@ internal static partial class DatabaseClient
             await connection.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>A connection's string whole, as every client of it opens it: its secret parts read from the system's store
+    /// where they are kept there, and a found connection's own settings laid over it, each secret marked so no message says it.</summary>
+    internal static string Whole(DatabaseSource source)
+    {
+        string whole = source.ConnectionString;
+        if (source.SecretKept && SystemCredentials.Read(DatabaseController.CredentialService, source.Account) is { Length: > 0 } secret)
+        {
+            MarkSecrets(secret);
+            whole = KeptConnection.Joined(source.Kind, whole, secret);
+        }
+        if (source.Over.Length > 0)
+        {
+            string? overSecret = SystemCredentials.Read(DatabaseController.CredentialService, source.OverAccount);
+            MarkSecrets(overSecret);
+            whole = DatabaseKinds.LaidOver(source.Kind, whole, KeptConnection.Joined(source.Kind, source.Over, overSecret));
+        }
+        return whole;
     }
 
     /// <summary>A Redshift connection as Npgsql reaches Redshift: none of PostgreSQL's types read from its catalog, which holds
@@ -623,8 +631,19 @@ internal static partial class DatabaseClient
             _ => "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema <> 'INFORMATION_SCHEMA' ORDER BY 1, 2, ordinal_position",
         };
         DatabaseRows rows = await ReadAsync(connection, sql, [], cancel, limit: 50000);
+        // The schema a name with no schema is read in, as the session reads it: the first of PostgreSQL's search path that is there.
+        string? own = source.Kind switch
+        {
+            DatabaseKind.Sqlite => string.Empty,
+            DatabaseKind.Postgres or DatabaseKind.Redshift or DatabaseKind.DuckDb => "SELECT current_schema()",
+            DatabaseKind.SqlServer => "SELECT SCHEMA_NAME()",
+            DatabaseKind.MySql => "SELECT DATABASE()",
+            DatabaseKind.ClickHouse => "SELECT currentDatabase()",
+            _ => "SELECT CURRENT_SCHEMA()",
+        } is { Length: > 0 } asked ? (await ReadAsync(connection, asked, [], cancel, limit: 1)).Rows is [[{ } value, ..], ..] && value is not DBNull ? Text(value) : null
+            : string.Empty;
         return new SqlCatalog([.. rows.Rows.GroupBy(r => (Schema: Text(r[0]), Table: Text(r[1])))
-            .Select(g => new SqlTableInfo(g.Key.Schema, g.Key.Table, [.. g.Select(r => (Text(r[2]), Text(r[3])))]))]);
+            .Select(g => new SqlTableInfo(g.Key.Schema, g.Key.Table, [.. g.Select(r => (Text(r[2]), Text(r[3])))]))], own);
 
         static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
     }
@@ -719,7 +738,8 @@ internal static partial class DatabaseClient
     }
 
     /// <summary>A run with its parameters given the values asked, as its driver binds them: by name, a place's in its
-    /// order with no name (PostgreSQL's $n, MySQL's ?), SQLite's bare ? written as its number, which SQLite binds by.</summary>
+    /// order with no name (PostgreSQL's $n, MySQL's ?), SQLite's ? and ?NNN written as the number of their place in this
+    /// run alone, each place from the first taken (<see cref="SqlParameters.Places"/>), which SQLite binds by.</summary>
     internal static string Bind(DbCommand command, string run, IReadOnlyList<SqlParameter> found, IReadOnlyDictionary<string, string> values, DatabaseKind kind)
     {
         if (found.Count == 0)
@@ -739,13 +759,14 @@ internal static partial class DatabaseClient
             return run;
         }
         string sql = run;
-        foreach (SqlParameter parameter in found.Where(p => p.Name.Length > 1 && p.Name[0] == '?').Reverse())
+        Dictionary<string, string> numbered = kind == DatabaseKind.Sqlite ? SqlParameters.Places(found) : [];
+        foreach (SqlParameter parameter in found.Where(p => numbered.ContainsKey(p.Name)).Reverse())
         {
-            sql = sql[..parameter.Start] + parameter.Name + sql[parameter.End..];
+            sql = sql[..parameter.Start] + numbered[parameter.Name] + sql[parameter.End..];
         }
         foreach (string name in found.Select(p => p.Name).Distinct(StringComparer.Ordinal))
         {
-            command.Parameters.Add(Made(command, name, values.GetValueOrDefault(name, "NULL"), kind));
+            command.Parameters.Add(Made(command, numbered.GetValueOrDefault(name, name), values.GetValueOrDefault(name, "NULL"), kind));
         }
         return sql;
     }
@@ -988,19 +1009,15 @@ internal static partial class DatabaseClient
             {
                 return match.Value;
             }
-            switch (command.Connection)
+            if (command.Connection is ClickHouse.Driver.ADO.ClickHouseConnection)
             {
-                case DuckDB.NET.Data.DuckDBConnection:
-                    placed.Add((name, value));
-                    return "$" + name;
-                case ClickHouse.Driver.ADO.ClickHouseConnection:
-                    placed.Add((name, value));
-                    string type = value switch { null => "Nullable(String)", bool => "Bool", int => "Int32", long => "Int64", double => "Float64", decimal => "Decimal(38, 10)", _ => "String" };
-                    return "{" + name + ":" + type + "}";
-                default:
-                    placed.Add(((placed.Count + 1).ToString(CultureInfo.InvariantCulture), value));
-                    return "?";
+                placed.Add((name, value));
+                string type = value switch { null => "Nullable(String)", bool => "Bool", int => "Int32", long => "Int64", double => "Float64", decimal => "Decimal(38, 10)", _ => "String" };
+                return "{" + name + ":" + type + "}";
             }
+            (string written, string bound) = Placed(command.Connection, name, placed.Count);
+            placed.Add((bound, value));
+            return written;
         });
         foreach ((string name, object? value) in placed.DistinctBy(p => p.Name))
         {
@@ -1011,6 +1028,16 @@ internal static partial class DatabaseClient
             command.Parameters.Add(parameter);
         }
     }
+
+    /// <summary>How a command on <paramref name="connection"/> writes its parameter <paramref name="name"/>, the
+    /// <paramref name="place"/>th from 0, in its SQL, and the name it binds it by: DuckDB's $name, Snowflake's ? by its
+    /// place from 1, every other's @name.</summary>
+    internal static (string Written, string Bound) Placed(DbConnection? connection, string name, int place) => connection switch
+    {
+        DuckDB.NET.Data.DuckDBConnection => ("$" + name, name),
+        Snowflake.Data.Client.SnowflakeDbConnection => ("?", (place + 1).ToString(CultureInfo.InvariantCulture)),
+        _ => ("@" + name, "@" + name),
+    };
 
     [System.Text.RegularExpressions.GeneratedRegex(@"(?<![\w@])@(\w+)")]
     private static partial System.Text.RegularExpressions.Regex Parameter();

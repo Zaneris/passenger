@@ -23,10 +23,11 @@ internal static class SchemaReads
                 "SELECT c.relname, con.conname, CAST(con.contype AS text), "
                     + "array_to_string(ARRAY(SELECT a.attname FROM unnest(con.conkey) WITH ORDINALITY k(n, o) JOIN pg_attribute a ON a.attrelid=con.conrelid AND a.attnum=k.n ORDER BY k.o), ','), "
                     + "r.relname, array_to_string(ARRAY(SELECT a.attname FROM unnest(con.confkey) WITH ORDINALITY k(n, o) JOIN pg_attribute a ON a.attrelid=con.confrelid AND a.attnum=k.n ORDER BY k.o), ',') "
-                    + "FROM pg_constraint con JOIN pg_class c ON c.oid=con.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_class r ON r.oid=con.confrelid "
-                    + "WHERE n.nspname=@schema AND con.contype IN ('p','f') ORDER BY 1, 2",
+                    + ", rn.nspname FROM pg_constraint con JOIN pg_class c ON c.oid=con.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_class r ON r.oid=con.confrelid "
+                    + "LEFT JOIN pg_namespace rn ON rn.oid=r.relnamespace WHERE n.nspname=@schema AND con.contype IN ('p','f') ORDER BY 1, 2",
                 "SELECT t.relname, i.relname, ix.indisunique, array_to_string(ARRAY(SELECT a.attname FROM unnest(ix.indkey) WITH ORDINALITY k(n, o) "
-                    + "JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.n ORDER BY k.o), ',') FROM pg_index ix JOIN pg_class i ON i.oid=ix.indexrelid "
+                    + "JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.n ORDER BY k.o), ','), substring(pg_get_indexdef(ix.indexrelid) from ' (USING .*)$') "
+                    + "FROM pg_index ix JOIN pg_class i ON i.oid=ix.indexrelid "
                     + "JOIN pg_class t ON t.oid=ix.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace "
                     + "WHERE n.nspname=@schema AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid=ix.indexrelid) ORDER BY 1, 2",
                 "SELECT c.relname, pg_get_viewdef(c.oid, true) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=@schema AND c.relkind='v' ORDER BY 1"),
@@ -35,7 +36,8 @@ internal static class SchemaReads
                     + "JOIN information_schema.TABLES t ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME AND t.TABLE_TYPE='BASE TABLE' "
                     + "WHERE c.TABLE_SCHEMA=@schema ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION",
                 "SELECT k.TABLE_NAME, k.CONSTRAINT_NAME, CASE t.CONSTRAINT_TYPE WHEN 'PRIMARY KEY' THEN 'p' ELSE 'f' END, "
-                    + "GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION), MAX(k.REFERENCED_TABLE_NAME), GROUP_CONCAT(k.REFERENCED_COLUMN_NAME ORDER BY k.ORDINAL_POSITION) "
+                    + "GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION), MAX(k.REFERENCED_TABLE_NAME), GROUP_CONCAT(k.REFERENCED_COLUMN_NAME ORDER BY k.ORDINAL_POSITION), "
+                    + "MAX(k.REFERENCED_TABLE_SCHEMA) "
                     + "FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
                     + "AND t.TABLE_NAME=k.TABLE_NAME AND t.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.TABLE_SCHEMA=@schema AND t.CONSTRAINT_TYPE IN ('PRIMARY KEY','FOREIGN KEY') "
                     + "GROUP BY k.TABLE_NAME, k.CONSTRAINT_NAME, t.CONSTRAINT_TYPE ORDER BY 1, 2",
@@ -51,28 +53,34 @@ internal static class SchemaReads
                     + "c.is_nullable, dc.definition, dc.name FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.columns c ON c.object_id=t.object_id "
                     + "JOIN sys.types ty ON ty.user_type_id=c.user_type_id LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id "
                     + "WHERE s.name=@schema ORDER BY t.name, c.column_id",
-                "SELECT t.name, kc.name, 'p', STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal), NULL, NULL FROM sys.key_constraints kc "
+                "SELECT t.name, kc.name, 'p', STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal), NULL, NULL, NULL FROM sys.key_constraints kc "
                     + "JOIN sys.tables t ON t.object_id=kc.parent_object_id JOIN sys.schemas s ON s.schema_id=t.schema_id "
                     + "JOIN sys.index_columns ic ON ic.object_id=kc.parent_object_id AND ic.index_id=kc.unique_index_id "
                     + "JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id WHERE kc.type='PK' AND s.name=@schema GROUP BY t.name, kc.name "
                     + "UNION ALL SELECT t.name, fk.name, 'f', STRING_AGG(pc.name, ',') WITHIN GROUP (ORDER BY fkc.constraint_column_id), MAX(rt.name), "
-                    + "STRING_AGG(rc.name, ',') WITHIN GROUP (ORDER BY fkc.constraint_column_id) FROM sys.foreign_keys fk JOIN sys.tables t ON t.object_id=fk.parent_object_id "
+                    + "STRING_AGG(rc.name, ',') WITHIN GROUP (ORDER BY fkc.constraint_column_id), MAX(rs.name) FROM sys.foreign_keys fk JOIN sys.tables t ON t.object_id=fk.parent_object_id "
                     + "JOIN sys.schemas s ON s.schema_id=t.schema_id JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id=fk.object_id "
                     + "JOIN sys.columns pc ON pc.object_id=fkc.parent_object_id AND pc.column_id=fkc.parent_column_id JOIN sys.tables rt ON rt.object_id=fkc.referenced_object_id "
+                    + "JOIN sys.schemas rs ON rs.schema_id=rt.schema_id "
                     + "JOIN sys.columns rc ON rc.object_id=fkc.referenced_object_id AND rc.column_id=fkc.referenced_column_id WHERE s.name=@schema GROUP BY t.name, fk.name ORDER BY 1, 2",
-                "SELECT t.name, i.name, i.is_unique, STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal) FROM sys.indexes i "
+                "SELECT t.name, i.name, i.is_unique, STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal), "
+                    + "CONCAT_WS(' ', (SELECT 'INCLUDE (' + STRING_AGG(QUOTENAME(ci.name), ', ') WITHIN GROUP (ORDER BY ii.index_column_id) + ')' FROM sys.index_columns ii "
+                    + "JOIN sys.columns ci ON ci.object_id=ii.object_id AND ci.column_id=ii.column_id WHERE ii.object_id=i.object_id AND ii.index_id=i.index_id AND ii.is_included_column=1), "
+                    + "MAX(CASE WHEN i.has_filter=1 THEN 'WHERE ' + i.filter_definition END)) FROM sys.indexes i "
                     + "JOIN sys.tables t ON t.object_id=i.object_id JOIN sys.schemas s ON s.schema_id=t.schema_id "
                     + "JOIN sys.index_columns ic ON ic.object_id=i.object_id AND ic.index_id=i.index_id AND ic.is_included_column=0 "
                     + "JOIN sys.columns c ON c.object_id=ic.object_id AND c.column_id=ic.column_id "
-                    + "WHERE s.name=@schema AND i.is_primary_key=0 AND i.is_unique_constraint=0 AND i.type>0 GROUP BY t.name, i.name, i.is_unique ORDER BY 1, 2",
+                    + "WHERE s.name=@schema AND i.is_primary_key=0 AND i.is_unique_constraint=0 AND i.type>0 "
+                    + "GROUP BY t.name, i.name, i.is_unique, i.object_id, i.index_id ORDER BY 1, 2",
                 "SELECT v.name, m.definition FROM sys.views v JOIN sys.schemas s ON s.schema_id=v.schema_id JOIN sys.sql_modules m ON m.object_id=v.object_id "
                     + "WHERE s.name=@schema ORDER BY 1"),
             _ => (
                 "SELECT m.name, p.name, p.type, p.\"notnull\" = 0 AND p.pk = 0, p.dflt_value FROM sqlite_schema m JOIN pragma_table_info(m.name) p "
                     + "WHERE m.type='table' AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid",
                 string.Empty,
-                "SELECT m.name, l.name, l.\"unique\", (SELECT group_concat(i.name, ',') FROM (SELECT name FROM pragma_index_info(l.name) ORDER BY seqno) i) "
-                    + "FROM sqlite_schema m JOIN pragma_index_list(m.name) l WHERE m.type='table' AND l.origin='c' ORDER BY 1, 2",
+                "SELECT m.name, l.name, l.\"unique\", (SELECT group_concat(i.name, ',') FROM (SELECT name FROM pragma_index_info(l.name) ORDER BY seqno) i), "
+                    + "CASE WHEN l.partial OR EXISTS (SELECT 1 FROM pragma_index_info(l.name) WHERE name IS NULL) THEN (SELECT sql FROM sqlite_schema s WHERE s.type='index' "
+                    + "AND s.name=l.name) END FROM sqlite_schema m JOIN pragma_index_list(m.name) l WHERE m.type='table' AND l.origin='c' ORDER BY 1, 2",
                 "SELECT name, sql FROM sqlite_schema WHERE type='view' ORDER BY 1"),
         };
         DatabaseRows columnRows = await DatabaseClient.ReadAsync(connection, sql.Columns, named, cancel, limit: 100_000);
@@ -86,8 +94,9 @@ internal static class SchemaReads
             IEnumerable<object?[]> keys = keyRows.Where(k => Text(k[0]) == table.Key);
             tables.Add(new TableShape(table.Key, columns,
                 keys.Where(k => Text(k[2]) == "p").Select(k => Listed(k[3])).FirstOrDefault() ?? [],
-                [.. keys.Where(k => Text(k[2]) == "f").Select(k => new ForeignKeyShape(Text(k[1]), Listed(k[3]), Text(k[4]), Listed(k[5])))],
-                [.. indexRows.Rows.Where(i => Text(i[0]) == table.Key).Select(i => new IndexShape(Text(i[1]), Truth(i[2]), Listed(i[3])))])
+                [.. keys.Where(k => Text(k[2]) == "f").Select(k => new ForeignKeyShape(Text(k[1]), Listed(k[3]), Text(k[4]), Listed(k[5]),
+                    k.Length > 6 && Text(k[6]) is { Length: > 0 } other && other != schema ? other : string.Empty))],
+                [.. indexRows.Rows.Where(i => Text(i[0]) == table.Key).Select(i => new IndexShape(Text(i[1]), Truth(i[2]), Listed(i[3]), i.Length > 4 ? Text(i[4]) : string.Empty))])
             {
                 PrimaryKeyName = keys.Where(k => Text(k[2]) == "p").Select(k => Text(k[1])).FirstOrDefault(),
                 DefaultNames = table.Where(r => r.Length > 5 && r[5] is not (null or DBNull)).ToDictionary(r => Text(r[1]), r => Text(r[5])),

@@ -28,6 +28,21 @@ public sealed class ConnectionServer
     /// <summary>The port, as written; null where the string names none.</summary>
     public int? Port { get; }
 
+    /// <summary>A keyword connection string of its parts in turn, a part of no value left out, each value quoted where it holds
+    /// what would end or change it (a semicolon, a quote, white space at its ends), as every ADO.NET driver reads one back.</summary>
+    public static string Written(params ReadOnlySpan<(string Key, string? Value)> parts)
+    {
+        DbConnectionStringBuilder written = new();
+        foreach ((string key, string? value) in parts)
+        {
+            if (value is not null)
+            {
+                written[key] = value;
+            }
+        }
+        return written.ConnectionString;
+    }
+
     /// <summary>The server a connection string names; null for a string that names none (a file's, a keyword string with
     /// no host, a URL with no host or a port that is no number).</summary>
     public static ConnectionServer? Of(string value) => OfUrl(value) ?? OfKeywords(value);

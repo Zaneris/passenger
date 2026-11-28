@@ -156,9 +156,14 @@ public static class RowImport
             throw new InvalidOperationException(Refusals.NoColumnImported);
         }
         string make = $"CREATE TABLE {table} ({string.Join(", ", mapped.Select(c => $"{SqlText.QuotedName(kind, c.Into!)} {c.Type}"))})";
+        if (!DatabaseKinds.HasTransactions(kind))
+        {
+            throw new InvalidOperationException(Refusals.NoImport(DatabaseKinds.Title(kind)));
+        }
         await using DbConnection connection = await DatabaseClient.OpenAsync(source, cancel);
         using CancellationTokenRegistration interrupt = DatabaseClient.Interrupt(connection, cancel);
-        bool madeApart = choice.Made && kind == DatabaseKind.MySql;
+        // MySQL's and Snowflake's CREATE TABLE commits its transaction: made before it, it is dropped where nothing is written.
+        bool madeApart = choice.Made && kind is DatabaseKind.MySql or DatabaseKind.Snowflake;
         if (madeApart)
         {
             await ExecuteAsync(make, null);
@@ -173,7 +178,7 @@ public static class RowImport
             }
             string columns = string.Join(", ", mapped.Select(c => SqlText.QuotedName(kind, c.Into!)));
             (Type Type, string Name)[] types = await TypesAsync(columns, transaction);
-            string inserting = $"INSERT INTO {table} ({columns}) VALUES ({string.Join(", ", mapped.Select((_, i) => Named(i)))})";
+            string inserting = $"INSERT INTO {table} ({columns}) VALUES ({string.Join(", ", mapped.Select((_, i) => DatabaseClient.Placed(connection, Named(i), i).Written))})";
             await using DbCommand insert = connection.CreateCommand();
             insert.Transaction = transaction;
             insert.CommandTimeout = 0;
@@ -181,7 +186,7 @@ public static class RowImport
             DbParameter[] parameters = [.. mapped.Select((_, i) =>
             {
                 DbParameter parameter = insert.CreateParameter();
-                parameter.ParameterName = Named(i);
+                parameter.ParameterName = DatabaseClient.Placed(connection, Named(i), i).Bound;
                 insert.Parameters.Add(parameter);
                 return parameter;
             })];
@@ -241,7 +246,7 @@ public static class RowImport
                     for (int i = 0; i < values.Length; i++)
                     {
                         DbParameter parameter = insert.CreateParameter();
-                        parameter.ParameterName = Named(i);
+                        parameter.ParameterName = DatabaseClient.Placed(connection, Named(i), i).Bound;
                         Give(parameter, values[i]);
                         command.Parameters.Add(parameter);
                     }
@@ -360,6 +365,6 @@ public static class RowImport
             parameter.Value = cell.Value;
         }
 
-        static string Named(int column) => $"@p{column.ToString(CultureInfo.InvariantCulture)}";
+        static string Named(int column) => $"p{column.ToString(CultureInfo.InvariantCulture)}";
     }
 }

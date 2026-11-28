@@ -387,7 +387,7 @@ internal static class RedisClient
     /// password; a client of admin commands (INFO, SCAN), failing at once where the server answers nothing.</summary>
     private static async Task<ConnectionMultiplexer> ConnectAsync(DatabaseSource source)
     {
-        string connection = source.ConnectionString;
+        string connection = DatabaseClient.Whole(source);
         ConfigurationOptions options;
         if (DatabaseKinds.Value(connection, "Configuration") is { } configuration)
         {

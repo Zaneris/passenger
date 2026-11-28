@@ -261,6 +261,55 @@ public static partial class ContainerSecrets
             : Argument(word, i == 0 ? null : words[i - 1], masking))];
     }
 
+    /// <summary>What a person wrote over a value shown masked (<see cref="InSaid"/>), each mask still in it given back the part
+    /// of the value it hid, in turn: the text as written where it holds no mask, or the value showed none; null where its
+    /// masks are not the value's (one added or taken out), or the value's hidden parts can be told apart more than one way.</summary>
+    public static string? Unmasked(string value, string written)
+    {
+        string[] kept = InSaid(value).Split(Masked);
+        int masks = (written.Length - written.Replace(Masked, string.Empty, StringComparison.Ordinal).Length) / Masked.Length;
+        if (masks == 0 || kept.Length == 1)
+        {
+            return written;
+        }
+        if (masks != kept.Length - 1 || kept[1..^1].Any(k => k.Length == 0) || kept[0].Length + kept[^1].Length > value.Length
+            || !value.StartsWith(kept[0], StringComparison.Ordinal) || !value.EndsWith(kept[^1], StringComparison.Ordinal))
+        {
+            return null;
+        }
+        // Each shown part placed as early as it may be and as late: where they agree, the hidden parts are the value's alone.
+        int last = kept.Length - 1;
+        int[] early = new int[kept.Length];
+        int[] late = new int[kept.Length];
+        late[last] = early[last] = value.Length - kept[last].Length;
+        for (int i = 1; i < last; i++)
+        {
+            early[i] = value.IndexOf(kept[i], early[i - 1] + kept[i - 1].Length, StringComparison.Ordinal);
+            if (early[i] < 0)
+            {
+                return null;
+            }
+        }
+        for (int i = last - 1; i >= 1; i--)
+        {
+            late[i] = late[i + 1] > 0 ? value.LastIndexOf(kept[i], late[i + 1] - 1, StringComparison.Ordinal) : -1;
+            if (late[i] != early[i])
+            {
+                return null;
+            }
+        }
+        StringBuilder whole = new(written.Length + value.Length);
+        int at = 0;
+        for (int i = 0; i < last; i++)
+        {
+            int mask = written.IndexOf(Masked, at, StringComparison.Ordinal);
+            int from = early[i] + kept[i].Length;
+            whole.Append(written, at, mask - at).Append(value, from, early[i + 1] - from);
+            at = mask + Masked.Length;
+        }
+        return whole.Append(written, at, written.Length - at).ToString();
+    }
+
     /// <summary>A variable's value as it is shown.</summary>
     public static string Shown(string name, string value) => value.Length > 0 && Secret(name) ? Masked : InValue(value);
 

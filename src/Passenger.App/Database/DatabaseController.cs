@@ -55,6 +55,14 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     public bool Busy => running is not null;
     public bool Discovered { get; private set; }
 
+    /// <summary>Each connection's name told apart from the others': its own where none of them shares it, else with where it
+    /// was found (or made by hand), else numbered in turn, so a choice of one by its name finds it alone.</summary>
+    public static IReadOnlyList<string> NamesApart(IReadOnlyList<DatabaseSource> sources)
+    {
+        string[] names = [.. sources.Select(s => sources.Count(o => o.Name == s.Name) > 1 ? $"{s.Name} ({s.Found ?? "made by hand"})" : s.Name)];
+        return [.. names.Select((name, at) => names.Count(n => n == name) > 1 ? $"{name} {(names.Take(at + 1).Count(n => n == name)).ToString(System.Globalization.CultureInfo.InvariantCulture)}" : name)];
+    }
+
     /// <summary>Whether a connection has been opened this session, its explorer read.</summary>
     public bool IsConnected(DatabaseSource source) => connected.Contains(source.Id);
 
@@ -171,13 +179,35 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     /// <summary>The console a .sql file is, where a connection was chosen for it.</summary>
     public SqlConsole? ConsoleOf(string path) => consoles.GetValueOrDefault(path);
 
-    /// <summary>Makes a .sql file a console of <paramref name="source"/>, kept for the folder.</summary>
-    public SqlConsole Bind(string path, DatabaseSource source)
+    /// <summary>The console file of a connection in <paramref name="folder"/>: the one bound to it there, else one named for it
+    /// that no other connection holds, its name made its own (by what it is kept by) where another of its name holds that.</summary>
+    public string ConsolePathOf(DatabaseSource source, string folder, string extension)
+    {
+        UiThread.Check();
+        if (consoles.Values.FirstOrDefault(c => c.Connection == source.Id && PathNames.Same(Path.GetDirectoryName(c.Path) ?? string.Empty, folder)) is { } bound)
+        {
+            return bound.Path;
+        }
+        string named = Path.Combine(folder, FileNames.Safe(source.Name) + extension);
+        return consoles.GetValueOrDefault(named) is { Connection: { } other } && other != source.Id && Find(other) is not null
+            ? Path.Combine(folder, $"{FileNames.Safe(source.Name)}-{FileNames.Hash(source.HistoryKey, 8)}{extension}")
+            : named;
+    }
+
+    /// <summary>Makes a .sql file a console of <paramref name="source"/>, kept for the folder; null where it holds a transaction
+    /// open on another connection, which its Commit would end there (refused, said).</summary>
+    public SqlConsole? Bind(string path, DatabaseSource source)
     {
         UiThread.Check();
         if (!consoles.TryGetValue(path, out SqlConsole? console))
         {
             console = consoles[path] = new SqlConsole(path);
+        }
+        if (console.InTransaction && console.Connection != source.Id)
+        {
+            Refuse(Refusals.TransactionOpen);
+            console.Raise();
+            return null;
         }
         console.Connection = source.Id;
         console.Raise();
@@ -260,7 +290,8 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             };
             if (console.Manual)
             {
-                if (console.Session is { } held && held.Source.Id != source.Id)
+                // A session held reached its connection as it was: once its transaction ends, one edited since is opened anew.
+                if (console.Session is { } held && (held.Source.Id != source.Id || !held.InTransaction && !held.Source.OpensAs(source)))
                 {
                     LetGo(console);
                 }
@@ -415,6 +446,12 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return done ? null : said;
     }
 
+    /// <summary>Why a file's rows may not be imported into a connection's database: one not read in SQL, one whose statements
+    /// each stand alone (ClickHouse's, where a row refused could not leave those before it unwritten), one read-only.</summary>
+    public static string? WhyNotImport(DatabaseSource source) => !DatabaseKinds.SpeaksSql(source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(source.Kind))
+        : !DatabaseKinds.HasTransactions(source.Kind) ? Refusals.NoImport(DatabaseKinds.Title(source.Kind))
+        : source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(source.Name) : null;
+
     /// <summary>Writes a file's rows into a table as <paramref name="choice"/> maps them, in one transaction, under a
     /// <see cref="Working"/> that says how many it has written and that Stop ends, nothing written then; what it came to is
     /// said, a row refused by its number. Null once written, else why not.</summary>
@@ -545,18 +582,24 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return null;
     }
 
-    /// <summary>Commits a console's open transaction, or rolls it back, under a <see cref="Working"/> of its own.</summary>
-    public async Task EndTransactionAsync(SqlConsole console, bool commit)
+    /// <summary>Commits a console's open transaction, or rolls it back, under a <see cref="Working"/> of its own: true once it
+    /// ended as asked (or none was open), false where it failed (its connection let go, the failure said) or could not begin.</summary>
+    public async Task<bool> EndTransactionAsync(SqlConsole console, bool commit)
     {
         UiThread.Check();
         string action = commit ? AppActions.DatabaseCommit : AppActions.DatabaseRollback;
-        if (console.Session is not { InTransaction: true } session || console.Running || work.Begin(action, commit ? "Committing…" : "Rolling back…") is not { } started)
+        if (console.Session is not { InTransaction: true } session)
         {
-            return;
+            return true;
+        }
+        if (console.Running || work.Begin(action, commit ? "Committing…" : "Rolling back…") is not { } started)
+        {
+            return false;
         }
         using Working working = started;
         console.Run(working);
         string said;
+        bool ended = false;
         try
         {
             int statements = session.Statements;
@@ -564,6 +607,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             await BackgroundWork.Run(() => session.EndAsync(commit, lifetime.Token), lifetime.Token);
             said = $"{(commit ? "Committed" : "Rolled back")}: {Plural.Of(statements, "statement")}, {Plural.Of(changed, "row")} changed.";
             working.Tell(true, said);
+            ended = true;
         }
         catch (Exception error) when (error is DbException or InvalidOperationException or IOException or OperationCanceledException or TimeoutException
             or System.Net.Sockets.SocketException)
@@ -577,6 +621,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         console.Ran(console.Results, said);
         say(said);
         Changed?.Invoke(this, EventArgs.Empty);
+        return ended;
     }
 
     /// <summary>Lets go of a console as its tab closes: its connection closed, a transaction left open rolled back.</summary>
@@ -588,13 +633,27 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         console.Raise();
     }
 
-    /// <summary>Adds a connection made by hand, kept for the folder, its secrets in the system's store.</summary>
+    /// <summary>Adds a connection made by hand, kept for the folder, its secrets in the system's store (said where they are
+    /// kept for this session alone).</summary>
     public void Add(DatabaseSource source)
     {
         UiThread.Check();
-        made.Add(Kept(source with { Found = null }, keepsOld: false));
+        (DatabaseSource kept, bool lasting) = Kept(source with { Found = null }, keepsOld: false);
+        made.Add(kept);
         Keep();
+        TellWhereSecretsLast(kept, lasting);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Says that a connection's secrets are kept for this session alone, where the system's store refused them or
+    /// there is none: after Passenger restarts the connection has none.</summary>
+    private void TellWhereSecretsLast(DatabaseSource source, bool lasting)
+    {
+        if (!lasting)
+        {
+            Tell($"{source.Name}'s secrets are kept for this session alone: {(SystemCredentials.Kept ? "the system's credential store refused them"
+                : "this system has no credential store Passenger reaches")}, so give them again after Passenger restarts");
+        }
     }
 
     /// <summary>Puts <paramref name="replacement"/> in a connection's place; a found one keeps what its files say and takes
@@ -604,7 +663,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         UiThread.Check();
         if (original.Found is not null)
         {
-            DatabaseSource given = KeptOver(original with
+            (DatabaseSource given, bool overLasting) = KeptOver(original with
             {
                 Mark = replacement.Mark, Over = replacement.Over, Tunnel = replacement.Tunnel, TunnelSecret = replacement.TunnelSecret, SignIn = replacement.SignIn,
             });
@@ -612,10 +671,11 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             connected.Remove(original.Id);
             SshTunnels.Close([original.Id]);
             Keep();
+            TellWhereSecretsLast(given, overLasting);
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
-        DatabaseSource changed = Kept(replacement with { Id = original.Id, Found = null }, keepsOld: original.SecretKept);
+        (DatabaseSource changed, bool lasting) = Kept(replacement with { Id = original.Id, Found = null }, keepsOld: original.SecretKept);
         int at = made.FindIndex(s => s.Id == original.Id);
         if (at >= 0)
         {
@@ -632,6 +692,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             SshTunnels.Close([original.Id]);
         }
         Keep();
+        TellWhereSecretsLast(changed, lasting);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -654,28 +715,27 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     }
 
     /// <summary>A connection as kept: its secret parts, and its tunnel's password or passphrase, put in the system's store
-    /// and taken out of it. Where <paramref name="keepsOld"/> (an edit), a part not given again keeps the one stored.</summary>
-    private static DatabaseSource Kept(DatabaseSource source, bool keepsOld)
+    /// and taken out of it, and whether those given will last past this session. Where <paramref name="keepsOld"/> (an edit),
+    /// a part not given again keeps the one stored.</summary>
+    private static (DatabaseSource Kept, bool Lasting) Kept(DatabaseSource source, bool keepsOld)
     {
         (string rest, string secret) = KeptConnection.Split(source.Kind, source.ConnectionString);
-        KeepSecret(source.Account, secret, keepsOld);
-        KeepTunnelSecret(source, keepsOld);
-        return source with { ConnectionString = rest, SecretKept = true, TunnelSecret = null };
+        bool lasting = KeepSecret(source.Account, secret, keepsOld) & KeepTunnelSecret(source, keepsOld);
+        return (source with { ConnectionString = rest, SecretKept = true, TunnelSecret = null }, lasting);
     }
 
     /// <summary>A found connection's own settings as kept: the secret parts of its SSL and its tunnel's password or
-    /// passphrase put in the system's store, each not given again keeping the one stored.</summary>
-    private static DatabaseSource KeptOver(DatabaseSource source)
+    /// passphrase put in the system's store, each not given again keeping the one stored, and whether those given last.</summary>
+    private static (DatabaseSource Kept, bool Lasting) KeptOver(DatabaseSource source)
     {
         (string rest, string secret) = source.Over.Length > 0 ? KeptConnection.Split(source.Kind, source.Over) : (string.Empty, string.Empty);
-        KeepSecret(source.OverAccount, rest.Length > 0 ? secret : null, keepsOld: rest.Length > 0);
-        KeepTunnelSecret(source, keepsOld: true);
-        return source with { Over = rest, TunnelSecret = null };
+        bool lasting = KeepSecret(source.OverAccount, rest.Length > 0 ? secret : null, keepsOld: rest.Length > 0) & KeepTunnelSecret(source, keepsOld: true);
+        return (source with { Over = rest, TunnelSecret = null }, lasting);
     }
 
     /// <summary>Stores secret parts under an account, laid over those stored where <paramref name="keepsOld"/>; none given
-    /// and none kept forgets them.</summary>
-    private static void KeepSecret(string account, string? secret, bool keepsOld)
+    /// and none kept forgets them. False where those given are kept for this session alone.</summary>
+    private static bool KeepSecret(string account, string? secret, bool keepsOld)
     {
         string? old = keepsOld ? SystemCredentials.Read(CredentialService, account) : null;
         if (secret is { Length: > 0 })
@@ -686,24 +746,27 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             {
                 merged[key] = given[key];
             }
-            SystemCredentials.Store(CredentialService, account, merged.ConnectionString);
+            return SystemCredentials.Store(CredentialService, account, merged.ConnectionString) && SystemCredentials.Kept;
         }
-        else if (!keepsOld)
+        if (!keepsOld)
         {
             SystemCredentials.Forget(CredentialService, account);
         }
+        return true;
     }
 
-    private static void KeepTunnelSecret(DatabaseSource source, bool keepsOld)
+    /// <summary>Stores a tunnel's password or passphrase given, or forgets it; false where it is kept for this session alone.</summary>
+    private static bool KeepTunnelSecret(DatabaseSource source, bool keepsOld)
     {
         if (source is { Tunnel: not null, TunnelSecret.Length: > 0 })
         {
-            SystemCredentials.Store(CredentialService, source.TunnelAccount, source.TunnelSecret);
+            return SystemCredentials.Store(CredentialService, source.TunnelAccount, source.TunnelSecret) && SystemCredentials.Kept;
         }
-        else if (source.Tunnel is null || !keepsOld)
+        if (source.Tunnel is null || !keepsOld)
         {
             SystemCredentials.Forget(CredentialService, source.TunnelAccount);
         }
+        return true;
     }
 
     /// <summary>Forgets that a connection was opened, so its explorer reads it again when next opened.</summary>

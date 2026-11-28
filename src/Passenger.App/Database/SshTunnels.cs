@@ -445,14 +445,10 @@ internal static class SshTunnels
         string fingerprint = "SHA256:" + key.FingerPrintSHA256;
         string kind = KindOf(key.HostKey);
         TrustedHostKey? kept = trusted.FirstOrDefault(k => k.Host == hop.HostName && k.Port == hop.Port);
-        if (kept?.Fingerprint == fingerprint)
-        {
-            return null;
-        }
-        List<KnownHostKey> said = [.. hop.KnownHostsFiles.Select(SshFiles.Read).OfType<string>().Select(text => KnownHosts.Judge(text, hop.KeyAlias, hop.KeyAliased ? 22 : hop.Port, kind, key.HostKey))];
-        // As ssh: a key revoked anywhere is refused, one known anywhere taken, one known otherwise refused as changed.
-        return !said.Contains(KnownHostKey.Revoked) && said.Contains(KnownHostKey.Known) ? null
-            : new SshHostKeyException(hop.HostName, hop.Port, kind, fingerprint, kept is not null || said.Contains(KnownHostKey.Changed) || said.Contains(KnownHostKey.Revoked));
+        KnownHostKey verdict = KnownHosts.Verdict(hop.KnownHostsFiles.Select(SshFiles.Read).OfType<string>()
+            .Select(text => KnownHosts.Judge(text, hop.KeyAlias, hop.KeyAliased ? 22 : hop.Port, kind, key.HostKey)), kept?.Fingerprint == fingerprint);
+        return verdict == KnownHostKey.Known ? null
+            : new SshHostKeyException(hop.HostName, hop.Port, kind, fingerprint, kept is not null || verdict is KnownHostKey.Changed or KnownHostKey.Revoked);
     }
 
     /// <summary>A key blob's kind, its first field ("ssh-ed25519").</summary>

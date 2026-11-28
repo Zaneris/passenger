@@ -51,19 +51,17 @@ public partial class MainWindow
             view.HistoryChosen += (_, chosen) => WriteIntoConsole(chosen.Console, chosen.Ran.Statement.TrimEnd() + (chosen.Ran.Statement.TrimEnd().EndsWith(';') ? string.Empty : ";") + "\n");
             view.ConnectionChosen += (_, chosen) =>
             {
-                if (chosen.Console.InTransaction && chosen.Console.Connection != chosen.Source.Id)
-                {
-                    Refuse(Refusals.TransactionOpen);
-                    view.Refresh();
-                    return;
-                }
                 if (WhyNotConsoleOf(chosen.Console.Path, chosen.Source) is { } other)
                 {
                     Refuse(other);
                     view.Refresh();
                     return;
                 }
-                controller.Bind(chosen.Console.Path, chosen.Source);
+                if (controller.Bind(chosen.Console.Path, chosen.Source) is null)
+                {
+                    view.Refresh();
+                    return;
+                }
                 Editors.FollowSidePanes();
             };
             view.CommitChosen += (_, chosen) =>
@@ -642,7 +640,7 @@ public partial class MainWindow
             return;
         }
         string consoles = Path.Combine(State.ProjectState.FolderOf(StateFolder, folder), "consoles");
-        string path = Path.Combine(consoles, FileNames.Safe(source.Name) + SqlConsole.ExtensionOf(source.Kind));
+        string path = controller.ConsolePathOf(source, consoles, SqlConsole.ExtensionOf(source.Kind));
         if (!File.Exists(path))
         {
             await BackgroundWork.Run(() =>
@@ -651,7 +649,10 @@ public partial class MainWindow
                 FileText.SaveNewOnly(path, string.Empty);
             });
         }
-        controller.Bind(path, source);
+        if (controller.Bind(path, source) is null)
+        {
+            return;
+        }
         Editors.Open(path);
         Editors.FollowSidePanes();
     }
@@ -780,12 +781,14 @@ public partial class MainWindow
                 Refuse(Refusals.NoDatabaseConnection);
                 return null;
             }
-            string? name = await ChooseAsync("Run Statement", $"Which database does {file.Name} run against?", [.. sources.Select(s => s.ToString())], null);
-            if (name is null || sources.FirstOrDefault(s => s.ToString() == name) is not { } picked)
+            // Each choice is told apart by where its connection was found, and found again by its place, never its words.
+            string[] labels = [.. DatabaseController.NamesApart(sources).Select((name, at) => Containers.ContainerSecrets.InSaid($"{name} · {DatabaseKinds.Title(sources[at].Kind)}"))];
+            string? name = await ChooseAsync("Run Statement", $"Which database does {file.Name} run against?", labels, null);
+            if (name is null || Array.IndexOf(labels, name) is not (>= 0 and int at) || controller.Bind(file.Path, sources[at]) is not { } picked)
             {
                 return null;
             }
-            console = controller.Bind(file.Path, picked);
+            console = picked;
             Editors.FollowSidePanes();
         }
         DatabaseSource source = controller.Find(console.Connection!.Value)!;
@@ -958,9 +961,7 @@ public partial class MainWindow
     }
 
     private string? WhyNotImport(ActionContext context) => ImportOf(context) is not { } to ? Refusals.NothingToImportInto
-        : !DatabaseKinds.SpeaksSql(to.Source.Kind) ? Refusals.NotSql(DatabaseKinds.Title(to.Source.Kind))
-        : to.Source.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(to.Source.Name)
-        : WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
+        : DatabaseController.WhyNotImport(to.Source) ?? WhyNotOpened(to.Source) ?? (database?.Busy == true ? Refusals.DatabaseBusy : null);
 
     /// <summary>Import Data: the database's tables read, the file, the table and the columns asked of the person
     /// (<see cref="DatabaseImportDialog"/>), asking first on a production connection, then the rows written
@@ -1094,11 +1095,13 @@ public partial class MainWindow
                 table.Discard();
             }
         }
+        bool ended = true;
         foreach (SqlConsole console in consoles)
         {
-            await controller.EndTransactionAsync(console, write);
+            // A commit that failed lost its transaction's changes: the person stays at what it said.
+            ended &= await controller.EndTransactionAsync(console, write);
         }
-        return session == asked && tables.All(t => t.Edits.IsEmpty) && consoles.All(c => !c.InTransaction);
+        return ended && session == asked && tables.All(t => t.Edits.IsEmpty) && consoles.All(c => !c.InTransaction);
     }
 
     /// <summary>The window was closed holding database changes not written: asked, it closes (a quit it held carrying on)
@@ -1201,8 +1204,7 @@ public partial class MainWindow
             ["Commit", "Roll Back"], null).ShowDialog<string?>(this);
         if (chosen is not null && database is { } controller)
         {
-            await controller.EndTransactionAsync(console, commit: chosen == "Commit");
-            if (!console.InTransaction && group.Has(document))
+            if (await controller.EndTransactionAsync(console, commit: chosen == "Commit") && !console.InTransaction && group.Has(document))
             {
                 Editors.CloseTab(group, document);
             }

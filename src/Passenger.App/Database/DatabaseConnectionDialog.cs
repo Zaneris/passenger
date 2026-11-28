@@ -294,7 +294,8 @@ public sealed class DatabaseConnectionDialog : IdeWindow
         TextBlock about = MutedText.Wrapped(foundOnly
             ? $"{char.ToUpperInvariant(initial!.Found![0])}{initial.Found[1..]}: its server and sign-in come from there. Its access, SSL, cloud sign-in and tunnel are "
                 + "kept for this folder."
-            : "A connection is kept for this folder; its passwords are kept in the system's credential store, never in a file.");
+            : SystemCredentials.Kept ? "A connection is kept for this folder; its passwords are kept in the system's credential store, never in a file."
+            : "A connection is kept for this folder; its passwords are kept for this session alone, never in a file: this system has no credential store Passenger reaches.");
         Content = DialogFooter.Page(new StackPanel
         {
             [DialogFooter.InsetProperty] = true,

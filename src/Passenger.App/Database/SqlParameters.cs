@@ -16,15 +16,37 @@ public static class SqlParameters
     public static List<List<SqlParameter>> Of(IReadOnlyList<string> runs, DatabaseKind kind)
     {
         int unnamed = 0;
-        // A variable one statement assigns is the session's for those after it.
-        HashSet<string> own = [.. runs.SelectMany(run => Variables(run, kind))];
-        return [.. runs.Select(run => Of(run, kind, own, ref unnamed))];
+        // A MySQL user variable one statement assigns is the session's for those after; SQL Server's live through their batch.
+        HashSet<string> session = kind == DatabaseKind.SqlServer ? [] : [.. runs.SelectMany(run => Variables(run, kind))];
+        return [.. runs.Select(run => Of(run, kind, kind == DatabaseKind.SqlServer ? Variables(run, kind) : session, ref unnamed))];
     }
 
     /// <summary>The names asked for, each once, in the order they first stand (a place's in its number's order).</summary>
     public static List<string> Asked(IEnumerable<IEnumerable<SqlParameter>> found) =>
         [.. found.SelectMany(p => p).Select(p => p.Name).Distinct(StringComparer.Ordinal)
             .OrderBy(n => n.Length > 1 && n[0] is '$' or '?' && char.IsAsciiDigit(n[1]) ? int.Parse(n[1..], CultureInfo.InvariantCulture) : 0)];
+
+    /// <summary>The place each of a SQLite run's numbered parameters (?, ?NNN, as asked across the file) is written at in
+    /// it, by its name: the next free place where it first stands, as SQLite gives a named one the next free place, so the
+    /// run's places are each bound from the first, none skipped, none shared with a name's.</summary>
+    public static Dictionary<string, string> Places(IReadOnlyList<SqlParameter> found)
+    {
+        Dictionary<string, string> places = new(StringComparer.Ordinal);
+        HashSet<string> named = new(StringComparer.Ordinal);
+        int last = 0;
+        foreach (SqlParameter parameter in found)
+        {
+            if (parameter.Name[0] != '?')
+            {
+                last += named.Add(parameter.Name) ? 1 : 0;
+            }
+            else if (!places.ContainsKey(parameter.Name))
+            {
+                places[parameter.Name] = $"?{(++last).ToString(CultureInfo.InvariantCulture)}";
+            }
+        }
+        return places;
+    }
 
     private static List<SqlParameter> Of(string run, DatabaseKind kind, HashSet<string> own, ref int unnamed)
     {

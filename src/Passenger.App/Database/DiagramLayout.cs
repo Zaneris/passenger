@@ -60,7 +60,7 @@ public static class DiagramLayout
         {
             foreach (ForeignKeyShape key in from.Table.ForeignKeys)
             {
-                if (!placed.TryGetValue(key.Table, out DiagramBox? to))
+                if (key.ToSchema.Length > 0 || !placed.TryGetValue(key.Table, out DiagramBox? to))
                 {
                     continue;
                 }
@@ -111,7 +111,7 @@ public static class DiagramLayout
             {
                 return -1;
             }
-            int level = table.ForeignKeys.Where(k => k.Table != name).Select(k => Level(k.Table, visiting)).DefaultIfEmpty(-1).Max() + 1;
+            int level = table.ForeignKeys.Where(k => k.Table != name && k.ToSchema.Length == 0).Select(k => Level(k.Table, visiting)).DefaultIfEmpty(-1).Max() + 1;
             visiting.Remove(name);
             levels[name] = level;
             return level;

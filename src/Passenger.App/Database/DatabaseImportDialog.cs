@@ -41,6 +41,9 @@ public sealed class DatabaseImportDialog : IdeWindow
     private CancellationTokenSource? reading;
     private ImportPreview? read;
     private DatabaseSchema? target;
+
+    /// <summary>The read of the table chosen last, whose answer alone is taken: an earlier choice's read is cancelled.</summary>
+    private CancellationTokenSource? targeting;
     private bool following;
     private bool fileReading;
     private bool tableReading;
@@ -228,27 +231,43 @@ public sealed class DatabaseImportDialog : IdeWindow
         }
     }
 
-    /// <summary>The table chosen read for its columns, a new one needing none.</summary>
+    /// <summary>The table chosen read for its columns, a new one needing none; a read an earlier choice began is let go of,
+    /// its answer, however late it comes, never taken for the table chosen since.</summary>
     private async Task TargetAsync()
     {
         Follow();
         target = null;
+        targeting?.Cancel();
+        CancellationTokenSource now = targeting = CancellationTokenSource.CreateLinkedTokenSource(closing.Token);
+        tableReading = false;
         if (!IsNew && into.SelectedIndex - 1 < tables.Count)
         {
             DatabaseTable table = tables[into.SelectedIndex - 1];
             tableReading = true;
             try
             {
-                target = await columnsOf(table, closing.Token);
+                DatabaseSchema columnsRead = await columnsOf(table, now.Token);
+                if (now != targeting)
+                {
+                    return;
+                }
+                target = columnsRead;
             }
             catch (Exception unread) when (unread is System.Data.Common.DbException or IOException or InvalidOperationException or OperationCanceledException
                 or TimeoutException or System.Net.Sockets.SocketException)
             {
+                if (now != targeting)
+                {
+                    return;
+                }
                 problem.Text = Containers.ContainerSecrets.InSaid(unread.Message);
             }
             finally
             {
-                tableReading = false;
+                if (now == targeting)
+                {
+                    tableReading = false;
+                }
             }
         }
         Fill();
@@ -276,7 +295,7 @@ public sealed class DatabaseImportDialog : IdeWindow
     public string? Import()
     {
         string? why = File.Trim().Length == 0 ? Refusals.NoImportFile
-            : read is null || !IsNew && target is null ? Refusals.ImportNotRead
+            : read is null || !IsNew && target?.Table != tables[into.SelectedIndex - 1] ? Refusals.ImportNotRead
             : IsNew && string.IsNullOrWhiteSpace(name.Text) ? Refusals.NoNewTableNamed
             : columns.Columns.All(c => c.Into is null) ? Refusals.NoColumnImported : null;
         if (why is not null)

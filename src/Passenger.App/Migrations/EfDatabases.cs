@@ -94,22 +94,25 @@ public static class EfDatabases
             string image = service.Image ?? string.Empty;
             (int Port, string[] Packages, Func<string, int, string> Write)? database = Kind(service) switch
             {
-                "postgres" => (5432, [], (host, port) => $"Host={host};Port={port};Database={Told("POSTGRES_DB") ?? Told("POSTGRES_USER") ?? "postgres"};"
-                    + $"Username={Told("POSTGRES_USER") ?? "postgres"};Password={Told("POSTGRES_PASSWORD") ?? string.Empty}"),
-                "sqlserver" => (1433, ["Microsoft.Data.SqlClient"], (host, port) => $"Server={host},{port};Database=master;User Id=sa;"
-                    + $"Password={Told("MSSQL_SA_PASSWORD", "SA_PASSWORD") ?? string.Empty};TrustServerCertificate=True"),
+                // Each value written as its driver reads it back whole, a password's semicolon or quote its own.
+                "postgres" => (5432, [], (host, port) => ConnectionServer.Written(("Host", host), ("Port", Number(port)),
+                    ("Database", Told("POSTGRES_DB") ?? Told("POSTGRES_USER") ?? "postgres"), ("Username", Told("POSTGRES_USER") ?? "postgres"),
+                    ("Password", Told("POSTGRES_PASSWORD") ?? string.Empty))),
+                "sqlserver" => (1433, ["Microsoft.Data.SqlClient"], (host, port) => ConnectionServer.Written(("Server", $"{host},{Number(port)}"), ("Database", "master"),
+                    ("User Id", "sa"), ("Password", Told("MSSQL_SA_PASSWORD", "SA_PASSWORD") ?? string.Empty), ("TrustServerCertificate", "True"))),
                 _ when image.Contains("clickhouse", StringComparison.OrdinalIgnoreCase) => (8123, ["ClickHouse.Driver"], (host, port) =>
-                    $"Host={host};Port={port};Database={Told("CLICKHOUSE_DB") ?? "default"};Username={Told("CLICKHOUSE_USER") ?? "default"};"
-                    + $"Password={Told("CLICKHOUSE_PASSWORD") ?? string.Empty}"),
+                    ConnectionServer.Written(("Host", host), ("Port", Number(port)), ("Database", Told("CLICKHOUSE_DB") ?? "default"),
+                        ("Username", Told("CLICKHOUSE_USER") ?? "default"), ("Password", Told("CLICKHOUSE_PASSWORD") ?? string.Empty))),
                 "redis" => (6379, ["StackExchange.Redis"], (host, port) => $"{host}:{port}"
                     + (Told("REDIS_PASSWORD", "VALKEY_PASSWORD") is { } secret ? $",password={secret}" : string.Empty)),
                 _ when image.Contains("valkey", StringComparison.OrdinalIgnoreCase) => (6379, ["StackExchange.Redis"], (host, port) => $"{host}:{port}"
                     + (Told("VALKEY_PASSWORD", "REDIS_PASSWORD") is { } secret ? $",password={secret}" : string.Empty)),
                 _ when image.Contains("cassandra", StringComparison.OrdinalIgnoreCase) => (9042, ["CassandraCSharpDriver"], (host, port) =>
-                    $"Contact Points={host};Port={port}" + (Told("CASSANDRA_USER") is { } user ? $";Username={user};Password={Told("CASSANDRA_PASSWORD") ?? string.Empty}" : string.Empty)),
+                    ConnectionServer.Written(("Contact Points", host), ("Port", Number(port)), ("Username", Told("CASSANDRA_USER")),
+                        ("Password", Told("CASSANDRA_USER") is null ? null : Told("CASSANDRA_PASSWORD") ?? string.Empty))),
                 // DynamoDB Local takes any key and secret.
                 _ when image.Contains("dynamodb-local", StringComparison.OrdinalIgnoreCase) => (8000, ["AWSSDK.DynamoDBv2"], (host, port) =>
-                    $"ServiceURL=http://{host}:{port};Region=us-east-1;AccessKey=local;SecretKey=local"),
+                    ConnectionServer.Written(("ServiceURL", $"http://{host}:{Number(port)}"), ("Region", "us-east-1"), ("AccessKey", "local"), ("SecretKey", "local"))),
                 "mongo" => (27017, ["MongoDB.Driver"], (host, port) => "mongodb://"
                     + (Told("MONGO_INITDB_ROOT_USERNAME") is { } root ? $"{Uri.EscapeDataString(root)}:{Uri.EscapeDataString(Told("MONGO_INITDB_ROOT_PASSWORD") ?? string.Empty)}@" : string.Empty)
                     + $"{host}:{port}/{Told("MONGO_INITDB_DATABASE") ?? string.Empty}" + (Told("MONGO_INITDB_ROOT_USERNAME") is null ? string.Empty : "?authSource=admin")),
@@ -118,10 +121,10 @@ public static class EfDatabases
                     image.Contains("vnext", StringComparison.OrdinalIgnoreCase) && !string.Equals(Told("PROTOCOL"), "https", StringComparison.OrdinalIgnoreCase)
                         ? $"AccountEndpoint=http://{host}:{port}/;AccountKey={CosmosEmulatorKey}"
                         : $"AccountEndpoint=https://{host}:{port}/;AccountKey={CosmosEmulatorKey};DisableServerCertificateValidation=True"),
-                _ when Default(service) == 3306 => (3306, ["MySqlConnector"], (host, port) => $"Server={host};Port={port};"
-                    + $"Database={Told("MYSQL_DATABASE", "MARIADB_DATABASE") ?? string.Empty};"
-                    + (Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") is { } root ? $"User ID=root;Password={root}"
-                        : $"User ID={Told("MYSQL_USER", "MARIADB_USER") ?? "root"};Password={Told("MYSQL_PASSWORD", "MARIADB_PASSWORD") ?? string.Empty}")),
+                _ when Default(service) == 3306 => (3306, ["MySqlConnector"], (host, port) => ConnectionServer.Written(("Server", host), ("Port", Number(port)),
+                    ("Database", Told("MYSQL_DATABASE", "MARIADB_DATABASE") ?? string.Empty),
+                    ("User ID", Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") is null ? Told("MYSQL_USER", "MARIADB_USER") ?? "root" : "root"),
+                    ("Password", Told("MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD") ?? Told("MYSQL_PASSWORD", "MARIADB_PASSWORD") ?? string.Empty))),
                 _ => null,
             };
             if (database is not { } kind || await PublishedAsync(run, service, kind.Port, cancel) is not { } published)
@@ -190,6 +193,8 @@ public static class EfDatabases
     }
 
     private static string Host(ContainerPort published, string? endpoint) => published.LinkOn(endpoint)?.Host ?? "localhost";
+
+    private static string Number(int port) => port.ToString(CultureInfo.InvariantCulture);
 
     private static string? Kind(ComposeService service) => BackingService.OfImage(service.Image)?.Service;
 

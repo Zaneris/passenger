@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Passenger.App.Containers;
 using Passenger.App.Tables;
 using Passenger.App.ToolWindows;
 using Passenger.App.Workspace;
@@ -107,8 +108,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
     public string? WhyNotAddRow => Busy ?? WhyNotEdited ?? (shown is null ? Refusals.DatabaseBusy : null);
     public string? WhyNotDeleteRows => Busy ?? WhyNotEdited ?? (ChosenRows().Count == 0 ? Refusals.NoRowChosen : null);
     /// <summary>Why a file's rows may not be imported into the table: its connection marked read-only, or its columns not read yet.</summary>
-    public string? WhyNotImport => Now.Mark == DatabaseMark.ReadOnly ? Refusals.ReadOnlyConnection(Now.Name)
-        : !DatabaseKinds.EditsRows(Now.Kind) ? Refusals.NoRowEdits(DatabaseKinds.Title(Now.Kind)) : schema is null ? Refusals.DatabaseBusy : null;
+    public string? WhyNotImport => DatabaseController.WhyNotImport(Now) ?? (schema is null ? Refusals.DatabaseBusy : null);
 
     /// <summary>The table's columns as last read, null until they are.</summary>
     public DatabaseSchema? Schema => schema;
@@ -300,7 +300,13 @@ public sealed class DatabaseTableTab : IDatabaseTab
         {
             return;
         }
-        string? text = write.Text == "NULL" ? null : write.Text;
+        // The box held the cell as shown, a secret in it masked: what the masks hid goes back where they still stand.
+        if (ContainerSecrets.Unmasked(table.Whole(row, write.Column), write.Text) is not { } unmasked)
+        {
+            Say(Refusals.MaskedPartChanged);
+            return;
+        }
+        string? text = unmasked == "NULL" ? null : unmasked;
         if (table.IsNewRow(row))
         {
             Edit(edits.WriteAdded(++added, write.Column, text));
@@ -313,7 +319,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
         {
             object?[] read = table.Page.Rows[row];
             // A field the document lacks is written whatever is written in it, NULL adding it as null.
-            Edit(edits.Write(key, read, write.Column, text, read[write.Column] is not AbsentField && text == (read[write.Column] is null ? null : table.Page.Cell(row, write.Column))));
+            Edit(edits.Write(key, read, write.Column, text, read[write.Column] is not AbsentField && text == (read[write.Column] is null ? null : table.Page.Text(row, write.Column))));
         }
     }
 
