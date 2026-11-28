@@ -162,6 +162,17 @@ public sealed class ContainerEngine
         }
     }
 
+    /// <summary>An engine held to the CLI this one has found, which a later choice of another (<see cref="Choose"/>) leaves as
+    /// it is: what a run brought up is reached and taken down through the CLI that brought it up. Itself where it was given
+    /// its CLI, or has yet to find one.</summary>
+    public ContainerEngine Pinned()
+    {
+        lock (gate)
+        {
+            return given is null && search && looked && found is not null ? new ContainerEngine(found) : this;
+        }
+    }
+
     /// <summary>Which CLI it looks for from now on (<see cref="EngineCli"/>), its CLI and state found again at the next ask
     /// and its events started again through it; nothing for an engine given its CLI. Any thread.</summary>
     public void Choose(EngineCli cli)

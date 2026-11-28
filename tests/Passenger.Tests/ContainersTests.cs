@@ -748,7 +748,7 @@ public sealed class ContainersTests
         Docker.Run("compose", "-f", compose, "up", "-d");
         try
         {
-            window.Session.Containers.StartedProject(["compose", "-p", project, "-f", compose]);
+            window.Session.Containers.StartedProject(["compose", "-p", project, "-f", compose], window.Session.Containers.Engine);
             string web = $"{project}-web-1";
             string db = $"{project}-db-1";
             Assert.Null(window.CloseSolution());

@@ -311,7 +311,8 @@ public sealed partial class BuildRunController
             parts.Views.Debug.ShowTab(console: true);
         }
         parts.Say($"Bringing {chosen.Name} up…");
-        ContainerRun run = new(plan, engine, parts.Views.Run.Sink)
+        // Held to the CLI that brings it up: a CLI chosen in Settings while it runs reaches and takes down what this one made.
+        ContainerRun run = new(plan, engine.Pinned(), parts.Views.Run.Sink)
         {
             StartedLater = later,
             How = how,
@@ -333,7 +334,7 @@ public sealed partial class BuildRunController
             }
         };
         // Before up: a Stop or the folder's end while it comes up takes down what came.
-        session.Containers.StartedProject(plan.Compose);
+        session.Containers.StartedProject(plan.Compose, run.Engine);
         session.ContainerRun = run;
         RunningChanged?.Invoke(this, EventArgs.Empty);
         List<string> notes = run.Notes;
