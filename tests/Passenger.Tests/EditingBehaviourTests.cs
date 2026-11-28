@@ -64,6 +64,7 @@ public sealed class EditingBehaviourTests
         Flow.StepApart<EditingBehaviourTests>("cyclic expand word finishes a word begun as the nearest above then steps on and back below and undoes at once", t => t.Cyclic_expand_word_finishes_a_word_begun_as_the_nearest_above_then_steps_on_and_back_below_and_undoes_at_once());
         Flow.StepApart<EditingBehaviourTests>("paste as plain text pastes the clipboard as it is where paste reindents it", t => t.Paste_as_plain_text_pastes_the_clipboard_as_it_is_where_paste_reindents_it());
         Flow.StepApart<EditingBehaviourTests>("statements and elements move by the syntax and unwrap takes a body out each one step of undo", t => t.Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo());
+        Flow.StepApart<EditingBehaviourTests>("extend selection in xaml grows through the markup around the caret never a line and shrink takes it back", t => t.Extend_selection_in_xaml_grows_through_the_markup_around_the_caret_never_a_line_and_shrink_takes_it_back());
         Flow.StepApart<EditingBehaviourTests>("split line transpose delete to line ends overwrite and column mode act on their keys", t => t.Split_line_transpose_delete_to_line_ends_overwrite_and_column_mode_act_on_their_keys());
         Flow.StepApart<EditingBehaviourTests>("a control character shows its mark two columns wide a separator typed its mark one and the line goes on past each", t => t.A_control_character_shows_its_mark_two_columns_wide_a_separator_typed_its_mark_one_and_the_line_goes_on_past_each());
     }
@@ -618,6 +619,44 @@ public sealed class EditingBehaviourTests
         finally
         {
             window.Close();
+        }
+    }
+
+    /// <summary>Extend Selection in XAML grows through the markup around the caret, never a line: a markup extension's
+    /// argument, what its braces hold, the attribute's value, the attribute, the start tag's attributes, the element, its
+    /// parent and the whole text; Shrink Selection takes each back in turn.</summary>
+    private void Extend_selection_in_xaml_grows_through_the_markup_around_the_caret_never_a_line_and_shrink_takes_it_back()
+    {
+        const string Xaml = "<StackPanel xmlns=\"https://github.com/avaloniaui\">\n    <TextBlock Text=\"{Binding Name, Mode=OneWay}\" Margin=\"4\" />\n</StackPanel>\n";
+        string folder = TestFolders.Create("selection-");
+        File.WriteAllText(Path.Combine(folder, "Panel.axaml"), Xaml);
+        Passenger.App.MainWindow window = Ui.OpenFolder(folder, languageServer: false);
+        try
+        {
+            window.OpenFile("Panel.axaml");
+            Ui.Settle();
+            CodeEditor editor = window.EditorArea.CodeEditor;
+            editor.Focus();
+            editor.Selections = SelectionSet.Single(Xaml.IndexOf("Name,", StringComparison.Ordinal) + 1);
+            string element = "<TextBlock Text=\"{Binding Name, Mode=OneWay}\" Margin=\"4\" />";
+            string[] grown = ["Name", "Binding Name, Mode=OneWay", "{Binding Name, Mode=OneWay}", "Text=\"{Binding Name, Mode=OneWay}\"",
+                "Text=\"{Binding Name, Mode=OneWay}\" Margin=\"4\"", element, Xaml.TrimEnd('\n'), Xaml];
+            string Selected() => editor.Document.Snapshot.GetText(editor.Selections.Primary.Start, editor.Selections.Primary.Length);
+            foreach (string next in grown)
+            {
+                Ui.Run(window, Passenger.App.AppActions.ExtendSelection);
+                Assert.True(Selected() == next, $"Extend Selection grew to \"{Selected()}\" where the markup around it is \"{next}\"");
+            }
+            for (int i = grown.Length - 2; i >= 0; i--)
+            {
+                Ui.Run(window, Passenger.App.AppActions.ShrinkSelection);
+                Assert.True(Selected() == grown[i], $"Shrink Selection took the selection back to \"{Selected()}\", not \"{grown[i]}\"");
+            }
+        }
+        finally
+        {
+            window.Close();
+            TestFolders.Delete(folder);
         }
     }
 
