@@ -41,6 +41,9 @@ internal static partial class Native
     public const int ExToolWindow = 0x00000080;
     public const int ExNoActivate = 0x08000000;
 
+    /// <summary>The parent a message-only window is made under (HWND_MESSAGE).</summary>
+    public const nint MessageOnly = -3;
+
     /// <summary>ChildWindowFromPointEx's skips: hidden and disabled windows, as a pointer passes them by.</summary>
     public const uint SkipHiddenDisabled = 0x0001 | 0x0002;
 

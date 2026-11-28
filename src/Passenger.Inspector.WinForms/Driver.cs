@@ -90,6 +90,7 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
         };
         int count = Math.Clamp(action.Count ?? 1, 1, 3);
         Held held = Hold(action.Modifiers);
+        Keyboard.Post(held, down: true);
         if (took is ToolStripItem item && button == Native.LeftHeld && count == 1 && held.Keys.Count == 0)
         {
             // An item has no window of its own: its accessible action, as a screen reader's, after what the queue holds.
@@ -107,7 +108,7 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
                 Native.PostMessage(window, up, held.Mouse, spot);
             }
         }
-        Release(top, held);
+        Keyboard.Post(held, down: false);
         last = (top, point, took, element ?? hit, false);
         return Done();
     }
@@ -135,11 +136,17 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
     protected override InputDone Type(Control top, Component? element, InputAction action)
     {
         Control target = KeyTarget(top, element);
+        string text = action.Text ?? string.Empty;
         if (target is TextBoxBase box)
         {
             if (action.Replace == true)
             {
                 box.SelectAll();
+                if (text.Length == 0 && box.TextLength > 0)
+                {
+                    // Nothing to type over the text: it is deleted, as a person's Delete takes a selection.
+                    Press(target, FormsKeys.Delete, alt: false);
+                }
             }
             else if (element is not null)
             {
@@ -147,7 +154,6 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
                 box.Select(box.TextLength, 0);
             }
         }
-        string text = action.Text ?? string.Empty;
         for (int i = 0; i < text.Length; i++)
         {
             switch (text[i])
@@ -179,8 +185,9 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
                 throw new Refusal($"No key '{chord.Key}'");
             }
             Held held = Hold(chord.Modifiers);
+            Keyboard.Post(held, down: true);
             Press(target, key, chord.Modifiers.Any(m => m.Held() == Modifier.Alt));
-            Release(top, held);
+            Keyboard.Post(held, down: false);
         }
         last = (top, null, target, target, false);
         return Done();
@@ -235,16 +242,15 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
         given = new WeakReference<Control>(control);
     }
 
-    /// <summary>The modifiers named held in the UI thread's key state (Windows Forms reads them from it as the messages run),
-    /// with the state a mouse message says of them; nothing where none is named. Meta is refused: it opens the system's menu.</summary>
+    /// <summary>The modifiers named, to hold in the UI thread's key state (Windows Forms reads them from it as the messages run,
+    /// <see cref="KeyStates"/>), with the state a mouse message says of them; nothing where none is named. Meta is refused: it
+    /// opens the system's menu.</summary>
     private static Held Hold(IReadOnlyList<Modifier>? modifiers)
     {
         if (modifiers is not { Count: > 0 })
         {
             return new Held(0, []);
         }
-        Span<byte> state = stackalloc byte[256];
-        Native.GetKeyboardState(state);
         int mouse = 0;
         List<byte> keys = [];
         foreach (Modifier modifier in modifiers.Select(m => m.Held()))
@@ -256,35 +262,53 @@ internal sealed class Driver(Inspector inspector) : Driving<Component, Control>
                 Modifier.Alt => (Native.AltKey, 0),
                 _ => throw new Refusal("A Windows Forms app takes Control, Shift and Alt from Passenger, not the Windows key"),
             };
-            state[key] |= Native.Down;
             mouse |= flag;
             keys.Add(key);
         }
-        Native.SetKeyboardState(state);
         return new Held(mouse, keys);
-    }
-
-    /// <summary>The modifiers held let go once the messages posted before have run.</summary>
-    private static void Release(Control top, Held held)
-    {
-        if (held.Keys.Count == 0)
-        {
-            return;
-        }
-        top.BeginInvoke(() =>
-        {
-            Span<byte> state = stackalloc byte[256];
-            Native.GetKeyboardState(state);
-            foreach (byte key in held.Keys)
-            {
-                state[key] &= unchecked((byte)~Native.Down);
-            }
-            Native.SetKeyboardState(state);
-        });
     }
 
     /// <summary>Modifiers held for an input: as a mouse message's state says them, and the keys held down.</summary>
     private sealed record Held(int Mouse, IReadOnlyList<byte> Keys);
+
+    /// <summary>The UI thread's window that holds and lets go of an input's modifiers, made on the first input.</summary>
+    private KeyStates Keyboard => keyboard ??= new KeyStates();
+
+    private KeyStates? keyboard;
+
+    /// <summary>A message-only window of the inspector's that holds modifiers down in the UI thread's key state, and lets them
+    /// go, as each message posted to it runs: posted among an input's messages, each chord's modifiers are held exactly while
+    /// its own messages run, after the chord before let go of its own, whichever loop dispatches them (a modal dialog's too).</summary>
+    private sealed class KeyStates : NativeWindow
+    {
+        /// <summary>The message that changes a key's state: the key, and whether it goes down.</summary>
+        private const int Change = 0x8000 + 0x51;
+
+        public KeyStates() => CreateHandle(new CreateParams { Parent = Native.MessageOnly });
+
+        /// <summary>Holds an input's modifiers down, or lets them go, once the messages posted before have run.</summary>
+        public void Post(Held held, bool down)
+        {
+            foreach (byte key in held.Keys)
+            {
+                Native.PostMessage(Handle, Change, key, down ? 1 : 0);
+            }
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            if (message.Msg != Change)
+            {
+                base.WndProc(ref message);
+                return;
+            }
+            Span<byte> state = stackalloc byte[256];
+            Native.GetKeyboardState(state);
+            byte key = (byte)message.WParam;
+            state[key] = message.LParam != 0 ? (byte)(state[key] | Native.Down) : (byte)(state[key] & ~Native.Down);
+            Native.SetKeyboardState(state);
+        }
+    }
 
     /// <summary>The deepest window shown at a point on the screen inside a window: its child windows', a native control's own
     /// (a combo box's edit box), where a mouse would send its messages.</summary>

@@ -140,6 +140,14 @@ public sealed class McpWpfAppTests : McpRig
         JsonElement text = Assert.Single(button.GetProperty("properties").EnumerateArray(), p => p.GetProperty("name").GetString() == "Text");
         Assert.True(text.GetProperty("place").GetString()!.StartsWith("MainForm.Designer.cs:", StringComparison.Ordinal), $"The button's text is not placed in its designer code: {text}");
 
+        // Two chords in one call each hold their own Shift as their key runs (the characters their keys make read once made);
+        // a replace with nothing empties the box.
+        string pressed = Text(await Call(client, McpTools.AppKey, new() { ["control"] = "#NameBox", ["keys"] = "shift+A shift+B" }));
+        string typed = Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#NameBox" }));
+        Assert.True(typed.Contains("\"AB\"", StringComparison.Ordinal), $"shift+A shift+B typed {typed}, where it types AB (the keys answered {pressed})");
+        string emptied = Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "", ["replace"] = true }));
+        string empty = Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#NameBox" }));
+        Assert.True(!empty.Contains("AB", StringComparison.Ordinal), $"An empty replace left {empty}, where it empties the box (it answered {emptied})");
         Assert.Contains("it shows \"Ada\"", Text(await Call(client, McpTools.AppType, new() { ["control"] = "#NameBox", ["text"] = "Ada" })), StringComparison.Ordinal);
         await Call(client, McpTools.AppKey, new() { ["keys"] = "Enter" });
         Assert.Contains("\"Hello, Ada\"", Text(await Call(client, McpTools.AppTree, new() { ["control"] = "#Hello" })), StringComparison.Ordinal);
