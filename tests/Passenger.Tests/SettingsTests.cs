@@ -35,7 +35,7 @@ public sealed class SettingsTests : IDisposable
         Flow.StepApart<SettingsTests>("preview overlays other windows and external changes without undoing them on close", t => t.Preview_overlays_other_windows_and_external_changes_without_undoing_them_on_close());
         Flow.StepApart<SettingsTests>("soft wrap and the terminals size and cursor show as changed in settings and go back as it closes unapplied", t => t.Soft_wrap_and_the_terminals_size_and_cursor_show_as_changed_in_settings_and_go_back_as_it_closes_unapplied());
         Flow.StepApart<SettingsTests>("a change reaches every editor and the next window opens on it", t => t.A_change_reaches_every_editor_and_the_next_window_opens_on_it());
-        Flow.StepApart<SettingsTests>("the font size actions and the zoom wheel change the editor's font and the next window opens on it", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it());
+        Flow.StepApart<SettingsTests>("the font size actions and the zoom wheel change the editor's font the consoles follow it until given their own and the next window opens on both", t => t.The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_the_consoles_follow_it_until_given_their_own_and_the_next_window_opens_on_both());
         Flow.StepApart<SettingsTests>("terminal preferences apply to the view and are kept for the next window", t => t.Terminal_preferences_apply_to_the_view_and_are_kept_for_the_next_window());
         Flow.StepApart<SettingsTests>("the language chosen is in force at once and the words shown follow it in place", t => t.The_language_chosen_is_in_force_at_once_and_the_words_shown_follow_it_in_place());
     }
@@ -759,7 +759,7 @@ public sealed class SettingsTests : IDisposable
         again.Close();
     }
 
-    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_and_the_next_window_opens_on_it()
+    private void The_font_size_actions_and_the_zoom_wheel_change_the_editors_font_the_consoles_follow_it_until_given_their_own_and_the_next_window_opens_on_both()
     {
         MainWindow window = new() { Width = 1200, Height = 800, StateFolder = settings };
         window.Show();
@@ -769,7 +769,11 @@ public sealed class SettingsTests : IDisposable
         window.OpenFile(Path.Combine(folder, "One.cs"));
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
+        window.DockHost.Show(ToolWindowIds.Run);
+        Ui.Settle();
+        CodeEditor console = window.BottomPanel.Run.Editor;
         Assert.Equal(13, editor.FontSize);
+        Assert.Equal(13, console.FontSize);
 
         MenuEntry view = MainMenu.Build(window.Actions.All).Single(m => m.Title == "View");
         MenuEntry active = view.Items!.Single(m => m.Title == "Active Editor");
@@ -778,6 +782,7 @@ public sealed class SettingsTests : IDisposable
 
         Assert.True(window.RunFromMenu(AppActions.IncreaseFontSize));
         Assert.Equal(14, editor.FontSize);
+        Assert.True(console.FontSize == 14, $"The Run console, given no size of its own, is at {console.FontSize} where the editor went to 14");
         Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
         Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
         Assert.Equal(12, editor.FontSize);
@@ -806,14 +811,42 @@ public sealed class SettingsTests : IDisposable
         Ui.Settle();
         Assert.Equal(15, editor.FontSize);
         Assert.Equal(15, window.Settings.EditorFontSize);
+
+        // The consoles' own size: shown before Apply, kept apart from the editor's and the terminal's, held to the range.
+        dialog = window.ShowSettings();
+        dialog.Query = "console font size";
+        Ui.Settle();
+        Assert.Equal(["Console font size"], dialog.Shown);
+        CheckBox same = Editor<CheckBox>(dialog, "Console font size");
+        Assert.True(same.IsChecked == true && !Editor<NumericUpDown>(dialog, "Console font size").IsEnabled && Editor<NumericUpDown>(dialog, "Console font size").Value == 15,
+            "Console font size, never set, is not Same as the editor, greyed at the editor's 15");
+        Ui.Click(same);
+        Editor<NumericUpDown>(dialog, "Console font size").Value = 18;
+        Ui.Settle();
+        Assert.True(console.FontSize == 18 && editor.FontSize == 15, $"Console font size 18, unapplied, shows the Run console at {console.FontSize} and the editor at {editor.FontSize}");
+        dialog.Ok();
+        Ui.Settle();
+        Assert.True(window.Settings.ConsoleFontSize == 18 && window.Settings.EditorFontSize == 15 && window.Settings.TerminalFontSize == 13,
+            $"Console font size 18 kept the consoles' {window.Settings.ConsoleFontSize}, the editor's {window.Settings.EditorFontSize}, the terminal's {window.Settings.TerminalFontSize}");
+        Assert.True(window.RunFromMenu(AppActions.DecreaseFontSize));
+        Assert.True(console.FontSize == 18, $"The Run console, given 18, went to {console.FontSize} with the editor's font");
+        window.ApplySettings(window.Settings with { ConsoleFontSize = 500 });
+        Assert.Equal(AppSettings.MaxFontSize, window.Settings.ConsoleFontSize);
+        window.ApplySettings(window.Settings with { ConsoleFontSize = 18, EditorFontSize = 15 });
         window.Close();
 
         MainWindow again = new() { Width = 1200, Height = 800, StateFolder = settings };
         again.Show();
         again.KeepSettings();
+        again.OpenFolder(folder);
+        again.DockHost.Show(ToolWindowIds.Build);
         Ui.Settle();
         Assert.Equal(15, again.Settings.EditorFontSize);
         Assert.Equal(15, again.EditorArea.CodeEditor.FontSize);
+        Assert.True(again.Settings.ConsoleFontSize == 18 && again.BottomPanel.Build.Editor.FontSize == 18,
+            $"The next window's consoles are at {again.BottomPanel.Build.Editor.FontSize}, kept as {again.Settings.ConsoleFontSize}, where 18 was set");
+        again.ApplySettings(again.Settings with { ConsoleFontSize = null });
+        Assert.True(again.BottomPanel.Build.Editor.FontSize == 15, $"Console font size Same as the editor left the Build console at {again.BottomPanel.Build.Editor.FontSize}, the editor at 15");
         again.Close();
     }
 

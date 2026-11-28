@@ -25,6 +25,18 @@ public sealed class OutputView : DockPanel, IOwnKeys
     /// <summary>The cycle buffer a console keeps by default: 1024 KB of text.</summary>
     public const int DefaultLimitKb = 1024;
 
+    /// <summary>The application's resource holding the consoles' text size in force (<see cref="Settings.AppSettings.ConsoleSize"/>).</summary>
+    [IdentifierHome]
+    public const string SizeKey = "Passenger.ConsoleFontSize";
+
+    /// <summary>Puts a text size in force for every console's text.</summary>
+    public static void UseSize(Application app, double size) => app.Resources[SizeKey] = size;
+
+    /// <summary>Has an editor showing a console's text (a program's output, a log, a test's details) take the consoles' size
+    /// in force.</summary>
+    public static void FollowSize(CodeEditor editor) =>
+        editor.Bind(CodeEditor.FontSizeProperty, editor.GetResourceObservable(SizeKey, found => found is double size ? size : TypeRamp.Code), Avalonia.Data.BindingPriority.Style);
+
     private readonly Button rerun;
     private readonly Button stop;
     private readonly Button hotReload;
@@ -115,9 +127,9 @@ public sealed class OutputView : DockPanel, IOwnKeys
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
-            FontSize = TypeRamp.Code,
             Highlighter = colours,
         };
+        FollowSize(made);
         editor = made;
         made.Decorations.SetLineAnnotations(foldNotes);
         made.Links = Links.On;
@@ -599,9 +611,9 @@ public sealed class OutputView : DockPanel, IOwnKeys
                 LineCommentPrefix = null,
                 ShowLineNumbers = false,
                 ShowErrorStripe = false,
-                FontSize = TypeRamp.Code,
                 Highlighter = new FoldColours(this),
             };
+            FollowSize(filtered);
             filtered.Links = Links.On;
             filtered.LinkClicked += (_, link) => LinkClicked?.Invoke(this, (LinkTarget)link.Target);
             body.Children.Insert(0, filtered);

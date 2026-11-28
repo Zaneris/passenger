@@ -315,6 +315,10 @@ public sealed record AppSettings : IStateDocument<AppSettings>
     /// it.</summary>
     public int ConsoleBufferKb { get; init; } = ToolWindows.OutputView.DefaultLimitKb;
 
+    /// <summary>The consoles' text size in points as the person set it, or null where they set none: the code's
+    /// (<see cref="ConsoleSize"/>).</summary>
+    public double? ConsoleFontSize { get; init; }
+
     /// <summary>The keymap the person's keys follow, Settings' Keymap: Visual Studio's at first, so a settings.json
     /// without one keeps the keys it had.</summary>
     public Passenger.Editor.KeymapPreset Keymap { get; init; } = Passenger.Editor.KeymapPreset.VisualStudio;
@@ -696,6 +700,9 @@ public sealed record AppSettings : IStateDocument<AppSettings>
 
     /// <summary>The code's size in force: the person's, else the theme's, else Passenger's own.</summary>
     public double CodeSize() => EditorFontSize ?? Themes.Fonts.CodeSize ?? OwnCodeSize;
+
+    /// <summary>The consoles' text size in force: the person's, else the code's.</summary>
+    public double ConsoleSize() => ConsoleFontSize ?? CodeSize();
 
     /// <summary>Where the editor's tabs stand: the person's place, else the theme's, else across the top.</summary>
     public EditorTabsPlace TabsPlace() => EditorTabs ?? Themes.Layout?.EditorTabs ?? EditorTabsPlace.Top;

@@ -639,6 +639,13 @@ public static class Declared
     public static readonly NumberSetting ConsoleBufferKb = new(s => s.ConsoleBufferKb, (s, v) => s with { ConsoleBufferKb = (int)v }, 16, 102_400, 64,
         new(D.RunPage, "Console buffer size", "console cycle buffer size output limit lines run debug build kb"), "KB");
 
+    public static readonly NumberSetting ConsoleFontSize = new(s => s.ConsoleSize(), (s, v) => s with { ConsoleFontSize = v },
+        AppSettings.MinFontSize, AppSettings.MaxFontSize, 1, new(D.RunPage, "Console font size",
+            "console output font size text zoom larger smaller run build debug tests logs aspire containers",
+            "The size in points of the text in the Run, Build and Debug consoles, a test's output and every other program's output or "
+            + "log a tool window shows. Same as the editor, it follows the editor's font size; the terminal has its own."),
+        given: s => s.ConsoleFontSize is not null, same: ("Same as the editor", s => s with { ConsoleFontSize = null }));
+
     public static readonly ChoiceSetting<ToolConfiguration> Eslint = new(s => s.Eslint, (s, v) => s with { Eslint = v });
 
     public static readonly ToggleSetting EslintFixOnSave = new(s => s.EslintFixOnSave, (s, v) => s with { EslintFixOnSave = v },
