@@ -84,15 +84,24 @@ public sealed class Navigator
     /// <summary>The open folder's places: those left, those edited, and where Back and Forward are.</summary>
     private NavigationHistory Places => Session.Navigation;
 
-    /// <summary>Goes to a file and position (go to definition, a usage), remembering where it came from for Back.</summary>
-    public void NavigateTo(string path, TextPosition position)
+    /// <summary>Goes to a file and position (go to definition, a usage), remembering where it came from for Back; one
+    /// <paramref name="keepingView"/> leaves the view still where the position already stands in it
+    /// (<see cref="CodeEditor.GoToKeepingView"/>).</summary>
+    public void NavigateTo(string path, TextPosition position, bool keepingView = false)
     {
         HistoryPlace? from = Here();
         Show(path);
         // Opened files are known by their canonical path: the one given may run through a symlink.
         if (Editors.Active is { } active && active.Path == PathNames.Canonical(path))
         {
-            Editors.CodeEditor.GoTo(position);
+            if (keepingView)
+            {
+                Editors.CodeEditor.GoToKeepingView(position);
+            }
+            else
+            {
+                Editors.CodeEditor.GoTo(position);
+            }
             if (from is not null && Here() is { } to && (!to.SameTab(from) || to.Line != from.Line))
             {
                 Places.Left(from);

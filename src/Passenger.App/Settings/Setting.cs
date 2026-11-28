@@ -113,10 +113,27 @@ public sealed class ToggleSetting(Func<AppSettings, bool> get, Func<AppSettings,
 /// <paramref name="step"/>, its unit after it where it has one; one that may be left unset (<paramref name="given"/> false)
 /// shows the value in force and stays unset until changed.</summary>
 public sealed class NumberSetting(Func<AppSettings, double> get, Func<AppSettings, double, AppSettings> set, double min, double max, double step,
-    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null, Func<AppSettings, string?>? refused = null) : Setting(row)
+    SettingRow? row = null, string? unit = null, Func<AppSettings, bool>? given = null, Func<AppSettings, string?>? refused = null,
+    (string Words, Func<AppSettings, AppSettings> Unset)? same = null) : Setting(row)
 {
     public override Control Editor(AppSettings now, Action<Func<AppSettings, AppSettings>> change) =>
-        unit is null ? Box(now, change) : WithUnit(Box(now, change), unit);
+        same is { } follows && given is not null ? Following(now, change, follows) : unit is null ? Box(now, change) : WithUnit(Box(now, change), unit);
+
+    /// <summary>The box beside a check of <paramref name="follows"/>'s words, which, checked, gives the value back to what it
+    /// follows where none is given, the box greyed showing that value; unchecked, the value shown is given.</summary>
+    private NarrowingField Following(AppSettings now, Action<Func<AppSettings, AppSettings>> change, (string Words, Func<AppSettings, AppSettings> Unset) follows)
+    {
+        NumericUpDown box = Box(now, change);
+        CheckBox check = new() { Content = follows.Words, IsChecked = !given!(now), VerticalAlignment = VerticalAlignment.Center };
+        box.IsEnabled = !check.IsChecked.Value;
+        check.IsCheckedChanged += (_, _) =>
+        {
+            bool following = check.IsChecked == true;
+            box.IsEnabled = !following;
+            change(s => following ? follows.Unset(s) : set(s, get(s)));
+        };
+        return new NarrowingField(box, check) { Most = OptionRow.NumberWidth };
+    }
 
     /// <summary>A number box with its unit after it, the box as wide as a number's where there is room.</summary>
     public static NarrowingField WithUnit(NumericUpDown box, string unit) =>

@@ -464,6 +464,7 @@ public sealed partial class SettingsDialog : IdeWindow
         Add(Declared.GreyCodeAhead);
         Add(Declared.AskBeforeRerun);
         Add(Declared.ConsoleBufferKb);
+        Add(Declared.ConsoleFontSize);
         Add(Declared.Browser);
 
         Add(Declared.WebRuntime);

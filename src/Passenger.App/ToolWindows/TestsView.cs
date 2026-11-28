@@ -256,11 +256,11 @@ public sealed class TestsView : DockPanel
             LineCommentPrefix = null,
             ShowLineNumbers = false,
             ShowErrorStripe = false,
-            FontSize = TypeRamp.Code,
             Highlighter = Links,
             Links = Links.On,
             Margin = new Thickness(Gaps.Small, Gaps.Tight, 0, 0),
         };
+        OutputView.FollowSize(details);
         details.LinkClicked += (_, link) => LinkClicked?.Invoke(this, (LinkTarget)link.Target);
         result.Children.Add(details);
         return details;

@@ -53,7 +53,7 @@ public sealed class SettingsPreview : IDisposable
     }
 
     /// <summary>The settings in force with the looks this dialog changed put over them: the Appearance page's, the
-    /// Editor page's but its behaviour, and the terminal's font and cursor.</summary>
+    /// Editor page's but its behaviour, the terminal's font and cursor, and the consoles' size.</summary>
     internal AppSettings Over(AppSettings saved) => saved with
     {
         Theme = Shown(from.Theme, to.Theme, saved.Theme),
@@ -95,6 +95,7 @@ public sealed class SettingsPreview : IDisposable
         SoftWrapIndent = Shown(from.SoftWrapIndent, to.SoftWrapIndent, saved.SoftWrapIndent),
         ShowWhitespaces = Shown(from.ShowWhitespaces, to.ShowWhitespaces, saved.ShowWhitespaces),
         TerminalFontSize = Shown(from.TerminalFontSize, to.TerminalFontSize, saved.TerminalFontSize),
+        ConsoleFontSize = Shown(from.ConsoleFontSize, to.ConsoleFontSize, saved.ConsoleFontSize),
         TerminalFontFamily = Shown(from.TerminalFontFamily, to.TerminalFontFamily, saved.TerminalFontFamily),
         TerminalCursorStyle = Shown(from.TerminalCursorStyle, to.TerminalCursorStyle, saved.TerminalCursorStyle),
         TerminalCursorBlinking = Shown(from.TerminalCursorBlinking, to.TerminalCursorBlinking, saved.TerminalCursorBlinking),
