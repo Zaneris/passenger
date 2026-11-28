@@ -936,7 +936,8 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
 
     /// <summary>Names offered in place of the one renamed, best first: shown under the name, at most six at a time, those the
     /// name as typed matches as completion matches its names (<see cref="FuzzyMatch.Label"/>), best way first and the
-    /// offer's order within a way; Up and Down or a click put one in the box, the keys staying there.</summary>
+    /// offer's order within a way, every one while the box holds the name it opened on; Up and Down or a click put one in
+    /// the box, the keys staying there.</summary>
     internal void OfferSuggestions(IReadOnlyList<string> suggestions)
     {
         if (suggestions.Count == 0)
@@ -976,14 +977,17 @@ public sealed class RenameBox : Border, IHeardPopup, IGivesWayInHeight
                 name.CaretIndex = selected.Length;
             }
         };
+        // Heard a moment after the text changes, so the first may tell of the name the box opened on once the names are in.
         name.TextChanged += (_, _) =>
         {
             if (Text != (list.SelectedItem as string))
             {
-                Filter(Text);
+                Filter(Typed());
             }
         };
-        Filter(Text == original ? string.Empty : Text);
+        Filter(Typed());
+
+        string Typed() => Text == original ? string.Empty : Text;
     }
 
     /// <summary>Offers to rename the files named after the type with it, checked as the option was left.</summary>

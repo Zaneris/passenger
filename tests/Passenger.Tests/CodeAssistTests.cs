@@ -201,7 +201,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         Flow.StepApart("a call bound only to another receiver's extension method is offered the using of one that takes its own", () => new CodeAssistTests(project), t => t.A_call_bound_only_to_another_receivers_extension_method_is_offered_the_using_of_one_that_takes_its_own());
         Flow.StepApart("through MCP an action with choices lists them, asks for one and applies the one named", () => new CodeAssistTests(project), t => t.Through_mcp_an_action_with_choices_lists_them_asks_for_one_and_applies_the_one_named());
         Flow.StepApart("Escape closes the lists of choices and the rename box wherever the keys are", () => new CodeAssistTests(project), t => t.Escape_closes_the_lists_of_choices_and_the_rename_box_wherever_the_keys_are());
-        Flow.StepApart("Rename offers names from the declaration, asked again where the server cancelled the question, filters them as typed, and commits the editable name in one undo step", () => new CodeAssistTests(project), t => t.Rename_offers_names_filters_them_and_commits_the_editable_name());
+        Flow.StepApart("Rename offers names from the declaration, asked again where the server cancelled the question, filters them as typed, every one for the name it opened on, and commits the editable name in one undo step", () => new CodeAssistTests(project), t => t.Rename_offers_names_filters_them_and_commits_the_editable_name());
         Flow.StepApart("live and postfix templates expand where they belong, fill their variables and wrap what they follow", () => new CodeAssistTests(project), t => t.Live_and_postfix_templates_expand_where_they_belong_fill_their_variables_and_wrap_what_they_follow());
         Flow.StepApart("a live template ends when its editor shows another file, and Enter there breaks the line", () => new CodeAssistTests(project), t => t.A_live_template_ends_when_its_editor_shows_another_file_and_enter_there_breaks_the_line());
         Flow.StepApart("Extend Selection grows through the code around the caret, and Shrink takes it back", () => new CodeAssistTests(project), t => t.Extend_selection_grows_through_the_code_around_the_caret_and_shrink_takes_it_back());
@@ -2314,7 +2314,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         {
             Ui.PlaceAfter(editor, after);
             Ui.Run(window, AppActions.Rename);
-            Ui.WaitFor(() => Suggestions().FirstOrDefault() == first, $"Rename to offer {first}");
+            Ui.WaitFor(() => Suggestions().FirstOrDefault() == first, () => $"Rename to offer {first}, where it offered [{string.Join(", ", Suggestions())}]");
         }
 
         void AssertOffers(string after, params string[] candidates)
@@ -2349,6 +2349,12 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
 
         RenameAt("return draft", "pendingOrders");
         Assert.Equal(fromInitializer, Suggestions());
+        // The name the box opened on, typed back, offers every name, as when the box's word of it comes after the names.
+        Ui.Press(window, "END");
+        window.KeyTextInput("s");
+        Ui.WaitFor(() => Suggestions().Length == 0, "the list to hide for drafts, which no name offered matches");
+        Ui.Press(window, "BACK_SPACE");
+        Ui.WaitFor(() => Suggestions().SequenceEqual(fromInitializer), () => $"every name offered again for draft, where it offered [{string.Join(", ", Suggestions())}]");
         Ui.Click(OfferedRow(window, "pendingOrders"));
         Assert.Equal("pendingOrders", window.Assist.Renaming);
         Assert.Equal(original, editor.Document.Snapshot.ToString());
