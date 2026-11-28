@@ -6,15 +6,21 @@ namespace Passenger.App.Database;
 /// <summary>A column as a schema declares it: its type as its server writes it, whether it takes NULL, and its default.</summary>
 public sealed record ColumnShape(string Name, string Type, bool Nullable, string? Default = null);
 
-/// <summary>A foreign key: its columns and the table and columns they refer to, in the same schema.</summary>
-public sealed record ForeignKeyShape(string Name, IReadOnlyList<string> Columns, string Table, IReadOnlyList<string> To)
+/// <summary>A foreign key: its columns and the table and columns they refer to, that table in the key's own schema, or in
+/// <see cref="ToSchema"/> where it names another.</summary>
+public sealed record ForeignKeyShape(string Name, IReadOnlyList<string> Columns, string Table, IReadOnlyList<string> To, string ToSchema = "")
 {
-    /// <summary>What it is, whatever its name: two databases name the same key apart.</summary>
-    public string Meaning => $"({string.Join(",", Columns)})→{Table}({string.Join(",", To)})";
+    /// <summary>What it is, whatever its name: two databases name the same key apart. A table of its own schema is read as
+    /// each schema's own, one of another schema as that schema's.</summary>
+    public string Meaning => $"({string.Join(",", Columns)})→{(ToSchema.Length > 0 ? ToSchema + "." : string.Empty)}{Table}({string.Join(",", To)})";
 }
 
-/// <summary>An index no constraint makes: its name, whether it is unique, and its columns.</summary>
-public sealed record IndexShape(string Name, bool Unique, IReadOnlyList<string> Columns);
+/// <summary>An index no constraint makes: its name, whether it is unique, its columns, and what it says beyond them as its
+/// server writes it (<see cref="Definition"/>).</summary>
+/// <param name="Definition">PostgreSQL's from its USING on (its method, keys and expressions, INCLUDE and WHERE), SQL
+/// Server's INCLUDE and WHERE, SQLite's whole statement where it holds an expression or a WHERE; empty where it is its
+/// columns alone.</param>
+public sealed record IndexShape(string Name, bool Unique, IReadOnlyList<string> Columns, string Definition = "");
 
 /// <summary>A table: its columns in order, its primary key's columns, its foreign keys and its indexes; and the names its
 /// server gave its primary key and (SQL Server's) its columns' defaults, which a change drops by.</summary>
@@ -59,10 +65,11 @@ public sealed record SchemaDifference(string What, string Said, IReadOnlyList<st
 /// <summary>Two schemas compared: what the source holds that the target lacks, holds otherwise or holds that the source
 /// does not, as tables, columns (type, NULL and default), primary keys, foreign keys (by what they mean, not their names),
 /// indexes, views, triggers, routines and sequences; and the script in the target's own SQL that makes the target as the
-/// source is, ordered so each statement finds what it needs: foreign keys dropped first (those referring to a primary key
-/// that changes too, added again after), then sequences, tables made, columns added, changed and dropped, primary keys,
-/// indexes, foreign keys added, routines, views and triggers, and what only the target holds dropped last. A change a
-/// database cannot make in place (SQLite's column types, keys and foreign keys) is a comment saying so.</summary>
+/// source is, ordered so each statement finds what it needs: foreign keys and indexes dropped first (keys referring to a
+/// primary key that changes too, added again after), then sequences, tables made (SQLite's with their foreign keys),
+/// columns added, changed and dropped, primary keys, indexes made, foreign keys added, routines, views and triggers, and
+/// what only the target holds dropped last, a table another refers to after it. A change a database cannot make in place
+/// (SQLite's column types, keys and foreign keys) is a comment saying so.</summary>
 public static class SchemaCompare
 {
     public static IReadOnlyList<SchemaDifference> Differences(SchemaShape source, SchemaShape target)
@@ -71,6 +78,7 @@ public static class SchemaCompare
         string Name(string table) => (target.Schema.Length > 0 ? SqlText.QuotedName(kind, target.Schema) + "." : string.Empty) + SqlText.QuotedName(kind, table);
         string Q(string name) => SqlText.QuotedName(kind, name);
         List<SchemaDifference> dropKeys = [];
+        List<SchemaDifference> dropIndexes = [];
         List<SchemaDifference> sequences = [];
         List<SchemaDifference> made = [];
         List<SchemaDifference> columns = [];
@@ -86,13 +94,17 @@ public static class SchemaCompare
         {
             if (!theirs.TryGetValue(table.Name, out TableShape? there))
             {
-                made.Add(new SchemaDifference($"table {table.Name}", "only in the source", [Create(kind, Name(table.Name), table)]));
+                made.Add(new SchemaDifference($"table {table.Name}", "only in the source", [Create(kind, Name(table.Name), table, Referred)]));
                 foreach (IndexShape index in table.Indexes)
                 {
                     indexes.Add(new SchemaDifference($"index {index.Name}", "only in the source", [CreateIndex(kind, Name(table.Name), index)]));
                 }
-                addKeys.AddRange(table.ForeignKeys.Select(key => new SchemaDifference($"foreign key {key.Name} of {table.Name}", "only in the source",
-                    [AddKey(kind, Name(table.Name), key, Name(key.Table))])));
+                // SQLite's new table holds its foreign keys as it is made, which it can add no other way.
+                if (kind != DatabaseKind.Sqlite)
+                {
+                    addKeys.AddRange(table.ForeignKeys.Select(key => new SchemaDifference($"foreign key {key.Name} of {table.Name}", "only in the source",
+                        [AddKey(kind, Name(table.Name), key, Referred(key))])));
+                }
                 continue;
             }
             Dictionary<string, ColumnShape> had = there.Columns.ToDictionary(c => c.Name, StringComparer.Ordinal);
@@ -122,7 +134,7 @@ public static class SchemaCompare
                 {
                     dropKeys.Add(new SchemaDifference($"foreign key {key.Name} of {holder.Name}", $"dropped while the primary key of {table.Name} changes", [DropKey(kind, Name(holder.Name), key)]));
                     addKeys.Add(new SchemaDifference($"foreign key {key.Name} of {holder.Name}", $"made again once the primary key of {table.Name} changed",
-                        [AddKey(kind, Name(holder.Name), key, Name(key.Table))]));
+                        [AddKey(kind, Name(holder.Name), key, Referred(key))]));
                 }
             }
             foreach (ForeignKeyShape key in there.ForeignKeys.Where(k => !table.ForeignKeys.Any(o => o.Meaning == k.Meaning)))
@@ -131,11 +143,12 @@ public static class SchemaCompare
             }
             foreach (ForeignKeyShape key in table.ForeignKeys.Where(k => !there.ForeignKeys.Any(o => o.Meaning == k.Meaning)))
             {
-                addKeys.Add(new SchemaDifference($"foreign key {key.Name} of {table.Name}", "only in the source", [AddKey(kind, Name(table.Name), key, Name(key.Table))]));
+                addKeys.Add(new SchemaDifference($"foreign key {key.Name} of {table.Name}", "only in the source", [AddKey(kind, Name(table.Name), key, Referred(key))]));
             }
+            // An index goes before its columns change or go, which a database may refuse while one holds them.
             foreach (IndexShape index in there.Indexes.Where(i => !table.Indexes.Any(o => Same(o, i))))
             {
-                indexes.Add(new SchemaDifference($"index {index.Name}", table.Indexes.Any(o => o.Name == index.Name) ? "otherwise in the target" : "only in the target",
+                dropIndexes.Add(new SchemaDifference($"index {index.Name}", table.Indexes.Any(o => o.Name == index.Name) ? "otherwise in the target" : "only in the target",
                     [DropIndex(kind, Name(table.Name), target.Schema, index)]));
             }
             foreach (IndexShape index in table.Indexes.Where(i => !there.Indexes.Any(o => Same(o, i))))
@@ -143,7 +156,7 @@ public static class SchemaCompare
                 indexes.Add(new SchemaDifference($"index {index.Name}", "only in the source", [CreateIndex(kind, Name(table.Name), index)]));
             }
         }
-        foreach (TableShape table in target.Tables.Where(t => !ours.ContainsKey(t.Name)))
+        foreach (TableShape table in Dropping([.. target.Tables.Where(t => !ours.ContainsKey(t.Name))]))
         {
             dropped.Add(new SchemaDifference($"table {table.Name}", "only in the target: dropping it drops its rows", [$"DROP TABLE {Name(table.Name)}"]));
         }
@@ -199,7 +212,25 @@ public static class SchemaCompare
         {
             triggers.Add(new SchemaDifference($"trigger {trigger.Name} of {trigger.Table}", "only in the target", [DropTrigger(kind, Name(trigger.Name), Name(trigger.Table))]));
         }
-        return [.. dropKeys, .. sequences, .. made, .. columns, .. indexes, .. addKeys, .. routines, .. views, .. triggers, .. dropped];
+        return [.. dropKeys, .. dropIndexes, .. sequences, .. made, .. columns, .. indexes, .. addKeys, .. routines, .. views, .. triggers, .. dropped];
+
+        // The table a key refers to, in the target's schema where it is the key's own, else in the schema it names.
+        string Referred(ForeignKeyShape key) => key.ToSchema.Length > 0 ? $"{Q(key.ToSchema)}.{Q(key.Table)}" : Name(key.Table);
+    }
+
+    /// <summary>Tables to drop, each before those it refers to among them, as a table a foreign key holds cannot go first.</summary>
+    private static List<TableShape> Dropping(List<TableShape> tables)
+    {
+        List<TableShape> ordered = [];
+        List<TableShape> left = [.. tables];
+        while (left.Count > 0)
+        {
+            // One no other left refers to goes next; where they refer to each other in a ring, the first of them.
+            TableShape next = left.FirstOrDefault(t => !left.Any(o => o != t && o.ForeignKeys.Any(k => k.ToSchema.Length == 0 && k.Table == t.Name))) ?? left[0];
+            ordered.Add(next);
+            left.Remove(next);
+        }
+        return ordered;
     }
 
     /// <summary>The script that makes the target as the source is: a header naming both, each difference's statements under
@@ -220,7 +251,8 @@ public static class SchemaCompare
         return script.ToString();
     }
 
-    private static bool Same(IndexShape one, IndexShape other) => one.Name == other.Name && one.Unique == other.Unique && one.Columns.SequenceEqual(other.Columns);
+    private static bool Same(IndexShape one, IndexShape other) =>
+        one.Name == other.Name && one.Unique == other.Unique && one.Columns.SequenceEqual(other.Columns) && one.Definition == other.Definition;
 
     private static string Otherwise(ColumnShape was, ColumnShape now)
     {
@@ -243,15 +275,23 @@ public static class SchemaCompare
     private static string Declared(DatabaseKind kind, ColumnShape column) =>
         $"{SqlText.QuotedName(kind, column.Name)} {column.Type}{(column.Default is { } value ? " DEFAULT " + value : string.Empty)}{(column.Nullable ? string.Empty : " NOT NULL")}";
 
-    private static string Create(DatabaseKind kind, string name, TableShape table)
+    /// <summary>A table made as the source has it: its columns and primary key, and SQLite's its foreign keys too.</summary>
+    private static string Create(DatabaseKind kind, string name, TableShape table, Func<ForeignKeyShape, string> referred)
     {
         List<string> parts = [.. table.Columns.Select(c => "  " + Declared(kind, c))];
         if (table.PrimaryKey.Count > 0)
         {
             parts.Add($"  PRIMARY KEY ({string.Join(", ", table.PrimaryKey.Select(c => SqlText.QuotedName(kind, c)))})");
         }
+        if (kind == DatabaseKind.Sqlite)
+        {
+            parts.AddRange(table.ForeignKeys.Select(key => $"  {KeyClause(kind, key, referred(key))}"));
+        }
         return $"CREATE TABLE {name} (\n{string.Join(",\n", parts)}\n)";
     }
+
+    private static string KeyClause(DatabaseKind kind, ForeignKeyShape key, string to) =>
+        $"FOREIGN KEY ({string.Join(", ", key.Columns.Select(c => SqlText.QuotedName(kind, c)))}) REFERENCES {to} ({string.Join(", ", key.To.Select(c => SqlText.QuotedName(kind, c)))})";
 
     /// <summary>A primary key made as the source's: dropped by its name and added again in one statement where the database
     /// takes both, SQLite's a comment, as it changes no key in place.</summary>
@@ -321,8 +361,7 @@ public static class SchemaCompare
     private static string AddKey(DatabaseKind kind, string table, ForeignKeyShape key, string to) =>
         kind == DatabaseKind.Sqlite
             ? $"-- SQLite cannot add the foreign key {key.Name} to a table: make the table again with it"
-            : $"ALTER TABLE {table} ADD CONSTRAINT {SqlText.QuotedName(kind, key.Name)} FOREIGN KEY ({string.Join(", ", key.Columns.Select(c => SqlText.QuotedName(kind, c)))}) "
-                + $"REFERENCES {to} ({string.Join(", ", key.To.Select(c => SqlText.QuotedName(kind, c)))})";
+            : $"ALTER TABLE {table} ADD CONSTRAINT {SqlText.QuotedName(kind, key.Name)} {KeyClause(kind, key, to)}";
 
     private static string DropKey(DatabaseKind kind, string table, ForeignKeyShape key) => kind switch
     {
@@ -331,8 +370,18 @@ public static class SchemaCompare
         _ => $"ALTER TABLE {table} DROP CONSTRAINT {SqlText.QuotedName(kind, key.Name)}",
     };
 
-    private static string CreateIndex(DatabaseKind kind, string table, IndexShape index) =>
-        $"CREATE {(index.Unique ? "UNIQUE " : string.Empty)}INDEX {SqlText.QuotedName(kind, index.Name)} ON {table} ({string.Join(", ", index.Columns.Select(c => SqlText.QuotedName(kind, c)))})";
+    /// <summary>An index made as the source has it: PostgreSQL's from its USING on, SQL Server's with its INCLUDE and WHERE,
+    /// SQLite's whole statement where it holds more than its columns.</summary>
+    private static string CreateIndex(DatabaseKind kind, string table, IndexShape index)
+    {
+        string made = $"CREATE {(index.Unique ? "UNIQUE " : string.Empty)}INDEX {SqlText.QuotedName(kind, index.Name)} ON {table}";
+        return index.Definition.Length == 0 ? $"{made} ({string.Join(", ", index.Columns.Select(c => SqlText.QuotedName(kind, c)))})" : kind switch
+        {
+            DatabaseKind.Sqlite => index.Definition,
+            DatabaseKind.SqlServer => $"{made} ({string.Join(", ", index.Columns.Select(c => SqlText.QuotedName(kind, c)))}) {index.Definition}",
+            _ => $"{made} {index.Definition}",
+        };
+    }
 
     private static string DropIndex(DatabaseKind kind, string table, string schema, IndexShape index) => kind switch
     {
@@ -411,10 +460,36 @@ public static class SchemaCompare
 
     /// <summary>What a routine's or trigger's statement says past its name, which compares it whatever its name is written
     /// as (SQL Server's and SQLite's keep the statement that made it); MySQL's trigger is its parts already.</summary>
-    private static string Body(DatabaseKind kind, string definition, string word)
+    private static string Body(DatabaseKind kind, string definition, string word) =>
+        Compared(kind, kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite ? definition[NameEnd(definition, word)..] : definition);
+
+    /// <summary>SQL as compared: its white space and comments one space, its words in one letter case, but its strings,
+    /// quoted names and dollar quotes as written, as 'OPEN' and 'open' are two values.</summary>
+    private static string Compared(DatabaseKind kind, string sql)
     {
-        string body = kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite ? definition[NameEnd(definition, word)..] : definition;
-        return string.Join(' ', body.Trim().TrimEnd(';').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+        string trimmed = sql.Trim().TrimEnd(';').Trim();
+        StringBuilder compared = new(trimmed.Length);
+        for (int i = 0; i < trimmed.Length;)
+        {
+            int? past = SqlText.Skipped(trimmed, i, kind);
+            if (char.IsWhiteSpace(trimmed[i]) || past is not null && trimmed[i] is '-' or '/' or '#')
+            {
+                if (compared.Length > 0 && compared[^1] != ' ')
+                {
+                    compared.Append(' ');
+                }
+                i = past ?? i + 1;
+                continue;
+            }
+            if (past is { } end)
+            {
+                compared.Append(trimmed, i, end - i);
+                i = end;
+                continue;
+            }
+            compared.Append(char.ToUpperInvariant(trimmed[i++]));
+        }
+        return compared.ToString().TrimEnd();
     }
 
     /// <summary>Where a CREATE statement's object's name ends: past its kind's word and the name after it, a schema's too.</summary>
@@ -447,11 +522,8 @@ public static class SchemaCompare
         return 0;
     }
 
-    /// <summary>A view's query as compared, its white space and letter case aside: SQL Server's and SQLite's after the
-    /// statement's AS, as they keep the statement that made the view.</summary>
-    private static string Normal(DatabaseKind kind, string definition)
-    {
-        string query = kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite ? definition[AsAt(definition)..] : definition;
-        return string.Join(' ', query.Trim().TrimEnd(';').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
-    }
+    /// <summary>A view's query as compared (<see cref="Compared"/>): SQL Server's and SQLite's after the statement's AS, as
+    /// they keep the statement that made the view.</summary>
+    private static string Normal(DatabaseKind kind, string definition) =>
+        Compared(kind, kind is DatabaseKind.SqlServer or DatabaseKind.Sqlite ? definition[AsAt(definition)..] : definition);
 }
