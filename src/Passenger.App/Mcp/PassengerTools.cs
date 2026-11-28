@@ -1699,7 +1699,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 throw new ArgumentException("An AppHost's resource sends its logs and traces to the AppHost's own dashboard; omit telemetry");
             }
             NoTerminalFor(terminal);
-            if (PartNamed(resource) is { } part)
+            if (PartNamed(resource, configuration) is { } part)
             {
                 return arguments is null ? await RestartPartAsync(part, waitSeconds, cancel)
                     : throw new ArgumentException($"{part.Name} starts as its run says; omit arguments");
@@ -1931,7 +1931,10 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     });
 
     /// <summary>The part of a run of several parts in the Run window by its tab's name, the last started of that name; null for none.</summary>
-    private PartRun? PartNamed(string resource) => Builds.PartRuns.LastOrDefault(p => string.Equals(p.Name, resource, StringComparison.OrdinalIgnoreCase));
+    /// <summary>The part of a run of several parts a resource names, the newest of the name, of the run of the configuration
+    /// named where one is: a part another run left never stands in for a configuration's own service or resource.</summary>
+    private PartRun? PartNamed(string resource, string? configuration = null) => Builds.PartRuns.LastOrDefault(p => string.Equals(p.Name, resource, StringComparison.OrdinalIgnoreCase)
+        && (configuration is null || string.Equals(p.Run, configuration, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>run of a part of a run of several parts: it restarted alone in its tab, the others running on, and waited for
     /// until it ends or its host starts, within the wait; how it stands and its last lines.</summary>
@@ -2378,9 +2381,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             }
             else
             {
+                // What it waits for is found before anything is set, so a refusal leaves the breakpoints as they were.
+                CodeBreakpoint? waited = WaitedFor(waitFor);
                 MethodBreakpoint named = store.AddMethod(method);
                 store.Update(named, enabled: true, suspend, condition, hitCondition, logMessage);
-                store.Arrange(named, temporary, WaitedFor(waitFor));
+                store.Arrange(named, temporary, waited);
                 store.Capture(named, taking);
             }
             await InTheProgram(cancel);
@@ -2424,9 +2429,11 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
                 ?? throw new ArgumentException(File.Exists(full) ? $"{Relative(full)} has no text to set a breakpoint in" : $"No file {Relative(full)} is here to set a breakpoint in");
             LineIn(text, full, at + 1);
         }
+        // What it waits for is found before anything is set, so a refusal leaves the breakpoints as they were.
+        CodeBreakpoint? prerequisite = WaitedFor(waitFor);
         LineBreakpoint set = column is int inside ? (await LambdaBreakpointAsync(full, at, inside, set: true))! : store.Set(full, at, attribute is { Length: > 0 } ? attribute : null);
         store.Update(set, enabled: true, suspend, condition, hitCondition, logMessage);
-        store.Arrange(set, temporary, WaitedFor(waitFor));
+        store.Arrange(set, temporary, prerequisite);
         store.Capture(set, taking);
         await InTheProgram(cancel);
         Passenger.Languages.CSharp.ParsedText? parsed = Session.Debug.IsDebugging || !readable ? null : await LambdaBreakpoints.ParsedAsync(Editors, full);
@@ -3167,12 +3174,22 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
     {
         DebugSession paused = await Paused(session, choose: value is not null);
         (DapStackFrame chosen, string? below) = frame is int at ? (await FrameAt(paused, at), null) : await StopFrameAsync(paused);
+        if (mark && paused.MarksWhyNot is { } why)
+        {
+            throw new InvalidOperationException(why);
+        }
+        if (value is not null)
+        {
+            SetExpressionResponse set = await paused.SetExpressionAsync(expression, value, chosen.Id);
+            await Session.Debug.RefreshAsync();
+            if (!mark)
+            {
+                return Variable(expression, set.Value, set.Type, set.VariablesReference, expression) with { Frame = below };
+            }
+        }
+        // Given a value too, what is marked is the object the expression holds once assigned.
         if (mark)
         {
-            if (paused.MarksWhyNot is { } why)
-            {
-                throw new InvalidOperationException(why);
-            }
             string label;
             try
             {
@@ -3185,12 +3202,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
             await Session.Debug.RefreshAsync();
             EvaluateResponse marked = await paused.EvaluateAsync(label, chosen.Id, EvaluateContexts.Watch);
             return Variable(expression, marked.Result, marked.Type, marked.VariablesReference, label) with { Frame = below, Mark = label };
-        }
-        if (value is not null)
-        {
-            SetExpressionResponse set = await paused.SetExpressionAsync(expression, value, chosen.Id);
-            await Session.Debug.RefreshAsync();
-            return Variable(expression, set.Value, set.Type, set.VariablesReference, expression) with { Frame = below };
         }
         EvaluateResponse result = await paused.EvaluateAsync(expression, chosen.Id, EvaluateContexts.Repl, letThreadsRun);
         if (letThreadsRun)
