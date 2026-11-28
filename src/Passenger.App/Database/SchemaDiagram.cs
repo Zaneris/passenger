@@ -94,7 +94,7 @@ public sealed class SchemaDiagramTab : IDatabaseTab
         {
             Schema = shape;
             Shown?.Show(shape);
-            Document.DatabaseTitleChanged();
+            Document.TitleChanged();
         }
     }
 

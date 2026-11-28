@@ -177,8 +177,9 @@ public sealed class OpenDocument : Observable
         return document;
     }
 
-    /// <summary>Its title or its tab's mark changed: a table's connection renamed or marked, a console's connection marked.</summary>
-    internal void DatabaseTitleChanged() => Raise(nameof(Title));
+    /// <summary>Its title or its tab's mark changed: a table's connection renamed or marked, a console's connection marked, a
+    /// tool window's title.</summary>
+    internal void TitleChanged() => Raise(nameof(Title));
 
     /// <summary>Whether its tab holds changes not yet written anywhere but in it: a table's not yet submitted.</summary>
     public bool HasPending => DatabaseTable is { Edits.IsEmpty: false };

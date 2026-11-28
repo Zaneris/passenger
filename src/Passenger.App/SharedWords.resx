@@ -112,4 +112,8 @@
     <value>see it in Problems, {tab}</value>
     <comment>What a click on the status bar's words does, after "Click to": Problems shown on one of its tabs.</comment>
   </data>
+  <data name="Failed" xml:space="preserve">
+    <value>{action} failed: {why}</value>
+    <comment>An action that failed, by its title, and why: as the C# language server's answer says it.</comment>
+  </data>
 </root>

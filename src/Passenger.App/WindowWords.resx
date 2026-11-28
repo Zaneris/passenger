@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ToolWindowRegion" xml:space="preserve">
+    <value>{window}, tool window</value>
+    <comment>What a screen reader is told as Next Region enters a tool window, or one is opened from its edge tab; {window} is its name.</comment>
+  </data>
+  <data name="ToolWindowOver" xml:space="preserve">
+    <value>{window}, tool window over the editors</value>
+    <comment>What a screen reader is told as a tool window opens over the editors from its edge tab.</comment>
+  </data>
+  <data name="ToolWindowHidden" xml:space="preserve">
+    <value>{window} hidden</value>
+    <comment>What a screen reader is told as a tool window opened from its edge tab is put away.</comment>
+  </data>
+  <data name="EditorRegion" xml:space="preserve">
+    <value>{file}, editor</value>
+    <comment>What a screen reader is told as Next Region enters the editors; {file} is the file shown.</comment>
+  </data>
+  <data name="ToolbarRegion" xml:space="preserve">
+    <value>Toolbar</value>
+    <comment>What a screen reader is told as Next Region enters the toolbar.</comment>
+  </data>
+  <data name="StatusBarRegion" xml:space="preserve">
+    <value>Status bar</value>
+    <comment>What a screen reader is told as Next Region enters the status bar.</comment>
+  </data>
+  <data name="SearchRules" xml:space="preserve">
+    <value>Search rules by name or id</value>
+    <comment>Run Inspection by Name's search field.</comment>
+  </data>
+  <data name="ReadingRules" xml:space="preserve">
+    <value>Reading the analyzers' rules…</value>
+    <comment>Run Inspection by Name while it reads the rules the C# language server's analyzers have.</comment>
+  </data>
+  <data name="SearchCopied" xml:space="preserve">
+    <value>Search copied texts</value>
+    <comment>Paste from History's search field.</comment>
+  </data>
+</root>

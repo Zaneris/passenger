@@ -67,11 +67,11 @@ public partial class MainWindow
             return ([], []);
         }
         TextRange here = new(offset, 0);
-        string fill = TitleOf(AppActions.FillArgumentsWithDoubles).Shown;
+        Words fill = TitleOf(AppActions.FillArgumentsWithDoubles);
         IReadOnlyList<EditorFix> fills = file.ReadOnlyWhy is not null ? [] : [.. offered.Libraries.Select(library =>
-            new EditorFix(offered.Libraries.Count == 1 ? fill : $"{fill} of {library}", library, here, string.Empty)
+            new EditorFix(offered.Libraries.Count == 1 ? fill : AssistWords.FillOf(fill, Words.Verbatim(library)), Words.Verbatim(library), here, string.Empty)
             {
-                Elsewhere = (range, patience) => Assist.Actions.MakeAsync(fill, file, range.Start,
+                Elsewhere = (range, patience) => Assist.Actions.MakeAsync(fill.Shown, file, range.Start,
                     now => now.ExtensionAsync<Refactored>(Handlers.FillArguments, new ArgumentsAsked(now.PlaceOf(range.Start), library)),
                     _ => $"Filled the call's missing arguments with {library}'s doubles", patience),
             })];
@@ -84,24 +84,25 @@ public partial class MainWindow
         {
             return [];
         }
-        string title = TitleOf(AppActions.CreateFake).Shown;
+        Words title = TitleOf(AppActions.CreateFake);
+        Words named = Words.Verbatim(type);
         if (offered.Seam is { } seam)
         {
-            string extract = TitleOf(AppActions.ExtractInterface).Shown;
-            string introduce = TitleOf(AppActions.IntroduceParameter).Shown;
-            string why = Refusals.FakeNeedsSeam(type, seam, extract, introduce).Shown;
-            return [new EditorFix($"{title} of {type}", $"{Refusals.SeamOf(seam)}: {extract}, then {introduce}", here, string.Empty)
+            Words extract = TitleOf(AppActions.ExtractInterface);
+            Words introduce = TitleOf(AppActions.IntroduceParameter);
+            Words why = Refusals.FakeNeedsSeam(named, seam, extract, introduce);
+            return [new EditorFix(AssistWords.TitleOfType(title, named), AssistWords.SeamThen(Refusals.SeamOf(seam), extract, introduce), here, string.Empty)
             {
                 Elsewhere = (_, _) => Task.FromResult(RefactorOutcome.Refused(why)),
             }];
         }
-        string kept = offered.KeepsOwn ? $"its members that are not virtual stay {type}'s own" : string.Empty;
-        return [.. offered.Fakes.Select(place => new EditorFix($"{title} of {type} in {place.Name}",
-            place.Exists ? $"Fakes/{Path.GetFileName(place.File)} is there already" : kept, here, string.Empty)
+        Words kept = offered.KeepsOwn ? AssistWords.NotVirtualStay(named) : Words.Verbatim(string.Empty);
+        return [.. offered.Fakes.Select(place => new EditorFix(AssistWords.FakeIn(title, named, Words.Verbatim(place.Name)),
+            place.Exists ? AssistWords.FakeExists(Words.Verbatim(Path.GetFileName(place.File))) : kept, here, string.Empty)
         {
             Elsewhere = (range, patience) => place.Exists
                 ? Task.FromResult(RefactorOutcome.Refused(Refusals.FakeThere(Path.GetFileName(place.File), place.Name)))
-                : Assist.Actions.MakeAsync(title, file, range.Start,
+                : Assist.Actions.MakeAsync(title.Shown, file, range.Start,
                     now => now.ExtensionAsync<Refactored>(Handlers.CreateFake, new FakeAsked(now.PlaceOf(range.Start), place.Project)),
                     _ => $"Made Fakes/{Path.GetFileName(place.File)} in {place.Name}", patience),
         })];

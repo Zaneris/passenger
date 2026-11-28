@@ -126,7 +126,7 @@ public sealed class DatabaseTableTab : IDatabaseTab
             said = "The connection changed. Reopen this table from Database.";
         }
         Follow();
-        Document.DatabaseTitleChanged();
+        Document.TitleChanged();
     }
 
     /// <summary>Why another page may not be read now: a document database's changes not written, which stand by the page's

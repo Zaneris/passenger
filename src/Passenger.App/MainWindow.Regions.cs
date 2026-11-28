@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using Passenger.App.Docking;
+using Passenger.Core;
 
 namespace Passenger.App;
 
@@ -19,7 +20,7 @@ public partial class MainWindow
     private static readonly ToolAnchor[] BottomPlaces = [ToolAnchor.BottomLeft, ToolAnchor.BottomRight];
 
     /// <summary>A region: what it is told as, the control holding it, and how it takes the keys (false where it could not).</summary>
-    private sealed record Region(string Said, Control Holder, Func<bool> TakeKeys);
+    private sealed record Region(Words Said, Control Holder, Func<bool> TakeKeys);
 
     /// <summary>What the regions are told about, so keys pressed in quick turn are heard as the region they came to.</summary>
     private readonly object regionTold = new();
@@ -41,14 +42,14 @@ public partial class MainWindow
             Words = ["Previous Pane", "Previous Area", "Focus Previous"],
         });
         // A tool window opened over the editors from its edge tab, or put away from there, is told as a region entered is.
-        Dock.PeekChanged += (_, e) => announcer.Tell(e.Over ? $"{e.Window.Title}, tool window over the editors"
-            : e.Window.IsShown ? $"{e.Window.Title}, tool window" : $"{e.Window.Title} hidden", Urgency.Polite, regionTold);
+        Dock.PeekChanged += (_, e) => announcer.Tell((e.Over ? WindowWords.ToolWindowOver(e.Window.Title)
+            : e.Window.IsShown ? WindowWords.ToolWindowRegion(e.Window.Title) : WindowWords.ToolWindowHidden(e.Window.Title)).Shown, Urgency.Polite, regionTold);
     }
 
     /// <summary>The regions shown now, in their order.</summary>
     private List<Region> Regions()
     {
-        List<Region> regions = [new("Toolbar", Toolbar, () => FirstTaking(Toolbar))];
+        List<Region> regions = [new(WindowWords.ToolbarRegion, Toolbar, () => FirstTaking(Toolbar))];
         regions.AddRange(Edge(ToolAnchor.LeftTop));
         regions.AddRange(Dock.ShownAt(LeftPlaces).Where(shown => Laid(shown.Place)).Select(ToolRegion));
         if (Editors.Active is { } file && Laid(Editors))
@@ -58,19 +59,19 @@ public partial class MainWindow
             {
                 regions.Add(new(Passenger.App.Editors.NavigationBar.Said, bar.Bar, bar.TakeKeys));
             }
-            regions.Add(new($"{file.Title}, editor", Editors, () => Editors.ActiveGroup.FocusShown(NavigationMethod.Tab)));
+            regions.Add(new(WindowWords.EditorRegion(file.Tool?.Window.Title ?? Words.Verbatim(file.Title)), Editors, () => Editors.ActiveGroup.FocusShown(NavigationMethod.Tab)));
         }
         regions.AddRange(Dock.ShownAt(RightPlaces).Where(shown => Laid(shown.Place)).Select(ToolRegion));
         regions.AddRange(Edge(ToolAnchor.RightTop));
         regions.AddRange(Dock.ShownAt(BottomPlaces).Where(shown => Laid(shown.Place)).Select(ToolRegion));
         regions.AddRange(Edge(ToolAnchor.BottomLeft));
-        regions.Add(new("Status bar", StatusBarFrame, () => FirstTaking(StatusBarFrame)));
+        regions.Add(new(WindowWords.StatusBarRegion, StatusBarFrame, () => FirstTaking(StatusBarFrame)));
         return regions;
 
         static Region ToolRegion((ToolWindow Window, Control Place) shown) =>
-            new($"{shown.Window.Title}, tool window", shown.Place, () => shown.Window.TakeKeys(NavigationMethod.Tab));
+            new(WindowWords.ToolWindowRegion(shown.Window.Title), shown.Place, () => shown.Window.TakeKeys(NavigationMethod.Tab));
 
-        Region[] Edge(ToolAnchor place) => Dock.EdgeOf(place) is { } edge && Laid(edge) ? [new(edge.Said.Shown, edge, edge.TakeKeys)] : [];
+        Region[] Edge(ToolAnchor place) => Dock.EdgeOf(place) is { } edge && Laid(edge) ? [new(edge.Said, edge, edge.TakeKeys)] : [];
 
         // A maximised tool window leaves the others, and the editors, no room.
         static bool Laid(Control region) => region.IsEffectivelyVisible && region.Bounds.Width > 0 && region.Bounds.Height > 0;
@@ -96,7 +97,7 @@ public partial class MainWindow
             Region region = regions[next];
             if (region.TakeKeys())
             {
-                announcer.Tell(region.Said, Urgency.Polite, regionTold);
+                announcer.Tell(region.Said.Shown, Urgency.Polite, regionTold);
                 return;
             }
         }

@@ -81,7 +81,7 @@ public partial class MainWindow
                 group.Console?.Refresh();
                 if (group.Active is { } sql && SqlConsole.Speaks(sql.Language) && controller.ConsoleOf(sql.Path) is not null)
                 {
-                    sql.DatabaseTitleChanged();
+                    sql.TitleChanged();
                 }
             }
         };

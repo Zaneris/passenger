@@ -15,6 +15,7 @@ using Avalonia.VisualTree;
 using Passenger.App.State;
 using Passenger.App.Tables;
 using Passenger.App.Workspace;
+using Passenger.Core;
 using Passenger.Editor;
 using Passenger.Lsp;
 using Passenger.Text;
@@ -1080,11 +1081,12 @@ public sealed class EditorGroup : DockPanel
         void Paint(EditorTab tab)
         {
             OpenDocument document = tab.Document;
-            name.Text = document.Title;
+            // A tool window's tab says its window's words, again as the language changes.
+            ShownWords.Set(name, TextBlock.TextProperty, document.Tool?.Window.Title ?? Words.Verbatim(document.Title));
             icon.DataKey = document.IconKey;
             icon.ForegroundKey = document.IconBrushKey;
-            ToolTip.SetTip(border, document.Tool is not null || document.DatabaseTab is not null ? document.Title
-                : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path);
+            ShownWords.Set(border, ToolTip.TipProperty, document.Tool?.Window.Title ?? Words.Verbatim(document.DatabaseTab is not null ? document.Title
+                : document.Follows ? $"{document.Path}\n\nFollows the file chosen in the Commit window; pin the tab or edit in it to keep it" : document.Path));
             border.Classes.Set(StyleClasses.Follows, document.Follows);
             border.Classes.Set(StyleClasses.Modified, document.IsModified || document.HasPending);
             Database.DatabaseMark mark = area.MarkOf?.Invoke(document) ?? Database.DatabaseMark.None;

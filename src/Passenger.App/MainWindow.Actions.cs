@@ -78,7 +78,7 @@ public partial class MainWindow
     /// <summary>An action's work from its first moment, begun under its id saying its first stage, so an agent's ide_action
     /// waits for it, hears the popup or dialog it opens as it ends and what it tells; null, said in the status bar, while that
     /// work is under way already.</summary>
-    private Working? BeginWork(string id, string stage)
+    private Working? BeginWork(string id, Words stage)
     {
         if (work.Begin(id, stage, stoppable: false) is { } begun)
         {

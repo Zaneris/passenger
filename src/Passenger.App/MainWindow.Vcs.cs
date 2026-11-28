@@ -590,7 +590,7 @@ public partial class MainWindow
         Choice[] runnable = [.. MainMenu.ActionsIn(MainMenu.Of(registry.All, "Git"))
             .Where(id => id != AppActions.VcsOperations && registry.WhyNot(id, context) is null)
             .Select(id => new Choice(registry[id]!.TitleWhere(context), Words.Verbatim(registry.ShortcutsShown(id) ?? string.Empty), id))];
-        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), "Search Git actions", runnable, Refusals.NoVcsOperations);
+        ChoicePopup popup = new(TitleOf(AppActions.VcsOperations), VcsWords.SearchGitActions, runnable, Refusals.NoVcsOperations);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is string id)

@@ -32,7 +32,7 @@ public partial class MainWindow
         // Held, so what comes next in the window finds the rules offered.
         using IDisposable held = BackgroundWork.Scope();
         InspectionsFound found;
-        using (Working? reading = BeginWork(AppActions.RunInspectionByName, "Reading the analyzers' rules…"))
+        using (Working? reading = BeginWork(AppActions.RunInspectionByName, WindowWords.ReadingRules))
         {
             if (reading is null)
             {
@@ -44,12 +44,12 @@ public partial class MainWindow
             }
             catch (LanguageServerFailed failed)
             {
-                Refuse($"{title} failed: {failed.Reason}");
-                reading.Tell(false, $"{title} failed: {failed.Reason}");
+                Refuse(SharedWords.Failed(title, Words.Verbatim(failed.Reason)));
+                reading.Tell(false, SharedWords.Failed(title, Words.Verbatim(failed.Reason)));
                 return null;
             }
         }
-        ChoicePopup popup = new(title, "Search rules by name or id", [.. found.Rules.Select(r => new Choice(r.Title, $"{r.Id} · {r.Category}", r))], Refusals.NoInspections);
+        ChoicePopup popup = new(title, WindowWords.SearchRules, [.. found.Rules.Select(r => new Choice(r.Title, $"{r.Id} · {r.Category}", r))], Refusals.NoInspections);
         popups.Show(popup, chosen =>
         {
             if (chosen?.Value is EditorConfigDiagnostic rule)
