@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AllUnloaded" xml:space="preserve">
+    <value>Nothing to build: every project is unloaded</value>
+    <comment>Why Build has nothing to build.</comment>
+  </data>
+  <data name="Doing" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuilding {what}…} clean {Cleaning {what}…} publish {Publishing {what}…} other {Building {what}…}}</value>
+    <comment>A build under way (a build, rebuild, clean or publish) of what it builds.</comment>
+  </data>
+  <data name="Stopped" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild stopped} clean {Clean stopped} publish {Publish stopped} other {Build stopped}}</value>
+    <comment>A build (a build, rebuild, clean or publish) stopped.</comment>
+  </data>
+  <data name="Succeeded" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild succeeded} clean {Clean succeeded} publish {Publish succeeded} other {Build succeeded}}</value>
+    <comment>A build (a build, rebuild, clean or publish) that succeeded.</comment>
+  </data>
+  <data name="SucceededWarned" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild succeeded with {warnings, plural, one {# warning} other {# warnings}}} clean {Clean succeeded with {warnings, plural, one {# warning} other {# warnings}}} publish {Publish succeeded with {warnings, plural, one {# warning} other {# warnings}}} other {Build succeeded with {warnings, plural, one {# warning} other {# warnings}}}}</value>
+    <comment>A build that succeeded, with how many warnings it gave.</comment>
+  </data>
+  <data name="FailedBecause" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed: {why}} clean {Clean failed: {why}} publish {Publish failed: {why}} other {Build failed: {why}}}</value>
+    <comment>A build that failed, and the SDK's words why.</comment>
+  </data>
+  <data name="FailedListed" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} clean {Clean failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} publish {Publish failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} other {Build failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them}}</value>
+    <comment>A build that failed, with its errors and warnings, which Problems lists.</comment>
+  </data>
+  <data name="FailedEnded" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} clean {Clean failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} publish {Publish failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} other {Build failed: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why}}</value>
+    <comment>A build that failed with no error to list: how dotnet ended ({exit}, as "exit code 1").</comment>
+  </data>
+  <data name="FailedInListed" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} clean {Clean failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} publish {Publish failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them} other {Build failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; Problems lists them}}</value>
+    <comment>A build of several projects side by side that failed, the projects whose errors it named, with its errors and warnings.</comment>
+  </data>
+  <data name="FailedInEnded" xml:space="preserve">
+    <value>{kind, select, rebuild {Rebuild failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} clean {Clean failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} publish {Publish failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why} other {Build failed in {projects}: {errors, plural, one {# error} other {# errors}}, {warnings, plural, one {# warning} other {# warnings}}; dotnet ended with {exit}, the Build window says why}}</value>
+    <comment>A build of several projects side by side that failed with no error to list, and how dotnet ended.</comment>
+  </data>
+  <data name="WaitingForDesignTime" xml:space="preserve">
+    <value>Waiting for the design-time build of {project} to end…</value>
+    <comment>A build waiting for the design-time build of a project, which writes what it would write.</comment>
+  </data>
+  <data name="WaitingForDesignTimes" xml:space="preserve">
+    <value>{count, plural, one {Waiting for the design-time builds of # project to end…} other {Waiting for the design-time builds of # projects to end…}}</value>
+    <comment>A build waiting for the design-time builds of several projects.</comment>
+  </data>
+  <data name="WaitingForBuild" xml:space="preserve">
+    <value>Waiting for the build under way to end…</value>
+    <comment>A start's build waiting for the build under way.</comment>
+  </data>
+</root>

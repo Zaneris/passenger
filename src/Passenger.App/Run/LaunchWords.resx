@@ -492,4 +492,136 @@
     <value>Godot's editor could not open on {project}: {why}</value>
     <comment>Godot's editor, which the person chose to open for a play, that could not open, and why.</comment>
   </data>
+  <data name="StartingDashboard" xml:space="preserve">
+    <value>Starting Aspire's dashboard for {name}'s logs and traces…</value>
+    <comment>A start's stage: Aspire's dashboard started to show a program's logs and traces.</comment>
+  </data>
+  <data name="WorkingOut" xml:space="preserve">
+    <value>{verb, select, debug {Working out how to debug {name}…} other {Working out how to run {name}…}}</value>
+    <comment>A start's first stage: what the run configuration starts read.</comment>
+  </data>
+  <data name="WorkingOutCopy" xml:space="preserve">
+    <value>{verb, select, debug {Working out how to debug another copy of {name}…} other {Working out how to run another copy of {name}…}}</value>
+    <comment>Run or Debug Another Copy's first stage.</comment>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Starting {name}…</value>
+    <comment>A start's stage: the program started.</comment>
+  </data>
+  <data name="StartingCopy" xml:space="preserve">
+    <value>Starting {name}, {copy, number} of {count, number}…</value>
+    <comment>A start of several copies of a program: which one starts.</comment>
+  </data>
+  <data name="RunningCopies" xml:space="preserve">
+    <value>{reload, select, reloaded {{window, select, terminal {Running {count, number} copies of {name} with Hot Reload: a save applies its changes in each, each in a tab of the Terminal window} other {Running {count, number} copies of {name} with Hot Reload: a save applies its changes in each, each in a tab of the Run window}}} other {{window, select, terminal {Running {count, number} copies of {name}, each in a tab of the Terminal window} other {Running {count, number} copies of {name}, each in a tab of the Run window}}}}</value>
+    <comment>Several copies of a program running, with Hot Reload or not, each in a tab of the Terminal or Run window.</comment>
+  </data>
+  <data name="RunningBeside" xml:space="preserve">
+    <value>{window, select, terminal {Running {copy} beside {name}, in a tab of the Terminal window} other {Running {copy} beside {name}, in a tab of the Run window}}</value>
+    <comment>Another copy of a program running beside those running.</comment>
+  </data>
+  <data name="RestartingToApply" xml:space="preserve">
+    <value>Hot Reload: restarting {name} to apply the changes</value>
+    <comment>Hot Reload restarting a program whose changes it cannot apply as it runs.</comment>
+  </data>
+  <data name="RestartingToApplyGoing" xml:space="preserve">
+    <value>Restarting {name} to apply the changes…</value>
+    <comment>Hot Reload's restart under way.</comment>
+  </data>
+  <data name="AttachingForHotReload" xml:space="preserve">
+    <value>Attaching to {name} for Hot Reload…</value>
+    <comment>A start's stage: the debugger attached quietly so Hot Reload can apply changes.</comment>
+  </data>
+  <data name="StoppingStart" xml:space="preserve">
+    <value>{doing, select, debug {Stopping the start of {name} under way to debug it…} profile {Stopping the start of {name} under way to profile it…} other {Stopping the start of {name} under way to run it…}}</value>
+    <comment>A start ending the start of the same configuration under way first, to run, debug or profile it.</comment>
+  </data>
+  <data name="EndingCopies" xml:space="preserve">
+    <value>{doing, select, debug {Ending the copies of {name} Run runs to debug it…} profile {Ending the copies of {name} Run runs to profile it…} other {Ending the copies of {name} Run runs to run it…}}</value>
+    <comment>A start ending the copies of the configuration Run runs first.</comment>
+  </data>
+  <data name="EndingRun" xml:space="preserve">
+    <value>{doing, select, debug {Ending {name}'s run to debug it…} profile {Ending {name}'s run to profile it…} other {Ending {name}'s run to run it…}}</value>
+    <comment>A start ending the configuration's run first.</comment>
+  </data>
+  <data name="EndingDebugging" xml:space="preserve">
+    <value>{doing, select, debug {Ending the debugging of {name} to debug it…} profile {Ending the debugging of {name} to profile it…} other {Ending the debugging of {name} to run it…}}</value>
+    <comment>A start ending the configuration's debugging first.</comment>
+  </data>
+  <data name="EndingToRestart" xml:space="preserve">
+    <value>Ending {name}'s run to start it again…</value>
+    <comment>Rerun ending the run before it starts it again.</comment>
+  </data>
+  <data name="LookingAtChanges" xml:space="preserve">
+    <value>Looking at what changed in {name}…</value>
+    <comment>Rerun of an AppHost looking at what changed in it.</comment>
+  </data>
+  <data name="AppHostChanged" xml:space="preserve">
+    <value>{name}'s AppHost changed: stopping it to build and run it again…</value>
+    <comment>Rerun of an AppHost whose own code changed.</comment>
+  </data>
+  <data name="Restarting" xml:space="preserve">
+    <value>Restarting {name}…</value>
+    <comment>A debugged program restarted.</comment>
+  </data>
+  <data name="StartingDebugged" xml:space="preserve">
+    <value>Starting {name} under the debugger…</value>
+    <comment>Debug's stage: the program started under the debugger.</comment>
+  </data>
+  <data name="StartingByFunc" xml:space="preserve">
+    <value>Starting {name} by func, its worker held for the debugger…</value>
+    <comment>Debug's stage for a Functions app: func started, its worker held for the debugger.</comment>
+  </data>
+  <data name="StartingHeld" xml:space="preserve">
+    <value>Starting {name} under the debugger, held at its start until the debugger has it…</value>
+    <comment>Debug's stage: a program held at its start for the debugger to attach.</comment>
+  </data>
+  <data name="ScriptNotReached" xml:space="preserve">
+    <value>Hot Reload: {file} did not reach {game}: {why}</value>
+    <comment>A GDScript file's reload that did not reach a running game, and why.</comment>
+  </data>
+  <data name="ScriptReloaded" xml:space="preserve">
+    <value>Hot Reload: {file} reloaded in {games}</value>
+    <comment>A GDScript file reloaded in the running games named.</comment>
+  </data>
+  <data name="RunningReloaded" xml:space="preserve">
+    <value>Running {name} with Hot Reload: a save applies its changes</value>
+    <comment>A program running with Hot Reload.</comment>
+  </data>
+  <data name="RunningUnreloaded" xml:space="preserve">
+    <value>Running {name} without Hot Reload: {why}</value>
+    <comment>A program running without Hot Reload, and why.</comment>
+  </data>
+  <data name="Running" xml:space="preserve">
+    <value>Running {name}</value>
+    <comment>A program running.</comment>
+  </data>
+  <data name="EachService" xml:space="preserve">
+    <value>each .NET service it starts</value>
+    <comment>The services an AppHost's Debug debugs where none is marked Debug, said in "Debugging X: … under the debugger".</comment>
+  </data>
+  <data name="ItsService" xml:space="preserve">
+    <value>its service</value>
+    <comment>The service an AppHost's Profile records, where its name is not known, said in "Profiling … of X".</comment>
+  </data>
+  <data name="ItsServices" xml:space="preserve">
+    <value>its .NET services</value>
+    <comment>The services an AppHost runs.</comment>
+  </data>
+  <data name="ServicesDebugged" xml:space="preserve">
+    <value>Debugging {name}: {services} under the debugger</value>
+    <comment>A run of services up, the services named debugged.</comment>
+  </data>
+  <data name="ServicesReloaded" xml:space="preserve">
+    <value>Running {name} with Hot Reload: a save applies its changes to {services}</value>
+    <comment>A run of services up with Hot Reload.</comment>
+  </data>
+  <data name="ServiceProfiled" xml:space="preserve">
+    <value>Profiling {services} of {name}: Get Snapshot when it has done what is to be measured</value>
+    <comment>A run of services up, the service named profiled.</comment>
+  </data>
+  <data name="RunningReloadedAgain" xml:space="preserve">
+    <value>Running {name} again with Hot Reload: a save applies its changes</value>
+    <comment>dotnet watch's program running again with Hot Reload after its build was mended.</comment>
+  </data>
 </root>

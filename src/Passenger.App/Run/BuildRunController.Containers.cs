@@ -401,7 +401,7 @@ public sealed partial class BuildRunController
         }
         // Up: what its services publish is reached now.
         RunningChanged?.Invoke(this, EventArgs.Empty);
-        string what = ServicesStarted(chosen.Name, how, Plural.Listed([.. debugged.Select(s => s.Service)]));
+        string what = ServicesStarted(chosen.Name, how, Plural.Listed(Words.Names(debugged.Select(s => s.Service)))).Shown;
         parts.Say($"{what}{(how == RunStart.Run ? ":" : ";")} {Plural.Of(plan.Running.Count(), ".NET service")} from Passenger's build"
             + $"{(plan.Mode == ContainerMode.Images ? " images" : string.Empty)}, {Plural.Of(plan.Backing.Count(plan.Touched.Contains), "other service")}; Stop takes them down"
             + (notes.Count > 0 ? $" ({string.Join("; ", notes)})" : string.Empty),

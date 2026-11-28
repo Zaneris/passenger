@@ -421,7 +421,7 @@ public sealed partial class BuildRunController
         }
         if (buildQueue.Count == 0)
         {
-            BuildOutcome nothing = new(BuildStatus.Refused, (whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : "Nothing to build: every project is unloaded"));
+            BuildOutcome nothing = new(BuildStatus.Refused, (whole.Count == 1 && PathNames.Same(whole[0], session.Folder) ? Refusals.NothingToBuild : BuildWords.AllUnloaded));
             publishing = null;
             together = null;
             work?.Tell(false, nothing.Message);
@@ -450,7 +450,7 @@ public sealed partial class BuildRunController
         building = new TaskCompletionSource();
         BackgroundWork.Track(building.Task);
         // A build is a start Stop ends, as the Build window's Stop does; held until it ends, whoever began it.
-        buildWork = work ?? parts.Work.Begin(AppActions.Build, $"Building {together?.Shown ?? Path.GetFileName(buildQueue.Peek())}…");
+        buildWork = work ?? parts.Work.Begin(AppActions.Build, BuildWords.Doing("build", together?.Shown ?? Path.GetFileName(buildQueue.Peek())));
         if (unsaved is not null)
         {
             // It would compile the text on disk, not what the editor shows.
@@ -473,7 +473,7 @@ public sealed partial class BuildRunController
         string stage = (work?.Stage ?? string.Empty).Shown;
         if (FileText.Landings().Count > 0 && await EditorArea.LandedAsync(work, stopping) is { } unsaved)
         {
-            FinishBuild(work is { IsStopped: true } ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved));
+            FinishBuild(work is { IsStopped: true } ? new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("build")) : new BuildOutcome(BuildStatus.NotStarted, unsaved));
             return;
         }
         try
@@ -490,7 +490,7 @@ public sealed partial class BuildRunController
         }
         if (work is { IsStopped: true })
         {
-            FinishBuild(new BuildOutcome(BuildStatus.Stopped, "Build stopped"));
+            FinishBuild(new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("build")));
         }
         else if (session.IsEnded)
         {
@@ -555,10 +555,9 @@ public sealed partial class BuildRunController
     private void BuildNext(bool first = false)
     {
         string target = buildQueue.Dequeue();
-        string verb = buildKind switch { BuildKind.Rebuild => "Rebuilding", BuildKind.Clean => "Cleaning", BuildKind.Publish => "Publishing", _ => "Building" };
-        string what = publishing is { } shown ? shown.Shown : together?.Shown ?? Path.GetFileName(target);
-        parts.Say($"{verb} {what}…");
-        buildWork?.Say($"{verb} {what}…");
+        Words doing = BuildWords.Doing(KindOf(buildKind), publishing is { } shown ? shown.Shown : together?.Shown ?? Path.GetFileName(target));
+        parts.Say(doing);
+        buildWork?.Say(doing);
         bool windows = WindowsTargeting(together?.Projects ?? [target]);
         IReadOnlyList<string> arguments = BuildOutput.TakenBy(publishing is { } publish ? publish.Arguments(windows)
             : BuildOutput.Arguments(target, buildKind, buildFramework, windows, buildOutput, [.. Configured(target), .. buildProperties ?? []]), session.Models.SdkVersion);
@@ -684,7 +683,7 @@ public sealed partial class BuildRunController
         {
             string which = running.Count == 1 ? $"build of {Path.GetFileNameWithoutExtension(running[0])}" : $"builds of {Numbers.Said(running.Count)} projects";
             parts.Views.Build.Append($"Waiting for the design-time {which} to end\n");
-            buildWork?.Say($"Waiting for the design-time {which} to end…");
+            buildWork?.Say(running.Count == 1 ? BuildWords.WaitingForDesignTime(Path.GetFileNameWithoutExtension(running[0])) : BuildWords.WaitingForDesignTimes(running.Count));
         }
     }, stop);
 
@@ -740,19 +739,20 @@ public sealed partial class BuildRunController
         List<Problem> problems = session.Problems;
         int errors = problems.Count(p => p.Severity == ProblemSeverity.Error);
         int warnings = problems.Count - errors;
-        string noun = buildKind switch { BuildKind.Rebuild => "Rebuild", BuildKind.Clean => "Clean", BuildKind.Publish => "Publish", _ => "Build" };
+        string kind = KindOf(buildKind);
         string warned = warnings > 0 ? $" with {Plural.Of(warnings, "warning")}" : "";
         if (code == 0 && !session.Builder.WasStopped && publishing is { Kind: PublishKind.AppHost } appHost)
         {
             IdeErrors.Observe(LandAsync(appHost, warned));
             return;
         }
-        BuildOutcome ended = session.Builder.WasStopped ? new BuildOutcome(BuildStatus.Stopped, $"{noun} stopped")
+        BuildOutcome ended = session.Builder.WasStopped ? new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped(kind))
             : code == 0 && publishing is { } publish ? Published(publish, warned)
-            : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, $"{noun} succeeded{warned}")
-            : problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { } chose ? new BuildOutcome(BuildStatus.Failed, $"{noun} failed: {chose.Message.Split('\n')[0]}")
-            : new BuildOutcome(BuildStatus.Failed, $"{noun} failed{FailedIn(problems)}: {Plural.Of(errors, "error")}, {Plural.Of(warnings, "warning")}; "
-                + (errors > 0 ? "Problems lists them" : $"dotnet ended with {ExitCodes.Said(code)}, the Build window says why"));
+            : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, warnings > 0 ? BuildWords.SucceededWarned(kind, warnings) : BuildWords.Succeeded(kind))
+            : problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { } chose ? new BuildOutcome(BuildStatus.Failed, BuildWords.FailedBecause(kind, Words.Verbatim(chose.Message.Split('\n')[0])))
+            : new BuildOutcome(BuildStatus.Failed, FailedIn(problems) is { } failedIn
+                ? (errors > 0 ? BuildWords.FailedInListed(kind, failedIn, errors, warnings) : BuildWords.FailedInEnded(kind, failedIn, errors, warnings, ExitCodes.Words(code)))
+                : errors > 0 ? BuildWords.FailedListed(kind, errors, warnings) : BuildWords.FailedEnded(kind, errors, warnings, ExitCodes.Words(code)));
         if (ended.Succeeded && buildKind != BuildKind.Clean && CompilingXaml() is { Count: > 0 } xaml)
         {
             IdeErrors.Observe(CheckXamlAsync(xaml, ended));
@@ -792,13 +792,16 @@ public sealed partial class BuildRunController
         Keep(ended);
     }
 
-    /// <summary>Where a build of projects side by side failed: " in" and the projects its errors name, so each service whose
-    /// build failed is said, though their output came together; nothing for any other build.</summary>
-    private string FailedIn(IEnumerable<Problem> problems) =>
+    /// <summary>Where a build of projects side by side failed: the projects its errors name, so each service whose build
+    /// failed is said, though their output came together; null for any other build.</summary>
+    private Words? FailedIn(IEnumerable<Problem> problems) =>
         together is not null && problems.Where(p => p.Severity == ProblemSeverity.Error && p.Project is not null).Select(p => p.Project!)
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList() is { Count: > 0 } named
-            ? $" in {Plural.Listed(named)}"
-            : string.Empty;
+            ? Plural.Listed(Words.Names(named))
+            : null;
+
+    /// <summary>A kind of build as its words choose by it.</summary>
+    private static string KindOf(BuildKind kind) => kind switch { BuildKind.Rebuild => "rebuild", BuildKind.Clean => "clean", BuildKind.Publish => "publish", _ => "build" };
 
     /// <summary>Whether a build of these projects needs EnableWindowsTargeting, one of them or a project it references needing it.</summary>
     private bool WindowsTargeting(IReadOnlyList<string> projects) => projects.Any(p => BuildOutput.WindowsTargeting(p, session.Projects));
@@ -848,7 +851,7 @@ public sealed partial class BuildRunController
     /// output when it failed with none read; nowhere for a build that succeeded cleanly, was stopped or never started.</summary>
     public StatusPlace? Place(BuildOutcome ended) =>
         ended is { Succeeded: true, Published: { } folder } && parts.ShowFolder is { } show
-            ? new StatusPlace($"open {Path.GetFileName(folder)} in {FileManager.Name}", () => show(folder))
+            ? new StatusPlace($"open {Path.GetFileName(folder)} in {FileManager.Name.Shown}", () => show(folder))
         : ended.Status == BuildStatus.Failed && ended.Problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { Path: { } chose } placed && parts.Navigate is { } navigate
             ? new StatusPlace($"open {Path.GetFileName(chose)}", () => navigate(chose, placed.Position))
         : ended.Problems.Count > 0 ? StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, _ => true)
@@ -1009,7 +1012,7 @@ public sealed partial class BuildRunController
         {
             if (!told.IsCompleted)
             {
-                work.Say($"Starting Aspire's dashboard for {chosen.Name}'s logs and traces…");
+                work.Say(LaunchWords.StartingDashboard(chosen.Name));
             }
             try
             {
@@ -1164,14 +1167,14 @@ public sealed partial class BuildRunController
             {
                 // Begun before this start or while it checked, a build may change what the check reads.
                 string? stage = (work?.Stage)?.Shown;
-                work?.Say("Waiting for the build under way to end…");
+                work?.Say(BuildWords.WaitingForBuild);
                 try
                 {
                     await under.Task.WaitAsync(stopping);
                 }
                 catch (OperationCanceledException) when (stopping.IsCancellationRequested)
                 {
-                    return new BuildOutcome(BuildStatus.Stopped, "Build stopped");
+                    return new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("build"));
                 }
                 if (stage is not null && work is { IsStopped: false })
                 {
@@ -1183,7 +1186,7 @@ public sealed partial class BuildRunController
             reading?.Invoke();
             if (await parts.Editors.SaveAllLandedAsync(work, stopping) is { } unsaved)
             {
-                return stopping.IsCancellationRequested ? new BuildOutcome(BuildStatus.Stopped, "Build stopped") : new BuildOutcome(BuildStatus.NotStarted, unsaved);
+                return stopping.IsCancellationRequested ? new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("build")) : new BuildOutcome(BuildStatus.NotStarted, unsaved);
             }
             bool windows = WindowsTargeting(projects);
             string state = parts.StateFolder();
@@ -1203,7 +1206,7 @@ public sealed partial class BuildRunController
                 projects.Count > 1 ? TogetherBuild.Write(state, folder, projects, within.BuiltTogetherWith(projects)) : null));
             if (stopping.IsCancellationRequested)
             {
-                return new BuildOutcome(BuildStatus.Stopped, "Build stopped");
+                return new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("build"));
             }
             if (IsBuilding)
             {
@@ -1220,7 +1223,7 @@ public sealed partial class BuildRunController
             checks = [.. found.OfType<UpToDate.Check>()];
             break;
         }
-        work?.Say($"Building {string.Join(", ", projects.Select(Path.GetFileNameWithoutExtension))}…");
+        work?.Say(BuildWords.Doing("build", string.Join(", ", projects.Select(Path.GetFileNameWithoutExtension))));
         TaskCompletionSource<BuildOutcome> ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // Where they cannot be built together (TogetherBuild.Write's null), they are built one after another.
         Start(BuildKind.Build, side is null ? projects : [side.Project], outcome => ended.TrySetResult(outcome), framework, BuildCause.BeforeLaunch, null, null, output, side,
@@ -1294,7 +1297,7 @@ public sealed partial class BuildRunController
             return Said(LaunchWords.ProfiledHasConsole(profiled.Name));
         }
         // Begun before what runs of it ends, so an agent's Run hears this start through to its hand-over.
-        if (parts.Work.Begin(AppActions.RunProgram, $"Working out how to run {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.RunProgram, LaunchWords.WorkingOut("run", chosen.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
         }
@@ -1407,7 +1410,7 @@ public sealed partial class BuildRunController
             }
             // A game of GDScript alone takes its saved scripts over its own connection: no debugger holds its start for C#'s edits.
             bool heldStart = reloaded && !plan.ScriptsAlone && plan.Device is null && plan.MacCatalyst is null;
-            work.Say($"Starting {chosen.Name}…");
+            work.Say(LaunchWords.Starting(chosen.Name));
             ran = chosen.Name;
             RunProject = Path.GetDirectoryName(plan.Project);
             // A Godot game's, with Passenger as its remote debugger.
@@ -1415,11 +1418,11 @@ public sealed partial class BuildRunController
             game?.ReloadsScripts = reloaded;
             game?.Console = parts.Views.Run.Fold;
             session.RunPlan = plan;
-            string running = watched || reloaded ? $"Running {chosen.Name} with Hot Reload: a save applies its changes"
-                : unreloaded is not null ? $"Running {chosen.Name} without Hot Reload: {unreloaded}"
-                : wanted && godot && !plan.ScriptsAlone ? $"Running {chosen.Name} without Hot Reload: {GodotLaunch.EditorReloads}"
-                : functions && (hotReload ?? parts.Settings().HotReload) ? $"Running {chosen.Name} without Hot Reload: {Refusals.FunctionsUnreloaded}"
-                : $"Running {chosen.Name}";
+            Words running = watched || reloaded ? LaunchWords.RunningReloaded(chosen.Name)
+                : unreloaded is not null ? LaunchWords.RunningUnreloaded(chosen.Name, unreloaded)
+                : wanted && godot && !plan.ScriptsAlone ? LaunchWords.RunningUnreloaded(chosen.Name, Words.Verbatim(GodotLaunch.EditorReloads))
+                : functions && (hotReload ?? parts.Settings().HotReload) ? LaunchWords.RunningUnreloaded(chosen.Name, Refusals.FunctionsUnreloaded)
+                : LaunchWords.Running(chosen.Name);
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
             LaunchPlan launched = session.InspectedRun(plan, watched);
             LiveApp? inspected = session.RunApp;
@@ -1430,7 +1433,7 @@ public sealed partial class BuildRunController
             handlers ??= deviceHandlers;
             if (unrelayed is not null)
             {
-                running = $"Running {chosen.Name} without Hot Reload: {unrelayed}";
+                running = LaunchWords.RunningUnreloaded(chosen.Name, Words.Verbatim(unrelayed));
             }
             if (relay is null && onDevice is not null)
             {
@@ -1625,7 +1628,7 @@ public sealed partial class BuildRunController
             List<string> started = [];
             for (int copy = 1; copy <= count; copy++)
             {
-                work.Say($"Starting {CopyName(chosen, copy)}, {copy} of {Numbers.Said(count)}…");
+                work.Say(LaunchWords.StartingCopy(CopyName(chosen, copy), copy, count));
                 BuiltEdits? its = each[copy - 1];
                 each[copy - 1] = null;
                 if (await (inTerminal ? RunCopyInTerminalAsync(chosen, plan, copy, reloaded, work, its) : RunCopyAsync(chosen, plan, tabs[copy - 1], reloaded, work, its)) is { } refused)
@@ -1639,7 +1642,7 @@ public sealed partial class BuildRunController
                 started.Add(CopyName(chosen, copy));
             }
             string window = inTerminal ? ToolWindowIds.Terminal : ToolWindowIds.Run;
-            parts.Say($"Running {Numbers.Said(count)} copies of {chosen.Name}{(reloaded && !plan.ScriptsAlone ? " with Hot Reload: a save applies its changes in each" : string.Empty)}, each in a tab of the {(inTerminal ? "Terminal" : "Run")} window",
+            parts.Say(LaunchWords.RunningCopies(reloaded && !plan.ScriptsAlone ? "reloaded" : "other", inTerminal ? "terminal" : "run", count, chosen.Name),
                 StatusPlace.Window(parts.Dock, window));
             return null;
         }
@@ -1700,7 +1703,7 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             return null;
         }
-        await AttachForHotReloadAsync(each.Name, process, tab.Console, work, edits, $"Running {each.Name} with Hot Reload: a save applies its changes",
+        await AttachForHotReloadAsync(each.Name, process, tab.Console, work, edits, LaunchWords.RunningReloaded(each.Name),
             builds: ProgramBuild.Of(each));
         return null;
     }
@@ -1751,7 +1754,7 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             return unfollowed.Why;
         }
-        await AttachForHotReloadAsync(each.Name, run.Debuggee, null, work, edits, $"Running {each.Name} with Hot Reload: a save applies its changes",
+        await AttachForHotReloadAsync(each.Name, run.Debuggee, null, work, edits, LaunchWords.RunningReloaded(each.Name),
             builds: ProgramBuild.Of(each));
         return null;
 
@@ -1797,7 +1800,7 @@ public sealed partial class BuildRunController
         {
             return Said(why);
         }
-        if (parts.Work.Begin(AppActions.RunProgram, $"Working out how to run another copy of {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.RunProgram, LaunchWords.WorkingOutCopy("run", chosen.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
         }
@@ -1815,7 +1818,7 @@ public sealed partial class BuildRunController
             {
                 return Said(gone);
             }
-            work.Say($"Starting {CopyName(chosen, next)}…");
+            work.Say(LaunchWords.Starting(CopyName(chosen, next)));
             bool reloaded = parts.Settings().HotReload && chosen.NamesNoOtherProgram(session.Projects);
             // The edits since the build the copies run, as the first of them attached for Hot Reload follows them.
             string? first = RunsOwnProgram(chosen.Name) ? chosen.Name
@@ -1828,7 +1831,7 @@ public sealed partial class BuildRunController
                 {
                     return Said(unstarted);
                 }
-                parts.Say($"Running {CopyName(chosen, next)} beside {chosen.Name}, in a tab of the Terminal window", StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
+                parts.Say(LaunchWords.RunningBeside("terminal", CopyName(chosen, next), chosen.Name), StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
                 return null;
             }
             // The ended copies of it give their tabs up; the game in the Run console is the first copy's tab, over the console.
@@ -1852,7 +1855,7 @@ public sealed partial class BuildRunController
                 tab.Set(PartState.Ended);
                 return Said(refused);
             }
-            parts.Say($"Running {CopyName(chosen, next)} beside {chosen.Name}, in a tab of the Run window", StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+            parts.Say(LaunchWords.RunningBeside("run", CopyName(chosen, next), chosen.Name), StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
             return null;
         }
     }
@@ -1922,7 +1925,7 @@ public sealed partial class BuildRunController
         }
         if (partRuns.FirstOrDefault(p => p.Name == name && p.Project is not null) is { } part)
         {
-            parts.Say($"Hot Reload: restarting {name} to apply the changes");
+            parts.Say(LaunchWords.RestartingToApply(name));
             return await RestartPartAsync(part);
         }
         if (copyRuns.FirstOrDefault(c => c.Run.Name == name) is { Run: { } copy } run)
@@ -1938,7 +1941,7 @@ public sealed partial class BuildRunController
         {
             return false;
         }
-        parts.Say($"Hot Reload: restarting {name} to apply the changes");
+        parts.Say(LaunchWords.RestartingToApply(name));
         return await RunAsync(hotReload: true, scene: SceneOf(running)) is null;
     }
 
@@ -1954,14 +1957,14 @@ public sealed partial class BuildRunController
     /// edits from this build, the other copies running on. True once it runs again.</summary>
     private async Task<bool> RestartTerminalCopyAsync(RunConfiguration chosen, TerminalRun copy, int place)
     {
-        if (parts.Work.Begin(AppActions.RunProgram, $"Restarting {copy.Name} to apply the changes…") is not { } work)
+        if (parts.Work.Begin(AppActions.RunProgram, LaunchWords.RestartingToApplyGoing(copy.Name)) is not { } work)
         {
             return false;
         }
         using (work)
         using (BackgroundWork.Scope())
         {
-            parts.Say($"Hot Reload: restarting {copy.Name} to apply the changes");
+            parts.Say(LaunchWords.RestartingToApply(copy.Name));
             copy.Stop();
             await copy.Ended;
             BuiltEdits? edits = null;
@@ -2007,10 +2010,10 @@ public sealed partial class BuildRunController
     /// lets it go: what its applies come to is said in <paramref name="console"/> (null for the terminal's tab, whose text is
     /// the program's own) and the status bar, which says <paramref name="running"/> once attached. One the debugger cannot
     /// reach is let go and runs without Hot Reload, saying why.</summary>
-    private async Task AttachForHotReloadAsync(string name, int processId, OutputView? console, Working work, BuiltEdits? edits, string running,
+    private async Task AttachForHotReloadAsync(string name, int processId, OutputView? console, Working work, BuiltEdits? edits, Words running,
         UpdateHandlerHook? handlers = null, LiveApp? app = null, ProgramBuild? builds = null)
     {
-        work.Say($"Attaching to {name} for Hot Reload…");
+        work.Say(LaunchWords.AttachingForHotReload(name));
         Words? refused = await session.Debug.AttachForHotReloadAsync(processId, name, (line, error) =>
         {
             console?.Append($"{line}\n", error);
@@ -2023,7 +2026,7 @@ public sealed partial class BuildRunController
         }
         // Held at its start, it would wait for good for a debugger that is not coming.
         await HeldStart.LetGoAsync(processId);
-        Running(work, $"Running {name} without Hot Reload: {refused}");
+        Running(work, LaunchWords.RunningUnreloaded(name, refused));
     }
 
     /// <summary>Why a start of a configuration cannot have the Run console (or the terminal's tab): another configuration's
@@ -2060,7 +2063,7 @@ public sealed partial class BuildRunController
         }
         if (under.Length > 0)
         {
-            work.Say($"Stopping the start of {chosen.Name} under way to {doing} it…");
+            work.Say(LaunchWords.StoppingStart(doing, chosen.Name));
             foreach (Working other in under)
             {
                 other.Cancel();
@@ -2073,7 +2076,7 @@ public sealed partial class BuildRunController
         }
         if (copies)
         {
-            work.Say($"Ending the copies of {chosen.Name} Run runs to {doing} it…");
+            work.Say(LaunchWords.EndingCopies(doing, chosen.Name));
             await Task.WhenAll(EndCopyRunsAsync(chosen.Name), EndPartRunsAsync(chosen.Name));
             if (session.IsEnded)
             {
@@ -2082,7 +2085,7 @@ public sealed partial class BuildRunController
         }
         if (RunsOwnProgram(chosen.Name))
         {
-            work.Say($"Ending {chosen.Name}'s run to {doing} it…");
+            work.Say(LaunchWords.EndingRun(doing, chosen.Name));
             if (parts.Work.Of(AppActions.RunProgram) is { } starting && starting != work)
             {
                 starting.Cancel();
@@ -2098,7 +2101,7 @@ public sealed partial class BuildRunController
         List<DebugTab> debugging = [.. session.Debug.CopiesOf(chosen.Name).Select(c => c.Tab).Where(t => debugged.ContainsKey(t.Name))];
         if (debugging.Count > 0)
         {
-            work.Say($"Ending the debugging of {chosen.Name} to {doing} it…");
+            work.Say(LaunchWords.EndingDebugging(doing, chosen.Name));
             if (await session.Debug.EndAsync(debugging) is { } kept)
             {
                 return kept;
@@ -2289,7 +2292,7 @@ public sealed partial class BuildRunController
                 {
                     waits = false;
                     ListErrors([]);
-                    string again = started ? $"Running {name} again with Hot Reload: a save applies its changes" : $"Running {name} with Hot Reload: a save applies its changes";
+                    Words again = started ? LaunchWords.RunningReloadedAgain(name) : LaunchWords.RunningReloaded(name);
                     parts.Views.Run.ShowWaiting(null);
                     parts.Say(again);
                     WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Applied, again));
@@ -2395,7 +2398,7 @@ public sealed partial class BuildRunController
     {
         // Each start under its own action's work: Debug's, Profile's, else Run's.
         string action = mode switch { RunStart.Debug => AppActions.Debug, RunStart.Profile => AppActions.Profile, _ => AppActions.RunProgram };
-        if (parts.Work.Begin(action, $"Starting {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(action, LaunchWords.Starting(chosen.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(action)!));
         }
@@ -2434,7 +2437,7 @@ public sealed partial class BuildRunController
                     .Select(app => app.Group).Distinct(StringComparer.Ordinal)];
                 if (running.Count > 0)
                 {
-                    work.Say($"Ending {chosen.Name}'s run to start it again…");
+                    work.Say(LaunchWords.EndingToRestart(chosen.Name));
                     foreach (string group in running)
                     {
                         await session.Aspire.StopGroupAsync(group);
@@ -2462,7 +2465,7 @@ public sealed partial class BuildRunController
                 string? own = session.Aspire.Apps.LastOrDefault(app => !app.IsTest && PathNames.Same(app.Configuration.Project, configuration.Project))?.Group;
                 AspireAppRun[] started = [.. session.Aspire.Apps.Where(app => !app.IsTest && app.Group == own)];
                 aspireEnd = Ended(started);
-                parts.Say(AspireStarted(configuration, mode, started) + (https.OverHttp is { } overHttp ? $" ({overHttp})" : string.Empty),
+                parts.Say(https.OverHttp is { } overHttp ? LaunchWords.WithCaveat(AspireStarted(configuration, mode, started), overHttp) : AspireStarted(configuration, mode, started),
                     StatusPlace.Window(parts.Dock, ToolWindowIds.Aspire));
                 RunningChanged?.Invoke(this, EventArgs.Empty);
                 return null;
@@ -2486,25 +2489,25 @@ public sealed partial class BuildRunController
 
     /// <summary>What an AppHost's start says once up (<see cref="ServicesStarted"/>): the services it debugs are those marked
     /// Debug, else each it starts; the service profiled is the one recorded.</summary>
-    private static string AspireStarted(RunConfiguration configuration, RunStart mode, IReadOnlyList<AspireAppRun> started)
+    private static Words AspireStarted(RunConfiguration configuration, RunStart mode, IReadOnlyList<AspireAppRun> started)
     {
         string[] marked = [.. configuration.ServiceActions.Where(pair => pair.Value == ServiceStart.Debug).Select(pair => pair.Key).Order(StringComparer.Ordinal)];
         return ServicesStarted(configuration.Name, mode, mode switch
         {
-            RunStart.Debug => marked.Length > 0 ? Plural.Listed(marked) : "each .NET service it starts",
-            RunStart.Profile => started.Select(app => app.Profiled?.Name).OfType<string>().FirstOrDefault() ?? "its service",
-            _ => "its .NET services",
+            RunStart.Debug => marked.Length > 0 ? Plural.Listed(Words.Names(marked)) : LaunchWords.EachService,
+            RunStart.Profile => started.Select(app => app.Profiled?.Name).OfType<string>().FirstOrDefault() is { } profiled ? Words.Verbatim(profiled) : LaunchWords.ItsService,
+            _ => LaunchWords.ItsServices,
         });
     }
 
     /// <summary>What a run of services' start says once up, every kind's: debugged, the <paramref name="services"/> under the
     /// debugger; run with Hot Reload, a save applying to them; profiled, the one recorded; or run.</summary>
-    private static string ServicesStarted(string name, RunStart how, string services) => how switch
+    private static Words ServicesStarted(string name, RunStart how, Words services) => how switch
     {
-        RunStart.Debug => $"Debugging {name}: {services} under the debugger",
-        RunStart.HotReload => $"Running {name} with Hot Reload: a save applies its changes to {services}",
-        RunStart.Profile => $"Profiling {services} of {name}: Get Snapshot when it has done what is to be measured",
-        _ => $"Running {name}",
+        RunStart.Debug => LaunchWords.ServicesDebugged(name, services),
+        RunStart.HotReload => LaunchWords.ServicesReloaded(name, services),
+        RunStart.Profile => LaunchWords.ServiceProfiled(services, name),
+        _ => LaunchWords.Running(name),
     };
 
     public Task<Words?> ProfileAspireAsync(RunConfiguration configuration, string? arguments = null, CancellationToken cancellation = default) =>
@@ -2564,7 +2567,7 @@ public sealed partial class BuildRunController
 
     private async Task<Words?> RerunAspireAsync(RunConfiguration chosen, AspireAppRun main)
     {
-        if (parts.Work.Begin(AppActions.RunProgram, $"Looking at what changed in {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.RunProgram, LaunchWords.LookingAtChanges(chosen.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!));
         }
@@ -2617,7 +2620,7 @@ public sealed partial class BuildRunController
         // An AppHost's own code changed: it and its services stop, then it is built and run again as it was run.
         RunConfiguration again = main.Configuration;
         RunStart mode = main.Mode;
-        parts.Say($"{chosen.Name}'s AppHost changed: stopping it to build and run it again…");
+        parts.Say(LaunchWords.AppHostChanged(chosen.Name));
         await session.Aspire.StopGroupAsync(main.Group);
         return session.IsEnded ? Refusals.SolutionClosed : await RunAspireAsync(again, null, mode);
     }
@@ -2668,7 +2671,7 @@ public sealed partial class BuildRunController
     /// why not.</summary>
     private async Task<Words?> RestartDebuggedCopyAsync(RunConfiguration configuration, string? arguments, ToolWindows.DebugTab tab, int copy)
     {
-        if (parts.Work.Begin(AppActions.Debug, $"Restarting {tab.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.Debug, LaunchWords.Restarting(tab.Name)) is not { } work)
         {
             return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
         }
@@ -2716,7 +2719,7 @@ public sealed partial class BuildRunController
         {
             return await inEditor(chosen, true, cancellation);
         }
-        if (parts.Work.Begin(AppActions.Debug, $"Working out how to debug {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.Debug, LaunchWords.WorkingOut("debug", chosen.Name)) is not { } work)
         {
             return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
         }
@@ -2817,7 +2820,7 @@ public sealed partial class BuildRunController
         {
             return why;
         }
-        if (parts.Work.Begin(AppActions.Debug, $"Working out how to debug another copy of {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.Debug, LaunchWords.WorkingOutCopy("debug", chosen.Name)) is not { } work)
         {
             return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
         }
@@ -2909,7 +2912,7 @@ public sealed partial class BuildRunController
         {
             return await DebugPackageAsync(plan, package, work, edits);
         }
-        work.Say($"Starting {chosen.Name} under the debugger…");
+        work.Say(LaunchWords.StartingDebugged(chosen.Name));
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
         // Before the session clears the Debug window's console, which forgets the links the last one's output had.
@@ -2981,7 +2984,7 @@ public sealed partial class BuildRunController
     /// and func ended with the session. Null once the session is open, else why not.</summary>
     private async Task<Words?> DebugFunctionsAsync(LaunchPlan plan, Working work, BuiltEdits? edits)
     {
-        work.Say($"Starting {plan.Name} by func, its worker held for the debugger…");
+        work.Say(LaunchWords.StartingByFunc(plan.Name));
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
         DebugProject = Path.GetDirectoryName(plan.Project);
@@ -3005,7 +3008,7 @@ public sealed partial class BuildRunController
         {
             return unregistered;
         }
-        work.Say($"Starting {plan.Name} under the debugger, held at its start until the debugger has it…");
+        work.Say(LaunchWords.StartingHeld(plan.Name));
         parts.Dock.Show(ToolWindowIds.Debug);
         parts.Views.Debug.ShowTab(console: true);
         DebugProject = Path.GetDirectoryName(plan.Project);
@@ -3108,7 +3111,7 @@ public sealed partial class BuildRunController
             }
             catch (LiveAppException lost)
             {
-                parts.Say($"Hot Reload: {Path.GetFileName(path)} did not reach {game.Name}: {lost.Message}");
+                parts.Say(LaunchWords.ScriptNotReached(Path.GetFileName(path), game.Name, Words.Verbatim(lost.Message)));
                 continue;
             }
             reloaded.Add(game.Name);
@@ -3122,7 +3125,7 @@ public sealed partial class BuildRunController
         if (reloaded.Count > 0)
         {
             await session.Debug.ScriptReloadedAsync(path);
-            parts.Say($"Hot Reload: {Path.GetFileName(path)} reloaded in {Plural.Listed(reloaded)}");
+            parts.Say(LaunchWords.ScriptReloaded(Path.GetFileName(path), Plural.Listed(Words.Names(reloaded))));
         }
     }
 
