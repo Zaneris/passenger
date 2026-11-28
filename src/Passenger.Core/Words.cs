@@ -102,6 +102,11 @@ public sealed class Words : IEquatable<Words>
 
     public override int GetHashCode() => HashCode.Combine(resources, name, patterned, arguments.Length);
 
+    /// <summary>Whether both are the same words (<see cref="Equals(Words?)"/>), as a refusal compared with the one expected is.</summary>
+    public static bool operator ==(Words? left, Words? right) => left is null ? right is null : left.Equals(right);
+
+    public static bool operator !=(Words? left, Words? right) => !(left == right);
+
     /// <summary>The message read in the nearest culture of <paramref name="language"/>'s chain that gives the key with the
     /// English's arguments, else the English, and the culture it is written in (the invariant one for English).</summary>
     private (MessagePattern Pattern, CultureInfo Written) Pattern(UiLanguage language)

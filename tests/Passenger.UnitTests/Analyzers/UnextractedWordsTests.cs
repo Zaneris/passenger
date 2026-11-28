@@ -38,6 +38,8 @@ public class UnextractedWordsTests
         ("Assert.Equal([name], new List<Words>());", "Equal compares Words with a string", null),
         ("Assert.Contains(name, new List<Words>());", "Contains compares Words with a string", null),
         ("bool same = Words.Verbatim(name).Equals(name);", "Equals compares Words with a string", null),
+        ("bool same = Words.Verbatim(name) == name;", "== compares Words with a string", null),
+        ("bool same = Words.Verbatim(name) != Words.Verbatim(name);", null, null),
         ("Assert.Equal(\"Saved\", Words.Verbatim(name).English);", null, null),
         ("Assert.Equal(Words.Verbatim(name), Words.Verbatim(name));", null, null),
         ("Words w = new System.Exception().Message;", "new System.Exception().Message, an exception's message, is made Words", "messages"),
@@ -63,6 +65,8 @@ public class UnextractedWordsTests
                 public string Shown => null!;
                 public string English => null!;
                 public bool Equals(Words? other) => false;
+                public static bool operator ==(Words? left, Words? right) => false;
+                public static bool operator !=(Words? left, Words? right) => false;
             }
         }
         namespace Avalonia { public class AvaloniaObject { } }
