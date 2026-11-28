@@ -40,7 +40,7 @@ public sealed class BuildThenDebugTests
             }
             window.BottomPanel.Build.Flush();
             string console = window.BottomPanel.Build.Document.Snapshot.ToString();
-            Assert.True(debugged == 0 && console.Contains(BuildRunController.UpToDateSaid("App"), StringComparison.Ordinal),
+            Assert.True(debugged == 0 && console.Contains(BuildRunController.UpToDateSaid("App").English, StringComparison.Ordinal),
                 $"Debug right after Build Selected Projects built App again: {debugged} dotnet builds started, and the Build window says:\n{console}");
             window.BottomPanel.Debug.Console.Flush();
             string output = window.BottomPanel.Debug.Console.Document.Snapshot.ToString();

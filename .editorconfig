@@ -36,7 +36,7 @@ dotnet_diagnostic.PSG0012.severity = warning
 [src/Passenger.App/Debugging/HotReloadOutcome.cs]
 dotnet_diagnostic.PSG0012.severity = warning
 
-[src/Passenger.App/Run/{Building.cs,BuildRunController.cs,BuildRunController.Certificate.cs,BuildRunController.Scripts.cs,BuildRunController.TerminalNeeds.cs}]
+[src/Passenger.App/Run/{Building.cs,BuildRunController*.cs}]
 dotnet_diagnostic.PSG0012.severity = warning
 
 [src/Passenger.App/MainWindow.GodotEditorPlay.cs]
@@ -74,3 +74,4 @@ dotnet_diagnostic.PSG0012.severity = warning
 
 [src/Passenger.App/Navigation/**.cs]
 dotnet_diagnostic.PSG0012.severity = warning
+

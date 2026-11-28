@@ -247,7 +247,7 @@ public sealed class ProjectLoadTests : IDisposable
         Assert.StartsWith("Nothing runs", window.Status, StringComparison.Ordinal);
         Button said = StatusMessage(window);
         Assert.True(window.StatusPlace is null && !said.Focusable && said.Cursor is null && ToolTip.GetTip(said) as string == window.Status,
-            $"The status bar's next words, which go nowhere, still look like a link (place '{window.StatusPlace?.Name}', cursor {said.Cursor}, tooltip \"{ToolTip.GetTip(said)}\")");
+            $"The status bar's next words, which go nowhere, still look like a link (place '{window.StatusPlace?.Name.English}', cursor {said.Cursor}, tooltip \"{ToolTip.GetTip(said)}\")");
         ClickStatus(window);
         Assert.True(!window.DockHost.IsShown(ToolWindowIds.Problems) && problems.Shown == ProblemsTab.File,
             "A click on status bar words that go nowhere showed Problems, as the load error said before them did");
@@ -278,7 +278,7 @@ public sealed class ProjectLoadTests : IDisposable
         Assert.True(window.WorkspaceModel is { Solution: null, Unread: not null } read && read.Projects.Select(p => p.Path).SequenceEqual([PathNames.Canonical(project)]),
             $"The folder whose solution does not read has {string.Join(", ", window.WorkspaceModel?.Projects.Select(p => p.Name) ?? [])} open, not the project under it");
 
-        Assert.Equal("open Shop.slnx where it stops reading", window.StatusPlace?.Name);
+        Assert.Equal("open Shop.slnx where it stops reading", window.StatusPlace?.Name.English);
         ClickStatus(window);
         OpenDocument shown = window.EditorArea.Active!;
         Assert.True(PathNames.Same(shown.Path, PathNames.Canonical(solution)), $"A click on the status bar's words opened {shown.Path}, not Shop.slnx");

@@ -45,7 +45,7 @@ public sealed partial class BuildRunController
     {
         string doing = debug ? "debug" : "run";
         string action = debug ? AppActions.Debug : AppActions.RunProgram;
-        if (parts.Work.Begin(action, $"Working out how to {doing} {chosen.Name}…") is not { } work)
+        if (parts.Work.Begin(action, LaunchWords.WorkingOut(doing, chosen.Name)) is not { } work)
         {
             return Said(ActionWork.Busy(parts.Work.Of(action)!));
         }
@@ -67,7 +67,7 @@ public sealed partial class BuildRunController
         // A start of it again ends its last, as a configuration's start does.
         if (IsRunningConfiguration(chosen.Name))
         {
-            work.Say($"Ending {chosen.Name}'s last start…");
+            work.Say(LaunchWords.EndingLastStart(chosen.Name));
             await EndProjectsAsync(chosen.Name);
             if (session.IsEnded)
             {
@@ -178,7 +178,7 @@ public sealed partial class BuildRunController
                 }
                 if (!collected.IsCompleted)
                 {
-                    work.Say($"Starting Aspire's dashboard for {starts[i].Name}'s logs and traces…");
+                    work.Say(LaunchWords.StartingDashboard(starts[i].Name));
                 }
                 try
                 {
@@ -219,7 +219,7 @@ public sealed partial class BuildRunController
                 PartRun? tab = tabs[i];
                 // Each program follows its own copy of the edits since the build: the last takes the first's.
                 BuiltEdits? its = edits is null || start.Plan is null ? null : i == LastPlanned(starts) ? Take(ref edits) : session.Debug.Copied(edits);
-                work.Say($"Starting {start.Name}, {i + 1} of {Numbers.Said(starts.Count)}…");
+                work.Say(LaunchWords.StartingCopy(start.Name, i + 1, starts.Count));
                 // What the parts after it wait for, heard from its first line.
                 using PartReadiness readiness = new(start.Part, start.Name, start.Configuration is not null);
                 if (tab is not null)
@@ -306,7 +306,7 @@ public sealed partial class BuildRunController
             // What a program run in the terminal says of its start goes with the status, its tab being the program's own.
             List<string> notes = [.. starts.Where(s => !s.Debugged).SelectMany(s => s.Plan?.Notes ?? s.Notes)];
             profileStarts[chosen.Name] = (inTabs, ran, notes);
-            parts.Say(string.Join("; ", [ProjectsStarted(chosen.Name, inTabs, [.. ran.Select(r => r.Name)], [.. ran.Select(r => r is TerminalRun)]), .. notes]),
+            parts.Say(notes.Aggregate(Started(chosen.Name, inTabs, [.. ran.Select(r => r.Name)], [.. ran.Select(r => r is TerminalRun)]), (said, note) => Clauses.Then(said, note)),
                 ran.Count > 0 && inTabs.Count == 0 ? StatusPlace.Window(parts.Dock, ran.All(r => r is TerminalRun) ? ToolWindowIds.Terminal : ToolWindowIds.Run) : null);
             return null;
 
@@ -404,18 +404,23 @@ public sealed partial class BuildRunController
 
     /// <summary>What a run of several parts says once its programs have started: those debugged, each in a Debug tab, and
     /// those run, each in a tab of the Run window or, where <paramref name="inTerminal"/> says, of the Terminal window.</summary>
-    public static string ProjectsStarted(string name, IReadOnlyList<string> debugged, IReadOnlyList<string> ran, IReadOnlyList<bool> inTerminal)
+    public static Words Started(string name, IReadOnlyList<string> debugged, IReadOnlyList<string> ran, IReadOnlyList<bool> inTerminal)
     {
         List<string> windows = [.. ran.Where((_, i) => !inTerminal[i])];
         List<string> terminal = [.. ran.Where((_, i) => inTerminal[i])];
-        string without = debugged.Count > 0 ? " without it" : string.Empty;
-        return $"{(debugged.Count > 0 ? "Debugging" : "Running")} {name}: "
-            + string.Join("; ", ((string?[])[
-                debugged.Count == 0 ? null : $"{Plural.Listed(debugged)} under the debugger, {(debugged.Count == 1 ? "in a Debug tab" : "each in a Debug tab of its own")}",
-                windows.Count == 0 ? null : $"{Plural.Listed(windows)}{without}, {(windows.Count == 1 ? "in a tab of the Run window" : "each in a tab of the Run window")}",
-                terminal.Count == 0 ? null : $"{Plural.Listed(terminal)}{without}, {(terminal.Count == 1 ? "in a tab of the Terminal window" : "each in a tab of the Terminal window")}",
-            ]).OfType<string>());
+        string without = debugged.Count > 0 ? "without" : "other";
+        Words said = ((Words?[])[
+            debugged.Count == 0 ? null : LaunchWords.PartsDebugged(names: Plural.Listed(Words.Names(debugged)), count: debugged.Count),
+            windows.Count == 0 ? null : LaunchWords.PartsInRun(without: without, names: Plural.Listed(Words.Names(windows)), count: windows.Count),
+            terminal.Count == 0 ? null : LaunchWords.PartsInTerminal(without: without, names: Plural.Listed(Words.Names(terminal)), count: terminal.Count),
+        ]).OfType<Words>().Aggregate(Clauses.Then);
+        return LaunchWords.PartsStarted(debugged.Count > 0 ? "debug" : "run", name, said);
     }
+
+    /// <summary>What a run of several parts says once its programs have started (<see cref="Started"/>), in English, as an
+    /// agent reads it.</summary>
+    public static string ProjectsStarted(string name, IReadOnlyList<string> debugged, IReadOnlyList<string> ran, IReadOnlyList<bool> inTerminal) =>
+        Started(name, debugged, ran, inTerminal).English;
 
     /// <summary>A part's tab follows its buttons: Rerun restarts its part alone, the others running on, and Stop ends it alone.
     /// A part over the Run window's own console (a Compose part's) is followed by that console's buttons, the window's
@@ -492,9 +497,9 @@ public sealed partial class BuildRunController
     public async Task<bool> RestartPartAsync(PartRun part)
     {
         UiThread.Check();
-        if (parts.Work.Begin(AppActions.RunProgram, $"Restarting {part.Name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.RunProgram, LaunchWords.Restarting(part.Name)) is not { } work)
         {
-            part.Console.Append($"{ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!)}\n", error: true);
+            part.Console.Append($"{ActionWork.Busy(parts.Work.Of(AppActions.RunProgram)!).Shown}\n", error: true);
             return false;
         }
         using (work)
@@ -538,13 +543,13 @@ public sealed partial class BuildRunController
             }
             if (refused is not null)
             {
-                part.Console.Append(LaunchWords.PartNotRestarted(part.Name, refused).Shown + "\n", error: true);
+                part.Console.Append($"{LaunchWords.PartNotRestarted(part.Name, refused).Shown}\n", error: true);
                 part.Set(PartState.Ended);
                 return false;
             }
             part.Set(PartState.Running);
             RunningChanged?.Invoke(this, EventArgs.Empty);
-            parts.Say($"Restarted {part.Name}, {part.Run}'s other {(part.Copy is null ? "parts" : "copies")} running on", StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+            parts.Say(LaunchWords.RestartedPart(part.Copy is null ? "part" : "copy", part.Name, part.Run), StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
             return true;
         }
     }
@@ -604,7 +609,7 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             return null;
         }
-        await AttachForHotReloadAsync(plan.Name, process, tab.Console, work, edits, $"Running {plan.Name} with Hot Reload: a save applies its changes",
+        await AttachForHotReloadAsync(plan.Name, process, tab.Console, work, edits, LaunchWords.RunningReloaded(plan.Name),
             builds: ProgramBuild.Of(plan));
         return null;
     }
@@ -649,7 +654,7 @@ public sealed partial class BuildRunController
             edits?.Dispose();
             return null;
         }
-        await AttachForHotReloadAsync(plan.Name, run.Debuggee, null, work, edits, $"Running {plan.Name} with Hot Reload: a save applies its changes",
+        await AttachForHotReloadAsync(plan.Name, run.Debuggee, null, work, edits, LaunchWords.RunningReloaded(plan.Name),
             builds: ProgramBuild.Of(plan));
         return null;
 
@@ -668,14 +673,14 @@ public sealed partial class BuildRunController
     private async Task<bool> RestartProfileRunAsync(TerminalRun running)
     {
         if (!profileRuns.TryGetValue(running, out (RunConfiguration Profile, RunConfiguration Project, int Place) its)
-            || parts.Work.Begin(AppActions.RunProgram, $"Restarting {running.Name} to apply the changes…") is not { } work)
+            || parts.Work.Begin(AppActions.RunProgram, LaunchWords.RestartingToApplyGoing(running.Name)) is not { } work)
         {
             return false;
         }
         using (work)
         using (BackgroundWork.Scope())
         {
-            parts.Say($"Hot Reload: restarting {running.Name} to apply the changes");
+            parts.Say(LaunchWords.RestartingToApply(running.Name));
             running.Stop();
             await running.Ended;
             BuiltEdits? edits = null;
@@ -726,7 +731,7 @@ public sealed partial class BuildRunController
     /// its session is open, else why not.</summary>
     private async Task<Words?> RestartProfileTabAsync(string name, RunConfiguration profile, RunConfiguration configuration, int place)
     {
-        if (parts.Work.Begin(AppActions.Debug, $"Restarting {name}…") is not { } work)
+        if (parts.Work.Begin(AppActions.Debug, LaunchWords.Restarting(name)) is not { } work)
         {
             return ActionWork.Busy(parts.Work.Of(AppActions.Debug)!);
         }

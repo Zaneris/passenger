@@ -104,4 +104,12 @@
     <value>Import</value>
     <comment>What a usage does where it is: imports the symbol.</comment>
   </data>
+  <data name="OpenWindow" xml:space="preserve">
+    <value>open the {window} window</value>
+    <comment>What a click on the status bar's words does, after "Click to": a tool window shown.</comment>
+  </data>
+  <data name="SeeInProblems" xml:space="preserve">
+    <value>see it in Problems, {tab}</value>
+    <comment>What a click on the status bar's words does, after "Click to": Problems shown on one of its tabs.</comment>
+  </data>
 </root>

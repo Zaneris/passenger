@@ -275,7 +275,7 @@ public sealed partial class BuildRunController
         UnfollowWatched();
         parts.Views.Run.SetRunning(false);
         // The folder's last container run is said only while its log is what ran here, not a program run after it.
-        string said = session.ContainerRun is { } containers && containers.Name == ran ? ContainersEnded(containers) : RunEnded(ran, code);
+        Words said = session.ContainerRun is { } containers && containers.Name == ran ? ContainersEnded(containers) : Exited(ran, code);
         // What ran has ended: no configuration of it runs, whatever else does (an AppHost).
         ran = string.Empty;
         RunningChanged?.Invoke(this, EventArgs.Empty);
@@ -293,8 +293,11 @@ public sealed partial class BuildRunController
     /// <see cref="BuildFinished"/>.</summary>
     public Func<Task>? LettingGo { get; set; }
 
-    /// <summary>How a run that ended is named, in the status bar and to an agent.</summary>
-    public static string RunEnded(string name, int code) => $"{name} ended with {ExitCodes.Said(code)}";
+    /// <summary>How a run that ended is named, in the status bar.</summary>
+    public static Words Exited(string name, int code) => LaunchWords.Ended(name, ExitCodes.Words(code));
+
+    /// <summary>How a run that ended is named to an agent, in English (<see cref="Exited"/>).</summary>
+    public static string RunEnded(string name, int code) => Exited(name, code).English;
 
     /// <summary>Whether a build, rebuild or clean is under way, from its start until its callers have heard how it ended.</summary>
     public bool IsBuilding => building is not null;
@@ -470,7 +473,7 @@ public sealed partial class BuildRunController
     {
         Working? work = buildWork;
         CancellationToken stopping = work?.Stopping ?? CancellationToken.None;
-        string stage = (work?.Stage ?? string.Empty).Shown;
+        Words? stage = work?.Stage;
         if (FileText.Landings().Count > 0 && await EditorArea.LandedAsync(work, stopping) is { } unsaved)
         {
             FinishBuild(work is { IsStopped: true } ? new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped("build")) : new BuildOutcome(BuildStatus.NotStarted, unsaved));
@@ -478,7 +481,13 @@ public sealed partial class BuildRunController
         }
         try
         {
-            await session.ProjectsAsWrittenAsync(said => work?.Say(said ?? stage), stopping);
+            await session.ProjectsAsWrittenAsync(said =>
+            {
+                if ((said is null ? stage : said) is { } now)
+                {
+                    work?.Say(now);
+                }
+            }, stopping);
             if (joining)
             {
                 await JoinAsync();
@@ -740,14 +749,13 @@ public sealed partial class BuildRunController
         int errors = problems.Count(p => p.Severity == ProblemSeverity.Error);
         int warnings = problems.Count - errors;
         string kind = KindOf(buildKind);
-        string warned = warnings > 0 ? $" with {Plural.Of(warnings, "warning")}" : "";
         if (code == 0 && !session.Builder.WasStopped && publishing is { Kind: PublishKind.AppHost } appHost)
         {
-            IdeErrors.Observe(LandAsync(appHost, warned));
+            IdeErrors.Observe(LandAsync(appHost, warnings));
             return;
         }
         BuildOutcome ended = session.Builder.WasStopped ? new BuildOutcome(BuildStatus.Stopped, BuildWords.Stopped(kind))
-            : code == 0 && publishing is { } publish ? Published(publish, warned)
+            : code == 0 && publishing is { } publish ? Published(publish, warnings)
             : code == 0 ? new BuildOutcome(BuildStatus.Succeeded, warnings > 0 ? BuildWords.SucceededWarned(kind, warnings) : BuildWords.Succeeded(kind))
             : problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { } chose ? new BuildOutcome(BuildStatus.Failed, BuildWords.FailedBecause(kind, Words.Verbatim(chose.Message.Split('\n')[0])))
             : new BuildOutcome(BuildStatus.Failed, FailedIn(problems) is { } failedIn
@@ -851,9 +859,9 @@ public sealed partial class BuildRunController
     /// output when it failed with none read; nowhere for a build that succeeded cleanly, was stopped or never started.</summary>
     public StatusPlace? Place(BuildOutcome ended) =>
         ended is { Succeeded: true, Published: { } folder } && parts.ShowFolder is { } show
-            ? new StatusPlace($"open {Path.GetFileName(folder)} in {FileManager.Name.Shown}", () => show(folder))
+            ? new StatusPlace(BuildWords.OpenFolderIn(Path.GetFileName(folder), FileManager.Name), () => show(folder))
         : ended.Status == BuildStatus.Failed && ended.Problems.FirstOrDefault(Run.SdkChosen.IsPlaced) is { Path: { } chose } placed && parts.Navigate is { } navigate
-            ? new StatusPlace($"open {Path.GetFileName(chose)}", () => navigate(chose, placed.Position))
+            ? new StatusPlace(BuildWords.OpenFile(Path.GetFileName(chose)), () => navigate(chose, placed.Position))
         : ended.Problems.Count > 0 ? StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, _ => true)
         : ended.Status == BuildStatus.Failed ? StatusPlace.Window(parts.Dock, ToolWindowIds.Build)
         : null;
@@ -950,8 +958,11 @@ public sealed partial class BuildRunController
 
     /// <summary>What Rerun of a run of services says once done, every kind's: the services restarted with their new build
     /// (with <paramref name="more"/>, what else came of it), or that nothing changed.</summary>
-    public static string Reran(string name, IReadOnlyList<string> restarted, string? more = null) => restarted.Count == 0
-        ? $"{name}: nothing changed, nothing restarted" : $"{name}: restarted {string.Join(", ", restarted)} with the new build{more}";
+    public static Words Reran(string name, IReadOnlyList<Words> restarted, string? answers = null) => restarted.Count == 0 ? LaunchWords.NothingRestarted(name)
+        : answers is null ? LaunchWords.Reran(name, Beside(restarted)) : LaunchWords.ReranAnswering(name, Beside(restarted), answers);
+
+    /// <summary>Things named one after another, apart as the language parts a list of names in a sentence.</summary>
+    private static Words Beside(IReadOnlyList<Words> items) => items.Aggregate(Clauses.Beside);
 
     /// <summary>A configuration's plan with its build before launch done: the plan to start, or why there is none, the folder
     /// left or Stop meanwhile among the reasons; <c>Unresolved</c> when the problem is the plan's own (what the configuration
@@ -1144,11 +1155,10 @@ public sealed partial class BuildRunController
         BuildForAsync([step.Project], work.Stopping, work, step.Framework, step.Output, reading, configured, step.Properties);
 
     /// <summary>What a start says of a project it did not build: nothing its build reads changed since its last.</summary>
-    public static string UpToDateSaid(string project) => $"{project} is up to date: nothing its build reads has changed since it was built, so it was not built again";
+    public static Words UpToDateSaid(string project) => BuildWords.UpToDate(project);
 
     /// <summary>What a start says of projects it did not build, one or several.</summary>
-    public static string UpToDateSaid(IReadOnlyList<string> projects) => projects.Count == 1 ? UpToDateSaid(projects[0])
-        : $"{Plural.Listed(projects)} are up to date: nothing their builds read has changed since they were built, so they were not built again";
+    public static Words UpToDateSaid(IReadOnlyList<string> projects) => projects.Count == 1 ? UpToDateSaid(projects[0]) : BuildWords.AllUpToDate(Plural.Listed(Words.Names(projects)));
 
     /// <summary>A start's build of its projects (<see cref="BuildForAsync(BuildStep, CancellationToken)"/>), several side by
     /// side in one dotnet build (<see cref="TogetherBuild"/>), after any build under way: none is built when the last build
@@ -1166,7 +1176,7 @@ public sealed partial class BuildRunController
             if (building is { } under)
             {
                 // Begun before this start or while it checked, a build may change what the check reads.
-                string? stage = (work?.Stage)?.Shown;
+                Words? stage = work?.Stage;
                 work?.Say(BuildWords.WaitingForBuild);
                 try
                 {
@@ -1214,9 +1224,9 @@ public sealed partial class BuildRunController
             }
             if (found.All(check => check is { Holds: true }) && !session.IsEnded)
             {
-                string said = UpToDateSaid([.. projects.Select(project => Path.GetFileNameWithoutExtension(project))]);
+                Words said = UpToDateSaid([.. projects.Select(project => Path.GetFileNameWithoutExtension(project))]);
                 parts.Views.Build.Clear();
-                parts.Views.Build.Append($"{said}\n");
+                parts.Views.Build.Append($"{said.English}\n");
                 parts.Say(said);
                 return new BuildOutcome(BuildStatus.Succeeded, said);
             }
@@ -1420,7 +1430,7 @@ public sealed partial class BuildRunController
             session.RunPlan = plan;
             Words running = watched || reloaded ? LaunchWords.RunningReloaded(chosen.Name)
                 : unreloaded is not null ? LaunchWords.RunningUnreloaded(chosen.Name, unreloaded)
-                : wanted && godot && !plan.ScriptsAlone ? LaunchWords.RunningUnreloaded(chosen.Name, Words.Verbatim(GodotLaunch.EditorReloads))
+                : wanted && godot && !plan.ScriptsAlone ? LaunchWords.RunningUnreloaded(chosen.Name, GodotLaunch.EditorReloads)
                 : functions && (hotReload ?? parts.Settings().HotReload) ? LaunchWords.RunningUnreloaded(chosen.Name, Refusals.FunctionsUnreloaded)
                 : LaunchWords.Running(chosen.Name);
             // An Avalonia or WPF app is launched with the inspector in it, which tells of its failed bindings while it runs.
@@ -1428,12 +1438,12 @@ public sealed partial class BuildRunController
             LiveApp? inspected = session.RunApp;
             // Held from its first step on a device until what it puts in there is out again, which Stop and the folder's end wait for.
             using Devices.DeviceStart? onDevice = (plan.Device?.App ?? (Devices.IDeviceApp?)plan.MacCatalyst?.App) is { } app ? session.StartsOnDevice(chosen.Name, app) : null;
-            (Devices.RelaySession? relay, UpdateHandlerHook? deviceHandlers, string? unrelayed) = reloaded && onDevice is not null
+            (Devices.RelaySession? relay, UpdateHandlerHook? deviceHandlers, Words? unrelayed) = reloaded && onDevice is not null
                 ? await RelayOnDeviceAsync(plan, onDevice, inspected, work) : (null, null, null);
             handlers ??= deviceHandlers;
             if (unrelayed is not null)
             {
-                running = LaunchWords.RunningUnreloaded(chosen.Name, Words.Verbatim(unrelayed));
+                running = LaunchWords.RunningUnreloaded(chosen.Name, unrelayed);
             }
             if (relay is null && onDevice is not null)
             {
@@ -1487,7 +1497,7 @@ public sealed partial class BuildRunController
                 string program = GodotConsole.Program(plan, plan.Program);
                 // What the run says of itself goes with its status, the terminal's tab being the program's own.
                 Words? refused = await RunInTerminalAsync(chosen.Name, watched ? DotnetStart(Watch(plan), plan.WorkingDirectory) : ChildProcesses.Command(program, plan.Arguments, plan.WorkingDirectory), variables,
-                    string.Join("; ", [running, .. plan.Notes]), work);
+                    plan.Notes.Aggregate(running, (said, note) => Clauses.Then(said, note)), work);
                 if (refused is null && session.InTerminal is { } inTerminal)
                 {
                     parts.OpenBrowser(plan, inTerminal.Ended);
@@ -2185,7 +2195,7 @@ public sealed partial class BuildRunController
             RunningChanged?.Invoke(this, EventArgs.Empty);
             if (session.InTerminal == run)
             {
-                parts.Say(RunEnded(name, code), StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
+                parts.Say(Exited(name, code), StatusPlace.Window(parts.Dock, ToolWindowIds.Terminal));
             }
         }
     }
@@ -2237,7 +2247,7 @@ public sealed partial class BuildRunController
     {
         UnfollowWatched();
         ProcessRunner runner = session.Runner;
-        string? ended = null;
+        Words? ended = null;
         bool waits = false;
         bool started = false;
         // While the program runs, the lines that are not dotnet watch's are its own, never its build's.
@@ -2257,24 +2267,22 @@ public sealed partial class BuildRunController
             }
             if (line.Contains(WatchWaits, StringComparison.Ordinal))
             {
-                string end = ended ?? $"{name} ended";
-                SayWaiting($"Hot Reload: {end}; dotnet watch starts it again when a change is saved, or Rerun starts it now",
-                    $"{end}: dotnet watch starts it again when a change is saved", rerun: true, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+                Words end = ended ?? LaunchWords.EndedUncoded(name);
+                SayWaiting(LaunchWords.WatchRestarts(end), LaunchWords.WatchRestartsShown(end), rerun: true, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
             }
             else if (line.Contains(WatchBuildFails, StringComparison.Ordinal))
             {
                 List<Problem> failed = errors;
                 ListErrors(failed);
-                const string later = "dotnet watch builds it again when a change is saved";
                 if (failed.Count == 0)
                 {
-                    SayWaiting($"Hot Reload: {name}'s build failed; {later}", $"{name}'s build failed: {later}", rerun: false, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
+                    SayWaiting(LaunchWords.WatchBuildFailed(name), LaunchWords.WatchBuildFailedShown(name), rerun: false, StatusPlace.Window(parts.Dock, ToolWindowIds.Run));
                     return;
                 }
                 Problem first = failed[0];
-                string more = failed.Count > 1 ? $", and {Plural.Of(failed.Count - 1, "more error")}" : string.Empty;
-                SayWaiting($"Hot Reload: {name}'s build failed: {first.Message}{(first.Where is { Length: > 0 } where ? $" ({where})" : string.Empty)}{more}; {later}",
-                    $"{name}'s build failed with {Plural.Of(failed.Count, "error")}: {later}", rerun: false,
+                Words error = first.Where is { Length: > 0 } where ? LaunchWords.ErrorAt(first.Message, where) : Words.Verbatim(first.Message);
+                SayWaiting(failed.Count > 1 ? LaunchWords.WatchBuildErrors(name, error, failed.Count - 1) : LaunchWords.WatchBuildError(name, error),
+                    LaunchWords.WatchBuildErrorsShown(name, failed.Count), rerun: false,
                     StatusPlace.Problems(parts.Dock, parts.Views.Problems, ProblemsTab.Build, p => p == first));
             }
             else if (WatchedEnd(line, name) is { } end)
@@ -2308,12 +2316,12 @@ public sealed partial class BuildRunController
         };
 
         // dotnet watch waits for a change: the status bar says why, a click going where it has more, and the Run window too.
-        void SayWaiting(string said, string shown, bool rerun, StatusPlace place)
+        void SayWaiting(Words said, Words shown, bool rerun, StatusPlace place)
         {
             waits = true;
             runs = false;
             errors = [];
-            parts.Views.Run.ShowWaiting(shown, rerun);
+            parts.Views.Run.ShowWaiting(shown.Shown, rerun);
             parts.Say(said, place);
             WatchSaid?.Invoke(this, new HotReloadOutcome(HotReloadResult.Failed, said));
         }
@@ -2340,7 +2348,7 @@ public sealed partial class BuildRunController
 
     /// <summary>How a line of dotnet watch's says the program it ran ended ("dotnet watch : [Hello (net10.0)] Exited", "…
     /// Exited with error code 134"), the program named <paramref name="name"/>; null for any other line.</summary>
-    private static string? WatchedEnd(string line, string name)
+    private static Words? WatchedEnd(string line, string name)
     {
         const string exited = "] Exited";
         const string coded = " with error code ";
@@ -2350,10 +2358,10 @@ public sealed partial class BuildRunController
             return null;
         }
         ReadOnlySpan<char> rest = line.AsSpan(at + exited.Length).TrimEnd();
-        return rest.IsEmpty ? RunEnded(name, 0)
+        return rest.IsEmpty ? Exited(name, 0)
             : rest.StartsWith(coded, StringComparison.Ordinal)
-                && int.TryParse(rest[coded.Length..].TrimEnd('.'), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int code) ? RunEnded(name, code)
-            : $"{name} ended";
+                && int.TryParse(rest[coded.Length..].TrimEnd('.'), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int code) ? Exited(name, code)
+            : LaunchWords.EndedUncoded(name);
     }
 
     /// <summary>A run that could not start leaves the Run window idle, Stop as the debugger has it, and says why.</summary>
@@ -2596,7 +2604,7 @@ public sealed partial class BuildRunController
                 }
                 if (!hostChanged)
                 {
-                    List<string> restarted = [];
+                    List<Words> restarted = [];
                     foreach ((AspireAppRun app, List<AspireResourceRun> changes) in services.Where(s => s.Changed.Count > 0))
                     {
                         // Sessions first, held again, each stopped before its build.
@@ -2605,8 +2613,8 @@ public sealed partial class BuildRunController
                             return Said(failed);
                         }
                         // Replicas share their service's name, said once with their count.
-                        restarted.AddRange(changes.GroupBy(s => ((IRunService)s).Name).Select(named => named.Count() == 1 ? named.Key
-                            : $"{named.Key} ({Plural.Of(named.Count(), "replica")})"));
+                        restarted.AddRange(changes.GroupBy(s => ((IRunService)s).Name).Select(named => named.Count() == 1 ? Words.Verbatim(named.Key)
+                            : LaunchWords.Replicas(named.Key, named.Count())));
                     }
                     parts.Say(Reran(chosen.Name, restarted));
                     return null;

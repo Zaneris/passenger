@@ -194,7 +194,7 @@ public partial class MainWindow
     }
 
     /// <summary>Why Godot's editor Run started takes no Hot Reload (<see cref="GodotLaunch.EditorReloads"/>).</summary>
-    public static string GodotEditorRunsWithout(string name) => $"{name} runs without Hot Reload: {GodotLaunch.EditorReloads}";
+    public static Words GodotEditorRunsWithout(string name) => LaunchWords.RunsUnreloaded(name, GodotLaunch.EditorReloads);
 
     /// <summary>The words dotnet watch says an apply came to with, on a line of its own that begins "dotnet watch" (as Run
     /// starts it, its emojis suppressed), what each means, and what it came to.</summary>

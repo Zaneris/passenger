@@ -750,7 +750,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
 
             int first = EndOnDeletedMethod("Later() =>", "Later(int times = 1) =>");
             Assert.True(window.Runner.IsRunning, "dotnet watch ended with the program, where it waits for a change");
-            Assert.Equal("open the Run window", window.StatusPlace?.Name);
+            Assert.Equal("open the Run window", window.StatusPlace?.Name.English);
             Assert.Null(window.Actions.Work.Of(AppActions.ApplyHotReloadChanges));
 
             // A change saved by the Apply: dotnet watch builds and starts the program again, and the window says so.
@@ -886,7 +886,7 @@ public sealed class BuildRunTests : IClassFixture<RestoredFolders>, IDisposable
                 Problem? error = window.BottomPanel.Problems.Problems.SingleOrDefault(p => p.Code == code);
                 Assert.True(error is not null, $"dotnet watch's build failed on {code}, but Problems' Build lists [{string.Join(", ", window.BottomPanel.Problems.Problems.Select(p => $"{p.Code} {p.Where}"))}]");
                 Assert.Equal($"Hot Reload: Hello's build failed: {error.Message} ({where}); {later}", window.Status);
-                Assert.Equal("see it in Problems, Build", window.StatusPlace?.Name);
+                Assert.Equal("see it in Problems, Build", window.StatusPlace?.Name.English);
                 window.ShowToolWindow(ToolWindowIds.Run);
                 Ui.Settle();
                 Assert.Equal($"Hello's build failed with 1 error: {later}", window.BottomPanel.Run.Waiting);

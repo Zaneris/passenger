@@ -566,7 +566,7 @@ public sealed class ContainerRunDebuggingTests(ContainerRunDebuggingTests.Tools 
             Ui.Settle();
             Ui.Click(window.DebugWindow.GetVisualDescendants().OfType<Avalonia.Controls.Button>().Single(b => ActionTips.ActionOf(b) == AppActions.Detach));
             Assert.Equal(DebugController.LetsNoDebuggerGo("web").Shown, window.Status);
-            Assert.Equal("restart web without the debugger", window.StatusPlace?.Name);
+            Assert.Equal("restart web without the debugger", window.StatusPlace?.Name.English);
             Assert.True(web.IsLive, "Detach, refused, ended web's session");
             Assert.Equal("web 2", Ui.Await(Get(port), "web's answer after Detach was refused, which a held program never gives", TimeSpan.FromMinutes(1)));
 

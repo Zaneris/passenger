@@ -238,7 +238,7 @@ public sealed class FileBasedProgramsTests : IDisposable
         }
         window.BottomPanel.Build.Flush();
         string console = window.BottomPanel.Build.Document.Snapshot.ToString();
-        bool skipped = console.Contains(BuildRunController.UpToDateSaid("app"), StringComparison.Ordinal);
+        bool skipped = console.Contains(BuildRunController.UpToDateSaid("app").English, StringComparison.Ordinal);
         Assert.True(built ? ran == 1 && !skipped : ran == 0 && skipped,
             $"{which} {(built ? "was not built first" : "was built though nothing it reads changed")}: {ran} dotnet builds of app.cs started, and the Build window says:\n{console}");
     }

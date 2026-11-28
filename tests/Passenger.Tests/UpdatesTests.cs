@@ -638,7 +638,7 @@ public sealed class UpdatesTests : McpRig, IClassFixture<UpdatesTests.DiskImages
         window.WatchForUpdates();
         Ui.WaitFor(() => Notice(window) == $"Restart to install security update Passenger {newer}", () => $"the status bar to offer the security update once v{newer} had downloaded: {UpdatesSaid(window)}");
         Assert.Equal($"Passenger {newer} is a security update: {SecurityFixes}, downloaded and checked", window.Status);
-        Assert.Equal("restart into it now", window.StatusPlace?.Name);
+        Assert.Equal("restart into it now", window.StatusPlace?.Name.English);
         Assert.StartsWith($"Passenger {newer} is a security update: {SecurityFixes}\nRestart into it now rather than later.\n",
             ToolTip.GetTip(window.FindControl<Button>("UpdateButton")!) as string ?? string.Empty, StringComparison.Ordinal);
         window.Close();

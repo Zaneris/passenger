@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Passenger.App.Godot;
 using Passenger.Core;
@@ -19,26 +20,26 @@ public sealed record GodotExportPlan(string Program, IReadOnlyList<string> Argum
 
     /// <summary>The plan of a request, read off the window's thread: the preset found in export_presets.cfg, the Godot found
     /// running the project, its templates' folder in the user folders given; why not, else.</summary>
-    public static async Task<(GodotExportPlan? Plan, string? Why)> OfAsync(GodotExportRequest request, string? setting, bool scripts, IReadOnlyDictionary<string, string>? folders)
+    public static async Task<(GodotExportPlan? Plan, Words? Why)> OfAsync(GodotExportRequest request, string? setting, bool scripts, IReadOnlyDictionary<string, string>? folders)
     {
         IReadOnlyList<GodotPreset> presets = GodotExports.ReadIn(request.Folder);
         if (presets.FirstOrDefault(p => p.Name == request.Preset) is not { } preset)
         {
-            return (null, presets.Count == 0 ? $"{PathNames.Shown(request.Folder, null)} has no {GodotExports.FileName}: make an export preset in Godot's editor (Project, Export)"
-                : $"{GodotExports.FileName} has no preset {request.Preset}: it has {Plural.Listed([.. presets.Select(p => p.Name)])}");
+            return (null, presets.Count == 0 ? BuildWords.NoPresets(PathNames.Shown(request.Folder, null), GodotExports.FileName)
+                : BuildWords.NoPreset(GodotExports.FileName, request.Preset, Plural.Listed(Words.Names(presets.Select(p => p.Name)))));
         }
         string? path = request.Path ?? preset.ExportPath;
         if (string.IsNullOrWhiteSpace(path))
         {
-            return (null, $"The preset {preset.Name} names no file to export to (its export_path): give one, or set it in Godot's editor (Project, Export)");
+            return (null, BuildWords.PresetNamesNoFile(preset.Name));
         }
         if (GodotLaunch.Found(setting) is not { } found)
         {
-            return (null, $"{preset.Name} cannot be exported: {GodotLaunch.NotFound}");
+            return (null, BuildWords.CannotExport(preset.Name, GodotLaunch.NotFound));
         }
         if ((scripts ? found.WhyNotScripts : found.WhyNot) is { } why)
         {
-            return (null, $"{preset.Name} cannot be exported: {why}");
+            return (null, BuildWords.CannotExport(preset.Name, why));
         }
         string? answer = await GodotExecutables.AnswerAsync(found);
         string? version = answer is null ? null : GodotExports.TemplatesVersion(answer);
@@ -88,7 +89,7 @@ public sealed partial class BuildRunController
         {
             return Refused(AlreadyRunning());
         }
-        if (parts.Work.Begin(AppActions.Publish, $"Reading how {request.Preset} exports…") is not { } work)
+        if (parts.Work.Begin(AppActions.Publish, BuildWords.ReadingExport(request.Preset)) is not { } work)
         {
             return Refused(ActionWork.Busy(parts.Work.Of(AppActions.Publish)!));
         }
@@ -99,19 +100,20 @@ public sealed partial class BuildRunController
             string? setting = parts.Settings().GodotExecutable;
             bool scripts = !session.Projects.Any(p => p.GodotFolder is { } game && PathNames.Same(game, request.Folder));
             IReadOnlyDictionary<string, string>? folders = session.GodotEnvironment ?? GodotUserFolders.OfVariable();
-            (GodotExportPlan? plan, string? why) = await BackgroundWork.Run(() => GodotExportPlan.OfAsync(request, setting, scripts, folders));
+            (GodotExportPlan? plan, Words? why) = await BackgroundWork.Run(() => GodotExportPlan.OfAsync(request, setting, scripts, folders));
             if (plan is null)
             {
                 return Refused(why!);
             }
             if (plan.Builds.WhyNot is { } unbuilt)
             {
-                return Refused($"{request.Preset} cannot be exported: {unbuilt}");
+                return Refused(BuildWords.CannotExport(request.Preset, unbuilt));
             }
             if (plan.Missing.Count > 0)
             {
-                return Refused($"{request.Preset} cannot be exported: Godot {plan.Version} has no {Plural.Listed(plan.Missing)} among its export templates"
-                    + $"{(plan.Templates is { } folder ? $" ({PathNames.Shown(folder, null)})" : string.Empty)}: install them from a {GodotExports.Archive} in Publish");
+                Words missing = Plural.Listed(Words.Names(plan.Missing));
+                return Refused(plan.Templates is { } folder ? BuildWords.TemplatesMissingIn(request.Preset, plan.Version ?? string.Empty, missing, PathNames.Shown(folder, null), GodotExports.Archive)
+                    : BuildWords.TemplatesMissing(request.Preset, plan.Version ?? string.Empty, missing, GodotExports.Archive));
             }
             if (await parts.Editors.SaveAllLandedAsync(work, work.Stopping) is { } unsaved)
             {
@@ -119,7 +121,7 @@ public sealed partial class BuildRunController
             }
             if (session.IsEnded || work.IsStopped)
             {
-                return Said(new BuildOutcome(BuildStatus.Stopped, "Export stopped"));
+                return Said(new BuildOutcome(BuildStatus.Stopped, BuildWords.ExportStopped));
             }
             try
             {
@@ -127,7 +129,7 @@ public sealed partial class BuildRunController
             }
             catch (Exception unmade) when (unmade is IOException or UnauthorizedAccessException)
             {
-                return Said(new BuildOutcome(BuildStatus.NotStarted, $"{PathNames.Shown(Path.GetDirectoryName(plan.Output)!, session.Folder)} could not be made: {unmade.Message}"));
+                return Said(new BuildOutcome(BuildStatus.NotStarted, BuildWords.FolderUnmade(PathNames.Shown(Path.GetDirectoryName(plan.Output)!, session.Folder), RefusedException.Of(unmade))));
             }
             parts.Views.Run.Clear();
             UnfollowWatched();
@@ -136,14 +138,13 @@ public sealed partial class BuildRunController
             ran = $"Export {request.Preset}";
             parts.Views.Run.SetRunning(true);
             parts.Dock.Show(ToolWindowIds.Run);
-            string kind = request.Debug ? "a debug export" : "a release export";
-            work.Say($"Exporting {request.Preset}, {kind}…");
-            parts.Say($"Exporting {request.Preset} with Godot {plan.Version}");
+            work.Say(BuildWords.Exporting(request.Debug ? "debug" : "release", request.Preset));
+            parts.Say(BuildWords.ExportingWith(request.Preset, plan.Version ?? string.Empty));
             void OnLine(object? sender, string line)
             {
                 if (ExportStage().Match(ControlCodes().Replace(line, string.Empty)) is { Success: true } stage)
                 {
-                    work.Say($"Exporting {request.Preset}: {stage.Groups["words"].Value.Trim()} ({stage.Groups["done"].Value}%)");
+                    work.Say(BuildWords.ExportStage(request.Preset, stage.Groups["words"].Value.Trim(), int.Parse(stage.Groups["done"].Value, CultureInfo.InvariantCulture)));
                 }
             }
             session.Runner.Line += OnLine;
@@ -182,17 +183,17 @@ public sealed partial class BuildRunController
     {
         if (stopped)
         {
-            return new BuildOutcome(BuildStatus.Stopped, $"Export of {request.Preset} stopped");
+            return new BuildOutcome(BuildStatus.Stopped, BuildWords.ExportOfStopped(request.Preset));
         }
         if (code == 0 && (File.Exists(plan.Output) || Directory.Exists(plan.Output)))
         {
             string landed = PathNames.Canonical(plan.Output);
             parts.Views.Run.Append($"Exported {request.Preset} to {landed}\n");
-            return new BuildOutcome(BuildStatus.Succeeded, $"Exported {request.Preset} to {PathNames.Shown(landed, session.Folder)}") { Published = Path.GetDirectoryName(landed) };
+            return new BuildOutcome(BuildStatus.Succeeded, BuildWords.Exported(request.Preset, PathNames.Shown(landed, session.Folder))) { Published = Path.GetDirectoryName(landed) };
         }
         string? first = session.Runner.Shown().ToString().Split('\n').Select(l => l.Trim()).FirstOrDefault(l => GodotConsoleFold.IsHeader(l) && !l.Contains("no default was given", StringComparison.Ordinal));
-        string ended = code == 0 ? $"Godot ended without writing {PathNames.Shown(plan.Output, session.Folder)}" : ExitCodes.Said(code);
-        return new BuildOutcome(BuildStatus.Failed, $"Export of {request.Preset} failed ({ended}){(first is null ? string.Empty : $": {first}")}");
+        Words ended = code == 0 ? BuildWords.GodotWroteNothing(PathNames.Shown(plan.Output, session.Folder)) : ExitCodes.Words(code);
+        return new BuildOutcome(BuildStatus.Failed, first is null ? BuildWords.ExportFailed(request.Preset, ended) : BuildWords.ExportFailedSaying(request.Preset, ended, first));
     }
 
     /// <summary>Godot's word of a stage of its work ("[  25% ] export | Making PKG"), its share done and its words.</summary>

@@ -68,8 +68,8 @@ public sealed partial class BuildRunController
         CancellationToken stop, RunStart? purpose = null)
     {
         string named = string.Join(", ", services.Select(s => s.Name));
-        work.Say(purpose == RunStart.Profile ? $"Attaching the profiler to {named}…" : services.All(s => run.HeldFor(s) == RunStart.HotReload) ? "Attaching for Hot Reload…"
-            : $"Attaching the debugger to {named}…");
+        work.Say(purpose == RunStart.Profile ? LaunchWords.AttachingTool("profiler", named) : services.All(s => run.HeldFor(s) == RunStart.HotReload) ? LaunchWords.AttachingForReload
+            : LaunchWords.AttachingTool("debugger", named));
         return Task.WhenAll(services.Select(async s => (s, await AttachAsync(run, s, up, notes, stop, purpose))));
     }
 
@@ -339,7 +339,7 @@ public sealed partial class BuildRunController
         {
             if (run.BuildsBeforeRestart)
             {
-                work.Say($"Building {Path.GetFileNameWithoutExtension(service.Project)}…");
+                work.Say(BuildWords.Doing("build", Path.GetFileNameWithoutExtension(service.Project)));
                 BuildOutcome built = await BuildForAsync([service.Project], work.Stopping, work,
                     reading: () => FollowBuilt(Reattached(run, [service]).Select(a => (a.Service.Name, a.HotReload))), configured: run.Workspace);
                 work.Stopping.ThrowIfCancellationRequested();
@@ -361,7 +361,7 @@ public sealed partial class BuildRunController
             {
                 return refused;
             }
-            work.Say($"Starting {service.Name}…");
+            work.Say(LaunchWords.Starting(service.Name));
             Words? failed = await RestartServicesAsync(run, [service], work, why);
             if (failed is not null || !profiled)
             {
@@ -399,9 +399,9 @@ public sealed partial class BuildRunController
         parts.Views.Debug.ShowTab(console: true);
         // One the run left unstarted is started now, held.
         return run.LeftUnstarted(service)
-            ? Done(await StartLaterAsync(run, service, work, "to debug it from its start"), $"Debugging {name} of {run.Name} from its start, started now; the rest run on as they were")
+            ? Done(await StartLaterAsync(run, service, work, "to debug it from its start"), LaunchWords.DebuggingFromStartNow(name, run.Name))
             : Done(await RestartServicesAsync(run, [service], work, "to debug it from its start"),
-                $"Debugging {run.ReplicaOf(service) ?? name} of {run.Name} from its start; the rest run on as they were{NextRun(run, service, debug: true)}");
+                NextRun(LaunchWords.DebuggingFromStart(run.ReplicaOf(service) ?? name, run.Name), run, service, debug: true));
     }, start);
 
     /// <summary>Attach to one .NET service of the container run under way (<see cref="AttachServiceAsync(ServiceRun, string, IRunService)"/>).</summary>
@@ -422,7 +422,7 @@ public sealed partial class BuildRunController
         {
             parts.Dock.Show(ToolWindowIds.Debug);
             await session.Debug.ChooseAsync(tab);
-            return Done(null, $"{run.ReplicaOf(service) ?? name} of {run.Name} is debugged already, in the Debug tab shown");
+            return Done(null, LaunchWords.DebuggedAlready(run.ReplicaOf(service) ?? name, run.Name));
         }
         DebugSession? quiet = run.QuietOf(session.Debug, service);
         if (quiet is not null && session.Debug.HotReloadChanged(quiet))
@@ -443,8 +443,7 @@ public sealed partial class BuildRunController
             run.AttachedRunning.Remove(run.KeyOf(service));
             return Said(refused ?? (notes.Count > 0 ? string.Join("; ", notes) : LaunchWords.NotAttached(name)));
         }
-        return Done(null, $"Debugging {name} of {run.Name} as it runs: its startup has run already, which Debug catches by restarting it held"
-            + (notes.Count > 0 ? $" ({string.Join("; ", notes)})" : string.Empty));
+        return Done(null, notes.Count > 0 ? LaunchWords.DebuggingAsItRunsNoted(name, run.Name, string.Join("; ", notes)) : LaunchWords.DebuggingAsItRuns(name, run.Name));
     }, start);
 
     /// <summary>Attach to a service whose program Hot Reload changed under its quiet session, which its runtime keeps as its
@@ -471,8 +470,7 @@ public sealed partial class BuildRunController
         }
         run.AttachedRunning.Add(run.KeyOf(service));
         run.Attached(service, program, session.Debug.TabOf(quiet), quiet);
-        return Done(null, $"Debugging {service.Name} of {run.Name} as it runs by its Hot Reload session, as Hot Reload changed its code: its startup has run already, "
-            + "which Debug catches by restarting it held");
+        return Done(null, LaunchWords.DebuggingByReloadSession(service.Name, run.Name));
     }
 
     /// <summary>Run without debugger of one .NET service of the container run under way (<see cref="RunServiceAsync(ServiceRun, string, IRunService)"/>).</summary>
@@ -493,22 +491,22 @@ public sealed partial class BuildRunController
         await run.HoldAsync(service, null, work.Stopping);
         if (run.LeftUnstarted(service))
         {
-            return Done(await StartLaterAsync(run, service, work, "to run it"), $"{name} of {run.Name} started, without the debugger; the rest run on as they were");
+            return Done(await StartLaterAsync(run, service, work, "to run it"), LaunchWords.StartedUndebugged(name, run.Name));
         }
         string said = run.ReplicaOf(service) ?? name;
         if (!held && !debugged)
         {
-            return Done(null, $"{said} of {run.Name} already runs without the debugger: nothing restarted{NextRun(run, service, debug: false)}");
+            return Done(null, NextRun(LaunchWords.RunsUndebuggedAlready(said, run.Name), run, service, debug: false));
         }
         // A program Hot Reload changed is restarted: its runtime, which lets no debugger go then, would hold it for good.
         if (run.RestartsToRunWithoutDebugger || changed)
         {
             return Done(await RestartServicesAsync(run, [service], work, "to run without the debugger"),
-                $"{said} of {run.Name} restarted without the debugger{(changed && !run.RestartsToRunWithoutDebugger ? ", as its runtime lets no debugger go once Hot Reload has changed its code" : string.Empty)}"
-                + NextRun(run, service, debug: false));
+                NextRun(changed && !run.RestartsToRunWithoutDebugger ? LaunchWords.RestartedUndebuggedChanged(said, run.Name) : LaunchWords.RestartedUndebugged(said, run.Name),
+                    run, service, debug: false));
         }
         await session.Debug.DetachAsync(run.SessionName(service));
-        return Done(null, $"{name} of {run.Name} runs on without the debugger, not restarted; its next restart starts it unheld");
+        return Done(null, LaunchWords.RunsOnUndebugged(name, run.Name));
     }, start);
 
     /// <summary>Restart of one .NET service of the container run under way (<see cref="RestartServiceAsync(ServiceRun, string, IRunService)"/>).</summary>
@@ -518,8 +516,8 @@ public sealed partial class BuildRunController
     /// restarted (held again where it is debugged), and attached to again; one the run left unstarted started. The start
     /// given (a replica its window chose), else the service of that name. Null once done, else why not.</summary>
     public Task<Words?> RestartServiceAsync(ServiceRun? run, string name, IRunService? start = null) => OnServiceAsync(run, name, AppActions.ContainerRestart, async (run, service, work) => run.LeftUnstarted(service)
-            ? Done(await StartLaterAsync(run, service, work, "started from its window"), $"{run.Name}: started {name}")
-            : Done(await RestartServicesAsync(run, [service], work, "restarted from its window"), $"{run.Name}: restarted {name}"), start);
+            ? Done(await StartLaterAsync(run, service, work, "started from its window"), LaunchWords.StartedService(run.Name, name))
+            : Done(await RestartServicesAsync(run, [service], work, "restarted from its window"), LaunchWords.RestartedService(run.Name, name)), start);
 
     /// <summary>Profile of one .NET service of a run as it runs: its program where its kind runs it, recorded by the one
     /// recording of a service (<see cref="BuildRunParts.ProfileService"/>), which Stop, a restart and Rerun read first; one
@@ -544,10 +542,11 @@ public sealed partial class BuildRunController
         return failed;
     }
 
-    /// <summary>What a choice of one replica of several keeps for its configuration's next run, said after what it did: every
-    /// replica's, as that run's replicas are new (their instances are made again each run); nothing for a service of one.</summary>
-    private static string NextRun(ServiceRun run, IRunService service, bool debug) => run.ReplicaOf(service) is null ? string.Empty
-        : debug ? $"; the next run debugs every replica of {service.Name}" : $"; the next run runs every replica of {service.Name} without it";
+    /// <summary>What a service's action did (<paramref name="said"/>), with what a choice of one replica of several keeps for its
+    /// configuration's next run after it: every replica's, as that run's replicas are new (their instances are made again each
+    /// run); nothing more for a service of one.</summary>
+    private static Words NextRun(Words said, ServiceRun run, IRunService service, bool debug) => run.ReplicaOf(service) is null ? said
+        : Clauses.Then(said, debug ? LaunchWords.NextRunDebugs(service.Name) : LaunchWords.NextRunUndebugged(service.Name));
 
     /// <summary>What a person chose for a service of the run, kept for its configuration.</summary>
     private void Choose(ServiceRun run, string service, bool debug)
@@ -623,7 +622,7 @@ public sealed partial class BuildRunController
         }
         names = [.. services.Select(s => s.Name)];
         string action = run.How == RunStart.Debug ? AppActions.Debug : AppActions.RunProgram;
-        if (parts.Work.Begin(action, $"Restarting {string.Join(", ", names)} to apply changes…") is not { } work)
+        if (parts.Work.Begin(action, LaunchWords.RestartingToApplyServices(string.Join(", ", names))) is not { } work)
         {
             return false;
         }
@@ -645,7 +644,7 @@ public sealed partial class BuildRunController
                     return false;
                 }
                 Words? failed = await RestartServicesAsync(run, services, work, build: true);
-                parts.Say(failed ?? $"{run.Name}: restarted {string.Join(", ", names)} to apply changes");
+                parts.Say(failed ?? LaunchWords.RestartedToApply(run.Name, string.Join(", ", names)));
                 return failed is null;
             }
             finally
