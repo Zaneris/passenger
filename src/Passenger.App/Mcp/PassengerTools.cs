@@ -3267,7 +3267,7 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         {
             throw new ArgumentException($"No action is called {action}: ide_actions lists them, a query narrowing it to those whose id, name or group holds it", nameof(action));
         }
-        if (named is { Group: GitGroup })
+        if (named?.Group.Equals(ActionGroups.Git) == true)
         {
             // Read now, as the vcs tools read it: the agent's shell may have begun a rebase a moment ago.
             await Session.Vcs.Opened;
@@ -3335,9 +3335,6 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         }
     }
 
-    /// <summary>The group of Git's actions, whose state ide_action reads fresh before asking whether one can run.</summary>
-    private const string GitGroup = "Git";
-
     [McpServerTool(Name = McpTools.IdeActions, Title = "The IDE's actions", ReadOnly = true), Description(
         "Every action ide_action runs (those with no shortcut too), as id: name [group] (shortcut on this platform), " +
         "(on) or (off) for one that turns something on and off, and why one cannot run here now.")]
@@ -3349,14 +3346,14 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         ActionContext context = Beside ? actions.Context().ForAgent() : actions.Context();
         IdeAction[] asked = query is not { Length: > 0 } words ? [.. actions.All]
             : [.. actions.All.Where(a => a.Id.Contains(words, StringComparison.OrdinalIgnoreCase) || a.Title.English.Contains(words, StringComparison.OrdinalIgnoreCase)
-                || a.Group.Contains(words, StringComparison.OrdinalIgnoreCase))];
+                || a.Group.English.Contains(words, StringComparison.OrdinalIgnoreCase))];
         string[] lines = [.. asked.Select(a =>
-            $"{a.Id}: {a.Title.English} [{a.Group}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}"
+            $"{a.Id}: {a.Title.English} [{a.Group.English}]{(actions.Shortcut(a.Id) is { } keys ? $" ({keys})" : string.Empty)}"
             + $"{(a.IsChecked?.Invoke(context) is { } on ? on ? " (on)" : " (off)" : string.Empty)}{(a.WhyNot(context) is { } why ? $" - cannot run: {why.English}" : string.Empty)}")];
         // Cut short, it names the groups of those it left out, which a query of each lists.
         return Task.FromResult(Held(lines, "action", "query, a group's name or a word of the action's, narrows them", readOn: last =>
         {
-            string[] groups = [.. asked.Skip(Array.IndexOf(lines, last) + 1).Select(a => $"\"{a.Group}\"").Distinct(StringComparer.Ordinal)];
+            string[] groups = [.. asked.Skip(Array.IndexOf(lines, last) + 1).Select(a => $"\"{a.Group.English}\"").Distinct(StringComparer.Ordinal)];
             return $"they are of the {Plural.Noun(groups.Length, "group")} {Plural.Listed(groups)}";
         }));
     });

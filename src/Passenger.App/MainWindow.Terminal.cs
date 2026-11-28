@@ -24,7 +24,7 @@ public partial class MainWindow
             Activate = ToggleTerminal,
             TakesKeysAsShown = true,
         });
-        actions!.Add(new IdeAction(AppActions.NewTerminalSession, ActionTitles.NewTerminalSession, "Terminal", _ => IdeErrors.Observe(NewTerminalSessionAsync())) { FromTerminal = true });
+        actions!.Add(new IdeAction(AppActions.NewTerminalSession, ActionTitles.NewTerminalSession, ActionGroups.Terminal, _ => IdeErrors.Observe(NewTerminalSessionAsync())) { FromTerminal = true });
     }
 
     /// <summary>A shell of its own in the open folder, its tab made before the window shows, so showing it starts no other.</summary>

@@ -16,7 +16,7 @@ namespace Passenger.App;
 public partial class MainWindow
 {
     private void AddInspections() =>
-        Add(AppActions.RunInspectionByName, ActionTitles.RunInspectionByName, "Code", _ => IdeErrors.Observe(ShowInspectionsAsync()),
+        Add(AppActions.RunInspectionByName, ActionTitles.RunInspectionByName, ActionGroups.Code, _ => IdeErrors.Observe(ShowInspectionsAsync()),
             _ => session.CSharp is null ? session.WhyNoCSharp : null, ("Code", 4, 2), words: ["Analyzer Rule", "Diagnostic", "Run Rule"]);
 
     /// <summary>Every rule the solution's analyzers report, in a popup narrowed as words of its title or id are typed; the one

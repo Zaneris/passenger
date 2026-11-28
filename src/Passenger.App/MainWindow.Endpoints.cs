@@ -38,13 +38,13 @@ public partial class MainWindow
             Menus = [new MenuPlace("Tools", 0, 3)],
             Chosen = () => endpoints?.Chosen,
         });
-        actions!.Add(new IdeAction(AppActions.EndpointsRefresh, ActionTitles.EndpointsRefresh, "Endpoints", _ => Endpoints.Reload(session.Folder))
+        actions!.Add(new IdeAction(AppActions.EndpointsRefresh, ActionTitles.EndpointsRefresh, ActionGroups.Endpoints, _ => Endpoints.Reload(session.Folder))
         {
             WhyNot = c => NeedsFolder(c) ?? Unserved(ToolWindowIds.Endpoints),
             Words = ["Read the .http files again"],
         });
         // A row's Test, Enter and menu, an agent and Find Action test the row chosen; an .http file's icon, its line's request.
-        actions.Add(new IdeAction(AppActions.TestEndpoint, ActionTitles.TestEndpoint, "Endpoints", context =>
+        actions.Add(new IdeAction(AppActions.TestEndpoint, ActionTitles.TestEndpoint, ActionGroups.Endpoints, context =>
         {
             if (context.Request is { } sending)
             {
@@ -61,13 +61,13 @@ public partial class MainWindow
                 : ActionTitles.TestEndpoint,
             Words = ["HTTP Client", "Send Request"],
         });
-        actions.Add(new IdeAction(AppActions.GenerateOpenApiRequests, ActionTitles.GenerateOpenApiRequests, "Endpoints", _ => IdeErrors.Observe(GenerateFromOpenApiAsync(OpenApiProject()!)))
+        actions.Add(new IdeAction(AppActions.GenerateOpenApiRequests, ActionTitles.GenerateOpenApiRequests, ActionGroups.Endpoints, _ => IdeErrors.Observe(GenerateFromOpenApiAsync(OpenApiProject()!)))
         {
             WhyNot = _ => OpenApiProject() is null ? "No web project is chosen in the Endpoints window" : null,
             Works = AppActions.GenerateOpenApiRequests,
             Words = ["OpenAPI", "Swagger", "HTTP Client"],
         });
-        actions.Add(new IdeAction(AppActions.NameOpenApiDocument, ActionTitles.NameOpenApiDocument, "Endpoints", _ => IdeErrors.Observe(NameOpenApiDocumentAsync(OpenApiProject()!)))
+        actions.Add(new IdeAction(AppActions.NameOpenApiDocument, ActionTitles.NameOpenApiDocument, ActionGroups.Endpoints, _ => IdeErrors.Observe(NameOpenApiDocumentAsync(OpenApiProject()!)))
         {
             WhyNot = _ => OpenApiProject() is null ? "No web project is chosen in the Endpoints window" : null,
             Words = ["OpenAPI", "Swagger", "schema"],

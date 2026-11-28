@@ -826,25 +826,25 @@ public sealed class CodeAssist
         Code(AppActions.SmartTypeCompletion, ActionTitles.SmartTypeCompletion, _ => IdeErrors.Observe(context.Current?.Lsp is { } lsp ? completion.FittingAsync(lsp) : Task.CompletedTask),
             new("Code/Code Completion", 0, 1), writes: true, csharp: true);
         Code(AppActions.CompleteStatement, ActionTitles.CompleteStatement, _ => completion.CompleteStatement(), new("Code/Code Completion", 1, 0), server: false, syntax: true, writes: true);
-        registry.Add(new IdeAction(AppActions.NextOverload, ActionTitles.NextOverload, "Code", _ => parameterInfo.Step(1))
+        registry.Add(new IdeAction(AppActions.NextOverload, ActionTitles.NextOverload, ActionGroups.Code, _ => parameterInfo.Step(1))
         {
             WhyNot = _ => parameterInfo.Steps ? null : Refusals.NoOverloadsShown,
         });
-        registry.Add(new IdeAction(AppActions.PreviousOverload, ActionTitles.PreviousOverload, "Code", _ => parameterInfo.Step(-1))
+        registry.Add(new IdeAction(AppActions.PreviousOverload, ActionTitles.PreviousOverload, ActionGroups.Code, _ => parameterInfo.Step(-1))
         {
             WhyNot = _ => parameterInfo.Steps ? null : Refusals.NoOverloadsShown,
         });
         foreach (MemberKinds kind in MemberKindsOf.All)
         {
             // The list's keys while it shows its filters, the editor's own anywhere else.
-            registry.Add(new IdeAction(MemberKindsOf.ActionOf(kind), ActionTitles.CompletionFilter(MemberKindsOf.Words(kind)), "Code", _ => completion.ToggleFilter(kind))
+            registry.Add(new IdeAction(MemberKindsOf.ActionOf(kind), ActionTitles.CompletionFilter(MemberKindsOf.Words(kind)), ActionGroups.Code, _ => completion.ToggleFilter(kind))
             {
                 InEditor = true,
                 WhyNot = _ => completion.WhyNotFilter(kind),
             });
         }
         // Passenger's own fixes first, which a file the server does not read (a XAML file) may have too.
-        registry.Add(new IdeAction(AppActions.QuickFix, ActionTitles.QuickFix, "Code", context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
+        registry.Add(new IdeAction(AppActions.QuickFix, ActionTitles.QuickFix, ActionGroups.Code, context => IdeErrors.Observe(actions.ShowFixes(AppActions.QuickFix)))
         {
             WhyNot = context => (actions.OwnFixes(context.File, context.Editor.Selections.Primary.Caret).Count > 0 ? null : WhyNot(context, server: true, xaml: true))
                 ?? context.ReadOnlyWhy,
@@ -855,7 +855,7 @@ public sealed class CodeAssist
             new("Code", 0, 2), writes: true);
         Code(AppActions.SurroundWith, ActionTitles.SurroundWith, _ => completion.ShowSurround(), new("Code", 0, 3), server: false, syntax: true, markup: true, writes: true);
         // A file the folder's formatter lays out (Prettier, Oxfmt, Biome), a GDScript, a .feature and a SQL file need no language server.
-        registry.Add(OverChosen(Tidying.Reformat, new IdeAction(AppActions.Reformat, ActionTitles.Reformat, "Code", context => IdeErrors.Observe(actions.Reformat()))
+        registry.Add(OverChosen(Tidying.Reformat, new IdeAction(AppActions.Reformat, ActionTitles.Reformat, ActionGroups.Code, context => IdeErrors.Observe(actions.Reformat()))
         {
             WhyNot = context => (context.File is { } file && (web.FolderReformats(file) || Godot.GodotScriptTypes.IsScript(file.Path) || Passenger.App.Bdd.FeatureChecks.IsFeature(file.Path)
                 || file.Language == Passenger.Languages.Language.Sql)
@@ -865,13 +865,13 @@ public sealed class CodeAssist
         web.AddLintingActions(registry);
         registry.Add(OverChosen(Tidying.Cleanup, CodeAction(AppActions.CodeCleanup, ActionTitles.CodeCleanup, context => IdeErrors.Observe(actions.Cleanup()), new("Code", 1, 1), markup: true, writes: true)));
         registry.Add(OverChosen(Tidying.OptimizeImports, CodeAction(AppActions.OptimizeUsings, ActionTitles.OptimizeUsings, context => IdeErrors.Observe(actions.OptimizeUsings()), new("Code", 1, 2), writes: true)));
-        registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, ActionTitles.FindUnusedStepDefinitions, "Code",
+        registry.Add(new IdeAction(AppActions.FindUnusedStepDefinitions, ActionTitles.FindUnusedStepDefinitions, ActionGroups.Code,
             context => IdeErrors.Observe(this.context.Languages.Gherkin.ShowUnusedAsync()))
         {
             WhyNot = _ => this.context.Languages.Gherkin.Source?.Invoke() is { } bdd && bdd.Session.Steps.Projects.Any() ? null : Refusals.NoReqnrollProject,
             Menus = [new("Navigate", 2, 9)],
         });
-        registry.Add(new IdeAction(AppActions.OrderScriptParts, ActionTitles.OrderScriptParts, "Code", context => IdeErrors.Observe(OrderScriptParts()))
+        registry.Add(new IdeAction(AppActions.OrderScriptParts, ActionTitles.OrderScriptParts, ActionGroups.Code, context => IdeErrors.Observe(OrderScriptParts()))
         {
             WhyNot = context => context.File is not { } file ? Refusals.NoFile : !Godot.GodotScriptTypes.IsScript(file.Path) ? "The file is not a GDScript"
                 : context.ReadOnlyWhy,
@@ -902,12 +902,12 @@ public sealed class CodeAssist
         Code(AppActions.PullMembersUp, ActionTitles.PullMembersUp, context => IdeErrors.Observe(actions.AskingAsync(AppActions.PullMembersUp, () => actions.MoveMembers(up: true))), new("Refactor", 3, 0), writes: true, csharp: true);
         Code(AppActions.PushMembersDown, ActionTitles.PushMembersDown, context => IdeErrors.Observe(actions.AskingAsync(AppActions.PushMembersDown, () => actions.MoveMembers(up: false))), new("Refactor", 3, 1), writes: true, csharp: true);
         Code(AppActions.EncapsulateField, ActionTitles.EncapsulateField, context => IdeErrors.Observe(actions.Refactor(CodeActions.EncapsulateField, AppActions.EncapsulateField)), new("Refactor", 3, 2), writes: true);
-        registry.Add(new IdeAction(AppActions.ExtractResource, ActionTitles.ExtractResource, "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractResource, actions.ExtractResource)))
+        registry.Add(new IdeAction(AppActions.ExtractResource, ActionTitles.ExtractResource, ActionGroups.Code, context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractResource, actions.ExtractResource)))
         {
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 0)],
         });
-        registry.Add(new IdeAction(AppActions.ExtractStyle, ActionTitles.ExtractStyle, "Code", context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractStyle, actions.ExtractStyle)))
+        registry.Add(new IdeAction(AppActions.ExtractStyle, ActionTitles.ExtractStyle, ActionGroups.Code, context => IdeErrors.Observe(actions.AskingAsync(AppActions.ExtractStyle, actions.ExtractStyle)))
         {
             WhyNot = context => WhyNotXaml(context),
             Menus = [new("Refactor", 4, 1)],

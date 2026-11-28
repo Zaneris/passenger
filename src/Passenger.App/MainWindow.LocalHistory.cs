@@ -42,24 +42,24 @@ public partial class MainWindow
             Tools = () => localHistoryView?.Tabs,
         });
         // The menus' names, and Find Action's (Show Local History...) beside the Git window's Show History.
-        actions!.Add(new IdeAction(AppActions.ShowLocalHistory, ActionTitles.ShowLocalHistory, "Local History", context => ShowLocalHistory(Target(context, fileOnly: false)!))
+        actions!.Add(new IdeAction(AppActions.ShowLocalHistory, ActionTitles.ShowLocalHistory, ActionGroups.LocalHistory, context => ShowLocalHistory(Target(context, fileOnly: false)!))
         {
             TitleIn = _ => ActionTitles.ShowLocalHistoryInMenu,
             WhyNot = context => NeedsFolder(context) ?? WhyNoTarget(context, fileOnly: false),
             Menus = [new MenuPlace(LocalHistoryMenu, 0, 0)],
         });
-        actions.Add(new IdeAction(AppActions.ShowProjectHistory, ActionTitles.ShowProjectHistory, "Local History", _ => ShowLocalHistory(Folder!))
+        actions.Add(new IdeAction(AppActions.ShowProjectHistory, ActionTitles.ShowProjectHistory, ActionGroups.LocalHistory, _ => ShowLocalHistory(Folder!))
         {
             TitleIn = _ => ActionTitles.ShowProjectHistoryInMenu,
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 0)],
         });
-        actions.Add(new IdeAction(AppActions.RecentChanges, ActionTitles.RecentChanges, "Local History", context => IdeErrors.Observe(ShowRecentChangesAsync()))
+        actions.Add(new IdeAction(AppActions.RecentChanges, ActionTitles.RecentChanges, ActionGroups.LocalHistory, context => IdeErrors.Observe(ShowRecentChangesAsync()))
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 1)],
         });
-        actions.Add(new IdeAction(AppActions.PutLabel, ActionTitles.PutLabel, "Local History", _ => ShowPutLabel())
+        actions.Add(new IdeAction(AppActions.PutLabel, ActionTitles.PutLabel, ActionGroups.LocalHistory, _ => ShowPutLabel())
         {
             WhyNot = NeedsFolder,
             Menus = [new MenuPlace(LocalHistoryMenu, 1, 2)],

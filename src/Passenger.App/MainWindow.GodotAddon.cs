@@ -27,7 +27,7 @@ public partial class MainWindow
         Action<string, byte[]?, byte[]> wrote = (path, _, _) => WroteForGodot(path);
         Text.FileText.Wrote += wrote;
         Closed += (_, _) => Text.FileText.Wrote -= wrote;
-        actions!.Add(new IdeAction(AppActions.GodotAddon, ActionTitles.GodotAddon, "Godot", _ => IdeErrors.Observe(InstallGodotAddonAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotAddon, ActionTitles.GodotAddon, ActionGroups.Godot, _ => IdeErrors.Observe(InstallGodotAddonAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotAtHand() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 7)],

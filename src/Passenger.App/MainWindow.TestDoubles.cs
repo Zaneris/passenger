@@ -15,13 +15,13 @@ public partial class MainWindow
 {
     private void AddTestDoubles()
     {
-        actions!.Add(new IdeAction(AppActions.CreateFake, ActionTitles.CreateFake, "Code", _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: true)))
+        actions!.Add(new IdeAction(AppActions.CreateFake, ActionTitles.CreateFake, ActionGroups.Code, _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: true)))
         {
             WhyNot = context => WhyNoDoubles(context) ?? (TestProjects().Count == 0 ? Refusals.NoTestProject : null),
             Menus = [new MenuPlace("Code", 4, 0)],
             Words = ["stub", "test double", "mock", "isolate"],
         });
-        actions.Add(new IdeAction(AppActions.FillArgumentsWithDoubles, ActionTitles.FillArgumentsWithDoubles, "Code", _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: false)))
+        actions.Add(new IdeAction(AppActions.FillArgumentsWithDoubles, ActionTitles.FillArgumentsWithDoubles, ActionGroups.Code, _ => IdeErrors.Observe(DoublesAtCaretAsync(fakes: false)))
         {
             WhyNot = context => WhyNoDoubles(context) ?? context.ReadOnlyWhy,
             Menus = [new MenuPlace("Code", 4, 1)],

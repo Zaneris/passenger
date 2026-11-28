@@ -36,7 +36,7 @@ public partial class MainWindow
             Serves = ToolWindowServes.GodotProjects,
             Action = AppActions.ShowGame,
         });
-        Actions.Add(new IdeAction(AppActions.GameKeys, ActionTitles.GameKeys, "Run", _ =>
+        Actions.Add(new IdeAction(AppActions.GameKeys, ActionTitles.GameKeys, ActionGroups.Run, _ =>
         {
             // The same keys take them back from a game drawn as a layer, whose keys are Passenger's to hear.
             if (GamePane is { Layered: true, IsFocused: true })

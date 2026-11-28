@@ -27,7 +27,7 @@ public partial class MainWindow
             SetPlugin = SetGodotPluginAsync,
             Edit = EditGodotProjectAsync,
         };
-        actions!.Add(new IdeAction(AppActions.GodotProject, ActionTitles.GodotProject, "Godot", c => ShowGodotProject(GodotProjectOf(c)!))
+        actions!.Add(new IdeAction(AppActions.GodotProject, ActionTitles.GodotProject, ActionGroups.Godot, c => ShowGodotProject(GodotProjectOf(c)!))
         {
             WhyNot = c => Folder is null ? Refusals.NoFolder : GodotProjectOf(c) is null ? Refusals.NoGodotProject : null,
             Words = ["project.godot", "Project Settings", "Input Map", "Autoload", "Export Presets", "Plugins"],

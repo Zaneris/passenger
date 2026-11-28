@@ -58,7 +58,7 @@ public partial class MainWindow
         {
             foreach (string menu in MainMenu.Titles)
             {
-                Button title = new() { Content = menu, Tag = menu, Classes = { StyleClasses.Widget, StyleClasses.MenuBarItem } };
+                Button title = new() { [ShownWords.ContentProperty] = MainMenu.TitleOf(menu), Tag = menu, Classes = { StyleClasses.Widget, StyleClasses.MenuBarItem } };
                 title.Click += (_, _) => OnBarTitleClicked(title);
                 MainMenuPlace.Children.Add(title);
             }
@@ -348,10 +348,10 @@ public partial class MainWindow
                 }
                 if (listed.Items.Count == 0)
                 {
-                    listed.Items.Add(new NativeMenuItem("Nothing yet") { IsEnabled = false });
+                    listed.Items.Add(new NativeMenuItem(NativeWords(MenuTitles.NothingYet.Shown)) { IsEnabled = false });
                 }
             };
-            return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = listed };
+            return new NativeMenuItem(NativeWords(MainMenu.TitleOf(entry.Title!).Shown)) { Menu = listed };
         }
         if (entry.Items is { } items)
         {
@@ -379,7 +379,7 @@ public partial class MainWindow
                 }
                 FillInline(menu, inline);
             };
-            return new NativeMenuItem(NativeWords(entry.Title!)) { Menu = menu };
+            return new NativeMenuItem(NativeWords(MainMenu.TitleOf(entry.Title!).Shown)) { Menu = menu };
         }
         IdeAction action = actions![entry.Action!]!;
         NativeMenuItem actionItem = new(NativeWords(action.TitleWhere(context).Shown))
@@ -512,7 +512,7 @@ public partial class MainWindow
         }
         if (entry.IsListed)
         {
-            MenuItem listed = new() { Header = entry.Title };
+            MenuItem listed = new() { [ShownWords.HeaderProperty] = MainMenu.TitleOf(entry.Title!) };
             foreach (Control item in Grouped<Control>(Listed(entry.Title!, context), FlyoutListed, () => new Separator()))
             {
                 listed.Items.Add(item);
@@ -522,7 +522,7 @@ public partial class MainWindow
         }
         if (entry.Items is { } items)
         {
-            MenuItem menu = new() { Header = entry.Title };
+            MenuItem menu = new() { [ShownWords.HeaderProperty] = MainMenu.TitleOf(entry.Title!) };
             foreach (MenuEntry item in items)
             {
                 if (item is { IsListed: true, Inline: true })

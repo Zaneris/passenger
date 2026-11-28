@@ -1032,7 +1032,7 @@ public partial class MainWindow
             }
         }, new("Git", 0, 4));
         Add(AppActions.Branches, ActionTitles.Branches, _ => ShowBranches(BranchButton), new("Git", 0, 4));
-        actions!.Add(new IdeAction(AppActions.VcsOperations, ActionTitles.VcsOperations, "Git", context => ShowVcsOperations(context))
+        actions!.Add(new IdeAction(AppActions.VcsOperations, ActionTitles.VcsOperations, ActionGroups.Git, context => ShowVcsOperations(context))
         {
             WhyNot = NeedsFolder,
             Words = ["Git Operations", "Quick List", "Version Control"],
@@ -1047,7 +1047,7 @@ public partial class MainWindow
         Add(AppActions.ShowDiff, ActionTitles.ShowDiff, context => IdeErrors.Observe(ShowDiffAsync(context.File!.Path)), new("Git", 2, 0), onFile: true);
         Add(AppActions.Annotate, ActionTitles.Annotate, context => IdeErrors.Observe(ToggleAnnotationsAsync(context.File!)), new("Git", 2, 1), onFile: true);
         // In a diff, the change at the caret of the side with the keys, as its band's arrow puts it back.
-        actions!.Add(new IdeAction(AppActions.RollbackLines, ActionTitles.RollbackLines, "Git", context => IdeErrors.Observe(DiffWithKeys(context) is { } diff
+        actions!.Add(new IdeAction(AppActions.RollbackLines, ActionTitles.RollbackLines, ActionGroups.Git, context => IdeErrors.Observe(DiffWithKeys(context) is { } diff
             ? RollingBackAsync(diff.RollBackAtCaretAsync)
             : RollbackLinesAsync()))
         {
@@ -1055,12 +1055,12 @@ public partial class MainWindow
             Menus = [new MenuPlace("Git", 2, 2)],
         });
         // In a diff, the changes at its carets; in the Commit window, the files chosen there.
-        actions!.Add(new IdeAction(AppActions.Stage, ActionTitles.Stage, "Git", context => Staging(context, stage: true))
+        actions!.Add(new IdeAction(AppActions.Stage, ActionTitles.Stage, ActionGroups.Git, context => Staging(context, stage: true))
         {
             WhyNot = context => NeedsFolder(context) ?? WhyNotStaging(context, stage: true),
             Menus = [new MenuPlace("Git", 2, 3)],
         });
-        actions.Add(new IdeAction(AppActions.Unstage, ActionTitles.Unstage, "Git", context => Staging(context, stage: false))
+        actions.Add(new IdeAction(AppActions.Unstage, ActionTitles.Unstage, ActionGroups.Git, context => Staging(context, stage: false))
         {
             WhyNot = context => NeedsFolder(context) ?? WhyNotStaging(context, stage: false),
             Menus = [new MenuPlace("Git", 2, 4)],
@@ -1069,45 +1069,45 @@ public partial class MainWindow
         Add(AppActions.NextChange, ActionTitles.NextChange, _ => GoToChange(1), new("Navigate", 3, 4), onFile: true);
         Add(AppActions.PreviousChange, ActionTitles.PreviousChange, _ => GoToChange(-1), new("Navigate", 3, 5), onFile: true);
         // A diff's own, whatever it compares: how its differences are highlighted.
-        actions!.Add(new IdeAction(AppActions.DiffSettings, ActionTitles.DiffSettings, "Git", context => DiffWithKeys(context)!.ShowSettings())
+        actions!.Add(new IdeAction(AppActions.DiffSettings, ActionTitles.DiffSettings, ActionGroups.Git, context => DiffWithKeys(context)!.ShowSettings())
         {
             WhyNot = context => DiffWithKeys(context) is null ? NoDiff : null,
         });
-        actions.Add(new IdeAction(AppActions.DiffJumpToSource, ActionTitles.DiffJumpToSource, "Git", context => DiffWithKeys(context)!.AskForSource())
+        actions.Add(new IdeAction(AppActions.DiffJumpToSource, ActionTitles.DiffJumpToSource, ActionGroups.Git, context => DiffWithKeys(context)!.AskForSource())
         {
             WhyNot = context => DiffWithKeys(context) is { } diff ? WhyNotJump(diff) : NoDiff,
         });
         // Offered too where the Commit and Git windows say the folder is in no repository.
-        actions.Add(new IdeAction(AppActions.CreateRepository, ActionTitles.CreateRepository, "Git", _ => IdeErrors.Observe(session.Vcs.InitAsync()))
+        actions.Add(new IdeAction(AppActions.CreateRepository, ActionTitles.CreateRepository, ActionGroups.Git, _ => IdeErrors.Observe(session.Vcs.InitAsync()))
         {
             WhyNot = context => NeedsFolder(context) ?? session.Vcs.WhyNotCreate,
             Menus = [new MenuPlace("Git", 4, 1)],
         });
-        actions.Add(new IdeAction(AppActions.CommitSigning, ActionTitles.CommitSigning, "Git", _ => IdeErrors.Observe(ShowCommitSigningAsync()))
+        actions.Add(new IdeAction(AppActions.CommitSigning, ActionTitles.CommitSigning, ActionGroups.Git, _ => IdeErrors.Observe(ShowCommitSigningAsync()))
         {
             WhyNot = NeedsRepository,
             Menus = [new MenuPlace("Git", 4, 2)],
         });
         // The Commit and Git windows' Refresh: the working tree's changes, and the log shown, read again.
-        actions.Add(new IdeAction(AppActions.CommitRefresh, ActionTitles.CommitRefresh, "Git", _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
+        actions.Add(new IdeAction(AppActions.CommitRefresh, ActionTitles.CommitRefresh, ActionGroups.Git, _ => IdeErrors.Observe(session.Vcs.RefreshAsync())) { WhyNot = NeedsRepository });
         // The Commit window's message history: a message committed from it put back in its box, to change and commit again.
-        actions.Add(new IdeAction(AppActions.CommitMessageHistory, ActionTitles.CommitMessageHistory, "Git", _ => ShowCommitMessageHistory())
+        actions.Add(new IdeAction(AppActions.CommitMessageHistory, ActionTitles.CommitMessageHistory, ActionGroups.Git, _ => ShowCommitMessageHistory())
         {
             WhyNot = context => NeedsFolder(context) ?? WhyNoCommitMessages(),
         });
         // The Commit window's Group By › Directory: its files under their folders, else listed flat.
-        actions.Add(new IdeAction(AppActions.GroupByDirectory, ActionTitles.GroupByDirectory, "Git", _ => session.Vcs.GroupsByDirectory = !session.Vcs.GroupsByDirectory)
+        actions.Add(new IdeAction(AppActions.GroupByDirectory, ActionTitles.GroupByDirectory, ActionGroups.Git, _ => session.Vcs.GroupsByDirectory = !session.Vcs.GroupsByDirectory)
         {
             WhyNot = NeedsRepository,
             IsChecked = _ => session.Vcs.GroupsByDirectory,
         });
         // The commit chosen in the Git log and those after it, as its menu's Interactively Rebase from Here plans them.
-        actions.Add(new IdeAction(AppActions.InteractiveRebase, ActionTitles.InteractiveRebase, "Git", _ => IdeErrors.Observe(InteractiveRebaseAsync(gitView!.Log.Selected!)))
+        actions.Add(new IdeAction(AppActions.InteractiveRebase, ActionTitles.InteractiveRebase, ActionGroups.Git, _ => IdeErrors.Observe(InteractiveRebaseAsync(gitView!.Log.Selected!)))
         {
             WhyNot = context => NeedsRepository(context) ?? session.Vcs.WhyNotInteractiveRebase
                 ?? (gitView?.Log.Selected is null ? "Choose the oldest commit to rebase in the Git log first" : null),
         });
-        actions.Add(new IdeAction(AppActions.GitLogRefresh, ActionTitles.GitLogRefresh, "Git", _ =>
+        actions.Add(new IdeAction(AppActions.GitLogRefresh, ActionTitles.GitLogRefresh, ActionGroups.Git, _ =>
         {
             session.Vcs.Signatures.Forget();
             IdeErrors.Observe(GitWindow.RefreshAsync());
@@ -1116,7 +1116,7 @@ public partial class MainWindow
         Words? NeedsRepository(ActionContext context) => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : null);
 
         void Add(string id, Words title, Action<ActionContext> run, MenuPlace menu, bool onFile = false, bool remote = false, Func<Words?>? whyNot = null) =>
-            actions!.Add(new IdeAction(id, title, "Git", run)
+            actions!.Add(new IdeAction(id, title, ActionGroups.Git, run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository
                     : onFile ? Refusals.NeedsFile(context) : remote ? session.Vcs.WhyNotRemote : whyNot?.Invoke()),

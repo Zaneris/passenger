@@ -33,7 +33,7 @@ public partial class MainWindow
             Editors.LetGoOfFiles();
         };
         // Only the person closes the solution: an agent's ide_action or input is refused, attached or in its own Passenger.
-        actions!.Add(new IdeAction(AppActions.CloseSolution, ActionTitles.CloseSolution, "IDE", _ =>
+        actions!.Add(new IdeAction(AppActions.CloseSolution, ActionTitles.CloseSolution, ActionGroups.Ide, _ =>
         {
             if (!RefusedToAgentsInput(Refusals.CloseSolutionIsThePersons.Shown))
             {

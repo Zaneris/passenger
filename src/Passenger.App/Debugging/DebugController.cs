@@ -2151,7 +2151,7 @@ public sealed partial class DebugController : IDisposable
         Add(AppActions.Detach, ActionTitles.Detach, (d, c) => IdeErrors.Observe(d.RunDetach is { } run && run.Takes(c, d.Session) ? run.Detach(c, d.Session) : d.DetachAsync()),
             (d, c) => d.RunDetach is { } run && run.Takes(c, d.Session) ? run.WhyNot(c, d.Session) : d.WhyNotDetach(), new("Run", 0, 8));
         // On an expression pinned to the caret's line already, Unpin from Line: the pin goes.
-        actions.Add(new IdeAction(AppActions.PinToLine, ActionTitles.PinToLine, "Debug", c => current().Breakpoints.Pins.Toggle(c.File!.Path, c.Caret.Line, c.Symbol!))
+        actions.Add(new IdeAction(AppActions.PinToLine, ActionTitles.PinToLine, ActionGroups.Debug, c => current().Breakpoints.Pins.Toggle(c.File!.Path, c.Caret.Line, c.Symbol!))
         {
             WhyNot = c => Refusals.NeedsLines(c) ?? (c.Symbol is { Length: > 0 } ? null : Refusals.NoExpression),
             TitleIn = c => c.File is { } file && c.Symbol is { Length: > 0 } expression && current().Breakpoints.Pins.At(file.Path, c.Caret.Line, expression) is not null
@@ -2169,20 +2169,20 @@ public sealed partial class DebugController : IDisposable
         Add(AppActions.StepForward, ActionTitles.StepForward, (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepForwardAsync())),
             (d, _) => d.NotPaused() ?? (d.MomentShown is null ? Refusals.LiveStop : null), new("Run", 1, 14));
         // Recorded from the program's start where it is on before Debug, else from then on.
-        actions.Add(new IdeAction(AppActions.RecordCalls, ActionTitles.RecordCalls, "Debug", _ => current().SetRecording(!current().RecordsCalls))
+        actions.Add(new IdeAction(AppActions.RecordCalls, ActionTitles.RecordCalls, ActionGroups.Debug, _ => current().SetRecording(!current().RecordsCalls))
         {
             Menus = [new("Run", 2, 8)],
             IsChecked = _ => current().RecordsCalls,
         });
         // Every breakpoint stays as it is, and none stops the program until it is chosen again.
-        actions.Add(new IdeAction(AppActions.MuteBreakpoints, ActionTitles.MuteBreakpoints, "Debug", _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
+        actions.Add(new IdeAction(AppActions.MuteBreakpoints, ActionTitles.MuteBreakpoints, ActionGroups.Debug, _ => current().Breakpoints.SetMuted(!current().Breakpoints.Muted))
         {
             Menus = [new("Run", 2, 7)],
             IsChecked = _ => current().Breakpoints.Muted,
         });
 
         void Add(string id, Words title, Action<DebugController, ActionContext> run, Func<DebugController, ActionContext, Words?> whyNot, MenuPlace? menu) =>
-            actions.Add(new IdeAction(id, title, "Debug", c => run(current(), c)) { WhyNot = c => whyNot(current(), c), Menus = menu is null ? [] : [menu] });
+            actions.Add(new IdeAction(id, title, ActionGroups.Debug, c => run(current(), c)) { WhyNot = c => whyNot(current(), c), Menus = menu is null ? [] : [menu] });
     }
 
     /// <summary>The XAML attribute the caret is on (Avalonia's, or a WPF page's), whose own breakpoint Toggle Breakpoint sets,

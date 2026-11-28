@@ -14,10 +14,10 @@ public partial class MainWindow
 {
     private void AddRunAnything()
     {
-        Add(A.RunAnything, ActionTitles.RunAnything, "Run", ShowRunAnything, NeedsFolder, ("Run", 0, 4), words: ["Command", "Terminal", "Run configuration"]);
-        Add(A.ChooseRunConfiguration, ActionTitles.ChooseRunConfiguration, "Run", context => ShowConfigurationChoice(context, debug: false), NeedsFolder, ("Run", 0, 4),
+        Add(A.RunAnything, ActionTitles.RunAnything, ActionGroups.Run, ShowRunAnything, NeedsFolder, ("Run", 0, 4), words: ["Command", "Terminal", "Run configuration"]);
+        Add(A.ChooseRunConfiguration, ActionTitles.ChooseRunConfiguration, ActionGroups.Run, context => ShowConfigurationChoice(context, debug: false), NeedsFolder, ("Run", 0, 4),
             words: ["Run configuration", "Choose Run Configuration"]);
-        Add(A.ChooseDebugConfiguration, ActionTitles.ChooseDebugConfiguration, "Run", context => ShowConfigurationChoice(context, debug: true), NeedsFolder, ("Run", 0, 4),
+        Add(A.ChooseDebugConfiguration, ActionTitles.ChooseDebugConfiguration, ActionGroups.Run, context => ShowConfigurationChoice(context, debug: true), NeedsFolder, ("Run", 0, 4),
             words: ["Debug configuration", "Choose Debug Configuration"]);
     }
 

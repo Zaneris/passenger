@@ -38,7 +38,7 @@ public partial class MainWindow
         Editors.MergeRequested += (_, document) => IdeErrors.Observe(MergeAsync(document.Path));
 
         void Add(string id, Words title, Action<ActionContext> run, int order, Func<Words?> whyNot) =>
-            actions!.Add(new IdeAction(id, title, "Git", run)
+            actions!.Add(new IdeAction(id, title, ActionGroups.Git, run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : whyNot()),
                 Menus = [new MenuPlace("Git", 0, order)],

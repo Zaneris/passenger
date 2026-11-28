@@ -27,7 +27,7 @@ public partial class MainWindow
             Action = AppActions.ShowIlViewer,
         };
         Dock.Add(window);
-        actions!.Add(new IdeAction(AppActions.IlViewerRefresh, ActionTitles.IlViewerRefresh, "Compiled Code", _ => FollowIlViewer(refresh: true))
+        actions!.Add(new IdeAction(AppActions.IlViewerRefresh, ActionTitles.IlViewerRefresh, ActionGroups.CompiledCode, _ => FollowIlViewer(refresh: true))
         {
             WhyNot = c => NeedsFolder(c) ?? Unserved(ToolWindowIds.IlViewer),
             Words = ["Read the build's IL and low-level C# again"],

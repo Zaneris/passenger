@@ -23,7 +23,7 @@ public partial class MainWindow
     private void AddContextMenus()
     {
         Editors.ForEachEditor(editor => editor.ContextMenuRequested += (_, at) => ShowEditorMenu(editor, at));
-        actions!.Add(new IdeAction(A.ShowContextMenu, ActionTitles.ShowContextMenu, "IDE", context => ShowFocusedContextMenu(context.Focused)));
+        actions!.Add(new IdeAction(A.ShowContextMenu, ActionTitles.ShowContextMenu, ActionGroups.Ide, context => ShowFocusedContextMenu(context.Focused)));
     }
 
     /// <summary>The editor's menu: context actions and the clipboard, Find Usages, Refactor, Go To, Generate and

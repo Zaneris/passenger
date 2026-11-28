@@ -37,8 +37,8 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
     /// refactoring writes by it, and Find Usages' results take the keys only where they still are.</summary>
     public event EventHandler<(IdeAction Action, ActionContext Context)>? Running;
 
-    /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title as the
-    /// language in force says it.</summary>
+    /// <summary>Every action, in the order Find Action lists them before anything is typed: by group, then title, as the
+    /// language in force says them.</summary>
     public IReadOnlyList<IdeAction> All
     {
         get
@@ -46,7 +46,7 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
             if (sorted is null || sortedIn != UiLanguage.InForce)
             {
                 sortedIn = UiLanguage.InForce;
-                sorted = InMenuOrder([.. byId.Values.OrderBy(a => a.Group, StringComparer.Ordinal).ThenBy(a => a.Title.Shown, StringComparer.Ordinal)]);
+                sorted = InMenuOrder([.. byId.Values.OrderBy(a => a.Group.Shown, StringComparer.Ordinal).ThenBy(a => a.Title.Shown, StringComparer.Ordinal)]);
             }
             return sorted;
         }
@@ -137,7 +137,7 @@ public sealed class ActionRegistry(Func<ActionContext> context, Func<Keymap> key
         string typed = query.Trim();
         IEnumerable<string> Names(IdeAction action) => [action.Title.Shown, action.Title.English, .. action.Words];
         return InMenuOrder([.. All
-            .Where(a => words.All(w => Names(a).Any(n => n.Contains(w, StringComparison.OrdinalIgnoreCase)) || a.Group.Contains(w, StringComparison.OrdinalIgnoreCase)
+            .Where(a => words.All(w => Names(a).Any(n => n.Contains(w, StringComparison.OrdinalIgnoreCase)) || a.Group.Shown.Contains(w, StringComparison.OrdinalIgnoreCase) || a.Group.English.Contains(w, StringComparison.OrdinalIgnoreCase)
                 || a.Id.Contains(w, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(a => Names(a).Any(n => n.StartsWith(typed, StringComparison.OrdinalIgnoreCase)) ? 0
                 : Names(a).Any(n => words.All(w => n.Contains(w, StringComparison.OrdinalIgnoreCase))) ? 1 : 2)

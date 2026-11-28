@@ -33,7 +33,7 @@ public sealed class GameAudioCommands
             }
             Show();
         };
-        parts.Actions.Add(new IdeAction(AppActions.MuteGameAudio, ActionTitles.MuteGameAudio, "Debug", context => IdeErrors.Observe(ToggleAsync(context.ByAgent)))
+        parts.Actions.Add(new IdeAction(AppActions.MuteGameAudio, ActionTitles.MuteGameAudio, ActionGroups.Debug, context => IdeErrors.Observe(ToggleAsync(context.ByAgent)))
         {
             TitleIn = _ => Game() is { AudioMuted: true } ? ActionTitles.UnmuteGameAudio : ActionTitles.MuteGameAudio,
             IsChecked = _ => Game() is { AudioMuted: true },

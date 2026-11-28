@@ -79,7 +79,7 @@ public partial class MainWindow
             (AppActions.ServiceRun, ActionTitles.ServiceRun, "Run Aspire Resource Without Debugger"),
             (AppActions.ServiceProfile, ActionTitles.ServiceProfile, "Profile Aspire Resource")])
         {
-            actions!.Add(new IdeAction(id, title, "Services", context => IdeErrors.Observe(ServiceActionAsync(id, AimOf(context))))
+            actions!.Add(new IdeAction(id, title, ActionGroups.Services, context => IdeErrors.Observe(ServiceActionAsync(id, AimOf(context))))
             {
                 WhyNot = context => WhyNotOn(id, AimOf(context)),
                 TitleIn = id is AppActions.ServiceDebug or AppActions.ServiceRun ? context => ReplicaTitle(id, AimOf(context)) ?? title : null,

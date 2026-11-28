@@ -59,7 +59,7 @@ public partial class MainWindow
 
     private void AddMobile()
     {
-        actions!.Add(new IdeAction(AppActions.InstallWorkloads, ActionTitles.InstallWorkloads, "IDE", context => IdeErrors.Observe(InstallWorkloadsAsync()))
+        actions!.Add(new IdeAction(AppActions.InstallWorkloads, ActionTitles.InstallWorkloads, ActionGroups.Ide, context => IdeErrors.Observe(InstallWorkloadsAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : MobileWant.Workloads.Count == 0 ? Refusals.NoWorkloadLacking
@@ -68,7 +68,7 @@ public partial class MainWindow
             Words = ["dotnet workload", "MAUI", "Android", "iOS"],
             Works = AppActions.InstallWorkloads,
         });
-        actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, ActionTitles.InstallAndroidDependencies, "IDE", _ => IdeErrors.Observe(InstallAndroidAsync()))
+        actions.Add(new IdeAction(AppActions.InstallAndroidDependencies, ActionTitles.InstallAndroidDependencies, ActionGroups.Ide, _ => IdeErrors.Observe(InstallAndroidAsync()))
         {
             WhyNot = context => AskedByAgent(context) ? Refusals.AgentInstallsMobile
                 : Untrusted() ?? (!MobileWant.AndroidLacks ? Refusals.NothingAndroidLacking : null),
@@ -76,13 +76,13 @@ public partial class MainWindow
             Words = ["Android SDK", "JDK", "Java", "sdkmanager", MSBuildNames.InstallAndroidDependencies],
             Works = AppActions.InstallAndroidDependencies,
         });
-        actions.Add(new IdeAction(AppActions.MakeMobileEdits, ActionTitles.MakeMobileEdits, "IDE", _ => IdeErrors.Observe(MakeMobileEditsAsync(null)))
+        actions.Add(new IdeAction(AppActions.MakeMobileEdits, ActionTitles.MakeMobileEdits, ActionGroups.Ide, _ => IdeErrors.Observe(MakeMobileEditsAsync(null)))
         {
             WhyNot = _ => MobileWant.Heads.Any(h => h.Makes) ? null : Refusals.NoMobileEdits,
             Words = ["iOS", "Android", "Mac Catalyst", "Info.plist", MSBuildNames.SupportedOSPlatformVersion, AppManifests.MinimumOSVersion, AppManifests.SceneManifest],
             Works = AppActions.MakeMobileEdits,
         });
-        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, ActionTitles.KeepAssembliesWhole, "IDE",
+        actions.Add(new IdeAction(AppActions.KeepAssembliesWhole, ActionTitles.KeepAssembliesWhole, ActionGroups.Ide,
             _ => IdeErrors.Observe(KeepWholeAsync(wholeAsked ?? MobileWant.Trimmed.FirstOrDefault()?.Project)))
         {
             WhyNot = _ => wholeAsked is not null || MobileWant.Trimmed.Count > 0 ? null : Refusals.NothingTrimmed,

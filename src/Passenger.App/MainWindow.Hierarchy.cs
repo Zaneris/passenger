@@ -30,17 +30,17 @@ public partial class MainWindow
             CollapseAll = () => Hierarchy.CollapseAll(),
         });
         // What the server finds at the caret, or why it found nothing, the status bar says as it answers.
-        actions!.Add(new IdeAction(AppActions.CallHierarchy, ActionTitles.CallHierarchy, "IDE", context => IdeErrors.Observe(ShowCallHierarchyAsync()))
+        actions!.Add(new IdeAction(AppActions.CallHierarchy, ActionTitles.CallHierarchy, ActionGroups.Ide, context => IdeErrors.Observe(ShowCallHierarchyAsync()))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("Navigate", 2, 6)],
         });
-        actions.Add(new IdeAction(AppActions.TypeHierarchy, ActionTitles.TypeHierarchy, "IDE", context => IdeErrors.Observe(ShowTypeHierarchyAsync()))
+        actions.Add(new IdeAction(AppActions.TypeHierarchy, ActionTitles.TypeHierarchy, ActionGroups.Ide, context => IdeErrors.Observe(ShowTypeHierarchyAsync()))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("Navigate", 2, 7)],
         });
-        actions.Add(new IdeAction(AppActions.InspectThis, ActionTitles.InspectThis, "IDE", context => IdeErrors.Observe(InspectThisAsync()))
+        actions.Add(new IdeAction(AppActions.InspectThis, ActionTitles.InspectThis, ActionGroups.Ide, context => IdeErrors.Observe(InspectThisAsync()))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("Navigate", 2, 10)],

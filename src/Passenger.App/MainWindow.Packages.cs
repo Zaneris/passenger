@@ -31,18 +31,18 @@ public partial class MainWindow
             Tools = () => nuget?.Tabs,
             Menus = [new MenuPlace("Tools", 0, 0)],
         });
-        actions!.Add(new IdeAction(AppActions.NuGetRefresh, ActionTitles.NuGetRefresh, "NuGet", _ => IdeErrors.Observe(NuGet.RefreshAskedAsync())) { WhyNot = NeedsFolder });
-        actions.Add(new IdeAction(AppActions.NuGetUpdateAll, ActionTitles.NuGetUpdateAll, "NuGet", _ => IdeErrors.Observe(NuGet.UpdateAllAsync()))
+        actions!.Add(new IdeAction(AppActions.NuGetRefresh, ActionTitles.NuGetRefresh, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.RefreshAskedAsync())) { WhyNot = NeedsFolder });
+        actions.Add(new IdeAction(AppActions.NuGetUpdateAll, ActionTitles.NuGetUpdateAll, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.UpdateAllAsync()))
         {
             WhyNot = c => NeedsFolder(c) ?? NuGet.UpdateAllWhyNot,
         });
         // The NuGet window's chosen package, so asked of its view only once built: no package is chosen before.
-        actions.Add(new IdeAction(AppActions.NuGetUpdateEverywhere, ActionTitles.NuGetUpdateEverywhere, "NuGet", _ => IdeErrors.Observe(NuGet.UpdateEverywhereAsync()))
+        actions.Add(new IdeAction(AppActions.NuGetUpdateEverywhere, ActionTitles.NuGetUpdateEverywhere, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.UpdateEverywhereAsync()))
         {
             WhyNot = c => NeedsFolder(c) ?? (nuget is { } shown ? shown.UpdateEverywhereWhyNot : Refusals.NoPackageChosen),
             Words = ["Update Package Everywhere", "Update in Every Project"],
         });
-        actions.Add(new IdeAction(AppActions.NuGetUpdateSelected, ActionTitles.NuGetUpdateSelected, "NuGet", _ => IdeErrors.Observe(NuGet.UpdateSelectedAsync()))
+        actions.Add(new IdeAction(AppActions.NuGetUpdateSelected, ActionTitles.NuGetUpdateSelected, ActionGroups.NuGet, _ => IdeErrors.Observe(NuGet.UpdateSelectedAsync()))
         {
             WhyNot = c => NeedsFolder(c) ?? (nuget is { } shown ? shown.UpdateSelectedWhyNot : Refusals.UpdatesNotShown),
         });

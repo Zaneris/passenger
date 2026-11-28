@@ -74,27 +74,27 @@ public sealed partial class LiveTreeController
         };
         parts.Dock.Add(window);
         window.PropertyChanged += OnWindowChanged;
-        parts.Actions.Add(new IdeAction(AppActions.SelectElement, ActionTitles.SelectElement, "Debug", context => IdeErrors.Observe(PickAsync(!picking)))
+        parts.Actions.Add(new IdeAction(AppActions.SelectElement, ActionTitles.SelectElement, ActionGroups.Debug, context => IdeErrors.Observe(PickAsync(!picking)))
         {
             WhyNot = _ => WhyNotAsk() ?? (app as Godot.GodotGame)?.EditorHolds,
         });
-        parts.Actions.Add(new IdeAction(AppActions.LiveTreeRefresh, ActionTitles.LiveTreeRefresh, "Debug", context => IdeErrors.Observe(RefreshAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.LiveTreeRefresh, ActionTitles.LiveTreeRefresh, ActionGroups.Debug, context => IdeErrors.Observe(RefreshAsync()))
         {
             WhyNot = _ => WhyNotAsk(),
         });
-        parts.Actions.Add(new IdeAction(AppActions.SelectIn3D, ActionTitles.SelectIn3D, "Debug", context => IdeErrors.Observe(PickInAsync(!pickIn3D)))
+        parts.Actions.Add(new IdeAction(AppActions.SelectIn3D, ActionTitles.SelectIn3D, ActionGroups.Debug, context => IdeErrors.Observe(PickInAsync(!pickIn3D)))
         {
             IsChecked = _ => pickIn3D,
             WhyNot = _ => app is Godot.GodotGame game ? game.EditorHolds : "Select Element picks among 3D nodes in a Godot game: Run or Debug one",
         });
-        parts.Actions.Add(new IdeAction(AppActions.PauseGameLoop, ActionTitles.PauseGameLoop, "Debug", context => IdeErrors.Observe(HoldLoopAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.PauseGameLoop, ActionTitles.PauseGameLoop, ActionGroups.Debug, context => IdeErrors.Observe(HoldLoopAsync()))
         {
             TitleIn = _ => app is Godot.GodotGame { LoopHeld: true } ? ActionTitles.ResumeGameLoop : ActionTitles.PauseGameLoop,
             IsChecked = _ => app is Godot.GodotGame { LoopHeld: true },
             WhyNot = _ => WhyNotLoop(),
             Words = ["Suspend Game", "Resume Game"],
         });
-        parts.Actions.Add(new IdeAction(AppActions.NextFrame, ActionTitles.NextFrame, "Debug", context => IdeErrors.Observe(StepAsync()))
+        parts.Actions.Add(new IdeAction(AppActions.NextFrame, ActionTitles.NextFrame, ActionGroups.Debug, context => IdeErrors.Observe(StepAsync()))
         {
             WhyNot = _ => WhyNotLoop() ?? (app is Godot.GodotGame { LoopHeld: false } game ? $"{game.Name}'s loop runs: Pause Game Loop holds it first" : null),
             Words = ["Step Frame"],

@@ -22,7 +22,7 @@ public partial class MainWindow
         Add(AppActions.GetFromBranch, ActionTitles.GetFromBranch, context => IdeErrors.Observe(ShowGetFromBranchAsync(Target(context, fileOnly: true)!)), 4, fileOnly: true);
         Add(AppActions.ShowHistory, ActionTitles.ShowHistory, context => IdeErrors.Observe(ShowHistoryAsync(Target(context, fileOnly: false)!)), 5, fileOnly: false);
         AddGitIgnoreActions();
-        actions!.Add(new IdeAction(AppActions.ShowHistoryForSelection, ActionTitles.ShowHistoryForSelection, "Git", context =>
+        actions!.Add(new IdeAction(AppActions.ShowHistoryForSelection, ActionTitles.ShowHistoryForSelection, ActionGroups.Git, context =>
         {
             (int first, int last) = SelectedLines(context.Editor);
             IdeErrors.Observe(ShowSelectionHistoryAsync(context.File!.Path, first, last));
@@ -33,7 +33,7 @@ public partial class MainWindow
         });
 
         void Add(string id, Words title, Action<ActionContext> run, int order, bool fileOnly) =>
-            actions!.Add(new IdeAction(id, title, "Git", run)
+            actions!.Add(new IdeAction(id, title, ActionGroups.Git, run)
             {
                 WhyNot = context => NeedsFolder(context) ?? (session.Vcs.Repository is null ? session.Vcs.NoRepository : WhyNoTarget(context, fileOnly)),
                 Menus = [new MenuPlace("Git", 2, order)],

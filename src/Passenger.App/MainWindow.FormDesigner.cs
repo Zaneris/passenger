@@ -131,7 +131,7 @@ public partial class MainWindow
     /// <summary>A form's layout as an action, checked while it is in force: Code and Design chosen while it is turns the
     /// split, the design under the code or beside it, back to as the group's shape stands it.</summary>
     private void AddFormLayout(string id, Words title, PaneView view, IReadOnlyList<string> words) =>
-        actions!.Add(new IdeAction(id, title, "Editor", _ =>
+        actions!.Add(new IdeAction(id, title, ActionGroups.Editor, _ =>
         {
             PaneLayout layout = Editors.FormLayout;
             Editors.FormLayout = view == PaneView.Split && layout.View == view
@@ -380,23 +380,23 @@ public partial class MainWindow
     /// keys, in its menu and Find Action; Delete takes the Delete key there.</summary>
     private void AddDesignEdits()
     {
-        actions!.Add(new IdeAction(A.FormDelete, ActionTitles.FormDelete, "Design", context => Edit(context, DesignEditKinds.Delete))
+        actions!.Add(new IdeAction(A.FormDelete, ActionTitles.FormDelete, ActionGroups.Design, context => Edit(context, DesignEditKinds.Delete))
         {
             WhyNot = context => DesignWhyNot(context),
             Words = ["Delete Component", "Remove Control"],
         });
-        actions.Add(new IdeAction(A.FormBringToFront, ActionTitles.FormBringToFront, "Design", context => Edit(context, DesignEditKinds.Front))
+        actions.Add(new IdeAction(A.FormBringToFront, ActionTitles.FormBringToFront, ActionGroups.Design, context => Edit(context, DesignEditKinds.Front))
         {
             WhyNot = context => DesignWhyNot(context, orders: true),
             Words = ["Order", "Z-order"],
         });
-        actions.Add(new IdeAction(A.FormSendToBack, ActionTitles.FormSendToBack, "Design", context => Edit(context, DesignEditKinds.Back))
+        actions.Add(new IdeAction(A.FormSendToBack, ActionTitles.FormSendToBack, ActionGroups.Design, context => Edit(context, DesignEditKinds.Back))
         {
             WhyNot = context => DesignWhyNot(context, orders: true),
             Words = ["Order", "Z-order"],
         });
 
-        actions.Add(new IdeAction(A.FormMoveUp, ActionTitles.FormMoveUp, "Design", context => Edit(context, DesignEditKinds.Order, -1))
+        actions.Add(new IdeAction(A.FormMoveUp, ActionTitles.FormMoveUp, ActionGroups.Design, context => Edit(context, DesignEditKinds.Order, -1))
         {
             WhyNot = context => DesignWhyNot(context) ?? DesignWith(context)?.Pane.Chosen switch
             {
@@ -406,7 +406,7 @@ public partial class MainWindow
             },
             Words = ["Move Item Up", "Order"],
         });
-        actions.Add(new IdeAction(A.FormMoveDown, ActionTitles.FormMoveDown, "Design", context => Edit(context, DesignEditKinds.Order, 1))
+        actions.Add(new IdeAction(A.FormMoveDown, ActionTitles.FormMoveDown, ActionGroups.Design, context => Edit(context, DesignEditKinds.Order, 1))
         {
             WhyNot = context => DesignWhyNot(context) ?? DesignWith(context)?.Pane.Chosen switch
             {

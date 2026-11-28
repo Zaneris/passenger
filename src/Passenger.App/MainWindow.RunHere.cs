@@ -16,7 +16,7 @@ public partial class MainWindow
         Here(A.DebugHere, "Debug", ActionTitles.DebugHere, ActionTitles.DebugHereNamed, A.Debug);
         Here(A.ProfileHere, "Profile", ActionTitles.ProfileHere, ActionTitles.ProfileHereNamed, A.Profile);
 
-        void Here(string id, string verb, Words title, Func<Words, Words> named, string launch) => actions!.Add(new IdeAction(id, title, "Run", c => LaunchHere(c, launch))
+        void Here(string id, string verb, Words title, Func<Words, Words> named, string launch) => actions!.Add(new IdeAction(id, title, ActionGroups.Run, c => LaunchHere(c, launch))
         {
             WhyNot = c => ConfigurationHere(c) is { } here
                 ? here.IsScript && launch != A.RunProgram ? Refusals.ScriptOnlyRuns(here.Name)

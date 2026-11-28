@@ -14,9 +14,9 @@ public sealed record MenuPlace(string Path, int Group, int Order);
 /// <summary>One of the window's actions, declared once by the feature it belongs to: its id (what keymaps bind and agents
 /// name), its title and group as Find Action lists it, where the menus list it, what it does, and whether it can run
 /// where it is asked to. Its keys, its menu items, Find Action and an agent's ide_action all run it the same way. Its title
-/// is a resource's words (ActionTitles, keyed by its id's name in <see cref="AppActions"/>), said in the person's language
-/// where the window shows it and in English to an agent.</summary>
-public sealed record IdeAction(string Id, Words Title, string Group, Action<ActionContext> Run)
+/// and its group are a resource's words (ActionTitles, keyed by its id's name in <see cref="AppActions"/>, and
+/// ActionGroups), said in the person's language where the window shows them and in English to an agent.</summary>
+public sealed record IdeAction(string Id, Words Title, Words Group, Action<ActionContext> Run)
 {
     /// <summary>Null when it can run in this context, else why not in words for the status bar and an agent ("No file is
     /// open"). Its menu items are disabled and Find Action greys it while it says why not.</summary>

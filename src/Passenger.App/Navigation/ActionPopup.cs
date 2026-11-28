@@ -53,7 +53,7 @@ public sealed class ActionPopup : SearchPopup<IdeAction>
             ShownWords.Set(title, TextBlock.TextProperty, action.Title);
             // Listed, so it can be found, but greyed: it cannot run here.
             title.Classes.Set(StyleClasses.Muted, !action.CanRun(context));
-            group.Text = action.Group;
+            ShownWords.Set(group, TextBlock.TextProperty, action.Group);
             keys.Text = actions.ShortcutsShown(action.Id) ?? string.Empty;
         });
     }

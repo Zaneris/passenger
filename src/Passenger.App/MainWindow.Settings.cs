@@ -46,7 +46,7 @@ public partial class MainWindow
             }
         };
         // macOS has Settings in the application menu.
-        actions!.Add(new IdeAction(AppActions.ShowSettings, ActionTitles.ShowSettings, "IDE", _ => ShowSettings())
+        actions!.Add(new IdeAction(AppActions.ShowSettings, ActionTitles.ShowSettings, ActionGroups.Ide, _ => ShowSettings())
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("File", 3, 0)],
         });

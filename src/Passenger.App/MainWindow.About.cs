@@ -11,7 +11,7 @@ public partial class MainWindow
     private static readonly string?[] ApplicationActions = [AppActions.About, AppActions.CheckForUpdates, null, AppActions.ShowSettings];
 
     private void AddAbout() =>
-        actions!.Add(new IdeAction(AppActions.About, OperatingSystem.IsMacOS() ? ActionTitles.AboutPassenger : ActionTitles.About, "Help", _ => ShowAbout())
+        actions!.Add(new IdeAction(AppActions.About, OperatingSystem.IsMacOS() ? ActionTitles.AboutPassenger : ActionTitles.About, ActionGroups.Help, _ => ShowAbout())
         {
             Menus = OperatingSystem.IsMacOS() ? [] : [new MenuPlace("Help", 3, 2)],
         });

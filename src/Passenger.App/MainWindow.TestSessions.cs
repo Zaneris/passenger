@@ -15,17 +15,17 @@ public partial class MainWindow
     private void AddTestSessions()
     {
         TestTree tree = Bottom.TestTree;
-        Add(A.NewTestSession, ActionTitles.NewTestSession, "Unit Tests", NewTestSession, c => NeedsFolder(c) ?? NoTestsFor(c), ("Tests", 3, 0),
+        Add(A.NewTestSession, ActionTitles.NewTestSession, ActionGroups.UnitTests, NewTestSession, c => NeedsFolder(c) ?? NoTestsFor(c), ("Tests", 3, 0),
             words: ["Create New Session", "Unit Test Session"]);
-        Add(A.AppendToTestSession, ActionTitles.AppendToTestSession, "Unit Tests", AppendToTestSession,
+        Add(A.AppendToTestSession, ActionTitles.AppendToTestSession, ActionGroups.UnitTests, AppendToTestSession,
             c => NeedsFolder(c) ?? (tree.Current is null ? Refusals.NoTestSession : NoTestsFor(c)), ("Tests", 3, 1), words: ["Add to Session"]);
-        Add(A.RunTestSession, ActionTitles.RunTestSession, "Unit Tests", _ => RunTestSession(),
+        Add(A.RunTestSession, ActionTitles.RunTestSession, ActionGroups.UnitTests, _ => RunTestSession(),
             c => NeedsTestBuild(c) ?? (tree.Current is null ? Refusals.NoTestSession : null), ("Tests", 3, 2), works: A.RunTests);
-        Add(A.ShowAllTests, ActionTitles.ShowAllTests, "Unit Tests", _ => ShowTestsOf(null), NeedsFolder, ("Tests", 3, 3), words: ["Unit Test Explorer"]);
-        Add(A.ShowTestSession, ActionTitles.ShowTestSession, "Unit Tests", _ => ShowTestsOf(tree.Current),
+        Add(A.ShowAllTests, ActionTitles.ShowAllTests, ActionGroups.UnitTests, _ => ShowTestsOf(null), NeedsFolder, ("Tests", 3, 3), words: ["Unit Test Explorer"]);
+        Add(A.ShowTestSession, ActionTitles.ShowTestSession, ActionGroups.UnitTests, _ => ShowTestsOf(tree.Current),
             c => NeedsFolder(c) ?? (tree.Current is null ? Refusals.NoTestSession : null), ("Tests", 3, 4));
-        Add(A.TestsQuickList, ActionTitles.TestsQuickList, "Unit Tests", c => ShowTestOperations(c), NeedsFolder, words: ["Quick List", "Unit Test Quick List"]);
-        Add(A.GoToTest, ActionTitles.GoToTest, "Navigate", c => IdeErrors.Observe(GoToTestAsync(c)), c => TypeAtCaret(c) is null ? Refusals.NoTypeForTest : null,
+        Add(A.TestsQuickList, ActionTitles.TestsQuickList, ActionGroups.UnitTests, c => ShowTestOperations(c), NeedsFolder, words: ["Quick List", "Unit Test Quick List"]);
+        Add(A.GoToTest, ActionTitles.GoToTest, ActionGroups.Navigate, c => IdeErrors.Observe(GoToTestAsync(c)), c => TypeAtCaret(c) is null ? Refusals.NoTypeForTest : null,
             ("Navigate", 1, 8), words: ["Go to Tested Type", "Linked Types", "Test Class"]);
 
         string? NoTestsFor(ActionContext context) => (SessionTestsOf(context).Tests.Count == 0 ? Refusals.NoTestsForSession : null)?.Shown;

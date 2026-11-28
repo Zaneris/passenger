@@ -206,7 +206,7 @@ public sealed class ToolWindow([IdentifierOf(typeof(ToolWindowIds))] string id, 
 
     /// <summary>The action that shows it, as the dock adds it: an agent's shows it with the keys left where they are.</summary>
     internal IdeAction? ShowAction(DockHost dock) => Action is { } id
-        ? new IdeAction(id, ActionTitle ?? Title, "Tool Windows", context =>
+        ? new IdeAction(id, ActionTitle ?? Title, ActionGroups.ToolWindows, context =>
         {
             if (context.ByAgent)
             {

@@ -39,7 +39,6 @@ public partial class MainWindow
         }, under);
     }
 
-    private const string Tabs = "Editor Tabs";
     private const string TabsMenu = "Window/Editor Tabs";
 
     /// <summary>A tab's menu items, in their order: the file's path and Open In as the Explorer's row has them, an HTML
@@ -64,9 +63,9 @@ public partial class MainWindow
         Editors.MaximizeRequested += (_, _) => Request(A.HideAllToolWindows);
         Editors.HiddenTabsRequested += (_, group) => ShowHiddenTabs(group);
         // Run from the terminal too, as its shells are tabs of their own.
-        actions!.Add(new IdeAction(A.NextTab, ActionTitles.NextTab, Tabs, c => StepTab(c, 1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 0)], FromTerminal = true });
-        actions.Add(new IdeAction(A.PreviousTab, ActionTitles.PreviousTab, Tabs, c => StepTab(c, -1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 1)], FromTerminal = true });
-        actions!.Add(new IdeAction(A.PinTab, ActionTitles.PinTab, Tabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))
+        actions!.Add(new IdeAction(A.NextTab, ActionTitles.NextTab, ActionGroups.EditorTabs, c => StepTab(c, 1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 0)], FromTerminal = true });
+        actions.Add(new IdeAction(A.PreviousTab, ActionTitles.PreviousTab, ActionGroups.EditorTabs, c => StepTab(c, -1)) { WhyNot = WhyNotStepTab, Menus = [new MenuPlace(TabsMenu, 0, 1)], FromTerminal = true });
+        actions!.Add(new IdeAction(A.PinTab, ActionTitles.PinTab, ActionGroups.EditorTabs, c => TabOf(c)!.Value.Group.Pin(TabOf(c)!.Value.File, !Pinned(c)))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace(TabsMenu, 0, 2)],
@@ -74,7 +73,7 @@ public partial class MainWindow
         });
 
         // The split worked in loses its tab; the file stays open in any other.
-        actions.Add(new IdeAction(A.CloseTab, ActionTitles.CloseTab, "IDE", c => Editors.CloseTab(TabOf(c)!.Value.Group, TabOf(c)!.Value.File))
+        actions.Add(new IdeAction(A.CloseTab, ActionTitles.CloseTab, ActionGroups.Ide, c => Editors.CloseTab(TabOf(c)!.Value.Group, TabOf(c)!.Value.File))
         {
             WhyNot = Refusals.NeedsFile,
             Menus = [new MenuPlace("File", 1, 2), new MenuPlace(TabsMenu, 1, 0)],
@@ -106,10 +105,10 @@ public partial class MainWindow
         Tab(A.PreviousSplit, ActionTitles.PreviousSplit, _ => Editors.StepSplit(-1), _ => NotSplit(null), (2, 6), ["Previous Splitter"]);
 
         // The Window menu keeps these two after its Editor Tabs.
-        Add(A.MoveToOppositeGroup, ActionTitles.MoveToOppositeGroup, Tabs, c => Editors.MoveToOpposite(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), c => Refusals.NeedsFile(c) ?? NotSplit(c), ("Window", 2, 0));
-        Add(A.OpenInNewWindow, ActionTitles.OpenInNewWindow, Tabs, c => Editors.OpenInNewWindow(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), Refusals.NeedsFile, ("Window", 2, 1));
+        Add(A.MoveToOppositeGroup, ActionTitles.MoveToOppositeGroup, ActionGroups.EditorTabs, c => Editors.MoveToOpposite(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), c => Refusals.NeedsFile(c) ?? NotSplit(c), ("Window", 2, 0));
+        Add(A.OpenInNewWindow, ActionTitles.OpenInNewWindow, ActionGroups.EditorTabs, c => Editors.OpenInNewWindow(TabOf(c)!.Value.Group, TabOf(c)!.Value.File), Refusals.NeedsFile, ("Window", 2, 1));
 
-        actions.Add(new IdeAction(A.RestoreDefaultLayout, ActionTitles.RestoreDefaultLayout, "Tool Windows", _ => Dock.RestoreDefault())
+        actions.Add(new IdeAction(A.RestoreDefaultLayout, ActionTitles.RestoreDefaultLayout, ActionGroups.ToolWindows, _ => Dock.RestoreDefault())
         {
             Menus = [new MenuPlace("Window/Layout Settings", 0, 0)],
             FromTerminal = true,
@@ -162,7 +161,7 @@ public partial class MainWindow
 
     /// <summary>A tab action listed in Window > Editor Tabs at a place.</summary>
     private void Tab(string id, Words title, Action<ActionContext> run, Func<ActionContext, Words?> whyNot, (int Group, int Order) at, IReadOnlyList<string>? words = null) =>
-        Add(id, title, Tabs, run, whyNot, (TabsMenu, at.Group, at.Order), words);
+        Add(id, title, ActionGroups.EditorTabs, run, whyNot, (TabsMenu, at.Group, at.Order), words);
 
     /// <summary>Next Tab (1) or Previous Tab (-1): the tabs of what has the keys stepped (<see cref="TabsWithKeys"/>), the
     /// keys kept in its window, else the active group's.</summary>

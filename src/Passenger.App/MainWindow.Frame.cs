@@ -21,7 +21,7 @@ public partial class MainWindow
         Frame(A.ZoomOut, ActionTitles.ZoomOut, _ => ApplySettings(Declared.DisplayScale.Stepped(settings, up: false)!),
             _ => Declared.DisplayScale.Stepped(settings, up: false) is null ? Refusals.ZoomedAsFarAsItGoes(up: false) : null, ("View/Appearance", 1, 1));
         Frame(A.ResetZoom, ActionTitles.ResetZoom, _ => ApplySettings(Declared.DisplayScale.Unset(settings)), null, ("View/Appearance", 1, 2));
-        actions!.Add(new IdeAction(A.FullScreen, ActionTitles.FullScreen, "IDE", _ => ToggleFullScreen())
+        actions!.Add(new IdeAction(A.FullScreen, ActionTitles.FullScreen, ActionGroups.Ide, _ => ToggleFullScreen())
         {
             IsChecked = _ => WindowState == WindowState.FullScreen,
             Menus = [new MenuPlace("View/Appearance", 0, 0)],
@@ -41,7 +41,7 @@ public partial class MainWindow
 
     /// <summary>One of the frame's actions, which the terminal's keys run too.</summary>
     private void Frame(string id, Words title, Action<ActionContext> run, Func<ActionContext, Words?>? whyNot, (string Path, int Group, int Order) menu) =>
-        actions!.Add(new IdeAction(id, title, "IDE", run)
+        actions!.Add(new IdeAction(id, title, ActionGroups.Ide, run)
         {
             WhyNot = whyNot ?? (_ => null),
             Menus = [new MenuPlace(menu.Path, menu.Group, menu.Order)],

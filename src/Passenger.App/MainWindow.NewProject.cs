@@ -20,12 +20,12 @@ public partial class MainWindow
 {
     private void AddNewProjectActions()
     {
-        actions!.Add(new IdeAction(AppActions.NewSolution, ActionTitles.NewSolution, "IDE", _ => ShowNewSolution())
+        actions!.Add(new IdeAction(AppActions.NewSolution, ActionTitles.NewSolution, ActionGroups.Ide, _ => ShowNewSolution())
         {
             WhyNot = _ => WithoutAnySdk(),
             Menus = [new MenuPlace("File", 0, -2)],
         });
-        actions.Add(new IdeAction(AppActions.NewProject, ActionTitles.NewProject, "IDE", _ => ShowNewProject(ChosenSolutionFolder()))
+        actions.Add(new IdeAction(AppActions.NewProject, ActionTitles.NewProject, ActionGroups.Ide, _ => ShowNewProject(ChosenSolutionFolder()))
         {
             WhyNot = _ => Solution is null ? Refusals.NoSolution : WithoutAnySdk(),
         });

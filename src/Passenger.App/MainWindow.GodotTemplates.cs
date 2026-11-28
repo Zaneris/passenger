@@ -20,7 +20,7 @@ public partial class MainWindow
 
     private void AddGodotTemplates()
     {
-        actions!.Add(new IdeAction(AppActions.GodotScriptTemplates, ActionTitles.GodotScriptTemplates, "Godot", _ => IdeErrors.Observe(WriteGodotTemplatesAsync()))
+        actions!.Add(new IdeAction(AppActions.GodotScriptTemplates, ActionTitles.GodotScriptTemplates, ActionGroups.Godot, _ => IdeErrors.Observe(WriteGodotTemplatesAsync()))
         {
             WhyNot = _ => Folder is null ? Refusals.NoFolder : GodotCSharpProject() is null ? Refusals.NoGodotProject : null,
             Menus = [new MenuPlace("Tools", 0, 9)],

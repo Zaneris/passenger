@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="File" xml:space="preserve">
+    <value>File</value>
+    <comment>The main menu File.</comment>
+  </data>
+  <data name="Edit" xml:space="preserve">
+    <value>Edit</value>
+    <comment>The main menu Edit.</comment>
+  </data>
+  <data name="View" xml:space="preserve">
+    <value>View</value>
+    <comment>The main menu View.</comment>
+  </data>
+  <data name="Navigate" xml:space="preserve">
+    <value>Navigate</value>
+    <comment>The main menu Navigate.</comment>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>Code</value>
+    <comment>The main menu Code.</comment>
+  </data>
+  <data name="Refactor" xml:space="preserve">
+    <value>Refactor</value>
+    <comment>The main menu Refactor.</comment>
+  </data>
+  <data name="Build" xml:space="preserve">
+    <value>Build</value>
+    <comment>The main menu Build.</comment>
+  </data>
+  <data name="Run" xml:space="preserve">
+    <value>Run</value>
+    <comment>The main menu Run.</comment>
+  </data>
+  <data name="Tests" xml:space="preserve">
+    <value>Tests</value>
+    <comment>The main menu Tests.</comment>
+  </data>
+  <data name="Tools" xml:space="preserve">
+    <value>Tools</value>
+    <comment>The main menu Tools.</comment>
+  </data>
+  <data name="Git" xml:space="preserve">
+    <value>Git</value>
+    <comment>The main menu Git.</comment>
+  </data>
+  <data name="Window" xml:space="preserve">
+    <value>Window</value>
+    <comment>The main menu Window.</comment>
+  </data>
+  <data name="Help" xml:space="preserve">
+    <value>Help</value>
+    <comment>The main menu Help.</comment>
+  </data>
+  <data name="ToolWindows" xml:space="preserve">
+    <value>Tool Windows</value>
+    <comment>The submenu Tool Windows, in the main menu or a context menu.</comment>
+  </data>
+  <data name="ActiveEditor" xml:space="preserve">
+    <value>Active Editor</value>
+    <comment>The submenu Active Editor, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Appearance" xml:space="preserve">
+    <value>Appearance</value>
+    <comment>The submenu Appearance, in the main menu or a context menu.</comment>
+  </data>
+  <data name="RecentSolutions" xml:space="preserve">
+    <value>Recent Solutions</value>
+    <comment>The submenu Recent Solutions, in the main menu or a context menu.</comment>
+  </data>
+  <data name="LineSeparators" xml:space="preserve">
+    <value>Line Separators</value>
+    <comment>The submenu Line Separators, in the main menu or a context menu.</comment>
+  </data>
+  <data name="LocalHistory" xml:space="preserve">
+    <value>Local History</value>
+    <comment>The submenu Local History, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Find</value>
+    <comment>The submenu Find, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Bookmarks" xml:space="preserve">
+    <value>Bookmarks</value>
+    <comment>The submenu Bookmarks, in the main menu or a context menu.</comment>
+  </data>
+  <data name="AvaloniaDebugOverlays" xml:space="preserve">
+    <value>Avalonia Debug Overlays</value>
+    <comment>The submenu Avalonia Debug Overlays, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Migrations" xml:space="preserve">
+    <value>Migrations</value>
+    <comment>The submenu Migrations, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Database" xml:space="preserve">
+    <value>Database</value>
+    <comment>The submenu Database, in the main menu or a context menu.</comment>
+  </data>
+  <data name="CodeCompletion" xml:space="preserve">
+    <value>Code Completion</value>
+    <comment>The submenu Code Completion, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Folding" xml:space="preserve">
+    <value>Folding</value>
+    <comment>The submenu Folding, in the main menu or a context menu.</comment>
+  </data>
+  <data name="ExpandToLevel" xml:space="preserve">
+    <value>Expand to Level</value>
+    <comment>The submenu Expand to Level, in the main menu or a context menu.</comment>
+  </data>
+  <data name="ExpandAllToLevel" xml:space="preserve">
+    <value>Expand All to Level</value>
+    <comment>The submenu Expand All to Level, in the main menu or a context menu.</comment>
+  </data>
+  <data name="LayoutSettings" xml:space="preserve">
+    <value>Layout Settings</value>
+    <comment>The submenu Layout Settings, in the main menu or a context menu.</comment>
+  </data>
+  <data name="EditorTabs" xml:space="preserve">
+    <value>Editor Tabs</value>
+    <comment>The submenu Editor Tabs, in the main menu or a context menu.</comment>
+  </data>
+  <data name="OpenSolutionWindows" xml:space="preserve">
+    <value>Open Solution Windows</value>
+    <comment>The submenu Open Solution Windows, in the main menu or a context menu.</comment>
+  </data>
+  <data name="New" xml:space="preserve">
+    <value>New</value>
+    <comment>The submenu New, in the main menu or a context menu.</comment>
+  </data>
+  <data name="GoTo" xml:space="preserve">
+    <value>Go To</value>
+    <comment>The submenu Go To, in the main menu or a context menu.</comment>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>Add</value>
+    <comment>The submenu Add, in the main menu or a context menu.</comment>
+  </data>
+  <data name="OpenIn" xml:space="preserve">
+    <value>Open In</value>
+    <comment>The submenu Open In, in the main menu or a context menu.</comment>
+  </data>
+  <data name="NothingYet" xml:space="preserve">
+    <value>Nothing yet</value>
+    <comment>A submenu listed as it opens (Recent Solutions) that has nothing to list yet.</comment>
+  </data>
+</root>

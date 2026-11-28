@@ -14,7 +14,7 @@ public partial class MainWindow
     {
         Editors.NavigationOutlineOf = document => document.Syntax is { } syntax ? new CSharp.CSharpOutline(syntax, document.Text) : session.OutlineOf(document);
         Editors.NavigationListRequested += (_, list) => ShowNavigationList(list);
-        Add(A.JumpToNavigationBar, ActionTitles.JumpToNavigationBar, "Navigate", _ => IdeErrors.Observe(JumpToNavigationBarAsync()),
+        Add(A.JumpToNavigationBar, ActionTitles.JumpToNavigationBar, ActionGroups.Navigate, _ => IdeErrors.Observe(JumpToNavigationBarAsync()),
             c => c.ByAgent ? Refusals.PersonsKeys : Refusals.NeedsFile(c) ?? (Editors.Active is { } file && Editors.NavigationOutlineOf(file) is null ? Refusals.NoOutline(file.Name) : null),
             ("Navigate", 1, 6), words: ["Breadcrumbs", "Navigation Bar", "Focus Breadcrumbs"]);
     }

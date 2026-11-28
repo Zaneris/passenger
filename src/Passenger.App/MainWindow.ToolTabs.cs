@@ -18,7 +18,7 @@ public partial class MainWindow
         Editors.ToolZoneAt = (tool, at) => Dock.ZoneFor(tool.Window, at);
         Editors.ToolTabDropped += (_, dropped) => Dock.DropAt(dropped.Tool.Window, dropped.At);
         Editors.ToolTabDragging += (_, dragging) => Dock.Dragging(dragging);
-        actions!.Add(new IdeAction(A.DockToolWindow, ActionTitles.DockToolWindow, "Tool Windows", c => Dock.SetMode(ToolTabOf(c)!.Window, ToolMode.Docked))
+        actions!.Add(new IdeAction(A.DockToolWindow, ActionTitles.DockToolWindow, ActionGroups.ToolWindows, c => Dock.SetMode(ToolTabOf(c)!.Window, ToolMode.Docked))
         {
             WhyNot = c => ToolTabOf(c) is null ? "No tool window's tab is chosen" : null,
             TitleIn = c => ToolTabOf(c) is { } tool ? ActionTitles.DockToolWindowIn(tool.Window.Title, ToolWindow.Name(tool.Window.Anchor)) : ActionTitles.DockToolWindow,

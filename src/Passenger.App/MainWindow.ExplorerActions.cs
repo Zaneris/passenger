@@ -16,7 +16,6 @@ namespace Passenger.App;
 /// Rider's Visual Studio keymap gives Compare Files (CompareTwoFiles) the same Ctrl+D (Cmd+D on macOS).</summary>
 public partial class MainWindow
 {
-    private const string ExplorerGroup = "Explorer";
     private const string NoRow = "Nothing is chosen in the Explorer";
 
     /// <summary>The Explorer's view the person last switched to in the open folder, which the folder keeps
@@ -47,7 +46,7 @@ public partial class MainWindow
         Row(A.AddDockerCompose, ActionTitles.AddDockerCompose, _ => ShowDockerCompose(),
             row => row.Kind == NodeKind.Solution ? null : "Docker Compose is added to the solution", _ => "Docker Compose…");
         // The solution's, from its row or a solution folder's, and from Find Action wherever a solution is open.
-        actions!.Add(new IdeAction(A.AddAspireOrchestration, ActionTitles.AddAspireOrchestration, ExplorerGroup, _ => ShowAddAspireOrchestration())
+        actions!.Add(new IdeAction(A.AddAspireOrchestration, ActionTitles.AddAspireOrchestration, ActionGroups.Explorer, _ => ShowAddAspireOrchestration())
         {
             WhyNot = c => RowOf(c) is { } row
                 ? row.Kind is NodeKind.Solution or NodeKind.SolutionFolder ? null : "Aspire orchestration is added to the solution"
@@ -57,7 +56,7 @@ public partial class MainWindow
         Row(A.ManageNuGet, ActionTitles.ManageNuGet, _ => ShowToolWindow(ToolWindowIds.NuGet),
             row => (row.IsShared ? Refusals.SharedProject(row.Name) : row is { Kind: NodeKind.Project } or { Kind: NodeKind.Dependencies, Owner: not null } ? null : $"{row.Name} has no packages")?.Shown);
         // The solution's row, and Find Action wherever a solution is open: the NuGet window over every project.
-        actions!.Add(new IdeAction(A.ManageNuGetForSolution, ActionTitles.ManageNuGetForSolution, ExplorerGroup, ManageSolutionPackages)
+        actions!.Add(new IdeAction(A.ManageNuGetForSolution, ActionTitles.ManageNuGetForSolution, ActionGroups.Explorer, ManageSolutionPackages)
         {
             WhyNot = c => RowOf(c) is { } row
                 ? row.Kind == NodeKind.Solution ? null : "The solution's packages are managed from its row"
@@ -78,7 +77,7 @@ public partial class MainWindow
         Row(A.ExcludeFromProject, ActionTitles.ExcludeFromProject, row => SetShared(SharedRows(row, unlisted: false), include: false),
             row => (SharedRows(row, unlisted: false).Count > 0 ? null : Refusals.NotSharedFile(row.Name))?.Shown);
         // Compare With... for one file, Compare Files for two chosen together.
-        actions!.Add(new IdeAction(A.CompareFiles, ActionTitles.CompareFiles, ExplorerGroup, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
+        actions!.Add(new IdeAction(A.CompareFiles, ActionTitles.CompareFiles, ActionGroups.Explorer, c => IdeErrors.Observe(CompareAsync(RowOf(c)!)))
         {
             WhyNot = c => RowOf(c) is not { } row ? NoRow : row is { Kind: NodeKind.File, IsSolutionItem: false, Path: not null } ? null : "Choose a file in the Explorer",
             TitleIn = c => RowOf(c) is { } row && Explorer.SelectedNodes.Contains(row) && Explorer.SelectedNodes.Count(n => n.IsFile) == 2 ? ActionTitles.CompareFiles : ActionTitles.CompareWith,
@@ -91,7 +90,7 @@ public partial class MainWindow
         OnDisk(A.OpenInBrowser, ActionTitles.OpenInBrowser, path => Browse(new Uri(path)), ActionTitles.OpenInBrowserInMenu,
             path => Languages.Language.ForPath(path) == Languages.Language.Html ? null : $"{Path.GetFileName(path)} is not an HTML page");
         // Rider's RenameElement: the Explorer's row where its menu or keys ask, else what is at the editor's caret.
-        actions.Add(new IdeAction(A.Rename, ActionTitles.Rename, "Code", c =>
+        actions.Add(new IdeAction(A.Rename, ActionTitles.Rename, ActionGroups.Code, c =>
         {
             if (RowOf(c) is { } row)
             {
@@ -107,12 +106,12 @@ public partial class MainWindow
             Menus = [new MenuPlace("Refactor", 1, 0)],
         });
 
-        actions.Add(new IdeAction(A.SelectOpenedFile, ActionTitles.SelectOpenedFile, ExplorerGroup, SelectOpenedFile)
+        actions.Add(new IdeAction(A.SelectOpenedFile, ActionTitles.SelectOpenedFile, ActionGroups.Explorer, SelectOpenedFile)
         {
             WhyNot = c => c.File is null ? Refusals.NoFile : Explorer.Tree.Root is null ? Refusals.NoFolder : null,
             Words = ["Locate in Explorer", "Sync with Active Document", "Scroll from Source"],
         });
-        actions.Add(new IdeAction(A.SwitchExplorerView, ActionTitles.SwitchExplorerView, ExplorerGroup, SwitchExplorerView)
+        actions.Add(new IdeAction(A.SwitchExplorerView, ActionTitles.SwitchExplorerView, ActionGroups.Explorer, SwitchExplorerView)
         {
             WhyNot = _ => Explorer.Tree.Root is null ? Refusals.NoFolder : Explorer.HasSolutionView ? null : Refusals.NoSolutionView,
             Words = ["Solution View", "Files View", "File System View", "Show Files on Disk"],
@@ -218,7 +217,7 @@ public partial class MainWindow
 
     /// <summary>One of the Explorer's own actions, on its row.</summary>
     private void Row(string id, Words title, Action<ExplorerNode> run, Func<ExplorerNode, string?> whyNot, Func<ExplorerNode, Words>? titleIn = null) =>
-        actions!.Add(new IdeAction(id, title, ExplorerGroup, c => run(RowOf(c)!))
+        actions!.Add(new IdeAction(id, title, ActionGroups.Explorer, c => run(RowOf(c)!))
         {
             WhyNot = c => RowOf(c) is { } row ? whyNot(row) : NoRow,
             TitleIn = titleIn is null ? null : c => RowOf(c) is { } row ? titleIn(row) : title,
@@ -227,7 +226,7 @@ public partial class MainWindow
     /// <summary>An action on what is on disk: the Explorer's row while its menu or keys ask, else the file shown; one that
     /// takes only some files says why not of the others (<paramref name="whyNot"/>).</summary>
     private void OnDisk(string id, Words title, Action<string> run, Words? titleInMenu = null, Func<string, string?>? whyNot = null) =>
-        actions!.Add(new IdeAction(id, title, ExplorerGroup, c => run(PathOnDisk(c)!))
+        actions!.Add(new IdeAction(id, title, ActionGroups.Explorer, c => run(PathOnDisk(c)!))
         {
             WhyNot = c => PathOnDisk(c) is { } path ? whyNot?.Invoke(path) : RowOf(c) is { } row ? $"{row.Name} is in no folder on disk" : Refusals.NoFile,
             TitleIn = titleInMenu is null ? null : c => c.ExplorerRow is null ? title : titleInMenu,

@@ -26,14 +26,14 @@ public partial class MainWindow
 
     private void AddRegions()
     {
-        actions!.Add(new IdeAction(AppActions.NextRegion, ActionTitles.NextRegion, "Window", _ => GoRound(1))
+        actions!.Add(new IdeAction(AppActions.NextRegion, ActionTitles.NextRegion, ActionGroups.Window, _ => GoRound(1))
         {
             WhyNot = c => c.ByAgent ? Refusals.PersonsKeys : null,
             Menus = [new MenuPlace("Window", 3, 0)],
             FromTerminal = true,
             Words = ["Next Pane", "Next Area", "Focus Next"],
         });
-        actions.Add(new IdeAction(AppActions.PreviousRegion, ActionTitles.PreviousRegion, "Window", _ => GoRound(-1))
+        actions.Add(new IdeAction(AppActions.PreviousRegion, ActionTitles.PreviousRegion, ActionGroups.Window, _ => GoRound(-1))
         {
             WhyNot = c => c.ByAgent ? Refusals.PersonsKeys : null,
             Menus = [new MenuPlace("Window", 3, 1)],
