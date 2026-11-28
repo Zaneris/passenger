@@ -887,7 +887,8 @@ public static class VimMotions
         int end;
         int next;
         bool white = false;
-        if (MacroAt(text, last, caret) is { } macro && !(asText && caret > macro.Start) && !(Bound(text, macro.Line + 1) && text[macro.End - 1] is ' ' or '\t'))
+        if (MacroAt(text, last, caret) is { } macro && !(asText && caret > macro.Start) && !(Bound(text, macro.Line + 1) && text[macro.End - 1] is ' ' or '\t')
+            && !WhiteAfterMark(text, macro))
         {
             if (!(caret > macro.Start && OwnSentence(text, macro)) && SentenceBack(text, last, Forward(text, last, caret)) is var found && !BoundAt(text, found))
             {
@@ -1730,6 +1731,27 @@ public static class VimMotions
             }
         }
         return true;
+    }
+
+    /// <summary>Whether a macro line ends in blanks after a sentence's end mark and the closers after it, which is and as
+    /// read as any other text.</summary>
+    private static bool WhiteAfterMark(TextSnapshot text, LineSpan macro)
+    {
+        int q = macro.End;
+        while (q > macro.Start + 1 && text[q - 1] is ' ' or '\t')
+        {
+            q--;
+        }
+        if (q == macro.End)
+        {
+            return false;
+        }
+        q--;
+        while (q > macro.Start && IsCloser(text[q]))
+        {
+            q--;
+        }
+        return q > macro.Start && IsSentenceEnd(text[q]);
     }
 
     private static bool IsCloser(char c) => c is ')' or ']' or '"' or '\'';

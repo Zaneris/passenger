@@ -839,9 +839,9 @@ public sealed partial class Vim
     {
         int last = VimMotions.LastLine(text, breakEnds);
         if (last > 0 && text.GetLine(last) is { Length: > 0 } closing && VimMotions.Bound(text, last) && r.Anchor < closing.Start && r.Cursor < closing.Start
-            && Enumerable.Range(0, last).All(line => VimMotions.Blank(text, line)))
+            && r.Anchor <= r.Cursor && Enumerable.Range(0, last).All(line => VimMotions.Blank(text, line)))
         {
-            // Over empty lines alone before a macro line ending the text, the cursor goes to the last of them, the mode kept.
+            // Over empty lines alone before a macro line ending the text, the cursor goes to the last of them, the mode kept, but carried back.
             return r with { Cursor = text.GetLineStart(last - 1) };
         }
         if (last > 1 && r.Anchor <= r.Cursor && text.GetLine(last) is { Length: > 0 } macro && VimMotions.Bound(text, last)
@@ -866,10 +866,10 @@ public sealed partial class Vim
             // Past the end of a line above the empty lines before a macro line ending the text, any count goes to the last of them.
             return r with { Cursor = text.GetLineStart(last - 1) };
         }
-        if (last > 0 && text.GetLine(last) is { Length: > 0 } ending && VimMotions.Bound(text, last)
+        if (last > 0 && text.GetLine(last) is { Length: > 0 } ending && VimMotions.Bound(text, last) && r.Anchor <= r.Cursor
             && r.Anchor <= ending.Start && (r.Cursor <= ending.Start || (r.Anchor < ending.Start && r.Cursor < VimMotions.StepBack(text, ending.End))))
         {
-            // A macro line ending the text, short of its second character (its last from a stretch begun before it), bounds them as an empty last line.
+            // A macro line ending the text, short of its second character (its last from a stretch begun before it), bounds them as an empty last line, but carried back.
             TextSnapshot emptied = text.Replace(ending.Start, ending.Length, string.Empty);
             Region? found = SentencesOver(emptied, r with { Cursor = Math.Min(r.Cursor, ending.Start) }, inner, n, ref keeps);
             return found is { } taken ? new Region(Back(taken.Anchor), Back(taken.Cursor)) : null;
@@ -936,7 +936,8 @@ public sealed partial class Vim
             {
                 // Below an empty line, a cursor in the blanks opening its line stays in it (is after them, then at its start), a count going on back.
                 int steps = inner ? 2 : 1;
-                int to = n < steps ? indent : n == steps ? on.Start : SentencesBack(text, on.Start, inner, n - steps, begun: true);
+                int to = n < steps ? indent : n == steps ? on.Start
+                    : SentencesBack(text, on.Start, inner, n - steps, begun: true, passesNext: inner && OpensBelowEmpty(text, on.Start));
                 return to != r.Cursor ? r with { Cursor = to } : null;
             }
             int lastLine = VimMotions.LastLine(text, breakEnds);
@@ -1020,10 +1021,10 @@ public sealed partial class Vim
             // From an empty line before a line opening with blanks, as takes each sentence with the white before it, ending at its last character, within its paragraph.
             return r with { Cursor = unitsEnd };
         }
-        if (!inner && n > 1 && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } emptyAbove && emptyAbove.EndIncludingBreak < text.Length
+        if (!inner && VimMotions.LineOf(text, r.Cursor) is { Length: 0 } emptyAbove && emptyAbove.EndIncludingBreak < text.Length
             && text[emptyAbove.EndIncludingBreak] is ' ' or '\t' && IndentedUnits(text, emptyAbove.Line + 1, n) is { } unitsTo && unitsTo > r.Cursor)
         {
-            // Counted past that paragraph, a run of empty lines short of the text's last is a unit of its own.
+            // Past that paragraph or counted past it, a run of empty lines short of the text's last is a unit of its own.
             return r with { Cursor = unitsTo };
         }
         if (!inner && n == 2 && VimMotions.LineOf(text, r.Cursor) is { Length: > 0 } beyond && r.Cursor == beyond.End
@@ -1138,8 +1139,8 @@ public sealed partial class Vim
     }
 
     /// <summary>Where <paramref name="n"/> of as's units end from the start of a line opening with blanks: each sentence
-    /// with the white before it, a run of empty lines short of the text's last one with none; null where a line opening
-    /// with text or of blanks alone, or the text's end, comes first.</summary>
+    /// with the white before it, a run of empty lines short of the text's last one with none, a line of blanks alone after
+    /// the first unit white before the next; null where a line opening with text, or the text's end, comes first.</summary>
     private int? IndentedUnits(TextSnapshot text, int line, int n)
     {
         int lastLine = VimMotions.LastLine(text, breakEnds);
@@ -1166,6 +1167,12 @@ public sealed partial class Vim
             while (first < on.End && text[first] is ' ' or '\t')
             {
                 first++;
+            }
+            if (i > 0 && first == on.End && first > at && on.Line < lastLine)
+            {
+                at = text.GetLineStart(on.Line + 1);
+                i--;
+                continue;
             }
             if (first == at || first == on.End || VimTextObjects.Of(text, first, "s", inner: true, 1, breakEnds) is not { } sentence
                 || LastWrittenBefore(text, sentence.End) is not { } last || last < first)
@@ -1275,12 +1282,13 @@ public sealed partial class Vim
         return to != r.Cursor ? r with { Cursor = to } : null;
     }
 
-    /// <summary>Where is or as carries a cursor before where its stretch began: back a sentence or a white at a time, from
-    /// an empty line before the last of its run to that line first; as takes a white with the sentence before it, a
-    /// sentence with the white before where the cursor stood in or after it or on an empty line a step after the walk's
-    /// first reached (<paramref name="reached"/> for the first, <paramref name="begun"/> where the walk stepped before);
-    /// after is steps from the empty line it began on to a sentence, its next passes the white before it.</summary>
-    private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false, bool begun = false, bool passesAtEmpty = false)
+    /// <summary>Where is or as carries a cursor back before where its stretch began, a sentence or a white a step, from an
+    /// empty line before the last of its run to that line first; as takes a white with the sentence before it, a sentence
+    /// with the white before where the cursor stood in or after it or on an empty line a step after the walk first reached
+    /// one (<paramref name="reached"/>, <paramref name="begun"/> where it stepped before); is passes a white after a step from
+    /// the empty line it began on, and after blanks opening a line below one (<paramref name="passesNext"/>: begun on them).</summary>
+    private int SentencesBack(TextSnapshot text, int at, bool inner, int n, bool reached = false, bool begun = false, bool passesAtEmpty = false,
+        bool passesNext = false)
     {
         int left = n;
         int origin = at;
@@ -1331,7 +1339,12 @@ public sealed partial class Vim
             bool inside = here.Start < at;
             (int start, bool white) = inside ? here : SentenceUnit(text, VimMotions.StepBack(text, at));
             // After a step to an empty line alone, or while it owes one, is takes the white it meets next with the sentence before it.
-            bool passed = ((passesAtEmpty && fromEmpty) || (inner && (landedAlone || owed))) && white && start > 0;
+            bool passed = ((passesAtEmpty && fromEmpty) || (inner && (landedAlone || owed || (passesNext && !fromEmpty)))) && white && start > 0;
+            if (white)
+            {
+                // The blanks opening a line below an empty one, taken or passed, have is pass the next white it meets but one an empty line ends.
+                passesNext = inner && OpensBelowEmpty(text, start);
+            }
             if (passed)
             {
                 (start, white) = SentenceUnit(text, VimMotions.StepBack(text, start));
@@ -1375,6 +1388,10 @@ public sealed partial class Vim
     private static int MacroWithWhite(TextSnapshot text, int macro) =>
         VimMotions.LineOf(text, macro) is { Line: > 0 } line && text.GetLine(line.Line - 1) is { Length: > 0 } above && WhiteEnding(text, above.Line) is var blanks
             && blanks > above.Start && blanks < above.End ? blanks : macro;
+
+    /// <summary>Whether an offset is the start of a line opening with blanks below an empty line.</summary>
+    private static bool OpensBelowEmpty(TextSnapshot text, int at) => VimMotions.LineOf(text, at) is { Line: > 0 } line && line.Start == at && at < line.End
+        && text[at] is ' ' or '\t' && text.GetLine(line.Line - 1).Length == 0;
 
     /// <summary>Whether an offset opens its line with a character that is no blank, below a line of text ending in none.</summary>
     private static bool BreakAloneBefore(TextSnapshot text, int at) => VimMotions.LineOf(text, at) is { Line: > 0 } line && line.Start == at && at < line.End
