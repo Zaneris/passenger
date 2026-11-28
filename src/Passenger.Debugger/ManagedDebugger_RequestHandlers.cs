@@ -983,7 +983,11 @@ public partial class ManagedDebugger
 
     /// <summary>What a reference names: a frame's locals, an object's members, an array's elements, a collection's
     /// results. One from an earlier stop is refused, the program having run on since.</summary>
-    public async Task<List<VariableInfo>> GetVariables(int variablesReferenceInt)
+    public Task<List<VariableInfo>> GetVariables(int variablesReferenceInt) => GetVariables(variablesReferenceInt, int.MaxValue);
+
+    /// <summary>What a reference names, an array's ranges and elements made only to <paramref name="most"/> rows, as a capture
+    /// reads within what it has left.</summary>
+    public async Task<List<VariableInfo>> GetVariables(int variablesReferenceInt, int most)
     {
         List<VariableInfo> result = new List<VariableInfo>();
 
@@ -1040,7 +1044,7 @@ public partial class ManagedDebugger
                 if (unwrappedDebugValue is ICorDebugArrayValue arrayValue)
                 {
                     await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, referenceValue: variablesReference.ObjectValue, declared: variablesReference.Declared,
-                        expression: AsOwnType(variablesReference.Expression, variablesReference.Declared, arrayValue.ExactType));
+                        expression: AsOwnType(variablesReference.Expression, variablesReference.Declared, arrayValue.ExactType), most: most);
                 }
                 else if (unwrappedDebugValue is ICorDebugObjectValue objectValue)
                 {
@@ -1101,7 +1105,7 @@ public partial class ManagedDebugger
             {
                 ICorDebugArrayValue arrayValue = (ICorDebugArrayValue)variablesReference.ObjectValue!.UnwrapDebugValue();
                 await AddArrayElements(arrayValue, variablesReference.ThreadId, variablesReference.FrameStackDepth, result, variablesReference.ArrayIndices, variablesReference.ArrayStartOffset, variablesReference.ArrayCount, variablesReference.ObjectValue,
-                    variablesReference.Declared, variablesReference.Expression);
+                    variablesReference.Declared, variablesReference.Expression, most);
             }
             if (variablesReference.Copied)
             {

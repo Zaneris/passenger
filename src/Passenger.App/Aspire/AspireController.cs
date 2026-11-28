@@ -571,9 +571,12 @@ public sealed partial class AspireController(ProjectSession workspace, string st
                 .Select(r => (r.Name, r.DisplayName, AspireJson.Properties(r.Data, "properties").FirstOrDefault(p => p.Name == "container.image").Value is
                     { ValueKind: JsonValueKind.String } image ? image.GetString() ?? string.Empty : string.Empty))
                 .OrderBy(r => r.Name, StringComparer.Ordinal)];
-            if (!connections.SequenceEqual(app.Connections))
+            string[] values = [.. connections.Select(c => connection.ConnectionStrings.GetValueOrDefault(c.Item1) ?? string.Empty)];
+            if (!connections.SequenceEqual(app.Connections) || !values.SequenceEqual(app.ConnectionValues, StringComparer.Ordinal))
             {
                 app.Connections = connections;
+                app.ConnectionValues = values;
+                app.ConnectionsTold++;
                 ConnectionsChanged?.Invoke(this, app);
             }
             app.Replicas(snapshot);
@@ -592,7 +595,7 @@ public sealed partial class AspireController(ProjectSession workspace, string st
         app.Following = connection.Follow();
     }
 
-    /// <summary>The resources of a run that tell a connection string and run changed (<see cref="AspireAppRun.Connections"/>).</summary>
+    /// <summary>The resources of a run that tell a connection string and run, or their strings, changed (<see cref="AspireAppRun.Connections"/>).</summary>
     public event EventHandler<AspireAppRun>? ConnectionsChanged;
 
     /// <summary>The containers a run's resources name changed (<see cref="AspireAppRun.KnownContainerIds"/>).</summary>
@@ -1661,6 +1664,13 @@ public sealed class AspireAppRun : ServiceRun
     /// <summary>The resources running now that told a connection string (<see cref="AspireInteractions.ConnectionStrings"/>),
     /// by name and the name shown, in order of name.</summary>
     public IReadOnlyList<(string Name, string Shown, string Image)> Connections { get; internal set; } = [];
+
+    /// <summary>The connection strings of <see cref="Connections"/>, in their order, which a change of endpoint or login moves
+    /// though no name does.</summary>
+    internal IReadOnlyList<string> ConnectionValues { get; set; } = [];
+
+    /// <summary>How many times <see cref="Connections"/> or their strings changed.</summary>
+    internal int ConnectionsTold { get; set; }
 
     /// <summary>The container runtime its orchestrator was told (ASPIRE_CONTAINER_RUNTIME in its environment), else null.</summary>
     internal string? ContainerRuntime { get; set; }

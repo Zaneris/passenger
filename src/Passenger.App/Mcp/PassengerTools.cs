@@ -3055,7 +3055,8 @@ public sealed partial class PassengerTools(MainWindow window, AgentConnection? c
         (path, line) switch
         {
             (null, null) => Resume(s => s.ContinueAsync(), waitSeconds, session, cancel),
-            ({ } file, int to) => Resume(debugged => debugged.RunToCursorAsync(Named(file), to - 1), waitSeconds, session, cancel),
+            ({ } file, int to) => Resume(debugged => debugged.RunToWhyNot(Named(file)) is { } why ? throw new ModelContextProtocol.McpException(why.English) : debugged.RunToCursorAsync(Named(file), to - 1),
+                waitSeconds, session, cancel),
             _ => throw new ModelContextProtocol.McpException("Run to a line takes both path and line"),
         };
 

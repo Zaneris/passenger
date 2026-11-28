@@ -165,13 +165,20 @@ public partial class ManagedDebugger
             return;
         }
         List<VariableInfo> members;
+        int left = capture.Most - capture.Count;
         try
         {
-            members = await GetVariables(open.Reference);
+            // One more than it has left, which says there were more.
+            members = await GetVariables(open.Reference, left + 1);
         }
         catch (Exception error) when (error is EvalException or ArgumentException or InvalidOperationException || Failures.OfRuntime(error))
         {
             members = [FailedRow("error", error.Message)];
+        }
+        if (members.Count > left)
+        {
+            capture.Cut($"values past its first {Core.Numbers.Said(capture.Most)}");
+            members = members[..left];
         }
         capture.Count += members.Count;
         open.Copy.VariablesReference = capture.Add([.. members.Where(Kept).Select(row => Copied(row, open.Levels, capture, opening))]);

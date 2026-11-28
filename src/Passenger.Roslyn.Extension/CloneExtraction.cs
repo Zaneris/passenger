@@ -273,8 +273,9 @@ internal static class CloneExtraction
         && body.Statements[^1] == region.Statements[^1];
 
     /// <summary>Lines every clone's names up with the first's, token by token: a variable of the clone's own with one of the
-    /// other's own, one from outside with one from outside of the same type, the same one throughout; anything else named
-    /// the same in every clone. A literal written otherwise in any is noted, to be a parameter.</summary>
+    /// other's own, one from outside with one from outside of the same type, the same one throughout, and none a clone sets
+    /// standing for two of the first's; anything else named the same in every clone. A literal written otherwise in any is
+    /// noted, to be a parameter.</summary>
     private static void Match(List<Region> regions, Dictionary<ISymbol, ISymbol>[] maps, List<int> literals, CancellationToken cancel)
     {
         Region first = regions[0];
@@ -331,6 +332,17 @@ internal static class CloneExtraction
                 else if (symbol is null ? theirs.ValueText != token.ValueText : !SymbolEqualityComparer.Default.Equals(symbol.OriginalDefinition, matched?.OriginalDefinition))
                 {
                     throw new RefusedException($"The clones name different things: {token.ValueText} at {first.Where}, {theirs.ValueText} at {region.Where}; one method can't take both");
+                }
+            }
+        }
+        for (int k = 1; k < regions.Count; k++)
+        {
+            foreach (IGrouping<ISymbol, ISymbol> shared in maps[k].GroupBy(m => m.Value, m => m.Key, SymbolEqualityComparer.Default))
+            {
+                if (shared.Skip(1).Any() && regions[k].Flow.WrittenInside.Contains(shared.Key, SymbolEqualityComparer.Default))
+                {
+                    throw new RefusedException($"{shared.Key.Name} at {regions[k].Where} stands for {Plural.Listed([.. shared.Select(s => s.Name)])} at {first.Where} and is set there, "
+                        + "which one method taking them apart can't do");
                 }
             }
         }

@@ -206,7 +206,9 @@ public sealed class BreakpointProperties : UserControl
                 _ => false,
             };
             store.Arrange(code, temporary.IsChecked == true, stands && (waited is null || BreakpointStore.CanWaitFor(code, waited)) ? waited : null);
-            store.Capture(code, snapshot.IsChecked == true ? SnapshotPoint.Of(SnapshotPoint.Split(captures.Text), Limit() ?? code.Snapshot?.Limit) : null);
+            // A blank limit is the default; one it can't read keeps the limit it had.
+            int? most = string.IsNullOrWhiteSpace(limit.Text) ? null : Limit() ?? code.Snapshot?.Limit;
+            store.Capture(code, snapshot.IsChecked == true ? SnapshotPoint.Of(SnapshotPoint.Split(captures.Text), most) : null);
         }
         if (breakpoint is ExceptionBreakpoint exception)
         {

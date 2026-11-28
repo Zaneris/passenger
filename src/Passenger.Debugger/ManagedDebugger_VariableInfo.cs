@@ -836,13 +836,13 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>An array's rows under <paramref name="indexPrefix"/>, its outer dimensions' indices opened so far: a dimension
-    /// over 100 long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one opened), an outer
-    /// dimension's indices each opening to the next, the last's elements, declared as <paramref name="declared"/>'s element
-    /// type (else the array's own), reached by their whole index from <paramref name="expression"/>. A range and an outer
-    /// index are virtual rows, which none reaches. True when the rows open through the array, which is then kept.</summary>
+    /// <summary>An array's rows under <paramref name="indexPrefix"/>, its outer dimensions' indices so far: a dimension over 100
+    /// long in ranges of 100 (<paramref name="startOffset"/> and <paramref name="count"/> one opened), an outer dimension's
+    /// indices each opening to the next, the last's elements, declared as <paramref name="declared"/>'s element type (else the
+    /// array's), reached by their index from <paramref name="expression"/>, at most <paramref name="most"/> rows in all. A range
+    /// and an outer index are virtual rows. True when the rows open through the array, which is then kept.</summary>
     private async Task<bool> AddArrayElements(ICorDebugArrayValue arrayValue, ThreadId threadId, FrameStackDepth stackDepth, List<VariableInfo> result, uint[]? indexPrefix = null, uint? startOffset = null, uint? count = null, ICorDebugValue? referenceValue = null,
-        DeclaredType? declared = null, string? expression = null)
+        DeclaredType? declared = null, string? expression = null, int most = int.MaxValue)
     {
         int rank = arrayValue.Rank;
         indexPrefix ??= [];
@@ -855,7 +855,7 @@ public partial class ManagedDebugger
 
         if (count is null && currentDimensionLength > 100)
         {
-            for (uint rangeStart = 0u; rangeStart < currentDimensionLength; rangeStart += 100)
+            for (uint rangeStart = 0u; rangeStart < currentDimensionLength && result.Count < most; rangeStart += 100)
             {
                 uint rangeCount = Math.Min(100u, currentDimensionLength - rangeStart);
                 uint firstIndex = currentDimensionStart + rangeStart;
@@ -869,7 +869,7 @@ public partial class ManagedDebugger
         if (outer)
         {
             uint first = startOffset ?? 0;
-            for (uint offset = first; offset < first + (count ?? currentDimensionLength); offset++)
+            for (uint offset = first; offset < first + (count ?? currentDimensionLength) && result.Count < most; offset++)
             {
                 uint[] indices = [.. indexPrefix, currentDimensionStart + offset];
                 string name = $"[{string.Join(", ", indices)}, ...]";
@@ -881,7 +881,7 @@ public partial class ManagedDebugger
 
         // The elements first: an evaluation below may neuter the array value.
         DeclaredType? elementDeclared = declared?.Element ?? DeclaredAs(arrayValue.ExactType.FirstTypeParameter);
-        uint elementCount = count ?? currentDimensionLength;
+        uint elementCount = Math.Min(count ?? currentDimensionLength, (uint)Math.Max(0, most - result.Count));
         (uint[] Indices, ICorDebugValue Element)[] elements = ValueEnumerable.Range(0, checked((int)elementCount))
             .Select(offset =>
             {

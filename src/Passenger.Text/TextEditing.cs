@@ -1130,9 +1130,9 @@ public static class TextEditing
 
     /// <summary>Move Statement's edit into or out of a block: whole lines (<paramref name="moving"/>) taken out and put back
     /// before another line outside them (<paramref name="before"/>), each moved in or out by the first's indentation becoming
-    /// <paramref name="indent"/>, one indented less than the first left as it is (a verbatim string's); the carets in them going
-    /// with them, where they stood in their code.</summary>
-    public static EditPlan MoveLines(TextSnapshot text, SelectionSet selections, (int First, int Last) moving, int before, string indent)
+    /// <paramref name="indent"/>, one beginning inside a string (<paramref name="strings"/>) or indented less than the first left
+    /// as it is; the carets in them going with them, where they stood in their code.</summary>
+    public static EditPlan MoveLines(TextSnapshot text, SelectionSet selections, (int First, int Last) moving, int before, string indent, IReadOnlySet<int> strings)
     {
         LineSpan top = text.GetLine(moving.First);
         LineSpan bottom = text.GetLine(moving.Last);
@@ -1148,7 +1148,7 @@ public static class TextEditing
         {
             LineSpan line = text.GetLine(number);
             string content = text.GetText(line.Start, line.End - line.Start);
-            bool moved = content.Length > 0 && content.StartsWith(from, StringComparison.Ordinal);
+            bool moved = content.Length > 0 && !strings.Contains(number) && content.StartsWith(from, StringComparison.Ordinal);
             lines.Add((written.Length, moved));
             written.Append(moved ? indent + content[from.Length..] : content);
             written.Append(number < moving.Last ? text.GetText(line.End, line.BreakLength) : lineBreak);
@@ -1176,9 +1176,9 @@ public static class TextEditing
 
     /// <summary>Unwrap's edit: a statement's lines (<paramref name="whole"/>) replaced by the lines it holds
     /// (<paramref name="kept"/>; none takes it out whole), each moved out as far as the statement's first line by what the
-    /// first of them stood further in, one indented less than that left as it is (a verbatim string's); the caret kept on its
-    /// code, else at the start of what took the statement's place.</summary>
-    public static EditPlan Unwrapped(TextSnapshot text, SelectionSet selections, (int First, int Last) whole, (int First, int Last)? kept)
+    /// first of them stood further in, one beginning inside a string (<paramref name="strings"/>) or indented less than that
+    /// left as it is; the caret kept on its code, else at the start of what took the statement's place.</summary>
+    public static EditPlan Unwrapped(TextSnapshot text, SelectionSet selections, (int First, int Last) whole, (int First, int Last)? kept, IReadOnlySet<int> strings)
     {
         LineSpan top = text.GetLine(whole.First);
         LineSpan bottom = text.GetLine(whole.Last);
@@ -1197,7 +1197,7 @@ public static class TextEditing
         {
             LineSpan line = text.GetLine(number);
             string content = text.GetText(line.Start, line.End - line.Start);
-            bool moved = content.Length > 0 && content.StartsWith(inner, StringComparison.Ordinal);
+            bool moved = content.Length > 0 && !strings.Contains(number) && content.StartsWith(inner, StringComparison.Ordinal);
             if (caret >= line.Start && caret <= line.End)
             {
                 caretAt = written.Length + (moved ? outer.Length + Math.Max(0, caret - line.Start - inner.Length) : caret - line.Start);

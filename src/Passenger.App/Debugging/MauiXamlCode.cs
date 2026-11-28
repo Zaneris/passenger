@@ -33,27 +33,58 @@ public sealed class MauiXamlCode
     }
 
     /// <summary>The code of each XAML file of the program built as <paramref name="assembly"/> (its PDB beside it), the
-    /// files named from <paramref name="folder"/>, its project's, as MAUI's build names them; read off the window's thread.</summary>
-    public static MauiXamlCode Read(string assembly, string folder)
+    /// files named from <paramref name="folder"/>, its project's, as MAUI's build names them, and of each library of the
+    /// program's own beside it (<paramref name="libraries"/>, by its assembly there and its project's folder); read off the
+    /// window's thread.</summary>
+    public static MauiXamlCode Read(string assembly, string folder, IReadOnlyList<(string Assembly, string Folder)>? libraries = null)
     {
-        string pdb = Path.ChangeExtension(assembly, ".pdb");
-        MauiXamlCode code = new(Path.GetFileName(assembly), File.Exists(pdb), new(PathNames.Comparer), new(PathNames.Comparer), new(PathNames.Comparer));
-        foreach ((string document, string text) in PortablePdbs.EmbeddedSources(pdb, d => d.EndsWith(".xsg.cs", StringComparison.OrdinalIgnoreCase)
-            && !d.EndsWith(".uc.xsg.cs", StringComparison.OrdinalIgnoreCase) || d.EndsWith(".sg.cs", StringComparison.OrdinalIgnoreCase)))
+        MauiXamlCode code = new(Path.GetFileName(assembly), File.Exists(Path.ChangeExtension(assembly, ".pdb")), new(PathNames.Comparer), new(PathNames.Comparer),
+            new(PathNames.Comparer));
+        foreach ((string built, string from) in (IEnumerable<(string, string)>)[(assembly, folder), .. libraries ?? []])
         {
-            if (document.EndsWith(".xsg.cs", StringComparison.OrdinalIgnoreCase))
+            foreach ((string document, string text) in PortablePdbs.EmbeddedSources(Path.ChangeExtension(built, ".pdb"), d => d.EndsWith(".xsg.cs", StringComparison.OrdinalIgnoreCase)
+                && !d.EndsWith(".uc.xsg.cs", StringComparison.OrdinalIgnoreCase) || d.EndsWith(".sg.cs", StringComparison.OrdinalIgnoreCase)))
             {
-                if (MauiXamlPage.Read([(document, text)], null, folder) is { } page)
+                if (document.EndsWith(".xsg.cs", StringComparison.OrdinalIgnoreCase))
                 {
-                    code.Add(page);
+                    if (MauiXamlPage.Read([(document, text)], null, from) is { } page)
+                    {
+                        code.Add(page);
+                    }
                 }
-            }
-            else if (FilePath(text) is { } relative)
-            {
-                code.declared.Add(PathNames.Canonical(Path.GetFullPath(Path.Combine(folder, relative))));
+                else if (FilePath(text) is { } relative)
+                {
+                    code.declared.Add(PathNames.Canonical(Path.GetFullPath(Path.Combine(from, relative))));
+                }
             }
         }
         return code;
+    }
+
+    /// <summary>The MAUI libraries of the solution's own a project references, through those it references, each by its
+    /// assembly beside <paramref name="program"/> where the build put it there, and its project's folder.</summary>
+    public static IReadOnlyList<(string Assembly, string Folder)> Libraries(Passenger.Workspace.WorkspaceModel? workspace, string project, string program)
+    {
+        List<(string, string)> found = [];
+        HashSet<string> seen = new(PathNames.Comparer) { project };
+        Queue<string> next = new([project]);
+        while (workspace is not null && next.TryDequeue(out string? at))
+        {
+            foreach (string referenced in workspace.Projects.FirstOrDefault(p => PathNames.Same(p.Path, at))?.ProjectReferences ?? [])
+            {
+                if (!seen.Add(referenced) || workspace.Projects.FirstOrDefault(p => PathNames.Same(p.Path, referenced)) is not { } library)
+                {
+                    continue;
+                }
+                next.Enqueue(library.Path);
+                string assembly = Path.Combine(Path.GetDirectoryName(program)!, $"{library.Property(MSBuildNames.AssemblyName) ?? library.Name}.dll");
+                if (library.Property(MSBuildNames.UseMaui) is { } maui && maui.Equals("true", StringComparison.OrdinalIgnoreCase) && File.Exists(assembly))
+                {
+                    found.Add((assembly, library.Folder));
+                }
+            }
+        }
+        return found;
     }
 
     /// <summary>The code as the program runs it once it took an update of <paramref name="generated"/>, the code MAUI's

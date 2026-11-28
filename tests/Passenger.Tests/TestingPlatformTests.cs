@@ -224,8 +224,8 @@ public sealed class TestingPlatformSettingsTests : TestingPlatformFolders
 }
 
 /// <summary>Coverage measured as a run of tests runs, a step of <see cref="TestingPlatformTests"/>' flow: a VSTest project's
-/// tests through Coverlet's collector and a platform project's under Coverlet's console, both over one library, whose
-/// branches the two runs take together.</summary>
+/// tests through Coverlet's collector and a platform project's under Coverlet's console over a copy of its output, both over
+/// one library, whose branches the two runs take together.</summary>
 public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
 {
     /// <summary>The library both projects test: a method each runs, one whose two branches each runs one of and whose last
@@ -315,6 +315,24 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
         Ui.WaitFor(() => document.Reach?.At(12)?.State == ReachState.Failed, () => $"Sign's last line marked failed: {document.Reach?.At(12)}");
         Assert.Equal(ReachState.Passed, document.Reach!.At(4)?.State);
 
+        // A save that breaks the build is built once, and its change waits for the next save, which builds it.
+        rounds = window.Continuous.Rounds;
+        Typing.Replace(window, "value < 0 ? -2", "value < 0 ? -2 +");
+        Assert.True(window.Perform(AppActions.Save));
+        Ui.WaitFor(() => window.Continuous is { IsRunning: false } && window.Continuous.Rounds > rounds,
+            () => $"the round the broken save brought: {window.Continuous.Said}", TimeSpan.FromSeconds(300));
+        Assert.Contains("could not build", window.Continuous.Said, StringComparison.Ordinal);
+        int failed = window.Continuous.Rounds;
+        Ui.Hold(TimeSpan.FromSeconds(3), "the second a round given back its changes would wait before it began again");
+        Ui.Settle();
+        Assert.True(window.Continuous.Rounds == failed && !window.Continuous.IsRunning,
+            $"A build that failed was built again {window.Continuous.Rounds - failed} times with no save, saying {window.Continuous.Said}");
+        Typing.Replace(window, "value < 0 ? -2 +", "value < 0 ? -2");
+        Assert.True(window.Perform(AppActions.Save));
+        Ui.WaitFor(() => window.Continuous is { IsRunning: false } && window.Continuous.Rounds > failed,
+            () => $"the round the mended save brought: {window.Continuous.Said}", TimeSpan.FromSeconds(300));
+        Assert.DoesNotContain("could not build", window.Continuous.Said, StringComparison.Ordinal);
+
         // The person's next run asks nothing.
         Assert.True(window.Perform(AppActions.RunAllTests));
         Ui.WaitFor(() => !window.Tests.IsBusy, () => $"the person's second run: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(300));
@@ -393,6 +411,36 @@ public sealed class TestingPlatformCoverageTests : TestingPlatformFolders
         Assert.True(window.Perform(AppActions.ClearCoverage));
         Assert.Null(gutter.Coverage.Lines);
         Assert.Empty(view.Rows);
+
+        // Coverlet measures a copy of the platform project's output, so a run stopped partway leaves none of the build's instrumented.
+        List<string> started = [];
+        EventHandler<ChildStart> heard = (_, child) =>
+        {
+            lock (started)
+            {
+                started.Add(child.Command);
+            }
+        };
+        ChildProcesses.Started += heard;
+        window.ApplySettings(window.Settings with { LogEveryProgram = true });
+        try
+        {
+            Assert.True(window.Perform(AppActions.CoverAllTests));
+            Ui.WaitFor(() => !window.Tests.IsBusy && window.Tests.Coverage is not null, () => $"the second run with coverage: {window.BottomPanel.Tests.Status}", TimeSpan.FromSeconds(300));
+        }
+        finally
+        {
+            ChildProcesses.Started -= heard;
+            window.ApplySettings(window.Settings with { LogEveryProgram = false });
+        }
+        string[] measured;
+        lock (started)
+        {
+            measured = [.. started.Where(c => c.Contains("coverlet.console", StringComparison.Ordinal))];
+        }
+        string output = $"Store.Tests{Path.DirectorySeparatorChar}bin";
+        Assert.True(measured.Length == 1 && !measured[0].Contains(output, StringComparison.Ordinal),
+            $"Coverlet measured the platform project's build output in place, where it measures a copy: {string.Join(" | ", measured)}");
         window.Close();
     }
 }

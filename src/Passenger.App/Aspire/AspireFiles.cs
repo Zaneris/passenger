@@ -58,6 +58,13 @@ public sealed class AspireFiles
     /// <summary>The AppHost each aspire.config.json among <see cref="appHosts"/> names, by the file; touched only by the reads.</summary>
     private readonly Dictionary<string, string> cliHosts = new(PathNames.Comparer);
 
+    /// <summary>The aspire.config.json naming each AppHost of another language, there or not yet, by the AppHost's file, so its
+    /// coming or going reads the config again; touched only by the reads.</summary>
+    private readonly Dictionary<string, string> namingConfigs = new(PathNames.Comparer);
+
+    /// <summary>The AppHost files of <see cref="namingConfigs"/> as the last read left them; on the UI thread.</summary>
+    private IReadOnlySet<string> namedHosts = new HashSet<string>();
+
     /// <summary>Whether the next walk reads every C# file it lists again, the watcher having lost changes; the reads' alone too.</summary>
     private bool again;
 
@@ -128,6 +135,10 @@ public sealed class AspireFiles
             {
                 cliHosts.Remove(gone);
             }
+            foreach (KeyValuePair<string, string> gone in namingConfigs.Where(n => !listed.Contains(PathNames.Below(n.Value, root).ToString())).ToArray())
+            {
+                namingConfigs.Remove(gone.Key);
+            }
         });
     }
 
@@ -137,7 +148,8 @@ public sealed class AspireFiles
     {
         UiThread.Check();
         List<string> sources = [.. gone.Where(relative => IsSource(root, relative))];
-        if (sources.Count > 0)
+        string[] named = [.. came.Concat(gone).Select(relative => Path.Join(root, relative)).Where(namedHosts.Contains)];
+        if (sources.Count > 0 || named.Length > 0)
         {
             Then(walk: false, () =>
             {
@@ -147,7 +159,12 @@ public sealed class AspireFiles
                     appHosts.Remove(Path.Join(root, relative));
                     cliHosts.Remove(Path.Join(root, relative));
                     touched.Add(Path.Join(root, relative));
+                    foreach (string config in namingConfigs.Where(n => PathNames.Same(n.Value, Path.Join(root, relative))).Select(n => n.Key).ToArray())
+                    {
+                        namingConfigs.Remove(config);
+                    }
                 }
+                ReadNaming(named);
             });
         }
         arrivals.Came(came.Where(relative => IsSource(root, relative)).Select(relative => Path.Join(root, relative)));
@@ -189,7 +206,8 @@ public sealed class AspireFiles
         arrivals.Heard(paths);
         string[] sources = [.. paths.Where(path => !came.Contains(path) && IsSource(root, PathNames.Below(path, root)))];
         arrivals.Came(paths.Where(path => came.Contains(path) && IsSource(root, PathNames.Below(path, root))));
-        if (sources.Length == 0 && !every)
+        string[] named = [.. paths.Where(namedHosts.Contains)];
+        if (sources.Length == 0 && named.Length == 0 && !every)
         {
             return;
         }
@@ -206,7 +224,22 @@ public sealed class AspireFiles
                     Found(path, appHost);
                 }
             }
+            ReadNaming(named);
         });
+    }
+
+    /// <summary>Reads again the aspire.config.json naming each AppHost file that came, went or changed, which makes an AppHost
+    /// only while the file is there.</summary>
+    private void ReadNaming(IEnumerable<string> hosts)
+    {
+        foreach (string host in hosts)
+        {
+            if (namingConfigs.GetValueOrDefault(host) is { } config && File.Exists(config))
+            {
+                touched.Add(config);
+                Found(config, IsAppHost(config));
+            }
+        }
     }
 
     /// <summary>The C# file's role, as its project and the folder's AppHosts make it now.</summary>
@@ -274,19 +307,20 @@ public sealed class AspireFiles
                 {
                     return;
                 }
-                (IReadOnlyList<string> found, IReadOnlyDictionary<string, NamedServices>? services) = await BackgroundWork.Run(() =>
+                (IReadOnlyList<string> found, IReadOnlyDictionary<string, NamedServices>? services, HashSet<string> awaited) = await BackgroundWork.Run(() =>
                 {
                     work();
                     IReadOnlyList<string> offered = [.. appHosts.Select(file => cliHosts.GetValueOrDefault(file) ?? file).Distinct(PathNames.Comparer)
                         .Order(StringComparer.Ordinal).Take(AppHostLimit)];
                     // Only a C# AppHost's source names services by path for the reads to follow.
                     return (offered, ReadNamed(given, [.. offered.Where(host => !AspireAppHosts.RunsThroughCli(host))])
-                        ? new Dictionary<string, NamedServices>(namedBy, PathNames.Comparer) : null);
+                        ? new Dictionary<string, NamedServices>(namedBy, PathNames.Comparer) : null, new HashSet<string>(namingConfigs.Keys, PathNames.Comparer));
                 });
                 if (session.IsEnded)
                 {
                     return;
                 }
+                namedHosts = awaited;
                 if (services is not null)
                 {
                     named = services;
@@ -419,10 +453,18 @@ public sealed class AspireFiles
         {
             if (Path.GetFileName(path).Equals(AspireAppHosts.ConfigFile, StringComparison.OrdinalIgnoreCase))
             {
-                if (File.Exists(path) && AspireAppHosts.NamedBy(path) is { } named)
+                foreach (string before in namingConfigs.Where(n => PathNames.Same(n.Value, path)).Select(n => n.Key).ToArray())
                 {
-                    cliHosts[path] = named;
-                    return true;
+                    namingConfigs.Remove(before);
+                }
+                if (File.Exists(path) && AspireAppHosts.WrittenIn(path) is { } named)
+                {
+                    namingConfigs[named] = path;
+                    if (File.Exists(named))
+                    {
+                        cliHosts[path] = named;
+                        return true;
+                    }
                 }
                 return false;
             }

@@ -37,7 +37,9 @@ public class CoverageReportTests
         ("the cobertura written gives the rates and each lines branches taken", The_cobertura_written_gives_the_rates_and_each_lines_branches_taken),
         ("the places a test counted read as the lines they stand for", The_places_a_test_counted_read_as_the_lines_they_stand_for),
         ("a files change reaches only the tests that ran a line it changed or stood beside", A_files_change_reaches_only_the_tests_that_ran_a_line_it_changed_or_stood_beside),
-        ("a tests lines are carried to where they stand once another tests run maps the file again", A_tests_lines_are_carried_to_where_they_stand_once_another_tests_run_maps_the_file_again));
+        ("a tests lines are carried to where they stand once another tests run maps the file again", A_tests_lines_are_carried_to_where_they_stand_once_another_tests_run_maps_the_file_again),
+        ("the lines a test could run are carried to where they stand when a round maps no test", The_lines_a_test_could_run_are_carried_to_where_they_stand_when_a_round_maps_no_test),
+        ("the hook reads the counts of the trackers a collector registered before it", The_hook_reads_the_counts_of_the_trackers_a_collector_registered_before_it));
 
     private static void Two_test_assemblies_runs_of_one_method_take_its_branches_together()
     {
@@ -102,6 +104,43 @@ public class CoverageReportTests
         Assert.Equal([6, 1], after.Tests["Stays"].Lines[Shapes]);
         Assert.Equal(["Stays"], after.Running(Shapes, 6));
         Assert.Empty(after.Changed(Shapes, now));
+    }
+
+    private static void The_lines_a_test_could_run_are_carried_to_where_they_stand_when_a_round_maps_no_test()
+    {
+        TestReachState map = Mapped(("Stays", [5])).With(new Dictionary<string, ReachedTest>(), new Dictionary<string, uint[]> { [Shapes] = TestReachState.LinesOf(Text) },
+            new Dictionary<string, IReadOnlyList<int>> { [Shapes] = [6, 7] });
+        TestReachState after = map.With(new Dictionary<string, ReachedTest>(), new Dictionary<string, uint[]> { [Shapes] = TestReachState.LinesOf("top\n" + Text) });
+        Assert.Equal([7, 2], after.Files[Shapes].Coverable);
+    }
+
+    private static void The_hook_reads_the_counts_of_the_trackers_a_collector_registered_before_it()
+    {
+        const string Registry = "Coverlet_RegisteredModuleTrackers";
+        object? before = AppDomain.CurrentDomain.GetData(Registry);
+        AppDomain.CurrentDomain.SetData(Registry, new List<EventHandler> { Tracker.Counted });
+        try
+        {
+            Passenger.TestHits.Hits.Register();
+            Tracker.HitsArray[2] = 1;
+            Assert.Equal("{\"/h/Shapes_1\":[2]}", Passenger.TestHits.Hits.Take());
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.SetData(Registry, before);
+        }
+    }
+
+    /// <summary>A module's tracker as Coverlet's instrumenting makes one: its counts and their file in public static fields.</summary>
+    private static class Tracker
+    {
+        public const string HitsFilePath = "/h/Shapes_1";
+
+        public static readonly int[] HitsArray = new int[4];
+
+        public static void Counted(object? sender, EventArgs e)
+        {
+        }
     }
 
     private const string Shapes = "/src/Shapes.cs";

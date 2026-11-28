@@ -312,11 +312,11 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         });
     }
 
-    /// <summary>Test sessions from the keys (#2311): New Session at the caret makes one of the test there, shown alone in its
-    /// tab; New Session in the Unit Tests window makes a second of the class chosen, Append to Session adds the theory at the
-    /// caret to it, and Run Current Session, chosen from Unit Test Operations, runs those tests alone; Delete takes a test out
-    /// of the session shown; the sessions and the one shown come back when the folder opens again, a tab shows another; and
-    /// Go to Test goes from a type to the test class named after it and back.</summary>
+    /// <summary>Test sessions from the keys (#2311): New Session at the caret makes one of the test there, alone in its tab;
+    /// New Session in the window makes a second of the class chosen, Append to Session adds the theory at the caret, and Run
+    /// Current Session runs those tests alone; Delete takes a test out; the sessions come back with the folder, a tab shows
+    /// another, and sessions restored anew have tabs of their own; Go to Test goes from a type to its test class and back; and
+    /// a method appended inside a class left out is in.</summary>
     private void Test_sessions_made_appended_to_and_run_from_the_keys_run_their_tests_alone_and_come_back_with_the_folder()
     {
         string doubler = Write("Doubler.cs", "namespace Sums.Tests;\n\npublic static class Doubler\n{\n    public static int Twice(int value) => value * 2;\n}\n");
@@ -388,18 +388,43 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         Ui.Run(again, AppActions.GoToTest);
         Ui.WaitFor(() => PathNames.Same(again.EditorArea.Active?.Path ?? string.Empty, doubler), () => $"Go to Test back to Doubler.cs, at {again.EditorArea.Active?.Path}");
         Assert.Equal(2, again.EditorArea.CodeEditor.CaretPosition.Line);
+
+        // A session of the whole project with a class taken out takes a method of that class in again when it is appended.
+        ListBox rows = Tree(again);
+        Ui.Run(again, AppActions.ShowAllTests);
+        Ui.Click(rows.ContainerFromItem(again.Tests.Tree.Rows.Single(r => r.Kind == TestNodeKind.Project))!);
+        Ui.Run(again, AppActions.NewTestSession);
+        Ui.Click(rows.ContainerFromItem(again.Tests.Tree.Rows.Single(r => r.Name == "SumTests"))!);
+        Ui.Press(again, OperatingSystem.IsMacOS() ? "BACK_SPACE" : "DELETE");
+        Assert.DoesNotContain(Shown(again), r => r.Trim() == "SumTests");
+        again.OpenFile(Source);
+        Ui.Settle();
+        again.EditorArea.CodeEditor.Focus();
+        Ui.PlaceAfter(again.EditorArea.CodeEditor, "public void Doubles");
+        Ui.Run(again, AppActions.AppendToTestSession);
+        Assert.True(Shown(again).Select(r => r.Trim()).Where(r => r is "SumTests" or "Doubles" or "Two_and_two_make_four").SequenceEqual(["SumTests", "Doubles"]),
+            $"Doubles appended to a session of its project that left SumTests out shows as [{string.Join(", ", Shown(again))}], not taken in again alone");
+
+        // A folder's opening restores sessions of the names shown before, each a session of its own, whose tab is its.
+        again.Tests.Tree.Restore([.. again.Tests.Tree.Sessions.Select(s => new TestSession(s.Name, s.Tests, s.Left))], null);
+        Ui.Settle();
+        Ui.Click(tabs.Toggles[1]);
+        Assert.True(ReferenceEquals(again.Tests.Tree.Shown, again.Tests.Tree.Sessions[0]),
+            $"The first session's tab showed {again.Tests.Tree.Shown?.Name ?? "All Tests"}, a session no longer the folder's");
         again.Close();
     }
 
     /// <summary>Show Context Actions at an interface's name offers Create Fake into the test project that sees it, first, and at
     /// a sealed class the seam it needs beside it; the fake is made as one command of global Undo, and tests that stand it in
-    /// for the greeter's clock run green (#2087).</summary>
+    /// for the greeter's clock run green (#2087). A signpost counts the usages of its own project's type where another
+    /// project's has the same name.</summary>
     private void A_fake_made_of_a_dependency_from_show_context_actions_stands_in_for_it_in_a_test_that_runs_green()
     {
         string solution = NewFolder();
         Write(solution, "Shop/Shop.csproj", TestProjects.Library("<Nullable>enable</Nullable>", "<ImplicitUsings>enable</ImplicitUsings>"));
         Write(solution, "Shop/Greeter.cs", McpTests.ClockedGreeter);
         Write(solution, "Shop.Tests/Shop.Tests.csproj", TestProject(TestProjects.Framework).With("  <ItemGroup>\n    <ProjectReference Include=\"../Shop/Shop.csproj\" />\n  </ItemGroup>\n"));
+        Write(solution, "Shop.Tests/Diary.cs", "namespace Shop;\n\npublic sealed class Calendar\n{\n}\n\npublic static class Diary\n{\n    public static Calendar Make() => new Calendar();\n}\n");
         Write(solution, "Shop.slnx", "<Solution>\n  <Project Path=\"Shop/Shop.csproj\" />\n  <Project Path=\"Shop.Tests/Shop.Tests.csproj\" />\n</Solution>\n");
         Restore.Run(Path.Combine(solution, "Shop.slnx"));
         MainWindow window = Ui.OpenFolder(solution);
@@ -407,6 +432,15 @@ public sealed class UnitTestsTests : UnitTestsFolders, IClassFixture<RestoredFol
         window.OpenFile(Path.Combine(solution, "Shop", "Greeter.cs"));
         Ui.Settle();
         CodeEditor editor = window.EditorArea.CodeEditor;
+
+        // The test project's own Calendar has the id of Shop's, and each signpost counts its own project's.
+        string Said(int line) => string.Join(" / ", editor.RowsAbove.Where(r => editor.Document.Snapshot.GetLineFromOffset(r.Offset) == line).SelectMany(r => r.Words).Select(w => w.Text));
+        Ui.WaitFor(() => Said(9) == "no usages", () => $"Shop's Calendar's signpost says '{Said(9)}', where nothing uses it");
+        window.OpenFile(Path.Combine(solution, "Shop.Tests", "Diary.cs"));
+        Ui.Settle();
+        Ui.WaitFor(() => Said(2) == "2 usages", () => $"Shop.Tests' own Calendar's signpost says '{Said(2)}', where its Diary uses it twice and Shop's Calendar of the same id is unused");
+        window.OpenFile(Path.Combine(solution, "Shop", "Greeter.cs"));
+        Ui.Settle();
 
         Ui.PlaceAfter(editor, "class Calen");
         Ui.Run(window, AppActions.QuickFix);

@@ -67,6 +67,11 @@ public sealed class RefactoringDialogsTests
         + "        lines.Add(\"Thank you for your custom\");\n        lines.Add(\"Please pay within thirty days\");\n        lines.Add(\"Goods sold are not returned\");\n"
         + "        lines.Add(\"Prices include tax\");\n";
 
+    /// <summary>Clones alike but for names, where Once's one variable stands for Twice's two and is set between their uses.</summary>
+    private const string Aliases = "namespace Shop;\n\npublic static class Aliases\n{\n    public static void Twice(int x, int y)\n    {\n"
+        + "        System.Console.WriteLine(x);\n        x = 3;\n        System.Console.WriteLine(y);\n    }\n\n    public static void Once(int a)\n    {\n"
+        + "        System.Console.WriteLine(a);\n        a = 3;\n        System.Console.WriteLine(a);\n    }\n}\n";
+
     private const string Pets = "namespace Shop;\n\npublic interface IPet\n{\n    string Name { get; }\n}\n\npublic class Fish : IPet\n{\n    public string Name => \"Nemo\";\n\n"
         + "    public int Fins => 2;\n}\n";
 
@@ -83,7 +88,7 @@ public sealed class RefactoringDialogsTests
         File.WriteAllText(PathOf("Shop.csproj"), TestProjects.Library("<Nullable>enable</Nullable>"));
         (string Name, string Text)[] files = [("Calc.cs", Calc), ("Till.cs", Till), ("Order.cs", Order), ("OrderBook.cs", OrderBook),
             ("Report.cs", Report), ("Shapes.cs", Shapes), ("Animal.cs", Animal), ("Dog.cs", Dog), ("Cat.cs", Cat), ("Coins.cs", Coins), ("Purse.cs", Purse),
-            ("Ledger.cs", Ledger), ("Tally.cs", Tally), ("Pets.cs", Pets)];
+            ("Ledger.cs", Ledger), ("Tally.cs", Tally), ("Pets.cs", Pets), ("Aliases.cs", Aliases)];
         foreach ((string name, string text) in files)
         {
             File.WriteAllText(PathOf(name), text);
@@ -108,7 +113,8 @@ public sealed class RefactoringDialogsTests
     /// <summary>Find Code Clones lists each group of the solution's clones with how alike they are and where each lies; two
     /// renamed clones compare side by side; Extract Method from Clones makes them one method, the literal they differ in its
     /// parameter, every clone called in its place as one command Undo takes back whole; a group whose clones call different
-    /// methods is refused, saying so; and Find Clones of Selection finds the statements chosen elsewhere.</summary>
+    /// methods is refused, saying so; Find Clones of Selection finds the statements chosen elsewhere; and a group where one
+    /// clone's variable stands for two of another's and is set between their uses is refused, saying so.</summary>
     private void CodeClones(MainWindow window, List<(string Title, string Text)> asked)
     {
         asked.Clear();
@@ -176,6 +182,21 @@ public sealed class RefactoringDialogsTests
             () => $"the selection's clones to be found, where the status bar says {window.Status}");
         Assert.Equal(["Exact: Tally.cs:28–34, Ledger.cs:28–34"],
             window.ClonesWindow.Found!.Sets.Select(s => $"{s.Kind}: {string.Join(", ", s.Clones.Select(c => c.Shown(folder)))}"));
+
+        window.OpenFile(PathOf("Aliases.cs"));
+        Ui.Settle();
+        int twice = Aliases.IndexOf("        System.Console.WriteLine(x);", StringComparison.Ordinal);
+        int twiceEnd = Aliases.IndexOf("WriteLine(y);", StringComparison.Ordinal) + "WriteLine(y);".Length;
+        window.EditorArea.CodeEditor.Selections = SelectionSet.Single(new Selection(twice, twiceEnd));
+        Assert.True(window.Perform(AppActions.FindClonesOfSelection), Ui.Said(window));
+        Ui.Settle();
+        Ui.WaitFor(() => window.ClonesWindow.Found?.Searched.EndsWith("Aliases.cs", StringComparison.Ordinal) == true,
+            () => $"the selection's clones to be found, where the status bar says {window.Status}");
+        Assert.Equal(["Aliases.cs:7–9, Aliases.cs:14–16"], window.ClonesWindow.Found!.Sets.Select(s => string.Join(", ", s.Clones.Select(c => c.Shown(folder)))));
+        window.ClonesWindow.Choose(window.ClonesWindow.Found.Sets[0]);
+        Ui.Settle();
+        Assert.Equal("a at Aliases.cs:14 stands for x and y at Aliases.cs:7 and is set there, which one method taking them apart can't do",
+            window.Actions.WhyNot(AppActions.ExtractClones, window.Actions.Context())?.Shown);
     }
 
     /// <summary>Change Signature adds, removes and reorders parameters, and every call passes its arguments in the new order,

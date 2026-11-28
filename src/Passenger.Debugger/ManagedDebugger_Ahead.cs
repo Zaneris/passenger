@@ -43,13 +43,15 @@ public partial class ManagedDebugger
         Integer,
         Long,
         Real,
+        Single,
         Null,
         Text,
         Reference,
     }
 
-    /// <summary>A value the path holds: a number, null, a string, or an object (by its reference, and where it lies, 0 for
-    /// a struct or a new object), or one not known.</summary>
+    /// <summary>A value the path holds: a number (a float's <see cref="AheadKind.Single"/>, kept in <c>Real</c>, its arithmetic
+    /// rounded as a float's), null, a string, or an object (by its reference, and where it lies, 0 for a struct or a new
+    /// object), or one not known.</summary>
     private readonly record struct Held(AheadKind Kind, long Integer = 0, double Real = 0, string? Text = null, ICorDebugValue? Value = null, ulong Address = 0)
     {
         public static Held Unknown => default;
@@ -68,7 +70,7 @@ public partial class ManagedDebugger
         private readonly HashSet<int> addressed = [];
         private readonly HashSet<int> addressedArguments = [];
         private readonly List<Held> stack = [];
-        /// <summary>The fields the path set, by where their object lies (0 for a static one) and their name.</summary>
+        /// <summary>The fields the path set, by where their object lies (0 for a static one) and their token and name.</summary>
         private readonly Dictionary<(ulong Address, string Field), Held> written = [];
         /// <summary>Whether code the path could not follow ran, which may have changed any field.</summary>
         private bool heapMoved;
@@ -176,7 +178,7 @@ public partial class ManagedDebugger
                     stack.Add(new Held(AheadKind.Long, (long)instruction.Operand!));
                     return next;
                 case ILOpCode.Ldc_r4:
-                    stack.Add(new Held(AheadKind.Real, Real: (float)instruction.Operand!));
+                    stack.Add(new Held(AheadKind.Single, Real: (float)instruction.Operand!));
                     return next;
                 case ILOpCode.Ldc_r8:
                     stack.Add(new Held(AheadKind.Real, Real: (double)instruction.Operand!));
@@ -246,7 +248,7 @@ public partial class ManagedDebugger
                     {
                         AheadKind.Integer => new Held(AheadKind.Integer, instruction.Code == ILOpCode.Neg ? unchecked(-(int)value.Integer) : ~(int)value.Integer),
                         AheadKind.Long => new Held(AheadKind.Long, instruction.Code == ILOpCode.Neg ? unchecked(-value.Integer) : ~value.Integer),
-                        AheadKind.Real when instruction.Code == ILOpCode.Neg => new Held(AheadKind.Real, Real: -value.Real),
+                        AheadKind.Real or AheadKind.Single when instruction.Code == ILOpCode.Neg => value with { Real = -value.Real },
                         _ => Held.Unknown,
                     });
                     return next;
@@ -411,7 +413,7 @@ public partial class ManagedDebugger
                         CorElementType.I4 => new Held(AheadKind.Integer, BitConverter.ToInt32(bytes)),
                         CorElementType.U4 => new Held(AheadKind.Integer, (int)BitConverter.ToUInt32(bytes)),
                         CorElementType.I8 or CorElementType.U8 => new Held(AheadKind.Long, BitConverter.ToInt64(bytes)),
-                        CorElementType.R4 => new Held(AheadKind.Real, Real: BitConverter.ToSingle(bytes)),
+                        CorElementType.R4 => new Held(AheadKind.Single, Real: BitConverter.ToSingle(bytes)),
                         CorElementType.R8 => new Held(AheadKind.Real, Real: BitConverter.ToDouble(bytes)),
                         _ => Held.Unknown,
                     };
@@ -442,7 +444,7 @@ public partial class ManagedDebugger
                 (AheadKind.Integer or AheadKind.Long, AheadKind.Integer or AheadKind.Long) => unsigned
                     ? ((ulong)left.Integer).CompareTo((ulong)right.Integer)
                     : left.Integer.CompareTo(right.Integer),
-                (AheadKind.Real, AheadKind.Real) when !double.IsNaN(left.Real) && !double.IsNaN(right.Real) => left.Real.CompareTo(right.Real),
+                (AheadKind.Real or AheadKind.Single, AheadKind.Real or AheadKind.Single) when !double.IsNaN(left.Real) && !double.IsNaN(right.Real) => left.Real.CompareTo(right.Real),
                 _ => null,
             };
             bool? equal = order is int ordered ? ordered == 0 : (left.Kind, right.Kind) switch
@@ -456,17 +458,33 @@ public partial class ManagedDebugger
             {
                 ILOpCode.Beq or ILOpCode.Beq_s => equal,
                 ILOpCode.Bne_un or ILOpCode.Bne_un_s => !equal,
-                ILOpCode.Bge or ILOpCode.Bge_s or ILOpCode.Bge_un or ILOpCode.Bge_un_s => order >= 0,
-                ILOpCode.Bgt or ILOpCode.Bgt_s or ILOpCode.Bgt_un or ILOpCode.Bgt_un_s => order > 0,
-                ILOpCode.Ble or ILOpCode.Ble_s or ILOpCode.Ble_un or ILOpCode.Ble_un_s => order <= 0,
-                _ => order < 0,
+                // An order not known leaves the branch not known, never not taken.
+                ILOpCode.Bge or ILOpCode.Bge_s or ILOpCode.Bge_un or ILOpCode.Bge_un_s => order is int ge ? ge >= 0 : null,
+                ILOpCode.Bgt or ILOpCode.Bgt_s or ILOpCode.Bgt_un or ILOpCode.Bgt_un_s => order is int gt ? gt > 0 : null,
+                ILOpCode.Ble or ILOpCode.Ble_s or ILOpCode.Ble_un or ILOpCode.Ble_un_s => order is int le ? le <= 0 : null,
+                _ => order is int lt ? lt < 0 : null,
             };
         }
 
-        /// <summary>Two numbers' result as the runtime computes it, 32-bit ones wrapping; not known for a division by zero, an
-        /// overflow a checked operation throws for, or anything but numbers of a kind.</summary>
+        /// <summary>Two numbers' result as the runtime computes it, 32-bit ones wrapping, floats rounded as floats; not known
+        /// for a division by zero, an overflow a checked operation throws for, or anything but numbers of a kind.</summary>
         private static Held Arithmetic(ILOpCode asked, Held left, Held right)
         {
+            if (left.Kind == AheadKind.Single && right.Kind == AheadKind.Single)
+            {
+                float x = (float)left.Real;
+                float y = (float)right.Real;
+                float? single = asked switch
+                {
+                    ILOpCode.Add or ILOpCode.Add_ovf => x + y,
+                    ILOpCode.Sub or ILOpCode.Sub_ovf => x - y,
+                    ILOpCode.Mul or ILOpCode.Mul_ovf => x * y,
+                    ILOpCode.Div => x / y,
+                    ILOpCode.Rem => x % y,
+                    _ => null,
+                };
+                return single is float made ? new Held(AheadKind.Single, Real: made) : Held.Unknown;
+            }
             if (left.Kind == AheadKind.Real && right.Kind == AheadKind.Real)
             {
                 double? real = asked switch
@@ -533,17 +551,18 @@ public partial class ManagedDebugger
                     ILOpCode.Conv_u4 => new Held(AheadKind.Integer, unchecked((int)(uint)a)),
                     ILOpCode.Conv_i8 or ILOpCode.Conv_i => new Held(AheadKind.Long, value.Kind == AheadKind.Integer ? (int)a : a),
                     ILOpCode.Conv_u8 or ILOpCode.Conv_u => new Held(AheadKind.Long, value.Kind == AheadKind.Integer ? (uint)(int)a : a),
-                    ILOpCode.Conv_r4 => new Held(AheadKind.Real, Real: (float)a),
+                    ILOpCode.Conv_r4 => new Held(AheadKind.Single, Real: (float)a),
                     ILOpCode.Conv_r8 => new Held(AheadKind.Real, Real: a),
-                    _ => new Held(AheadKind.Real, Real: (ulong)a),
+                    // Unsigned as wide as it is held: a 32-bit value's own bits, not its sign spread over 64.
+                    _ => new Held(AheadKind.Real, Real: value.Kind == AheadKind.Integer ? (uint)(int)a : (ulong)a),
                 };
             }
-            if (value.Kind == AheadKind.Real)
+            if (value.Kind is AheadKind.Real or AheadKind.Single)
             {
                 return asked switch
                 {
-                    ILOpCode.Conv_r4 => new Held(AheadKind.Real, Real: (float)value.Real),
-                    ILOpCode.Conv_r8 => value,
+                    ILOpCode.Conv_r4 => new Held(AheadKind.Single, Real: (float)value.Real),
+                    ILOpCode.Conv_r8 => value with { Kind = AheadKind.Real },
                     // A real out of a whole number's range converts to what the processor gives: not told.
                     ILOpCode.Conv_i4 when value.Real is > int.MinValue - 1.0 and < int.MaxValue + 1.0 => new Held(AheadKind.Integer, (int)value.Real),
                     ILOpCode.Conv_i8 when value.Real is > -9.2e18 and < 9.2e18 => new Held(AheadKind.Long, (long)value.Real),
@@ -554,14 +573,15 @@ public partial class ManagedDebugger
         }
 
         /// <summary>A field of an object as the path holds it: one it set, else as the program holds it, unless code it could
-        /// not follow has run since.</summary>
+        /// not follow has run since. The field is the one its token names, a derived type's of the same name passed over: by its
+        /// declaring type where the token is this module's own, else by its name where one type alone declares it.</summary>
         private Held Field(Held owner, int fieldToken)
         {
             if (module.MetadataReader.FieldName(fieldToken) is not { } name || owner.Kind is not AheadKind.Reference || owner.Value is null)
             {
                 return Held.Unknown;
             }
-            if (owner.Address != 0 && written.TryGetValue((owner.Address, name), out Held set))
+            if (owner.Address != 0 && written.TryGetValue((owner.Address, $"{fieldToken}:{name}"), out Held set))
             {
                 return set;
             }
@@ -575,17 +595,29 @@ public partial class ManagedDebugger
                 ICorDebugObjectValue structure => structure,
                 _ => null,
             };
+            int? declaredIn = module.MetadataReader.FieldOwner(fieldToken);
+            (ICorDebugClass Class, mdFieldDef Field)? named = null;
             for (ICorDebugType? type = held?.ExactType; type is not null && held is not null;)
             {
                 ICorDebugClass declaring = type.Class;
-                mdFieldDef field = declaring.Module.GetMetaDataInterface<IMetaDataImport>().EnumFieldsWithName(declaring.Token, name).FirstOrDefault();
-                if (!field.IsNil)
+                if (declaredIn is int own)
                 {
-                    return HeldOf(held.GetFieldValue(declaring, field));
+                    if (declaring.Token.Value == (uint)own && debugger.FindModule(declaring.Module) == module)
+                    {
+                        return HeldOf(held.GetFieldValue(declaring, new mdFieldDef(checked((uint)fieldToken))));
+                    }
+                }
+                else if (declaring.Module.GetMetaDataInterface<IMetaDataImport>().EnumFieldsWithName(declaring.Token, name).FirstOrDefault() is { IsNil: false } field)
+                {
+                    if (named is not null)
+                    {
+                        return Held.Unknown;
+                    }
+                    named = (declaring, field);
                 }
                 type = type.TryGetBase(out ICorDebugType? next) is Cor.S_OK ? next : null;
             }
-            return Held.Unknown;
+            return named is var (at, found) && held is not null ? HeldOf(held.GetFieldValue(at, found)) : Held.Unknown;
         }
 
         private Held StaticField(int fieldToken)
@@ -627,7 +659,7 @@ public partial class ManagedDebugger
                 CodeRan();
                 return;
             }
-            written[(owner.Address, name)] = value;
+            written[(owner.Address, $"{fieldToken}:{name}")] = value;
         }
 
         /// <summary>A call: a string's equality, length or emptiness answered from the strings, a method that only reads a
@@ -802,7 +834,8 @@ public partial class ManagedDebugger
             (CorElementType.U4, AheadKind.Integer) => ((uint)value.Integer).ToString(CultureInfo.InvariantCulture),
             (CorElementType.I8, AheadKind.Long) => value.Integer.ToString(CultureInfo.InvariantCulture),
             (CorElementType.U8, AheadKind.Long) => ((ulong)value.Integer).ToString(CultureInfo.InvariantCulture),
-            (CorElementType.R4 or CorElementType.R8, AheadKind.Real) => value.Real.ToString("R", CultureInfo.InvariantCulture),
+            (CorElementType.R4, AheadKind.Real or AheadKind.Single) => ((float)value.Real).ToString("R", CultureInfo.InvariantCulture),
+            (CorElementType.R8, AheadKind.Real or AheadKind.Single) => value.Real.ToString("R", CultureInfo.InvariantCulture),
             (CorElementType.STRING or CorElementType.CLASS, AheadKind.Text) => $"\"{value.Text}\"",
             (CorElementType.STRING or CorElementType.CLASS, AheadKind.Null) => "null",
             _ => null,

@@ -3838,8 +3838,8 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
     /// <summary>Show Dependency Map in a method opens the map among the editors down to it, the project, its namespace, its
     /// type and the method chosen, in the tree as in the picture; its edges say what it uses by kind as the compiler binds
     /// the code (a call, a parameter's type), an open node counting what crosses it from below, a row cut short whole in its
-    /// tip; the types beside it say what they implement; a kind hidden leaves its edges out; Enter on a tree row and a
-    /// double click on a node go to its code; and an edit's new call shows once typing rests.</summary>
+    /// tip; the types beside it say what they implement; a kind hidden leaves its edges out; Enter on a row and a double
+    /// click go to its code; an edit's new call shows once typing rests; a closed file opens it at its first type.</summary>
     private void The_dependency_map_opens_at_the_caret_and_reads_its_nodes_and_edges_as_the_compiler_binds_them()
     {
         MainWindow window = project.Open("Gauges.cs");
@@ -3908,9 +3908,63 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
             () => $"the map following Both's call of Area.Of, its edges [{string.Join("; ", map.EdgeRows.Select(e => e.Words))}]");
         window.OpenFile(project.PathOf("Gauges.cs"));
         Ui.Press(window, "meta Z");
+
+        // A C# file chosen in the Explorer opens the map at its first type closed as it is open.
+        Assert.DoesNotContain(window.EditorArea.Documents, d => d.Name == "Shapes.cs");
+        Passenger.App.Explorer.ExplorerNode shapes = window.ExplorerView.Tree.Reveal(project.PathOf("Shapes.cs")) ?? throw new InvalidOperationException("Shapes.cs is not in the Explorer");
+        Ui.Await(window.ShowDependencyMapAsync(new ActionContext(window.EditorArea.Active, window.EditorArea.CodeEditor, null, null, null) { ExplorerRow = shapes }),
+            "the map of the closed Shapes.cs");
+        Ui.WaitFor(() => map.Chosen?.Name == "IShape" && !map.IsReading, () => $"the map chosen at closed Shapes.cs's first type, not {map.Chosen?.Name ?? "nothing"} ({map.Said})");
         window.Close();
+        AnswersOutOfTurn();
 
         static string? TipOf(Control row) => row.GetVisualDescendants().Prepend(row).OfType<Control>().Select(c => ToolTip.GetTip(c)).OfType<string>().FirstOrDefault();
+    }
+
+    /// <summary>A map's answers taken as they stand when they come: an older read of the projects after a newer one passed
+    /// over, a level of a node a refresh put another in the place of taken under the node there now, and a node chosen that a
+    /// refresh took away no longer chosen.</summary>
+    private static void AnswersOutOfTurn()
+    {
+        List<(string? Of, TaskCompletionSource<DependenciesFound> Answer)> asks = [];
+        DependencyMapView probe = new();
+        Task shown = probe.ShowAsync(of =>
+        {
+            TaskCompletionSource<DependenciesFound> answer = new();
+            asks.Add((of, answer));
+            return answer.Task;
+        });
+        asks[0].Answer.SetResult(Projects("Stale", "Kept"));
+        Ui.Await(shown, "the map's projects");
+
+        Task older = probe.RefreshAsync();
+        Task newer = probe.RefreshAsync();
+        asks[2].Answer.SetResult(Projects("Latest", "Kept"));
+        Ui.Await(newer, "the newer read of the projects");
+        asks[1].Answer.SetResult(Projects("Stale", "Kept"));
+        Ui.Await(older, "the older read of the projects");
+        Assert.True(probe.Graph.Roots.Select(r => r.Name).SequenceEqual(["Latest", "Kept"]),
+            $"the map shows {string.Join(", ", probe.Graph.Roots.Select(r => r.Name))}, an older read taken over the newer");
+
+        Task opening = probe.OpenAsync(probe.Graph["p|Kept"]!);
+        Task replacing = probe.RefreshAsync();
+        asks[4].Answer.SetResult(Projects("Latest", "Kept", "New"));
+        Ui.Await(replacing, "the read of the projects putting Kept's node in its place");
+        asks[3].Answer.SetResult(new DependenciesFound([new DependencyNode("n|Kept|Inside", "Inside", "namespace", null, null, Expands: false)], []));
+        Ui.Await(opening, "Kept's level");
+        Assert.True(probe.Graph["p|Kept"] is { IsOpen: true, Children: [{ Name: "Inside" }] },
+            "Kept's level was taken under the node a refresh put in its place, which shows nothing of it");
+
+        probe.Choose(probe.Graph["p|New"]!, fromPicture: false);
+        Task taking = probe.RefreshAsync();
+        asks[5].Answer.SetResult(Projects("Latest", "Kept"));
+        Ui.WaitFor(() => asks.Count == 7, "Kept's level asked again");
+        asks[6].Answer.SetResult(new DependenciesFound([new DependencyNode("n|Kept|Inside", "Inside", "namespace", null, null, Expands: false)], []));
+        Ui.Await(taking, "the read of the projects taking New away");
+        Assert.True(probe.Chosen is null && probe.EdgeRows.Count == 0, $"New, gone, is still chosen as {probe.Chosen?.Name} with {probe.EdgeRows.Count} edges");
+
+        static DependenciesFound Projects(params string[] names) =>
+            new([.. names.Select(n => new DependencyNode($"p|{n}", n, "project", null, null, Expands: true))], []);
     }
 
     /// <summary>Typing on into an open completion list narrows it off the UI thread in the rows the list has: as each letter

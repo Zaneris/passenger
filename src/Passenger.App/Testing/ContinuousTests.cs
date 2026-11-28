@@ -208,14 +208,15 @@ public sealed class ContinuousTests : IDisposable
     }
 
     /// <summary>Files the folder's watcher heard saved, written or gone, or <paramref name="every"/> where it lost what: a
-    /// round once saves pause, which looks at every mapped file where what changed is not known.</summary>
+    /// round once saves pause, which looks at every mapped file where what changed is not known, a save of a file a round
+    /// gave back among them.</summary>
     public void FilesChanged(IEnumerable<string> paths, bool every = false)
     {
         UiThread.Check();
-        int before = changed.Count;
-        changed.UnionWith(paths.Where(p => !IsOwn(p)));
+        string[] heard = [.. paths.Where(p => !IsOwn(p))];
+        changed.UnionWith(heard);
         everyFile |= every;
-        if (IsOn && (changed.Count > before || every))
+        if (IsOn && (heard.Length > 0 || every))
         {
             waiting.Restart();
         }
@@ -318,7 +319,8 @@ public sealed class ContinuousTests : IDisposable
             // Turned off as it ran: its cache goes now that nothing of the round uses it.
             DropCache();
         }
-        if (IsOn && (pending || changed.Count > 0) && Paused() is null)
+        // Paths a round gave back wait for the next save; only one heard while it ran begins another.
+        if (IsOn && pending && Paused() is null)
         {
             waiting.Restart();
         }
@@ -414,9 +416,19 @@ public sealed class ContinuousTests : IDisposable
             if (renewed.Length > 0)
             {
                 work?.Say($"Testing continuously: instrumenting {Plural.Listed(renewed)} for {assembly.Project.Name}…");
-                InstrumentedCode code = await TestHitsRun.InstrumentAsync(run.Path, renewed, Path.Combine(root, "hits"), log, cancel)
-                    ?? throw new InvalidOperationException($"{assembly.Project.Name}'s code could not be instrumented");
-                known = (known.Code.With(code), known.Found, known.Tests);
+                InstrumentedCode? code = null;
+                try
+                {
+                    code = await TestHitsRun.InstrumentAsync(run.Path, renewed, Path.Combine(root, "hits"), log, cancel);
+                }
+                finally
+                {
+                    if (code is null)
+                    {
+                        Uncopied(copy, renewed);
+                    }
+                }
+                known = (known.Code.With(code ?? throw new InvalidOperationException($"{assembly.Project.Name}'s code could not be instrumented")), known.Found, known.Tests);
             }
             runs[run.Path] = known;
             copies.Add(run);
@@ -440,8 +452,10 @@ public sealed class ContinuousTests : IDisposable
             FoundTests found = await runner.DiscoverAsync(its, log, cancel);
             foreach (TestAssembly assembly in its)
             {
-                runs[assembly.Path] = (runs[assembly.Path].Code, FileStamp.Of(assembly.Path),
-                    [.. found.Tests.Where(t => t.Project == assembly.Project.Path && t.Framework == assembly.Framework)]);
+                // One its runner could not look through is asked again next round, its tests as last found meanwhile.
+                bool through = !found.Unfound.Any(u => PathNames.Same(u.Assembly.Path, assembly.Path));
+                runs[assembly.Path] = (runs[assembly.Path].Code, through ? FileStamp.Of(assembly.Path) : null,
+                    through ? [.. found.Tests.Where(t => t.Project == assembly.Project.Path && t.Framework == assembly.Framework)] : runs[assembly.Path].Tests);
             }
         }
         foreach (IGrouping<string, TestAssembly> project in copies.GroupBy(c => c.Project.Path, StringComparer.Ordinal))
@@ -465,12 +479,14 @@ public sealed class ContinuousTests : IDisposable
             await KeepAsync(new(StringComparer.Ordinal), [], now, InstrumentedCode.None, cancel);
             return ("Testing continuously: no test runs what changed", true);
         }
-        return (await RunAsync(copies, chosen, now, work, cancel), true);
+        return await RunAsync(copies, chosen, now, work, cancel);
     }
 
-    /// <summary>The tests chosen run one at a time over their copies, the tree showing them as they run, the map taking each.</summary>
-    private async Task<string> RunAsync(List<TestAssembly> copies, List<TestItem> chosen, Dictionary<string, uint[]> now, Working? work, CancellationToken cancel)
+    /// <summary>The tests chosen run one at a time over their copies, the tree showing them as they run, the map taking each
+    /// once every run ended whole; whether it took them, a run broken off leaving the change for the next round.</summary>
+    private async Task<(string Said, bool Kept)> RunAsync(List<TestAssembly> copies, List<TestItem> chosen, Dictionary<string, uint[]> now, Working? work, CancellationToken cancel)
     {
+        string? brokeOff = null;
         // Each test's lines, told on the run's own threads as each test ends.
         Dictionary<string, (Dictionary<string, HashSet<int>> Lines, string? File)> ran = new(StringComparer.Ordinal);
         List<TestOutcome> outcomes = [];
@@ -525,9 +541,14 @@ public sealed class ContinuousTests : IDisposable
                 outcomes.AddRange(summary.Outcomes);
                 if (summary.Aborted)
                 {
-                    log($"Continuous testing's run broke off: {summary.Error}");
+                    brokeOff = $"Continuous testing's run broke off: {summary.Error}";
+                    log(brokeOff);
                 }
                 cancel.ThrowIfCancellationRequested();
+            }
+            if (brokeOff is not null)
+            {
+                return (brokeOff, false);
             }
             // Kept once every test has run again, so a round stopped partway leaves the map as it was for the next.
             Dictionary<string, (Dictionary<string, HashSet<int>> Lines, string? File)> told;
@@ -547,8 +568,8 @@ public sealed class ContinuousTests : IDisposable
             tests.EndContinuous(chosen, began);
             LastRan = chosen;
         }
-        return $"Testing continuously: ran {Plural.Of(chosen.Count, "test")}, {Numbers.Said(outcomes.Count(o => o.State == TestState.Passed))} passed, "
-            + $"{Numbers.Said(outcomes.Count(o => o.State == TestState.Failed))} failed";
+        return ($"Testing continuously: ran {Plural.Of(chosen.Count, "test")}, {Numbers.Said(outcomes.Count(o => o.State == TestState.Passed))} passed, "
+            + $"{Numbers.Said(outcomes.Count(o => o.State == TestState.Failed))} failed", true);
     }
 
     /// <summary>The tests run so far taken into the map, each with its worst outcome, and the files they ran or could run and
@@ -617,6 +638,19 @@ public sealed class ContinuousTests : IDisposable
             made.Add(target);
         }
         return made;
+    }
+
+    /// <summary>Modules of a run's copy taken for never copied, so the next round copies them again and instruments them then:
+    /// their instrumenting failed or was stopped.</summary>
+    private void Uncopied(string copy, IReadOnlyList<string> modules)
+    {
+        lock (copied)
+        {
+            foreach (string target in copied.Keys.Where(t => PathNames.IsUnder(t, copy) && modules.Contains(Path.GetFileNameWithoutExtension(t), StringComparer.Ordinal)).ToList())
+            {
+                copied.Remove(target);
+            }
+        }
     }
 
     /// <summary>A hash of each line of each file as the disk has it, none for a file gone. A worker's.</summary>

@@ -47,6 +47,10 @@ public static class MapLayout
         // A level's nodes laid out from its top left: each one's place in it, and its size.
         (double Width, double Height) Lay(IReadOnlyList<MapNode> level, MapNode? owner)
         {
+            if (level.Count == 0)
+            {
+                return (0, 0);
+            }
             foreach (MapNode node in level)
             {
                 (double w, double h) = closed(node);

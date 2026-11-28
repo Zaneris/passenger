@@ -51,8 +51,8 @@ public sealed class TestsView : DockPanel
     private readonly ToolTabs.Strip<object> sessionTabs = new() { Name = "TestSessions" };
     private readonly Border sessionBar;
 
-    /// <summary>The sessions the tabs were last drawn for, by name, in their order.</summary>
-    private string[] drawnSessions = [];
+    /// <summary>The sessions the tabs were last drawn for, each with its name then, in their order.</summary>
+    private (TestSession Session, string Name)[] drawnSessions = [];
     private readonly DockPanel result;
 
     /// <summary>The details' editor, made as the window is first shown or they are asked for (<see cref="Details"/>).</summary>
@@ -203,13 +203,14 @@ public sealed class TestsView : DockPanel
         Children.Add(split);
     }
 
-    /// <summary>The sessions' tabs as the model has them, the one shown chosen; drawn again only where the sessions changed.</summary>
+    /// <summary>The sessions' tabs as the model has them, the one shown chosen; drawn again only where the sessions changed,
+    /// a session restored in another's place of its name among them.</summary>
     private void ShowSessions()
     {
-        string[] names = [.. Model.Sessions.Select(s => s.Name)];
-        if (!names.SequenceEqual(drawnSessions))
+        (TestSession Session, string Name)[] sessions = [.. Model.Sessions.Select(s => (s, s.Name))];
+        if (!sessions.SequenceEqual(drawnSessions))
         {
-            drawnSessions = names;
+            drawnSessions = sessions;
             sessionTabs.Clear();
             sessionTabs.Add(AllTests, "All Tests");
             foreach (TestSession session in Model.Sessions)
@@ -218,7 +219,7 @@ public sealed class TestsView : DockPanel
             }
         }
         sessionTabs.Choice = (object?)Model.Shown ?? AllTests;
-        sessionBar.IsVisible = names.Length > 0;
+        sessionBar.IsVisible = sessions.Length > 0;
     }
 
     /// <summary>Takes the chosen rows' tests out of the session shown, as Delete does there.</summary>

@@ -1425,7 +1425,9 @@ public sealed partial class DebugController : IDisposable
                     || plan.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, built))?.Property(MSBuildNames.UseMaui) is { } maui
                         && maui.Equals("true", StringComparison.OrdinalIgnoreCase)))
                 {
-                    made.MauiXaml = (BackgroundWork.Run(() => MauiXamlCode.Read(program, Path.GetDirectoryName(built)!)), path => CSharp.ServerPlaces.TextOf(editors, path));
+                    Passenger.Workspace.WorkspaceModel? read = plan.Workspace;
+                    made.MauiXaml = (BackgroundWork.Run(() => MauiXamlCode.Read(program, Path.GetDirectoryName(built)!, MauiXamlCode.Libraries(read, built, program))),
+                        path => CSharp.ServerPlaces.TextOf(editors, path));
                 }
                 made.XamlElementPlace = (path, line, attribute, place) => CSharp.ServerPlaces.TextOf(editors, path) is { } text ? XamlBreakpoints.ElementPlace(text, line, attribute, place) : null;
                 if (made.XamlAtRunTime && plan is { Project: { } wpf } && plan.Workspace?.Projects.FirstOrDefault(p => PathNames.Same(p.Path, wpf)) is { Evaluated: not null } evaluated
@@ -2135,7 +2137,7 @@ public sealed partial class DebugController : IDisposable
         Add(AppActions.SmartStepInto, "Smart Step Into", (d, c) => IdeErrors.Observe(d.SmartStepIntoAsync()), (d, _) => d.NotSteppable(), new("Run", 1, 4));
         Add(AppActions.StepOut, "Step Out", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepOutAsync(), "step out")), (d, _) => d.NotSteppable(), new("Run", 1, 5));
         Add(AppActions.RunToCursor, "Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line), "run to the cursor")),
-            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused(), new("Run", 1, 6));
+            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? d.Session!.RunToWhyNot(c.File!.Path), new("Run", 1, 6));
         Add(AppActions.SetNextStatement, "Set Next Statement", (d, c) => IdeErrors.Observe(d.SetNextStatementAsync(d.Session!, c.File!.Path, c.Caret.Line)),
             (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? (d.Session!.MovesNextStatement ? null : Refusals.NoNextStatement), new("Run", 1, 7));
         Add(AppActions.ShowExecutionPoint, "Show Execution Point", (d, _) =>
@@ -2164,7 +2166,7 @@ public sealed partial class DebugController : IDisposable
         Add(AppActions.ForceStepInto, "Force Step Into", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.StepIntoAsync(force: true), "step into")),
             (d, _) => d.NotSteppable() ?? d.Session!.ForcesWhyNot, new("Run", 1, 21));
         Add(AppActions.ForceRunToCursor, "Force Run to Cursor", (d, c) => IdeErrors.Observe(d.ResumeAsync(session => session.RunToCursorAsync(c.File!.Path, c.Caret.Line, force: true), "run to the cursor")),
-            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? d.Session!.ForcesWhyNot, new("Run", 1, 22));
+            (d, c) => Refusals.NeedsLines(c) ?? d.NotPaused() ?? d.Session!.ForcesWhyNot ?? d.Session!.RunToWhyNot(c.File!.Path), new("Run", 1, 22));
         Add(AppActions.StepBack, "Step Back", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepBackAsync())), (d, _) => d.WhyNotStepBack(), new("Run", 1, 13));
         Add(AppActions.StepForward, "Step Forward", (d, _) => IdeErrors.Observe(d.SaidAsync(d.StepForwardAsync())),
             (d, _) => d.NotPaused() ?? (d.MomentShown is null ? Refusals.LiveStop : null), new("Run", 1, 14));

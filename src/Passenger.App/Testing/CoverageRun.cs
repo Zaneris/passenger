@@ -146,19 +146,30 @@ public sealed class CoverageRun(string folder)
         }
     }
 
-    /// <summary>A Testing Platform application's start under Coverlet's console, on Passenger's own runtime: it measures the
-    /// assemblies beside the application that it can (those with symbols, of the person's code), starts the application as
-    /// <paramref name="host"/> would with these arguments, and once it ends writes its report, given back as
-    /// <paramref name="report"/>, and puts the assemblies back as they were.</summary>
+    /// <summary>A Testing Platform application's start under Coverlet's console, on Passenger's own runtime, over a copy of its
+    /// folder in the run's own (Coverlet instruments the assemblies where they are and puts them back only as it ends whole,
+    /// so a run stopped partway leaves its copy instrumented, never the build's output): it measures the assemblies beside the
+    /// application that it can (those with symbols, of the person's code), starts the copy as <paramref name="host"/> would
+    /// with these arguments, and once it ends writes its report, given back as <paramref name="report"/>. A worker's.</summary>
     public ProcessStartInfo Wrapped(string assembly, string framework, string host, IReadOnlyList<string> arguments, string folder,
         IReadOnlyDictionary<string, string>? environment, out string report)
     {
-        report = Path.Combine(Folder, $"{Path.GetFileNameWithoutExtension(assembly)}.{framework}.{Guid.NewGuid():N}.json");
-        List<string> words = [assembly, "--target", host, "--targetargs", WindowsCommandLine.Of(arguments), "--format", "json", "--output", report];
+        string named = $"{Path.GetFileNameWithoutExtension(assembly)}.{framework}.{Guid.NewGuid():N}";
+        report = Path.Combine(Folder, $"{named}.json");
+        string copy = Path.Combine(Folder, named);
+        foreach (string file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+        {
+            string target = Path.Combine(copy, Path.GetRelativePath(folder, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+        string copied = Path.Combine(copy, Path.GetRelativePath(folder, assembly));
+        List<string> words = [copied, "--target", host, "--targetargs", WindowsCommandLine.Of([.. arguments.Select(a => PathNames.Same(a, assembly) ? copied : a)]),
+            "--format", "json", "--output", report];
         foreach (string attribute in LeftOut)
         {
             words.AddRange(["--exclude-by-attribute", attribute]);
         }
-        return ChildProcesses.WithVariables(ChildProcesses.HelperCommand(Console, words, folder), environment);
+        return ChildProcesses.WithVariables(ChildProcesses.HelperCommand(Console, words, copy), environment);
     }
 }

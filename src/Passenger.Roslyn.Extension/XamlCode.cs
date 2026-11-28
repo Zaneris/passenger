@@ -67,8 +67,7 @@ public sealed class XamlCodeSymbol : IExtensionWorkspaceMessageHandler<XamlCodeA
 /// <summary>The problems C# finds in a XAML page's x:Code, at their places in the XAML.</summary>
 public sealed class XamlCodeChecks : IExtensionWorkspaceMessageHandler<XamlCodeChecked, XamlCodeChecksFound>
 {
-    /// <summary>A member declared twice: the copy of the x:Code a source generator also made, which no edit of the
-    /// solution can take out.</summary>
+    /// <summary>A member declared twice, which may be with the copy of the x:Code a source generator also made.</summary>
     private static readonly HashSet<string> Twice = ["CS0101", "CS0102", "CS0111"];
 
     public async Task<XamlCodeChecksFound> ExecuteAsync(XamlCodeChecked message, ExtensionWorkspaceMessageContext context, CancellationToken cancellationToken)
@@ -79,12 +78,21 @@ public sealed class XamlCodeChecks : IExtensionWorkspaceMessageHandler<XamlCodeC
             return new XamlCodeChecksFound([]);
         }
         List<XamlCodeCheck> checks = [];
+        HashSet<string>? generated = null;
         foreach (Diagnostic diagnostic in model.GetDiagnostics(cancellationToken: cancellationToken))
         {
-            if (diagnostic.Severity is not (DiagnosticSeverity.Error or DiagnosticSeverity.Warning) || diagnostic.IsSuppressed || Twice.Contains(diagnostic.Id)
+            if (diagnostic.Severity is not (DiagnosticSeverity.Error or DiagnosticSeverity.Warning) || diagnostic.IsSuppressed
                 || made.WrittenAt(diagnostic.Location.SourceSpan.Start) is not int start)
             {
                 continue;
+            }
+            if (Twice.Contains(diagnostic.Id))
+            {
+                generated ??= [.. (await made.Document.Project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false)).Select(d => d.FilePath).OfType<string>()];
+                if (TwiceOnlyByGenerators(model, diagnostic.Location.SourceSpan, generated, cancellationToken))
+                {
+                    continue;
+                }
             }
             int end = made.WrittenAt(diagnostic.Location.SourceSpan.End) ?? start;
             checks.Add(new XamlCodeCheck(start, Math.Max(end, start), diagnostic.Severity == DiagnosticSeverity.Error, diagnostic.Id,
@@ -92,20 +100,54 @@ public sealed class XamlCodeChecks : IExtensionWorkspaceMessageHandler<XamlCodeC
         }
         return new XamlCodeChecksFound(checks);
     }
+
+    /// <summary>Whether the member declared at a place is declared again only in a source generator's files (its copy of the
+    /// x:Code, which no edit of the solution can take out): never where the x:Code or the page's own code declares it again.</summary>
+    private static bool TwiceOnlyByGenerators(SemanticModel model, TextSpan at, HashSet<string> generated, CancellationToken cancel)
+    {
+        if (model.SyntaxTree.GetRoot(cancel).FindNode(at).AncestorsAndSelf().Select(n => model.GetDeclaredSymbol(n, cancel)).FirstOrDefault(s => s is not null) is not { } declared)
+        {
+            return false;
+        }
+        IEnumerable<ISymbol> named = declared.ContainingType is { } type ? type.GetMembers(declared.Name)
+            : declared.ContainingNamespace is { } space ? space.GetMembers(declared.Name) : [];
+        return named.Where(s => s.Kind == declared.Kind && (declared is not IMethodSymbol method || s is IMethodSymbol other && other.Arity == method.Arity
+                && other.Parameters.Select(p => (p.RefKind, p.Type)).SequenceEqual(method.Parameters.Select(p => (p.RefKind, p.Type)), Parameters.Instance)))
+            .SelectMany(s => s.DeclaringSyntaxReferences)
+            .Where(r => r.SyntaxTree != model.SyntaxTree || !r.Span.Contains(at))
+            .All(r => generated.Contains(r.SyntaxTree.FilePath));
+    }
+
+    /// <summary>Two parameters alike in kind and type, as C# tells overloads apart.</summary>
+    private sealed class Parameters : IEqualityComparer<(RefKind Kind, ITypeSymbol Type)>
+    {
+        public static readonly Parameters Instance = new();
+
+        public bool Equals((RefKind Kind, ITypeSymbol Type) x, (RefKind Kind, ITypeSymbol Type) y) =>
+            (x.Kind == RefKind.None) == (y.Kind == RefKind.None) && SymbolEqualityComparer.Default.Equals(x.Type, y.Type);
+
+        public int GetHashCode((RefKind Kind, ITypeSymbol Type) parameter) => SymbolEqualityComparer.Default.GetHashCode(parameter.Type);
+    }
 }
 
 /// <summary>A XAML page's x:Code written as its compiler puts it in the page's class: a part of the class added to its
-/// project, each block's code in it, the usings a block begins with written at the file's top, and the copy of the blocks
+/// project, each block's code in it, the usings a block begins with written at the file's top (places in them mapped to
+/// the XAML as the block's are), and the copy of the blocks
 /// a build put in the project's own files (WPF's markup compiler's, mapped to the XAML by its #line) taken out, so what
 /// the server answers there is what the compiler sees, every place one of the XAML's.</summary>
 internal sealed class XamlCodeDocument
 {
     private readonly (int Start, XamlCodeBlock Block)[] placed;
 
-    private XamlCodeDocument(Document document, (int, XamlCodeBlock)[] placed)
+    /// <summary>Each block's usings where the file's top holds them: their start there, their block, and their start and
+    /// length in its code.</summary>
+    private readonly (int Start, XamlCodeBlock Block, int From, int Length)[] hoisted;
+
+    private XamlCodeDocument(Document document, (int, XamlCodeBlock)[] placed, (int, XamlCodeBlock, int, int)[] hoisted)
     {
         Document = document;
         this.placed = placed;
+        this.hoisted = hoisted;
     }
 
     public Document Document { get; }
@@ -122,6 +164,13 @@ internal sealed class XamlCodeDocument
                 {
                     at++;
                 }
+                foreach ((int copy, XamlCodeBlock of, int from, int length) in hoisted)
+                {
+                    if (ReferenceEquals(of, block) && at >= from && at <= from + length)
+                    {
+                        return copy + at - from;
+                    }
+                }
                 return start + at;
             }
         }
@@ -131,6 +180,13 @@ internal sealed class XamlCodeDocument
     /// <summary>The offset of the XAML a place of the document is written at; null outside every block.</summary>
     public int? WrittenAt(int position)
     {
+        foreach ((int copy, XamlCodeBlock of, int from, int length) in hoisted)
+        {
+            if (position >= copy && position <= copy + length)
+            {
+                return of.WrittenOf[from + position - copy];
+            }
+        }
         foreach ((int start, XamlCodeBlock block) in placed)
         {
             if (position >= start && position <= start + block.Code.Length)
@@ -149,9 +205,11 @@ internal sealed class XamlCodeDocument
         }
         solution = await WithoutCopiesAsync(project, path, cancel).ConfigureAwait(false);
         project = solution.GetProject(project.Id)!;
+        const string Nullable = "#nullable enable\n";
         StringBuilder usings = new();
         StringBuilder members = new();
         List<(int, XamlCodeBlock)> blocks = [];
+        List<(int, XamlCodeBlock, int, int)> hoisted = [];
         string space = page.ContainingNamespace.IsGlobalNamespace ? string.Empty : $"namespace {page.ContainingNamespace.ToDisplayString()};\n";
         foreach (XamlCodeBlock block in code.Blocks)
         {
@@ -163,6 +221,7 @@ internal sealed class XamlCodeDocument
             char[] kept = block.Code.ToCharArray();
             foreach (UsingDirectiveSyntax used in unit.Usings)
             {
+                hoisted.Add((Nullable.Length + usings.Length, block, used.SpanStart, used.Span.Length));
                 usings.Append(used.ToString()).Append('\n');
                 for (int i = used.SpanStart; i < used.Span.End; i++)
                 {
@@ -172,9 +231,9 @@ internal sealed class XamlCodeDocument
             blocks.Add((members.Length, block));
             members.Append(kept).Append('\n');
         }
-        string head = $"#nullable enable\n{usings}{space}partial class {page.Name}\n{{\n";
+        string head = $"{Nullable}{usings}{space}partial class {page.Name}\n{{\n";
         Document document = project.AddDocument("__PassengerXamlCode.cs", SourceText.From(head + members + "}\n", Encoding.UTF8));
-        return new XamlCodeDocument(document, [.. blocks.Select(b => (b.Item1 + head.Length, b.Item2))]);
+        return new XamlCodeDocument(document, [.. blocks.Select(b => (b.Item1 + head.Length, b.Item2))], [.. hoisted]);
     }
 
     /// <summary>The project whose compilation has the page's class, of those holding the XAML file (an additional file of

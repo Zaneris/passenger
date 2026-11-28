@@ -365,8 +365,9 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
     }
 
     /// <summary>An x:Code block's C#, which the page's compiler puts in its class, served as C# at its places in the XAML:
-    /// completion offers the page's members, a member it names that is not there is marked where it is written, and Go
-    /// to Declaration leads to a method the block declares, in the block, and to a field of the code-behind's.</summary>
+    /// completion offers the page's members, a member it names that is not there, a using of no namespace and a method it
+    /// declares twice are marked where they are written, and Go to Declaration leads to a method the block declares, in the
+    /// block, and to a field of the code-behind's.</summary>
     private void An_x_code_blocks_csharp_completes_the_pages_members_is_checked_where_it_is_written_and_leads_to_its_declarations()
     {
         MainWindow window = app.Open(app.PathOf("MainPage.xaml"));
@@ -375,21 +376,33 @@ public sealed class MauiXamlTests : IClassFixture<MauiXamlTests.Gallery>
         Replace(editor, "<ContentPage x:Class=\"MauiApp1.MainPage\">\n", """
             <ContentPage x:Class="MauiApp1.MainPage">
                 <x:Code><![CDATA[
+                    using Nowhere.AtAll;
+
                     private string Shout() => CounterBtn.Text.ToUpperInvariant();
 
                     private int Twice() => count * 2 + Shout().Length + Missing;
+
+                    private int Once() => 1;
+
+                    private int Once() => 2;
                 ]]></x:Code>
 
             """);
-        Ui.WaitFor(() => document.Markers.Any(m => m.Message.Contains("Missing", StringComparison.Ordinal)),
-            () => $"C#'s error for a name the page lacks, marked in the x:Code: {string.Join("; ", document.Markers.Select(m => m.Message))}");
+        string[] names = ["Missing", "Nowhere", "Once"];
+        Ui.WaitFor(() => names.All(n => document.Markers.Any(m => m.Message.Contains(n, StringComparison.Ordinal))),
+            () => $"C#'s errors for a name the page lacks, a using of no namespace and a method declared twice, marked in the x:Code: {string.Join("; ", document.Markers.Select(m => m.Message))}");
         string text = editor.Document.Snapshot.ToString();
-        Marker missing = document.Markers.First(m => m.Message.Contains("Missing", StringComparison.Ordinal));
-        Assert.True(text[missing.Range.Start..missing.Range.End] == "Missing", $"The error is marked on \"{text[missing.Range.Start..missing.Range.End]}\", not the name it is for");
+        foreach (string name in names)
+        {
+            Marker marked = document.Markers.First(m => m.Message.Contains(name, StringComparison.Ordinal));
+            Assert.True(text[marked.Range.Start..marked.Range.End] == name, $"The error for {name} is marked on \"{text[marked.Range.Start..marked.Range.End]}\", not the name it is for");
+        }
+        Assert.True(text.IndexOf("Once", StringComparison.Ordinal) < document.Markers.First(m => m.Message.Contains("Once", StringComparison.Ordinal)).Range.Start,
+            "The method declared twice is marked at its first declaration, not its second");
         // MAUI 11.0's own generator refuses x:Code, which its later previews compile: only C#'s marks in the block are asked of.
         int block = text.IndexOf("<![CDATA[", StringComparison.Ordinal);
         int blockEnd = text.IndexOf("]]>", StringComparison.Ordinal);
-        Assert.True(document.Markers.Count(m => m.Range.Start > block && m.Range.End < blockEnd) == 1,
+        Assert.True(document.Markers.Count(m => m.Range.Start > block && m.Range.End < blockEnd) == 3,
             $"The x:Code's other code, which compiles, is marked: {string.Join("; ", document.Markers.Select(m => m.Message))}");
 
         Ui.PlaceAfter(editor, "=> cou");

@@ -53,9 +53,9 @@ public partial class ManagedDebugger
         }
     }
 
-    /// <summary>The recorded call a runtime-async frame goes on, where none of the thread's open calls is it: the newest of
-    /// its method set aside or open elsewhere on the stack or another thread, one called with the arguments the frame holds
-    /// first, taken up as this thread's at the frame's place; null for a frame of no such method.</summary>
+    /// <summary>The recorded call a runtime-async frame goes on, where none of the thread's open calls is it: the one of its
+    /// method set aside or open elsewhere on the stack or another thread called with the arguments the frame holds, else the
+    /// only one, taken up as this thread's at the frame's place; null for a frame of no such method, or where several could be it.</summary>
     private OpenCall? Resumed(int threadId, List<OpenCall> open, ICorDebugILFrame frame, StackRange range)
     {
         if (FindModule(frame.Function.Module) is not { } module || !_recordedModules.Contains(module) || !module.MetadataReader.IsRuntimeAsync(frame.Function.Token))
@@ -73,9 +73,14 @@ public partial class ManagedDebugger
             return null;
         }
         string key = ArgumentsKey(frame);
-        (OpenCall taken, List<OpenCall> from) = candidates.Where(each => each.Call.Arguments == key).MaxBy(each => each.Call.Moment) is { Call: not null } same
-            ? same
-            : candidates.MaxBy(each => each.Call.Moment);
+        // Calls whose arguments read alike (objects are told apart by nothing that lasts) are no call of the frame's for sure.
+        List<(OpenCall Call, List<OpenCall> From)> same = [.. candidates.Where(each => each.Call.Arguments == key)];
+        if ((same.Count == 1 ? same[0] : same.Count == 0 && candidates.Count == 1 ? candidates[0] : default) is not { Call: not null } chosen)
+        {
+            _logger?.Invoke($"Recording: {candidates.Count} calls of {candidates[0].Call.Label} could be the one going on on thread {threadId}, so none is taken for it");
+            return null;
+        }
+        (OpenCall taken, List<OpenCall> from) = chosen;
         from.Remove(taken);
         StackRange? callerRange = frame.TryGetCaller(out ICorDebugFrame? up) is Cor.S_OK && up is not null ? RangeOf(up) : null;
         OpenCall resumed = taken with { Frame = range, CallerFrame = callerRange };
