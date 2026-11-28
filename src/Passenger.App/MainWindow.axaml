@@ -61,14 +61,14 @@
                     <Button Name="BuildConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Build configuration" IsVisible="False" Click="OnBuildConfigClicked"
                             app:ShrinkingRow.GoesWhole="True">
                         <DockPanel>
-                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
                             <TextBlock Name="BuildConfigName" Text="Debug" VerticalAlignment="Center"
                                        MaxWidth="160" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
                     <Button Name="RunConfigButton" Classes="widget" MinWidth="52" ToolTip.Tip="Run configuration" Click="OnRunConfigClicked">
                         <DockPanel>
-                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
                             <TextBlock Name="RunConfigName" Text="No configurations" VerticalAlignment="Center"
                                        MaxWidth="200" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
@@ -78,7 +78,7 @@
                     <Button Name="RunTargetButton" Classes="widget" MinWidth="52" ToolTip.Tip="Where it runs" IsVisible="False" Click="OnRunTargetClicked"
                             app:ShrinkingRow.GoesWhole="True">
                         <DockPanel>
-                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
                             <TextBlock Name="RunTargetName" Text="Choose a device" VerticalAlignment="Center"
                                        MaxWidth="180" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
@@ -107,15 +107,15 @@
                             <Border Name="ProjectBadge" Classes="initials small" DockPanel.Dock="Left" IsVisible="False">
                                 <TextBlock Name="ProjectBadgeText" Classes="badgeText" />
                             </Border>
-                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
                             <TextBlock Name="ProjectName" Classes="projectName" Text="No solution" VerticalAlignment="Center"
                                        MaxWidth="240" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
                     <Button Name="BranchButton" Classes="widget" MinWidth="76" ToolTip.Tip="Version control" Click="OnBranchClicked">
                         <DockPanel>
-                            <PathIcon DockPanel.Dock="Left" Classes="lead" Data="{StaticResource Icon.Branch}" />
-                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                            <PathIcon DockPanel.Dock="Left" Classes="lead" Data="{DynamicResource Icon.Branch}" />
+                            <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
                             <TextBlock Name="BranchName" Text="Version control" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
@@ -160,25 +160,25 @@
                     <Button Name="GitBranchButton" Classes="statusItem" IsVisible="False" MinWidth="96" Click="OnGitBranchClicked"
                             app:ShrinkingRow.GoesWhole="True" app:ShrinkingRow.KeepsWidth="False">
                         <DockPanel HorizontalSpacing="{x:Static app:Gaps.Tight}">
-                            <PathIcon DockPanel.Dock="Left" Data="{StaticResource Icon.Branch}" Foreground="{DynamicResource Passenger.TextMuted}" Width="12" Height="12" />
+                            <PathIcon DockPanel.Dock="Left" Data="{DynamicResource Icon.Branch}" Foreground="{DynamicResource Passenger.TextMuted}" Width="12" Height="12" />
                             <TextBlock Name="GitBranchText" Classes="status" MaxWidth="200" TextTrimming="CharacterEllipsis" />
                         </DockPanel>
                     </Button>
                     <Button Name="GitSyncButton" Classes="statusItem" IsVisible="False" Click="OnGitSyncClicked">
                         <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Normal}">
                             <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
-                                <PathIcon Data="{StaticResource Icon.ArrowDown}" Foreground="{DynamicResource Passenger.TextMuted}" Width="11" Height="11" />
+                                <PathIcon Data="{DynamicResource Icon.ArrowDown}" Foreground="{DynamicResource Passenger.TextMuted}" Width="11" Height="11" />
                                 <TextBlock Name="GitIncomingText" Classes="status" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
-                                <PathIcon Data="{StaticResource Icon.ArrowUp}" Foreground="{DynamicResource Passenger.TextMuted}" Width="11" Height="11" />
+                                <PathIcon Data="{DynamicResource Icon.ArrowUp}" Foreground="{DynamicResource Passenger.TextMuted}" Width="11" Height="11" />
                                 <TextBlock Name="GitOutgoingText" Classes="status" />
                             </StackPanel>
                         </StackPanel>
                     </Button>
                     <Button Name="GitChangesButton" Classes="statusItem" IsVisible="False" Click="OnGitChangesClicked">
                         <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
-                            <PathIcon Data="{StaticResource Icon.Edit}" Foreground="{DynamicResource Passenger.TextMuted}" Width="12" Height="12" />
+                            <PathIcon Data="{DynamicResource Icon.Edit}" Foreground="{DynamicResource Passenger.TextMuted}" Width="12" Height="12" />
                             <TextBlock Name="GitChangesText" Classes="status" />
                         </StackPanel>
                     </Button>
@@ -186,7 +186,7 @@
                          cannot update itself) a link to this system's download or the release page, once per version. -->
                     <Button Name="UpdateButton" Classes="statusItem" IsVisible="False" Click="OnUpdateClicked">
                         <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
-                            <PathIcon Name="UpdateIcon" Data="{StaticResource Icon.ArrowDown}" Foreground="{DynamicResource Passenger.Link}" Width="12" Height="12" />
+                            <PathIcon Name="UpdateIcon" Data="{DynamicResource Icon.ArrowDown}" Foreground="{DynamicResource Passenger.Link}" Width="12" Height="12" />
                             <TextBlock Name="UpdateText" Classes="status" Foreground="{DynamicResource Passenger.Link}" />
                         </StackPanel>
                     </Button>
@@ -228,7 +228,7 @@
                     <Button Name="AgentButton" Classes="statusItem" Focusable="False" IsVisible="False" Click="OnAgentClicked"
                             ToolTip.Tip="An agent is using this window through Passenger's MCP server">
                         <StackPanel Orientation="Horizontal" Spacing="{x:Static app:Gaps.Tight}">
-                            <PathIcon Name="AgentIcon" Data="{StaticResource Icon.Notifications}" Width="12" Height="12" IsVisible="False" />
+                            <PathIcon Name="AgentIcon" Data="{DynamicResource Icon.Notifications}" Width="12" Height="12" IsVisible="False" />
                             <TextBlock Name="AgentText" Classes="status" />
                         </StackPanel>
                     </Button>

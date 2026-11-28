@@ -11,7 +11,7 @@
             <Button Name="ViewSwitch" DockPanel.Dock="Right" Classes="widget" MinWidth="52" IsVisible="False"
                     ToolTip.Tip="Switch between the solution and the files on disk">
                 <DockPanel>
-                    <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{StaticResource Icon.ChevronDown}" />
+                    <PathIcon DockPanel.Dock="Right" Classes="chevron" Data="{DynamicResource Icon.ChevronDown}" />
                     <TextBlock Name="ViewName" Classes="caption" Text="Solution" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
             </Button>
