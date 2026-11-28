@@ -1167,11 +1167,12 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
     /// <summary>A folder's passenger-layers.json puts the Shop.Domain namespaces in one layer and Shop.Screens' in another
     /// that may use it: a Domain type's call of a Screens type is a warning where the call names it, in the editor and in
     /// Problems, saying which layers it breaks, and the map's edge between them is drawn as broken; its fix lets Domain use
-    /// Screens in the file, after which the warning and the broken edge go.</summary>
+    /// Screens in the file, where its layer is written and its comment kept, after which the warning and the broken edge go.</summary>
     private void A_use_breaking_the_folders_layer_rules_is_marked_in_the_editor_Problems_and_the_map_and_its_fix_lets_the_layer_use_the_other()
     {
-        Write("passenger-layers.json", "{\n  \"passengerLayers\": 1,\n  \"layers\": [\n    { \"name\": \"Domain\", \"namespaces\": [\"Shop.Domain.*\"] },\n"
-            + "    { \"name\": \"Screens\", \"namespaces\": [\"Shop.Screens.*\"], \"mayUse\": [\"Domain\"] }\n  ]\n}\n");
+        const string Layers = "{\n  // The screens show the domain's orders.\n  \"passengerLayers\": 1,\n  \"layers\": [\n    { \"name\": \"Domain\", \"namespaces\": [\"Shop.Domain.*\"] },\n"
+            + "    { \"name\": \"Screens\", \"namespaces\": [\"Shop.Screens.*\"], \"mayUse\": [\"Domain\"] }\n  ]\n}\n";
+        Write("passenger-layers.json", Layers);
         Write("Screen.cs", "namespace Shop.Screens;\n\nstatic class Screen\n{\n    public static string Title() => \"Orders\";\n}\n");
         Write("Order.cs", "using Shop.Screens;\n\nnamespace Shop.Domain;\n\nstatic class Order\n{\n    public static string Shown() => Screen.Title();\n}\n");
         MainWindow window = project.Open("Order.cs", w => w.Perform(AppActions.ShowProblems));
@@ -1201,7 +1202,8 @@ public sealed class ProblemsTests : IClassFixture<ProblemsTests.Project>
         Ui.Press(window, "ENTER");
         Ui.WaitFor(() => problems.FileProblems.All(p => p.Message != Broken) && window.EditorArea.Active!.Markers.All(m => m.Message != Broken) && map.Picture.Broken.Count == 0,
             () => $"the warning gone once Domain may use Screens, the file reading {File.ReadAllText(project.PathOf("passenger-layers.json"))}");
-        Assert.Contains("\"mayUse\": [\n        \"Screens\"\n      ]", File.ReadAllText(project.PathOf("passenger-layers.json")).ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Equal(Layers.Replace("[\"Shop.Domain.*\"] }", "[\"Shop.Domain.*\"], \"mayUse\": [\"Screens\"] }", StringComparison.Ordinal),
+            File.ReadAllText(project.PathOf("passenger-layers.json")).ReplaceLineEndings("\n"));
         window.Close();
     }
 

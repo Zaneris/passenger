@@ -32,7 +32,7 @@ public sealed class DependencyMapTests
             CountsEachUseOnce();
             return Task.CompletedTask;
         }),
-        ("a level is laid out in layers, what uses above what it uses, a loop broken where it comes round", () =>
+        ("a level is laid out in layers, what uses above what it uses, a loop broken where it comes round, none of no projects", () =>
         {
             LaysUsersAbove();
             return Task.CompletedTask;
@@ -159,6 +159,9 @@ public sealed class DependencyMapTests
         Assert.True(boxes[graph["p|Y"]!].Y >= boxes[graph["p|X"]!].Bottom + MapLayout.LayerGap && boxes[graph["p|Z"]!].Y >= boxes[graph["p|Y"]!].Bottom + MapLayout.LayerGap,
             "Y stands a layer below X, and Z below Y");
         Assert.True(boxes.Values.All(box => box.Right + MapLayout.Margin <= width + 0.001 && box.Bottom + MapLayout.Margin <= height + 0.001), "every node stands within the map");
+
+        // A solution of no projects is a map of nothing.
+        Assert.Empty(MapLayout.Of([], [], _ => (100, 28), 28).Boxes);
     }
 
     private static DependenciesFound Level(IReadOnlyList<(string Id, string Name)> nodes, IReadOnlyList<DependencyEdge> edges) =>

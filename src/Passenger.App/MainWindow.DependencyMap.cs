@@ -115,16 +115,17 @@ public partial class MainWindow
         return path.Count > 0 ? path : null;
     }
 
-    /// <summary>The map's path of an Explorer row: a project's own node, a C# file's first type (asked of the server where the
-    /// file is open in it), else none.</summary>
+    /// <summary>The map's path of an Explorer row: a project's own node, a C# file's first type (asked of the server, as the
+    /// file is open in it or as it holds it unopened), else its project's.</summary>
     private async Task<IReadOnlyList<string>?> MapPathOfAsync(CSharpService csharp, ExplorerNode row)
     {
         if (row is { Kind: NodeKind.Project, Path: { } project })
         {
             return [DependencyIds.Project(project)];
         }
-        if (row is { Kind: NodeKind.File, Path: { } file } && Editors.Documents.FirstOrDefault(d => PathNames.Same(d.Path, file)) is { } open
-            && csharp.For(open)?.Lsp is { IsRazor: false } lsp)
+        if (row is { Kind: NodeKind.File, Path: { } file } && Languages.Language.ForPath(file) == Languages.Language.CSharp
+            && (Editors.Documents.FirstOrDefault(d => PathNames.Same(d.Path, file)) is { } open ? csharp.For(open)?.Lsp
+                : csharp.Session?.Unopened(DocumentUris.FromPath(file), new TextDocument(string.Empty))) is { IsRazor: false } lsp)
         {
             IReadOnlyList<string> path = await lsp.DependencyAtAsync(0);
             return path.Count > 0 ? path : null;

@@ -1,7 +1,9 @@
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Passenger.Core;
 using Passenger.Roslyn.Extension;
+using Passenger.Text;
 
 namespace Passenger.App.DependencyMap;
 
@@ -52,27 +54,109 @@ public static class LayersFile
         return $"The {from} layer may not use the {to} layer, which {used} is in: {LayerRules.FileName} lets it use {(may.Count == 0 ? "no other layer" : Plural.Listed(may))}";
     }
 
-    /// <summary>A file's text with one layer let use another (added to its mayUse), written as JSON is written indented;
-    /// null where the text has no such layer or it may already.</summary>
+    /// <summary>A file's text with one layer let use another, the name put into its mayUse where it is written (a mayUse made
+    /// after its last member where it has none), on a line of its own where the list or layer is written over lines; the
+    /// rest of the text, its comments among it, as it was. Null where the text has no such layer, it may already, or the text
+    /// is no JSON.</summary>
     public static string? LetUse(string text, string from, string to)
     {
-        if (JsonNode.Parse(text, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) is not JsonObject root
-            || root["layers"] is not JsonArray layers
-            || layers.OfType<JsonObject>().FirstOrDefault(l => l["name"]?.GetValueKind() == JsonValueKind.String && (string?)l["name"] == from) is not { } layer)
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
+        Utf8JsonReader reader = new(bytes, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        WrittenLayer? layer = null;
+        try
+        {
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            {
+                return null;
+            }
+            while (layer is null && reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+            {
+                bool layers = reader.ValueTextEquals("layers");
+                reader.Read();
+                if (!layers || reader.TokenType != JsonTokenType.StartArray)
+                {
+                    reader.Skip();
+                    continue;
+                }
+                while (layer is null && reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                {
+                    if (reader.TokenType != JsonTokenType.StartObject)
+                    {
+                        reader.Skip();
+                        continue;
+                    }
+                    WrittenLayer read = ReadLayer(ref reader);
+                    layer = read.Name == from ? read : null;
+                }
+            }
+        }
+        catch (JsonException)
         {
             return null;
         }
-        if (layer["mayUse"] is not JsonArray may)
-        {
-            layer["mayUse"] = may = [];
-        }
-        if (may.Any(m => m?.GetValueKind() == JsonValueKind.String && (string?)m == to))
+        if (layer is null || layer.May?.Any(m => m.Value == to) == true || layer.LastValueEnd < 0)
         {
             return null;
         }
-        may.Add(to);
-        return root.ToJsonString(Written) + (text.EndsWith('\n') ? "\n" : string.Empty);
+        string name = JsonSerializer.Serialize(to, Quoted);
+        string lineBreak = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        int At(long place) => Encoding.UTF8.GetCharCount(bytes, 0, (int)place);
+        bool Over(long start, long end) => text.AsSpan(At(start), At(end) - At(start)).Contains('\n');
+        string IndentAt(long place) => TextNavigation.IndentBefore(text, At(place));
+        (long where, string put) = layer.May switch
+        {
+            [.., var last] => (last.End, Over(layer.MayOpen, layer.MayClose) ? $",{lineBreak}{IndentAt(last.Start)}{name}" : $", {name}"),
+            not null => (layer.MayOpen + 1, name),
+            null => (layer.LastValueEnd, Over(layer.Start, layer.LastValueEnd) ? $",{lineBreak}{IndentAt(layer.LastNameAt)}\"mayUse\": [{name}]" : $", \"mayUse\": [{name}]"),
+        };
+        return text.Insert(At(where), put);
     }
 
-    private static readonly JsonSerializerOptions Written = new() { WriteIndented = true };
+    /// <summary>A layer as its file writes it, by UTF-8 places: its name, where it starts, where its last member's name starts
+    /// and its value ends, and its mayUse's brackets and items, each with its value where it is a string.</summary>
+    private sealed record WrittenLayer(string? Name, long Start, long LastNameAt, long LastValueEnd, List<(string? Value, long Start, long End)>? May, long MayOpen, long MayClose);
+
+    /// <summary>The layer object the reader stands at the start of, read to its end.</summary>
+    private static WrittenLayer ReadLayer(ref Utf8JsonReader reader)
+    {
+        long start = reader.TokenStartIndex;
+        string? name = null;
+        long lastNameAt = -1;
+        long lastValueEnd = -1;
+        List<(string?, long, long)>? may = null;
+        long mayOpen = -1;
+        long mayClose = -1;
+        while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+        {
+            lastNameAt = reader.TokenStartIndex;
+            string member = reader.GetString() ?? string.Empty;
+            reader.Read();
+            if (member == "name" && reader.TokenType == JsonTokenType.String)
+            {
+                name = reader.GetString();
+            }
+            else if (member == "mayUse" && reader.TokenType == JsonTokenType.StartArray)
+            {
+                may = [];
+                mayOpen = reader.TokenStartIndex;
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+                {
+                    long itemStart = reader.TokenStartIndex;
+                    string? value = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+                    reader.Skip();
+                    may.Add((value, itemStart, reader.BytesConsumed));
+                }
+                mayClose = reader.TokenStartIndex;
+            }
+            else
+            {
+                reader.Skip();
+            }
+            lastValueEnd = reader.BytesConsumed;
+        }
+        return new WrittenLayer(name, start, lastNameAt, lastValueEnd, may, mayOpen, mayClose);
+    }
+
+    /// <summary>A name written into the file as JSON writes a string, its letters as they are.</summary>
+    private static readonly JsonSerializerOptions Quoted = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 }

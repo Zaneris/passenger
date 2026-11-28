@@ -331,15 +331,31 @@ public sealed class DependencyMapView : DockPanel
     /// <summary>How many answers have been taken in that differed from the last of their level.</summary>
     private int taken;
 
-    /// <summary>A level asked and taken in where it differs from its last answer; false, said, where it could not be read.</summary>
+    /// <summary>How many times each level has been asked, by its node's id, so an answer overtaken by a later asking is
+    /// passed over.</summary>
+    private readonly Dictionary<string, int> asked = new(StringComparer.Ordinal);
+
+    /// <summary>A level asked and taken in where it differs from its last answer, under the node of its id as the map holds
+    /// it when it comes, and only where no later asking of it is under way or came first; false, said, where it could not be
+    /// read.</summary>
     private async Task<bool> LevelAsync(MapNode? of)
     {
         reading++;
+        string key = of?.Id ?? string.Empty;
+        int asking = asked[key] = asked.GetValueOrDefault(key) + 1;
         try
         {
             DependenciesFound found = await ask!(of?.Id);
+            if (asked[key] != asking)
+            {
+                return true;
+            }
+            // A refresh may have put another node of its id in its place, or taken it away, while it was asked.
+            if (of is not null && (of = graph[key]) is null)
+            {
+                return true;
+            }
             string said = System.Text.Json.JsonSerializer.Serialize(found);
-            string key = of?.Id ?? string.Empty;
             if (answers.GetValueOrDefault(key) != said || (of is null ? !graph.HasRoots : !graph.HasLevel(of)))
             {
                 answers[key] = said;
@@ -376,7 +392,11 @@ public sealed class DependencyMapView : DockPanel
         {
             return;
         }
-        graph.SetOpen(node, open: true);
+        if (graph[node.Id] is not { } now || !graph.HasLevel(now))
+        {
+            return;
+        }
+        graph.SetOpen(now, open: true);
         Redraw();
     }
 
@@ -410,10 +430,26 @@ public sealed class DependencyMapView : DockPanel
         broken = shown.Where(e => e.Broken).ToHashSet();
         Picture.Show(graph, shown, broken);
         ListRows();
-        if (Chosen is { } chosen && graph[chosen.Id] is { } still)
+        if (Chosen is not { } chosen)
+        {
+            return;
+        }
+        // A node chosen that a refresh took away leaves the choice to the nearest node above it still there, else to none.
+        MapNode? still = null;
+        for (MapNode? at = chosen; at is not null && still is null; at = at.Parent)
+        {
+            still = graph[at.Id];
+        }
+        if (still is not null)
         {
             Choose(still, fromPicture: true);
+            return;
         }
+        Chosen = null;
+        Picture.Chosen = null;
+        tree.SelectedItem = null;
+        heading.Text = string.Empty;
+        edgeList.ItemsSource = (IReadOnlyList<MapEdgeRow>)[];
     }
 
     /// <summary>The tree's rows: the nodes shown, those the filter's words name and the nodes above them.</summary>
