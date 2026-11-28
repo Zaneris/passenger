@@ -140,6 +140,18 @@ internal static class Rules
             + "formatted with the invariant culture. A whole number with no format sets nothing apart and passes, as does a "
             + "provider the code chose itself (content shown as its own program shows it, a program's values in its culture).");
 
+    public static readonly DiagnosticDescriptor UnextractedWord = new(
+        "PSG0012",
+        "Words a person reads are written in the code",
+        "{0}: say it through a resource's Words (a .resx beside its home class){1}",
+        Category,
+        DiagnosticSeverity.Warning,
+        isEnabledByDefault: false,
+        description: "Every word a person reads comes from a resource, so it can be read in their language: a literal given "
+            + "where Words go or to a control's words would stay English, and Words joined into a string are said in one "
+            + "language and break the sentence a translation keeps whole. Turned on folder by folder in .editorconfig as "
+            + "each area's words move into resources.");
+
     public static readonly DiagnosticDescriptor KeysUnread = new(
         "PSG9001",
         "A resource keys file is not read",

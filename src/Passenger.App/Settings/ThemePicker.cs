@@ -56,7 +56,7 @@ public sealed class ThemePicker : StackPanel
         this.working = working;
         this.change = change;
         Spacing = Gaps.Tight;
-        ShownWords.Set(Box, AutomationProperties.NameProperty, setting.Row?.Label);
+        Box[ShownWords.NameProperty] = setting.Row?.Label;
         ReusedRows.Use(Box, () =>
         {
             TextBlock name = new() { VerticalAlignment = VerticalAlignment.Center };

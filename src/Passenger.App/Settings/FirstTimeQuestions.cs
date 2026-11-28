@@ -102,7 +102,7 @@ public sealed class FirstTimeQuestions(Func<StateStore> store, Func<bool> unseen
         }
         moment ??= new QuestionMoment();
         List<(ToggleSetting Setting, CheckBox? Box)> chosen = [.. question.Settings.Select(s => (s, question.Settings.Count > 1 && !moment.Decided.ContainsKey(s)
-            ? Labelled(new CheckBox { IsChecked = true }, s.Row?.Label) : null))];
+            ? new CheckBox { [ShownWords.ContentProperty] = s.Row?.Label, IsChecked = true } : null))];
         StackPanel detail = new() { Spacing = Gaps.Small };
         foreach ((ToggleSetting setting, CheckBox? box) in chosen)
         {
@@ -157,13 +157,6 @@ public sealed class FirstTimeQuestions(Func<StateStore> store, Func<bool> unseen
             apply(ticked.Aggregate(settings(), (s, setting) => setting.With(s, true)));
         }
         Changed?.Invoke(this, question);
-    }
-
-    /// <summary>A check box showing a setting's label.</summary>
-    private static CheckBox Labelled(CheckBox box, Words? label)
-    {
-        ShownWords.Set(box, ContentControl.ContentProperty, label);
-        return box;
     }
 
     /// <summary>The question's settings a file's .editorconfig decides (<see cref="EditorConfigOver"/>), each with the words
