@@ -21,7 +21,11 @@ public static class AspireAppHosts
     /// <summary>The AppHost an aspire.config.json names (its appHost's path, from the file's folder) where that runs through
     /// the CLI and is there; null for one in C# (found as a project or apphost.cs is), none, or a file that does not read as
     /// JSON. Throws as its read does, so a file that could not be read keeps what was known of it.</summary>
-    public static string? NamedBy(string configFile)
+    public static string? NamedBy(string configFile) => WrittenIn(configFile) is { } path && File.Exists(path) ? path : null;
+
+    /// <summary>The AppHost an aspire.config.json names where that runs through the CLI, there or not yet; null for one in C#,
+    /// none, or a file that does not read as JSON. Throws as its read does.</summary>
+    public static string? WrittenIn(string configFile)
     {
         try
         {
@@ -31,7 +35,7 @@ public static class AspireAppHosts
                 return null;
             }
             string path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(configFile)!, named));
-            return RunsThroughCli(path) && File.Exists(path) ? PathNames.Canonical(path) : null;
+            return RunsThroughCli(path) ? PathNames.Canonical(path) : null;
         }
         catch (Exception unread) when (unread is JsonException or ArgumentException or NotSupportedException)
         {

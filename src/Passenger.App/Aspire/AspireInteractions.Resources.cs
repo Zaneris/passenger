@@ -428,6 +428,10 @@ public sealed partial class AspireInteractions
             ContainerSecrets.Mark(told.Value.StringValue);
             connectionStrings[incoming.Name] = told.Value.StringValue;
         }
+        else
+        {
+            connectionStrings.TryRemove(incoming.Name, out _);
+        }
         // A secret masked by ContainerSecrets' rule, and one the AppHost marks sensitive whatever its name.
         Resource resource = incoming.Clone();
         saysArguments |= resource.Properties.Any(property => property.Name == "resource.appArgs");

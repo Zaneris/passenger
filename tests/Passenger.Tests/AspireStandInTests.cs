@@ -816,7 +816,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
 
     /// <summary>A database an AppHost runs is one of the Database window's connections while it runs, whatever uses it, found
     /// as it starts with no Refresh: by the name shown, from the connection string the AppHost told and marks sensitive, its
-    /// secret marked and never said; gone once the resource has ended.</summary>
+    /// secret marked and never said; taken again as the AppHost tells another string; gone once the resource has ended.</summary>
     private void A_database_an_AppHost_runs_is_a_connection_while_it_runs_its_string_never_shown()
     {
         const string Secret = "resource-never-shown";
@@ -826,7 +826,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         MainWindow window = OpenRunning(backend);
         try
         {
-            Resource Database(string state) => new()
+            Resource Database(string state, string database = "shopdb") => new()
             {
                 Name = "shopdb-x1", DisplayName = "shopdb", Uid = "shopdb", ResourceType = "PostgresDatabaseResource", State = state,
                 Properties =
@@ -834,7 +834,7 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
                     new ResourceProperty
                     {
                         Name = "resource.connectionString", IsSensitive = true,
-                        Value = Google.Protobuf.WellKnownTypes.Value.ForString($"Host=localhost;Port=5999;Database=shopdb;Username=postgres;Password={Secret}"),
+                        Value = Google.Protobuf.WellKnownTypes.Value.ForString($"Host=localhost;Port=5999;Database={database};Username=postgres;Password={Secret}"),
                     },
                 },
             };
@@ -847,6 +847,9 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             Assert.Equal((Passenger.App.Database.DatabaseKind.Postgres, "shopdb", "shopdb"), (found.Kind, found.Name, found.Database));
             Assert.DoesNotContain(Secret, window.Database.Said, StringComparison.Ordinal);
             Assert.Equal(Passenger.App.Containers.ContainerSecrets.Masked, Passenger.App.Containers.ContainerSecrets.InSaid(Secret));
+            backend.PushResource(Database("Running", "orders"));
+            Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true && s.Database == "orders"),
+                () => $"the connection string the AppHost told again, of another database, taken in place of the first: {string.Join(", ", window.Database.Sources.Select(s => $"{s.Name} {s.Database}"))}");
             backend.PushResource(Database("Finished"));
             Ui.WaitFor(() => !window.Database.Busy && !window.Database.Sources.Any(s => s.Found?.Contains("running resource", StringComparison.Ordinal) == true),
                 () => $"the ended resource's database gone from the connections ({window.Database.Said})");
@@ -3041,8 +3044,8 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         }
     }
 
-    /// <summary>An AppHost of another language (a Go AppHost, as its aspire.config.json names it) has its configuration as the
-    /// folder opens, and Debug runs it as aspire run starts it, through the window's aspire CLI in its folder with the IDE's
+    /// <summary>An AppHost of another language (a Go AppHost, as its aspire.config.json names it) has its configuration as its
+    /// file comes after the config, and Debug runs it as aspire run starts it, through the window's aspire CLI in its folder with the IDE's
     /// debug session and the environment its config's https profile gives; the .NET service its orchestrator asks the IDE to
     /// start runs debugged, and an edit made as it runs reaches it through Hot Reload, as a C# AppHost's service's does. The
     /// stand-in CLI runs the stand-in AppHost, built here, as aspire run would run the AppHost.</summary>
@@ -3057,7 +3060,6 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
         string appHost = Path.Combine(PathNames.Canonical(project.Folder), "GoHost", "apphost.go");
         File.Delete(project.KeyFile);
         AspireInteractionHost backend = Ui.Await(AspireInteractionHost.StartAsync(project.KeyFile), "the stand-in resource service");
-        TestFolders.Write(project.Folder, "GoHost/apphost.go", "package main\n\nfunc main() {}\n");
         TestFolders.Write(project.Folder, "GoHost/aspire.config.json", JsonSerializer.Serialize(new
         {
             appHost = new { path = "apphost.go", language = "go" },
@@ -3085,8 +3087,12 @@ public sealed class AspireStandInTests(StandInAppHost project) : IClassFixture<S
             window.Show();
             window.OpenFolder(project.Folder);
             Ui.WaitFor(() => window.CSharpService is { IsReady: true }, $"the language server to load the projects ({window.CSharpService?.State})", TimeSpan.FromMinutes(3));
+            Ui.Await(window.Session.AspireFiles.Read, "the folder's first read for its AppHosts");
+            Ui.Settle();
+            Assert.False(window.Configurations.Any(configuration => PathNames.Same(configuration.Project, appHost)), "The Go AppHost was configured before its file was there");
+            TestFolders.Write(project.Folder, "GoHost/apphost.go", "package main\n\nfunc main() {}\n");
             Ui.WaitFor(() => window.Configurations.Any(configuration => configuration.Aspire && PathNames.Same(configuration.Project, appHost)),
-                "the Go AppHost's Aspire configuration as its aspire.config.json names it");
+                "the Go AppHost's Aspire configuration as its file comes after the aspire.config.json naming it");
             Assert.True(window.SelectConfiguration(window.Configurations.First(configuration => PathNames.Same(configuration.Project, appHost)).Name));
             window.ApplySettings(window.Settings with { HotReload = true });
             Ui.Run(window, AppActions.Debug);
