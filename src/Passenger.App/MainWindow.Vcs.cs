@@ -1019,7 +1019,18 @@ public partial class MainWindow
         Add(AppActions.Push, "Push…", context => IdeErrors.Observe(AskedByAgent(context) ? session.Vcs.PushAsync(ask: false) : ShowPushAsync(null, elsewhere: false)), new("Git", 0, 1), remote: true);
         Add(AppActions.UpdateProject, "Update Project…", context => IdeErrors.Observe(session.Vcs.UpdateAsync()), new("Git", 0, 2), remote: true);
         Add(AppActions.Fetch, "Fetch", context => IdeErrors.Observe(session.Vcs.FetchAsync()), new("Git", 0, 3), remote: true);
-        Add(AppActions.NewBranch, "New Branch…", _ => ShowNewBranch(), new("Git", 0, 4));
+        // From the branch chosen in the branches panel where it has the keys, else from the head.
+        Add(AppActions.NewBranch, "New Branch…", context =>
+        {
+            if ((context.Focused as Visual)?.FindAncestorOfType<ToolWindows.BranchesPanel>(includeSelf: true)?.Selected?.Branch is { } from)
+            {
+                ShowNewBranchFrom(from);
+            }
+            else
+            {
+                ShowNewBranch();
+            }
+        }, new("Git", 0, 4));
         Add(AppActions.Branches, "Branches…", _ => ShowBranches(BranchButton), new("Git", 0, 4));
         actions!.Add(new IdeAction(AppActions.VcsOperations, "VCS Operations", "Git", context => ShowVcsOperations(context))
         {

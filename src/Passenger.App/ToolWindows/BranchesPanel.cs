@@ -690,9 +690,9 @@ public sealed class BranchesPanel : DockPanel
     /// <summary>Why Mark/Unmark As Favorite can't act: a tag is never a favourite (<see cref="GitBranchesState.Holds"/>).</summary>
     private static Words? WhyNotFavorite(BranchInfo? branch) => branch is { Kind: not RefKind.Tag } ? null : Refusals.NoBranchChosen;
 
-    /// <summary>Rider's keys here, beside the tree's (<see cref="TreeKeys"/>): Delete (Backspace too on the Mac) deletes, F2 or
-    /// Shift+F6 renames a local branch on the Mac (Rename's Ctrl+R, R elsewhere, which the window routes here), and
-    /// Ctrl+Alt+N (Cmd+Alt+N) makes one from the chosen.</summary>
+    /// <summary>Rider's keys here, beside the tree's (<see cref="TreeKeys"/>): Delete (Backspace too on the Mac) deletes, and
+    /// F2 or Shift+F6 renames a local branch on the Mac (Rename's Ctrl+R, R elsewhere, which the window routes here). New
+    /// Branch's keys are the window's action, which makes the branch from the one chosen here.</summary>
     private bool Take(KeyEventArgs e)
     {
         bool mac = OperatingSystem.IsMacOS();
@@ -700,7 +700,6 @@ public sealed class BranchesPanel : DockPanel
         {
             return false;
         }
-        KeyModifiers command = Keystroke.Command;
         if (node.Branch is { } branch && (e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None
             || mac && e.Key == Key.Back && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Meta) && WhyNotDelete(branch) is null)
         {
@@ -709,10 +708,6 @@ public sealed class BranchesPanel : DockPanel
         else if (mac && node.Branch is { Kind: RefKind.Local } local && (e.Key == Key.F2 && e.KeyModifiers == KeyModifiers.None || e.Key == Key.F6 && e.KeyModifiers == KeyModifiers.Shift))
         {
             RenameRequested?.Invoke(this, local);
-        }
-        else if (node.Branch is { } from && e.Key == Key.N && e.KeyModifiers == (command | KeyModifiers.Alt))
-        {
-            NewBranchRequested?.Invoke(this, from);
         }
         else
         {
