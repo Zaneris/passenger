@@ -78,6 +78,11 @@ public sealed record DatabaseSource(string Name, DatabaseKind Kind, string Folde
         _ => DatabaseKinds.Value(ConnectionString, "db") ?? string.Empty,
     };
 
+    /// <summary>Whether a session opened on it reaches what one opened on <paramref name="other"/> would, as it would: the same
+    /// connection, string, settings laid over it, tunnel, sign-in and mark (a read-only one's session is read-only).</summary>
+    public bool OpensAs(DatabaseSource other) => Id == other.Id && Kind == other.Kind && ConnectionString == other.ConnectionString && Over == other.Over
+        && Tunnel == other.Tunnel && SignIn == other.SignIn && Mark == other.Mark;
+
     /// <summary>The same connection opening another database of its server.</summary>
     public DatabaseSource In(string database) => database == Database || DatabaseKinds.IsFile(Kind) ? this : this with
     {

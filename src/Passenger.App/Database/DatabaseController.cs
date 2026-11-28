@@ -55,6 +55,14 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     public bool Busy => running is not null;
     public bool Discovered { get; private set; }
 
+    /// <summary>Each connection's name told apart from the others': its own where none of them shares it, else with where it
+    /// was found (or made by hand), else numbered in turn, so a choice of one by its name finds it alone.</summary>
+    public static IReadOnlyList<string> NamesApart(IReadOnlyList<DatabaseSource> sources)
+    {
+        string[] names = [.. sources.Select(s => sources.Count(o => o.Name == s.Name) > 1 ? $"{s.Name} ({s.Found ?? "made by hand"})" : s.Name)];
+        return [.. names.Select((name, at) => names.Count(n => n == name) > 1 ? $"{name} {(names.Take(at + 1).Count(n => n == name)).ToString(System.Globalization.CultureInfo.InvariantCulture)}" : name)];
+    }
+
     /// <summary>Whether a connection has been opened this session, its explorer read.</summary>
     public bool IsConnected(DatabaseSource source) => connected.Contains(source.Id);
 
@@ -171,13 +179,35 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
     /// <summary>The console a .sql file is, where a connection was chosen for it.</summary>
     public SqlConsole? ConsoleOf(string path) => consoles.GetValueOrDefault(path);
 
-    /// <summary>Makes a .sql file a console of <paramref name="source"/>, kept for the folder.</summary>
-    public SqlConsole Bind(string path, DatabaseSource source)
+    /// <summary>The console file of a connection in <paramref name="folder"/>: the one bound to it there, else one named for it
+    /// that no other connection holds, its name made its own (by what it is kept by) where another of its name holds that.</summary>
+    public string ConsolePathOf(DatabaseSource source, string folder, string extension)
+    {
+        UiThread.Check();
+        if (consoles.Values.FirstOrDefault(c => c.Connection == source.Id && PathNames.Same(Path.GetDirectoryName(c.Path) ?? string.Empty, folder)) is { } bound)
+        {
+            return bound.Path;
+        }
+        string named = Path.Combine(folder, FileNames.Safe(source.Name) + extension);
+        return consoles.GetValueOrDefault(named) is { Connection: { } other } && other != source.Id && Find(other) is not null
+            ? Path.Combine(folder, $"{FileNames.Safe(source.Name)}-{FileNames.Hash(source.HistoryKey, 8)}{extension}")
+            : named;
+    }
+
+    /// <summary>Makes a .sql file a console of <paramref name="source"/>, kept for the folder; null where it holds a transaction
+    /// open on another connection, which its Commit would end there (refused, said).</summary>
+    public SqlConsole? Bind(string path, DatabaseSource source)
     {
         UiThread.Check();
         if (!consoles.TryGetValue(path, out SqlConsole? console))
         {
             console = consoles[path] = new SqlConsole(path);
+        }
+        if (console.InTransaction && console.Connection != source.Id)
+        {
+            Refuse(Refusals.TransactionOpen);
+            console.Raise();
+            return null;
         }
         console.Connection = source.Id;
         console.Raise();
@@ -260,7 +290,8 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             };
             if (console.Manual)
             {
-                if (console.Session is { } held && held.Source.Id != source.Id)
+                // A session held reached its connection as it was: once its transaction ends, one edited since is opened anew.
+                if (console.Session is { } held && (held.Source.Id != source.Id || !held.InTransaction && !held.Source.OpensAs(source)))
                 {
                     LetGo(console);
                 }
@@ -545,18 +576,24 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         return null;
     }
 
-    /// <summary>Commits a console's open transaction, or rolls it back, under a <see cref="Working"/> of its own.</summary>
-    public async Task EndTransactionAsync(SqlConsole console, bool commit)
+    /// <summary>Commits a console's open transaction, or rolls it back, under a <see cref="Working"/> of its own: true once it
+    /// ended as asked (or none was open), false where it failed (its connection let go, the failure said) or could not begin.</summary>
+    public async Task<bool> EndTransactionAsync(SqlConsole console, bool commit)
     {
         UiThread.Check();
         string action = commit ? AppActions.DatabaseCommit : AppActions.DatabaseRollback;
-        if (console.Session is not { InTransaction: true } session || console.Running || work.Begin(action, commit ? "Committing…" : "Rolling back…") is not { } started)
+        if (console.Session is not { InTransaction: true } session)
         {
-            return;
+            return true;
+        }
+        if (console.Running || work.Begin(action, commit ? "Committing…" : "Rolling back…") is not { } started)
+        {
+            return false;
         }
         using Working working = started;
         console.Run(working);
         string said;
+        bool ended = false;
         try
         {
             int statements = session.Statements;
@@ -564,6 +601,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
             await BackgroundWork.Run(() => session.EndAsync(commit, lifetime.Token), lifetime.Token);
             said = $"{(commit ? "Committed" : "Rolled back")}: {Plural.Of(statements, "statement")}, {Plural.Of(changed, "row")} changed.";
             working.Tell(true, said);
+            ended = true;
         }
         catch (Exception error) when (error is DbException or InvalidOperationException or IOException or OperationCanceledException or TimeoutException
             or System.Net.Sockets.SocketException)
@@ -577,6 +615,7 @@ public sealed class DatabaseController(ActionWork work, Action<string> say)
         console.Ran(console.Results, said);
         say(said);
         Changed?.Invoke(this, EventArgs.Empty);
+        return ended;
     }
 
     /// <summary>Lets go of a console as its tab closes: its connection closed, a transaction left open rolled back.</summary>

@@ -703,6 +703,91 @@ public sealed class DatabaseTests
                     () => $"{window.Database.Said} [{string.Join(", ", window.Database.Sources.Select(s => s.Name))}] of {window.Session.Projects.Count} projects");
                 Assert.Equal(DatabaseMark.Production, window.Database.Sources.Single(s => s.Name == "Shop").Mark);
             });
+            Flow.Step("connections of one name are told apart, each run and given a console as its own; an edited one's held session opened again; and a failed commit keeps the folder", () =>
+            {
+                foreach ((string file, string value) in (ReadOnlySpan<(string, string)>)[("a.db", "a"), ("b.db", "b")])
+                {
+                    using SqliteConnection seeded = new($"Data Source={Path.Combine(folder, file)};Pooling=False");
+                    seeded.Open();
+                    using SqliteCommand command = seeded.CreateCommand();
+                    command.CommandText = $"CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('{value}'); CREATE TABLE parent (id INTEGER PRIMARY KEY); "
+                        + "CREATE TABLE child (p INTEGER REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED);";
+                    command.ExecuteNonQuery();
+                }
+                T Field<T>(DatabaseConnectionDialog dialog, string name) where T : Control => dialog.GetVisualDescendants().OfType<T>().Single(c => c.Name == name);
+                DatabaseConnectionDialog AskedConnection()
+                {
+                    Ui.WaitFor(() => window.OwnedWindows.OfType<DatabaseConnectionDialog>().Any(d => d.IsVisible), "the connection dialog");
+                    return window.OwnedWindows.OfType<DatabaseConnectionDialog>().Single(d => d.IsVisible);
+                }
+                Assert.True(window.Perform(AppActions.DatabaseAdd), "New Database Connection did not run");
+                DatabaseConnectionDialog dialog = AskedConnection();
+                Field<ComboBox>(dialog, "DatabaseProvider").SelectedIndex = (int)DatabaseKind.Sqlite;
+                Field<TextBox>(dialog, "DatabaseConnectionName").Text = "Shop";
+                Field<TextBox>(dialog, "DatabaseConnectionString").Text = "Data Source=a.db;Foreign Keys=True";
+                Ui.ClickButton(dialog, "Connect");
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Sources.Count(s => s.Name == "Shop") == 2, () => window.Database.Said);
+                DatabaseSource made = window.Database.Sources.Single(s => s.Name == "Shop" && s.Found is null);
+                DatabaseSource found = window.Database.Sources.Single(s => s.Name == "Shop" && s.Found is not null);
+
+                // A file run first asks which connection, each of one name told apart, and runs against the one chosen.
+                TestFolders.Write(folder, "pick.sql", "SELECT v FROM t;\n");
+                Assert.Null(window.EditorArea.Open(Path.Combine(folder, "pick.sql")));
+                window.EditorArea.CodeEditor.Selections = SelectionSet.Single(0);
+                Assert.True(window.Perform(AppActions.DatabaseRun), "Run Statement did not run");
+                ChoiceDialog which = Question(window);
+                string[] shops = [.. which.GetVisualDescendants().OfType<Button>().Select(b => b.Content as string).OfType<string>().Where(c => c.StartsWith("Shop", StringComparison.Ordinal))];
+                Assert.Equal(["Shop (made by hand) · SQLite", $"Shop ({found.Found}) · SQLite"], shops);
+                Ui.ClickButton(which, "Shop (made by hand) · SQLite");
+                SqlConsole picked = window.Database.ConsoleOf(Path.Combine(folder, "pick.sql"))!;
+                Ui.WaitFor(() => !picked.Running && picked.Results.Count == 1, () => picked.Said);
+                Assert.Equal((made.Id, "a"), (picked.Connection!.Value, picked.Results[0].Sets[0].Cell(0, 0)));
+
+                // Each of them opens a console of its own.
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == made.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console?.Connection == made.Id, "the console of the Shop made by hand");
+                SqlConsole own = window.EditorArea.ActiveGroup.Console!.Console!;
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == found.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConsole), "Open Query Console did not run");
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console?.Connection == found.Id, "the console of the Shop found");
+                Assert.NotEqual(own.Path, window.EditorArea.ActiveGroup.Console!.Console!.Path);
+                Assert.Equal(made.Id, own.Connection);
+
+                // A session held in manual commit, its transaction ended, is opened again on the connection as it was edited.
+                window.EditorArea.Activate(window.EditorArea.Documents.Single(d => PathNames.Same(d.Path, own.Path)));
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console == own, "the console of the Shop made by hand again");
+                Tab<ComboBox>(window, "ConsoleCommit").SelectedIndex = 1;
+                Run(window, "SELECT v FROM t");
+                Assert.Equal("a", own.Results[0].Sets[0].Cell(0, 0));
+                Assert.True(window.Perform(AppActions.DatabaseCommit), "Commit did not run");
+                Ui.WaitFor(() => !own.InTransaction && !own.Running, () => own.Said);
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == made.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConnectionEdit), "Edit Database Connection did not run");
+                dialog = AskedConnection();
+                Field<TextBox>(dialog, "DatabaseConnectionString").Text = "Data Source=b.db;Foreign Keys=True";
+                Ui.ClickButton(dialog, "Save and Connect");
+                Ui.WaitFor(() => !window.Database.Busy && window.Database.Find(made.Id)?.Database == "b.db", () => window.Database.Said);
+                window.EditorArea.Activate(window.EditorArea.Documents.Single(d => PathNames.Same(d.Path, own.Path)));
+                Ui.WaitFor(() => window.EditorArea.ActiveGroup.Console?.Console == own, "the console of the Shop made by hand again");
+                Run(window, "SELECT v FROM t");
+                Assert.Equal("b", own.Results[0].Sets[0].Cell(0, 0));
+
+                // A commit the database refuses keeps the folder open, said, where it went on as if committed.
+                Run(window, "INSERT INTO child VALUES (99)");
+                Assert.True(own.InTransaction, own.Said);
+                Assert.NotNull(window.CloseSolution());
+                Ui.ClickButton(Question(window), "Write and Commit");
+                Ui.WaitFor(() => !own.Running && !own.InTransaction, () => own.Said);
+                Ui.Settle();
+                Assert.NotNull(window.Folder);
+                Assert.Contains("FOREIGN KEY", own.Said, StringComparison.Ordinal);
+                Tab<ComboBox>(window, "ConsoleCommit").SelectedIndex = 0;
+                Explorer(window).Choose(Explorer(window).Rows.Single(r => r.Kind == DatabaseNodeKind.Connection && r.Source.Id == made.Id));
+                Assert.True(window.Perform(AppActions.DatabaseConnectionRemove), "Remove Database Connection did not run");
+                Ui.ClickButton(Confirm(window), "Remove");
+                Ui.WaitFor(() => window.Database.Find(made.Id) is null, "the Shop made by hand removed");
+            });
             Flow.Step("a DuckDB file of the folder opens down to its table's columns, and the folder's CSV reads through it as a table and in its console", () =>
             {
                 using (DuckDB.NET.Data.DuckDBConnection duck = new($"Data Source={Path.Combine(folder, "stock.duckdb")}"))

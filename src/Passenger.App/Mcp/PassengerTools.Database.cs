@@ -27,14 +27,18 @@ public sealed partial class PassengerTools
         DatabaseController controller = window.Database;
         AgentCall.Say("Finding the folder's database connections");
         await window.DatabasesFoundAsync().WaitAsync(cancel);
+        // Connections of one name are each listed, and found, by a name told apart from the others'.
+        IReadOnlyList<DatabaseSource> sources = controller.Sources;
+        string[] names = [.. DatabaseController.NamesApart(sources)];
         if (connection is null)
         {
-            return new DatabaseConnections([.. controller.Sources.Select(s => new DatabaseConnectionInfo(Masked(s.Name), DatabaseKinds.Title(s.Kind), Masked(s.Database),
+            return new DatabaseConnections([.. sources.Select((s, at) => new DatabaseConnectionInfo(Masked(names[at]), DatabaseKinds.Title(s.Kind), Masked(s.Database),
                 s.Found ?? "made by hand", s.Mark == DatabaseMark.None ? null : s.Mark.ToString()))]);
         }
-        DatabaseSource named = controller.Sources.FirstOrDefault(s => s.Name == connection)
-            ?? controller.Sources.FirstOrDefault(s => s.Name.Equals(connection, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"No connection {connection} in the Database window: {McpTools.Database} with no connection lists them");
+        int chosen = Array.IndexOf(names, connection) is >= 0 and int exact ? exact : Array.FindIndex(names, n => n.Equals(connection, StringComparison.OrdinalIgnoreCase));
+        DatabaseSource named = chosen >= 0 ? sources[chosen]
+            : sources.Where(s => s.Name == connection).ToArray() is [var only] ? only
+            : throw new InvalidOperationException($"No connection {connection} in the Database window: {McpTools.Database} with no connection lists them, each by a name of its own");
         if (window.WhyNotOpened(named) is { } why)
         {
             throw new InvalidOperationException(why);
