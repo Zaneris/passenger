@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Explorer" xml:space="preserve">
+    <value>Explorer</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The folder's and solution's files.</comment>
+  </data>
+  <data name="Structure" xml:space="preserve">
+    <value>Structure</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The open file's types and members.</comment>
+  </data>
+  <data name="SyntaxTree" xml:space="preserve">
+    <value>Syntax Tree</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The C# parser's tree of the open file.</comment>
+  </data>
+  <data name="Bookmarks" xml:space="preserve">
+    <value>Bookmarks</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action.</comment>
+  </data>
+  <data name="Commit" xml:space="preserve">
+    <value>Commit</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Git's changes to commit.</comment>
+  </data>
+  <data name="Run" xml:space="preserve">
+    <value>Run</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The consoles of the programs run.</comment>
+  </data>
+  <data name="Debug" xml:space="preserve">
+    <value>Debug</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The debugger's sessions, frames and values.</comment>
+  </data>
+  <data name="Tests" xml:space="preserve">
+    <value>Unit Tests</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action.</comment>
+  </data>
+  <data name="Build" xml:space="preserve">
+    <value>Build</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The builds' output.</comment>
+  </data>
+  <data name="Problems" xml:space="preserve">
+    <value>Problems</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The errors and warnings of the file and the solution.</comment>
+  </data>
+  <data name="ProblemsCounted" xml:space="preserve">
+    <value>Problems {count, number}</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Problems with its count of errors and warnings beside it.</comment>
+  </data>
+  <data name="Find" xml:space="preserve">
+    <value>Find</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Find in Files' and Find Usages' results.</comment>
+  </data>
+  <data name="Git" xml:space="preserve">
+    <value>Git</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Git's log and branches.</comment>
+  </data>
+  <data name="NuGet" xml:space="preserve">
+    <value>NuGet</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. NuGet's packages; NuGet is a name.</comment>
+  </data>
+  <data name="Terminal" xml:space="preserve">
+    <value>Terminal</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action.</comment>
+  </data>
+  <data name="LocalHistory" xml:space="preserve">
+    <value>Local History</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The versions of the files Passenger kept.</comment>
+  </data>
+  <data name="Containers" xml:space="preserve">
+    <value>Containers</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The container engine's containers and images.</comment>
+  </data>
+  <data name="Profiler" xml:space="preserve">
+    <value>Performance Profiler</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action.</comment>
+  </data>
+  <data name="Hierarchy" xml:space="preserve">
+    <value>Hierarchy</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. A type's or call's hierarchy.</comment>
+  </data>
+  <data name="Endpoints" xml:space="preserve">
+    <value>Endpoints</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. A web app's HTTP endpoints.</comment>
+  </data>
+  <data name="Requests" xml:space="preserve">
+    <value>Requests</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The HTTP requests a running web app served.</comment>
+  </data>
+  <data name="LiveTree" xml:space="preserve">
+    <value>Live Visual Tree</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. A running app's tree of controls.</comment>
+  </data>
+  <data name="Game" xml:space="preserve">
+    <value>Game</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. A running Godot game's picture.</comment>
+  </data>
+  <data name="Aspire" xml:space="preserve">
+    <value>Aspire</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Aspire's resources; Aspire is a name.</comment>
+  </data>
+  <data name="Migrations" xml:space="preserve">
+    <value>Migrations</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Entity Framework Core's migrations.</comment>
+  </data>
+  <data name="StepLibrary" xml:space="preserve">
+    <value>Step Library</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. A BDD project's step definitions.</comment>
+  </data>
+  <data name="Coverage" xml:space="preserve">
+    <value>Coverage</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The code a test run covered.</comment>
+  </data>
+  <data name="Modules" xml:space="preserve">
+    <value>Modules</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The modules a debugged program loaded.</comment>
+  </data>
+  <data name="IlViewer" xml:space="preserve">
+    <value>Compiled Code</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The open method's IL and low-level C#.</comment>
+  </data>
+  <data name="DependencyMap" xml:space="preserve">
+    <value>Dependency Map</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action.</comment>
+  </data>
+  <data name="Database" xml:space="preserve">
+    <value>Database</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The databases' connections, tables and queries.</comment>
+  </data>
+  <data name="Clones" xml:space="preserve">
+    <value>Clones</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. Code written more than once in the solution.</comment>
+  </data>
+  <data name="Toolbox" xml:space="preserve">
+    <value>Toolbox</value>
+    <comment>A tool window's name on its header, tab and stripe button, in View › Tool Windows and in Find Action. The controls a form designer adds.</comment>
+  </data>
+</root>

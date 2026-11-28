@@ -5,6 +5,7 @@ using Avalonia.VisualTree;
 using Passenger.App;
 using Passenger.App.Docking;
 using Passenger.App.Settings;
+using Passenger.Core;
 
 namespace Passenger.Tests;
 
@@ -92,10 +93,11 @@ public sealed class ToolWindowServesTests
                     $"The {each.Title} window serves {each.Serves.Kinds}, where the sweep decided it serves {Sweep[each.Id].Kinds}: decide it here");
             }
             // A window of a kind of project says why in Refusals' words wherever it greys.
-            HashSet<string> words = [.. typeof(Refusals).GetFields().Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!)];
+            Words[] words = [.. typeof(Refusals).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                .Where(p => p.PropertyType == typeof(Words)).Select(p => (Words)p.GetValue(null)!)];
             foreach (ToolWindowServes rule in Sweep.Values.Distinct().Where(r => r != ToolWindowServes.EveryFolder))
             {
-                Assert.True(rule.WhyNot(FolderHolds.None)?.Shown is { } why && words.Contains(why), $"A window serving {rule.Kinds} greys without Refusals' words");
+                Assert.True(rule.WhyNot(FolderHolds.None) is { } why && words.Contains(why), $"A window serving {rule.Kinds} greys without Refusals' words");
             }
         }
         finally
@@ -128,14 +130,14 @@ public sealed class ToolWindowServesTests
                 Assert.True(StripeButton(window, id) is null, $"{shown.Title}'s icon is on a stripe in a plain console solution");
                 Assert.False(dock.IsShown(id), $"{shown.Title} shows in a plain console solution");
                 Assert.False(shown.IsBuilt && dock.GetVisualDescendants().Contains(shown.Content), $"{shown.Title}'s view is in its place in a plain console solution");
-                NativeMenuItem item = tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == shown.Title);
+                NativeMenuItem item = tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == shown.Title.English);
                 Assert.False(item.IsEnabled, $"View › Tool Windows offers {shown.Title} in a plain console solution");
                 Assert.Equal(why, item.ToolTip);
                 Assert.Equal(why, window.Actions.WhyNot(shown.Action!, window.Actions.Context())?.Shown);
                 Assert.True(!opened.Contains(id) || dock.Capture().Windows[id].Shown, $"{shown.Title}'s place, open in the layout, was not kept for when it serves");
             }
             Assert.All(dock.Windows.Where(w => !OfAKind.Any(k => k.Id == w.Id)), w =>
-                Assert.True(tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == w.Title).IsEnabled, $"View › Tool Windows greys {w.Title} in a plain console solution"));
+                Assert.True(tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == w.Title.English).IsEnabled, $"View › Tool Windows greys {w.Title} in a plain console solution"));
             // What works in such a window greys as the window does, saying the same: Find Action and an agent's ide_actions read it.
             IdeAction[] within = [.. window.Actions.All.Where(a => a.Group.English == "Aspire" || a.Id == AppActions.EndpointsRefresh)];
             Assert.True(within.Length > 10, $"Only {within.Length} actions work in the Aspire and Endpoints windows");
@@ -264,7 +266,7 @@ public sealed class ToolWindowServesTests
     {
         Ui.WaitFor(() => StripeButton(window, ToolWindowIds.Game) is null, () => $"the Game window's icon gone with the Godot project, {how}");
         Assert.False(window.DockHost.IsShown(ToolWindowIds.Game), $"The Game window still shows with no Godot project in the folder, {how}");
-        Assert.Equal(Refusals.NoGodotProject.Shown, window.DockHost[ToolWindowIds.Game].Unserved);
+        Assert.Equal(Refusals.NoGodotProject, window.DockHost[ToolWindowIds.Game].Unserved);
     }
 
     /// <summary>A solution of one console app, which no tool window of a kind of project serves.</summary>

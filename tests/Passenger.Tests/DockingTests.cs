@@ -861,24 +861,24 @@ public sealed class DockingTests
             Ui.Settle();
             ToolWindow structure = dock[ToolWindowIds.Structure];
             Ui.RightClick(Button(window, ToolWindowIds.Structure));
-            Assert.True(Checked(dock.StripeMenu, structure.Title), "Structure, on its stripe, is not checked on its place's checklist");
-            Ui.Choose(dock.StripeMenu, structure.Title);
+            Assert.True(Checked(dock.StripeMenu, structure.Title.English), "Structure, on its stripe, is not checked on its place's checklist");
+            Ui.Choose(dock.StripeMenu, structure.Title.English);
             Assert.True(!dock.IsShown(ToolWindowIds.Structure) && StripeButton(window, ToolWindowIds.Structure) is null,
                 "Structure, open and unchecked on its stripe's checklist, stayed open or kept its stripe icon");
             Assert.Equal(structure.Anchor, dock[ToolWindowIds.Structure].Anchor);
 
             ToolWindow neighbour = dock.Windows.First(w => w.Anchor == structure.Anchor && w != structure);
             Ui.RightClick(Button(window, neighbour.Id));
-            Assert.False(Checked(dock.StripeMenu, structure.Title), "Structure, off its stripe, is still checked on its place's checklist");
-            Ui.Choose(dock.StripeMenu, structure.Title);
+            Assert.False(Checked(dock.StripeMenu, structure.Title.English), "Structure, off its stripe, is still checked on its place's checklist");
+            Ui.Choose(dock.StripeMenu, structure.Title.English);
             Assert.True(StripeButton(window, ToolWindowIds.Structure) is not null && !dock.IsShown(ToolWindowIds.Structure),
                 "Structure, checked again, did not come back to its stripe hidden");
 
             Ui.RightClick(Button(window, ToolWindowIds.Structure));
-            Ui.Choose(dock.StripeMenu, structure.Title);
+            Ui.Choose(dock.StripeMenu, structure.Title.English);
             Assert.Null(StripeButton(window, ToolWindowIds.Structure));
             NativeMenu tools = Ui.Submenu(Ui.Submenu(window.MenuBar, "View"), MainMenu.ToolWindows);
-            tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == structure.Title).Command!.Execute(null);
+            tools.Items.OfType<NativeMenuItem>().Single(i => i.Header == structure.Title.English).Command!.Execute(null);
             Ui.Settle();
             Assert.True(dock.IsShown(ToolWindowIds.Structure) && StripeButton(window, ToolWindowIds.Structure) is not null,
                 "View > Tool Windows > Structure did not open it on its stripe again");
@@ -901,7 +901,7 @@ public sealed class DockingTests
             foreach (ToolWindow each in dock.Windows.Where(w => w.Anchor == emptied).ToList())
             {
                 Ui.RightClick(Button(window, each.Id));
-                Ui.Choose(dock.StripeMenu, each.Title);
+                Ui.Choose(dock.StripeMenu, each.Title.English);
             }
             Assert.DoesNotContain(window.DockHost.GetVisualDescendants().OfType<ToggleButton>(), b => b.Tag is string id && dock[id].Anchor == emptied);
             window.Close();
@@ -915,11 +915,11 @@ public sealed class DockingTests
                 dock = next.DockHost;
                 Assert.DoesNotContain(dock.GetVisualDescendants().OfType<ToggleButton>(), b => b.Tag is string id && dock[id].Anchor == emptied);
                 Ui.RightClick(Button(next, ToolWindowIds.Explorer));
-                MenuItem place = dock.StripeMenu!.Items.OfType<MenuItem>().SingleOrDefault(i => Equals(i.Header, ToolWindow.Name(emptied)))
+                MenuItem place = dock.StripeMenu!.Items.OfType<MenuItem>().SingleOrDefault(i => Equals(i.Header, ToolWindow.Name(emptied).English))
                     ?? throw new Xunit.Sdk.XunitException($"The left stripe's checklist does not offer {ToolWindow.Name(emptied)}, whose windows are all off it: [{string.Join(", ", Listed(dock.StripeMenu))}]");
                 Assert.Equal(Titles(dock, emptied), place.Items.OfType<MenuItem>().Select(i => (string)i.Header!));
                 Assert.All(place.Items.OfType<MenuItem>(), i => Assert.False(i.IsChecked));
-                Ui.Choose(dock.StripeMenu, ToolWindow.Name(emptied), "Structure");
+                Ui.Choose(dock.StripeMenu, ToolWindow.Name(emptied).English, "Structure");
                 Assert.NotNull(StripeButton(next, ToolWindowIds.Structure));
 
                 dock.RestoreDefault();
@@ -950,7 +950,7 @@ public sealed class DockingTests
             for (int taken = 0; taken < dock.Windows.Count && Icons(stripe).FirstOrDefault() is { } icon; taken++)
             {
                 Ui.RightClick(icon);
-                Ui.Choose(dock.StripeMenu, dock[(string)icon.Tag!].Title);
+                Ui.Choose(dock.StripeMenu, dock[(string)icon.Tag!].Title.English);
             }
             Assert.Empty(Icons(stripe));
             Assert.True(dock.ColumnDefinitions[6].ActualWidth == 40 && stripe.IsEffectivelyVisible,
@@ -960,7 +960,7 @@ public sealed class DockingTests
             string title = Listed(dock.StripeMenu).FirstOrDefault()
                 ?? throw new Xunit.Sdk.XunitException("A right click on the emptied stripe lists no window to put back");
             Ui.Choose(dock.StripeMenu, title);
-            ToolWindow back = dock.Windows.Single(w => w.Title == title);
+            ToolWindow back = dock.Windows.Single(w => w.Title.English == title);
             Assert.True(StripeButton(window, back.Id) is { IsEffectivelyVisible: true } && !back.IsClosed,
                 $"{title}, checked on the emptied stripe's checklist, has no icon on it");
         }
@@ -1005,7 +1005,7 @@ public sealed class DockingTests
 
     /// <summary>The titles of a place's windows in their order, as its checklist lists them.</summary>
     private static IEnumerable<string> Titles(DockHost dock, ToolAnchor place) =>
-        dock.Windows.Where(w => w.Anchor == place).OrderBy(w => w.Order).Select(w => w.Title);
+        dock.Windows.Where(w => w.Anchor == place).OrderBy(w => w.Order).Select(w => w.Title.English);
 
     /// <summary>What a stripe's checklist lists, its windows' titles.</summary>
     private static List<string> Listed(ContextMenu? menu) =>

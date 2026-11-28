@@ -421,7 +421,7 @@ public partial class MainWindow
     /// New makes where the Explorer's row is.</summary>
     private IReadOnlyList<ListedItem> Listed(string submenu, ActionContext context) => submenu switch
     {
-        MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title, StringComparer.Ordinal).Select(w => new ListedItem(w.Title, () => ShowToolWindow(w.Id))
+        MainMenu.ToolWindows => [.. Dock.Windows.OrderBy(w => w.Title.Shown, StringComparer.Ordinal).Select(w => new ListedItem(w.Title.Shown, () => ShowToolWindow(w.Id))
         {
             WhyNot = (w.Action is { } shows ? actions!.WhyNot(shows, actions.Context()) : w.Unserved)?.Shown,
         })],

@@ -67,7 +67,7 @@ public sealed partial class LiveTreeController
     public LiveTreeController(LiveTreeParts parts)
     {
         this.parts = parts;
-        window = new ToolWindow(ToolWindowIds.LiveTree, "Live Visual Tree", IconKeys.LiveTree, Make, ToolAnchor.RightTop)
+        window = new ToolWindow(ToolWindowIds.LiveTree, ToolWindowTitles.LiveTree, IconKeys.LiveTree, Make, ToolAnchor.RightTop)
         {
             Serves = ToolWindowServes.InspectedApps,
             Action = AppActions.ShowLiveTree,

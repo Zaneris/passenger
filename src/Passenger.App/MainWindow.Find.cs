@@ -25,7 +25,7 @@ public partial class MainWindow
 
     private void AddFind()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Find, "Find", IconKeys.Search, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Find, ToolWindowTitles.Find, IconKeys.Search, () =>
         {
             find = new FindView(path => Editors.TextOf(path)?.ToString(), path => Editors.Find(path) is { HoldsText: true } open ? open.Text : null,
                 path => Editors.ParseOptions(path)) { Alone = findSettings.UsagesAlone };

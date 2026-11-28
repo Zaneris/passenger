@@ -43,7 +43,7 @@ public partial class MainWindow
             }
             MigrationsView.OpenChooser(kind);
         };
-        Docking.ToolWindow shown = new(ToolWindowIds.Migrations, "Migrations", IconKeys.Migrations, () =>
+        Docking.ToolWindow shown = new(ToolWindowIds.Migrations, ToolWindowTitles.Migrations, IconKeys.Migrations, () =>
         {
             MigrationsView view = migrationsView = new MigrationsView(controller);
             view.ActionRequested += (_, action) => Request(action);

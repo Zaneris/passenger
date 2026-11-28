@@ -95,7 +95,7 @@ public partial class MainWindow
             return true;
         };
         // Each built as it is first shown or asked for, over the session's Git then.
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, "Commit", IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Commit, ToolWindowTitles.Commit, IconKeys.Commit, MakeCommit, Docking.ToolAnchor.LeftTop)
         {
             // Outside a repository it offers to create one, as Git does.
             Serves = ToolWindowServes.EveryFolder,
@@ -103,7 +103,7 @@ public partial class MainWindow
             ActionTitle = ActionTitles.ShowCommit,
             Menus = [new MenuPlace("Git", 3, 0)],
         });
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Git, "Git", IconKeys.Branch, MakeGit, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Git, ToolWindowTitles.Git, IconKeys.Branch, MakeGit, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowGit,

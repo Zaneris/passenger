@@ -22,7 +22,7 @@ public partial class MainWindow
 
     private void AddDependencyMap()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.DependencyMap, "Dependency Map", IconKeys.DependencyMap, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.DependencyMap, ToolWindowTitles.DependencyMap, IconKeys.DependencyMap, () =>
         {
             dependencyMap = new DependencyMapView();
             dependencyMap.GoToRequested += (_, node) => GoToMapNode(node);

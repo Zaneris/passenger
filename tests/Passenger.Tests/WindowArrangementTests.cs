@@ -490,7 +490,7 @@ public sealed class WindowArrangementTests : IDisposable
             Assert.Empty(cut);
             Button more = window.DockHost.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) is "Hidden Tool Windows" && b.FindAncestorOfType<Border>() is { } strip
                 && strip.Classes.Contains(StyleClasses.ToolTabStrip) && strip.GetVisualDescendants().OfType<Border>().Any(t => Equals(t.Tag, ToolWindowIds.Build)));
-            string[] gone = [.. FootTabs(window).Where(t => dock[(string)t.Tag!].Anchor == ToolAnchor.BottomLeft && Seen(t) is null).Select(t => dock[(string)t.Tag!].Title)];
+            string[] gone = [.. FootTabs(window).Where(t => dock[(string)t.Tag!].Anchor == ToolAnchor.BottomLeft && Seen(t) is null).Select(t => dock[(string)t.Tag!].Title.English)];
             Assert.True(gone.Length > 0 && Seen(more) is not null, $"At 900 wide the bottom's tabs all fit, or no button lists those gone ({string.Join(", ", gone)})");
             Avalonia.Automation.Peers.AutomationPeer morePeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(more);
             Avalonia.Automation.Peers.AutomationPeer tabPeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(FootTab(window, ToolWindowIds.Build)!);
@@ -754,7 +754,7 @@ public sealed class WindowArrangementTests : IDisposable
     /// left out.</summary>
     private static string[] Unnamed(MainWindow window) =>
         [.. window.DockHost.Windows.Where(w => !w.IsClosed && w is { Mode: ToolMode.Docked, Unserved: null } && EdgeTab(window, w.Id) is null && !FootTabs(window).Any(t => Equals(t.Tag, w.Id))
-            && !(w.IsShown && Header(window, w.Title) is not null)).Select(w => w.Id)];
+            && !(w.IsShown && Header(window, w.Title.English) is not null)).Select(w => w.Id)];
 
     /// <summary>A shown pane's header naming a window by its title.</summary>
     private static TextBlock? Header(MainWindow window, string title) =>

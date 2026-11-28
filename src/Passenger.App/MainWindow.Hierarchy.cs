@@ -17,7 +17,7 @@ public partial class MainWindow
 
     private void AddHierarchy()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Hierarchy, "Hierarchy", IconKeys.Hierarchy, () =>
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Hierarchy, ToolWindowTitles.Hierarchy, IconKeys.Hierarchy, () =>
         {
             hierarchy = new HierarchyView();
             hierarchy.GoToRequested += (_, node) => NavigateTo(node.Path, node.Where);

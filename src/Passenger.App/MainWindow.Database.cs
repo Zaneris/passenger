@@ -16,7 +16,7 @@ public partial class MainWindow
     private void AddDatabase()
     {
         DatabaseController controller = database = new DatabaseController(work, text => status.Text = text);
-        Docking.ToolWindow shown = new(ToolWindowIds.Database, "Database", IconKeys.Database, () =>
+        Docking.ToolWindow shown = new(ToolWindowIds.Database, ToolWindowTitles.Database, IconKeys.Database, () =>
         {
             DatabaseExplorer view = databaseExplorer = new DatabaseExplorer(controller, WhyNotOpened);
             // What the window asks runs where it was asked, on its chosen row, wherever the keys are.

@@ -527,7 +527,7 @@ public sealed class AccessibilityTests : IDisposable
             Assert.True(Equals(first.Tag, edge[0]) && Ringed(first) && heard.Any(h => h.Words == "Hidden tool windows, left edge"),
                 $"Previous Region twice from the editor came to {first.GetType().Name} {first.Tag}, ringed {Ringed(first)}, heard as {Said(heard)}, not to {edge[0]}'s tab on the left edge");
             AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(first);
-            Assert.True(peer.GetName() == dock[edge[0]].Title && peer.GetAutomationControlType() == AutomationControlType.Button,
+            Assert.True(peer.GetName() == dock[edge[0]].Title.English && peer.GetAutomationControlType() == AutomationControlType.Button,
                 $"{edge[0]}'s edge tab is heard as \"{peer.GetName()}\", a {peer.GetAutomationControlType()}, not as a button of its name");
 
             Ui.Press(window, "TAB");

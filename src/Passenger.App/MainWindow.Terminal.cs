@@ -15,7 +15,7 @@ public partial class MainWindow
 
     private void AddTerminal()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Terminal, "Terminal", IconKeys.Terminal, MakeTerminal, Docking.ToolAnchor.BottomLeft)
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.Terminal, ToolWindowTitles.Terminal, IconKeys.Terminal, MakeTerminal, Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,
             Action = AppActions.ShowTerminal,

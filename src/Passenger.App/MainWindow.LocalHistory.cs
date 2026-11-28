@@ -35,7 +35,7 @@ public partial class MainWindow
 
     private void AddLocalHistory()
     {
-        Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, "Local History", IconKeys.History, () => localHistoryView = new LocalHistoryView(),
+        Dock.Add(new Docking.ToolWindow(ToolWindowIds.LocalHistory, ToolWindowTitles.LocalHistory, IconKeys.History, () => localHistoryView = new LocalHistoryView(),
             Docking.ToolAnchor.BottomLeft)
         {
             Serves = ToolWindowServes.EveryFolder,

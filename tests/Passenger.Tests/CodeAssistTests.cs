@@ -583,7 +583,7 @@ public sealed class CodeAssistTests : IClassFixture<CodeAssistTests.Project>
         {
             window.OpenFile("Calculator.cs");
             Ui.Settle();
-            Passenger.App.Docking.ToolWindow tool = Assert.Single(window.DockHost.Windows, w => w.Title == "Syntax Tree");
+            Passenger.App.Docking.ToolWindow tool = Assert.Single(window.DockHost.Windows, w => w.Title.English == "Syntax Tree");
             Assert.Equal(Passenger.App.Docking.ToolAnchor.RightTop, tool.Anchor);
             Assert.Single(window.DockHost.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ToggleButton>(), b => Equals(b.Tag, tool.Id));
             CodeEditor editor = window.EditorArea.CodeEditor;

@@ -70,7 +70,7 @@ public partial class MainWindow
         static Region ToolRegion((ToolWindow Window, Control Place) shown) =>
             new($"{shown.Window.Title}, tool window", shown.Place, () => shown.Window.TakeKeys(NavigationMethod.Tab));
 
-        Region[] Edge(ToolAnchor place) => Dock.EdgeOf(place) is { } edge && Laid(edge) ? [new(edge.Said, edge, edge.TakeKeys)] : [];
+        Region[] Edge(ToolAnchor place) => Dock.EdgeOf(place) is { } edge && Laid(edge) ? [new(edge.Said.Shown, edge, edge.TakeKeys)] : [];
 
         // A maximised tool window leaves the others, and the editors, no room.
         static bool Laid(Control region) => region.IsEffectivelyVisible && region.Bounds.Width > 0 && region.Bounds.Height > 0;

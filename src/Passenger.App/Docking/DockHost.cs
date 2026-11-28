@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.VisualTree;
+using Passenger.Core;
 using Passenger.Editor;
 
 namespace Passenger.App.Docking;
@@ -139,9 +140,9 @@ public sealed class DockHost : Grid
         rightStripe = new Stripe(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, ToolAnchor.BottomRight);
         Place(leftStripe, 0, 0, rowSpan: 4);
         Place(rightStripe, 0, 6, rowSpan: 4);
-        leftEdge = new EdgeTabs(this, ToolAnchor.LeftTop, ToolAnchor.LeftBottom, down: true, "Hidden tool windows, left edge");
-        rightEdge = new EdgeTabs(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, down: true, "Hidden tool windows, right edge");
-        bottomEdge = new EdgeTabs(this, ToolAnchor.BottomLeft, ToolAnchor.BottomRight, down: false, "Hidden tool windows, bottom edge");
+        leftEdge = new EdgeTabs(this, ToolAnchor.LeftTop, ToolAnchor.LeftBottom, down: true, DockingWords.LeftEdge);
+        rightEdge = new EdgeTabs(this, ToolAnchor.RightTop, ToolAnchor.RightBottom, down: true, DockingWords.RightEdge);
+        bottomEdge = new EdgeTabs(this, ToolAnchor.BottomLeft, ToolAnchor.BottomRight, down: false, DockingWords.BottomEdge);
         Place(leftEdge, 0, 0, rowSpan: 4);
         Place(rightEdge, 0, 6, rowSpan: 4);
         Place(bottomEdge, 3, 1, columnSpan: 5);
@@ -380,7 +381,7 @@ public sealed class DockHost : Grid
 
     /// <summary>Why a window serves nothing in the open folder (<see cref="ToolWindow.Unserved"/>), null where it serves it:
     /// asked of each window as it is added, and of all again at <see cref="Serve"/>.</summary>
-    public Func<ToolWindow, string?>? WhyUnserved { get; set; }
+    public Func<ToolWindow, Words?>? WhyUnserved { get; set; }
 
     /// <summary>Asks each window again whether it serves the open folder (<see cref="WhyUnserved"/>): one that stops leaves
     /// the stripes, its place, its tabs and its edge, put away from over the editors, its own window or editor tab closed
@@ -390,7 +391,7 @@ public sealed class DockHost : Grid
         bool changed = false;
         foreach (ToolWindow window in windows)
         {
-            string? why = WhyUnserved?.Invoke(window);
+            Words? why = WhyUnserved?.Invoke(window);
             if (why == window.Unserved)
             {
                 continue;
@@ -1141,7 +1142,7 @@ public sealed class DockHost : Grid
             }
             return;
         }
-        FloatWindow created = new(this, window.WindowBounds, new Size(520, 420)) { Title = window.Title, ShowInTaskbar = window.Mode == ToolMode.Windowed, ShowActivated = forward };
+        FloatWindow created = new(this, window.WindowBounds, new Size(520, 420)) { [ShownWords.TitleProperty] = window.Title, ShowInTaskbar = window.Mode == ToolMode.Windowed, ShowActivated = forward };
         ToolPane pane = new(this) { Floating = created, Closes = closesOffStripe };
         pane.LeastChanged += (_, _) =>
         {

@@ -43,9 +43,9 @@ public enum FolderHolds
 /// place in a kept or a theme's layout stays meanwhile, so it comes back where it stood.</summary>
 public sealed class ToolWindowServes
 {
-    private readonly string? why;
+    private readonly Words? why;
 
-    private ToolWindowServes(FolderHolds kinds, string? why)
+    private ToolWindowServes(FolderHolds kinds, Words? why)
     {
         Kinds = kinds;
         this.why = why;
@@ -58,28 +58,28 @@ public sealed class ToolWindowServes
     public static ToolWindowServes EveryFolder { get; } = new(FolderHolds.None, null);
 
     /// <summary>A Godot project, whose game the Game window draws.</summary>
-    public static ToolWindowServes GodotProjects { get; } = new(FolderHolds.GodotProject, Refusals.NoGodotProject.Shown);
+    public static ToolWindowServes GodotProjects { get; } = new(FolderHolds.GodotProject, Refusals.NoGodotProject);
 
     /// <summary>An Aspire AppHost, whose resources the Aspire window shows.</summary>
-    public static ToolWindowServes AppHosts { get; } = new(FolderHolds.AppHost, Refusals.NoAppHost.Shown);
+    public static ToolWindowServes AppHosts { get; } = new(FolderHolds.AppHost, Refusals.NoAppHost);
 
     /// <summary>An ASP.NET Core app, whose live requests the Requests window hears.</summary>
-    public static ToolWindowServes WebApps { get; } = new(FolderHolds.WebApp, Refusals.NoWebApp.Shown);
+    public static ToolWindowServes WebApps { get; } = new(FolderHolds.WebApp, Refusals.NoWebApp);
 
     /// <summary>An ASP.NET Core app's routes, or an .http file's requests, which the Endpoints window sends.</summary>
-    public static ToolWindowServes WebRequests { get; } = new(FolderHolds.WebApp | FolderHolds.HttpFile, Refusals.NoWebRequests.Shown);
+    public static ToolWindowServes WebRequests { get; } = new(FolderHolds.WebApp | FolderHolds.HttpFile, Refusals.NoWebRequests);
 
     /// <summary>An EF Core project, whose migrations the Migrations window lists.</summary>
-    public static ToolWindowServes EfCore { get; } = new(FolderHolds.EfCore, Refusals.NoEfCore.Shown);
+    public static ToolWindowServes EfCore { get; } = new(FolderHolds.EfCore, Refusals.NoEfCore);
 
     /// <summary>A Reqnroll or SpecFlow project, whose step definitions the Step Library lists.</summary>
-    public static ToolWindowServes StepDefinitions { get; } = new(FolderHolds.StepDefinitions, Refusals.NoStepDefinitions.Shown);
+    public static ToolWindowServes StepDefinitions { get; } = new(FolderHolds.StepDefinitions, Refusals.NoStepDefinitions);
 
     /// <summary>An app Live Visual Tree looks into: an Avalonia, WPF, Windows Forms or .NET MAUI app, a Godot game, or one inspected now.</summary>
-    public static ToolWindowServes InspectedApps { get; } = new(FolderHolds.InspectedApp | FolderHolds.GodotProject, Refusals.NoInspectedApp.Shown);
+    public static ToolWindowServes InspectedApps { get; } = new(FolderHolds.InspectedApp | FolderHolds.GodotProject, Refusals.NoInspectedApp);
 
     /// <summary>A Windows Forms project, whose forms' designs the Toolbox adds to.</summary>
-    public static ToolWindowServes FormsProjects { get; } = new(FolderHolds.WindowsForms, Refusals.NoFormsProject.Shown);
+    public static ToolWindowServes FormsProjects { get; } = new(FolderHolds.WindowsForms, Refusals.NoFormsProject);
 
     /// <summary>Why it serves nothing in a folder holding <paramref name="holds"/>, in Refusals' words; null where it serves
     /// it. With no folder open (null), only a window of every folder serves.</summary>
