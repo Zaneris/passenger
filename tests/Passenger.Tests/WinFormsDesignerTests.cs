@@ -436,12 +436,25 @@ public sealed class WinFormsDesignerTests : IClassFixture<WinFormsDesignerTests.
         ListBox rows = properties.GetVisualDescendants().OfType<ListBox>().First();
         Keyed(rows, properties.Chosen!);
         Ui.Press(window, "ENTER");
+        Ui.WaitFor(() => properties.Typing is { IsFocused: true }, "Enter to open MouseEnter's handler to type");
+        Ui.Press(window, "ENTER");
         Ui.WaitFor(() => File.ReadAllText(designer).Contains("Count.MouseEnter += Count_MouseEnter;", StringComparison.Ordinal), () => $"MouseEnter's handler to be hooked, where the status bar says {window.Status}");
         Assert.Contains("        Count.Click += OnCount;\n        Count.MouseEnter += Count_MouseEnter;\n", File.ReadAllText(designer).ReplaceLineEndings("\n"));
         string handled = window.EditorArea.TextOf(code)!.ToString().ReplaceLineEndings("\n");
         Assert.True(handled.Contains("    private void Count_MouseEnter(object? sender, EventArgs e)\n    {\n\n    }\n}", StringComparison.Ordinal),
             $"MouseEnter's handler is not declared at MainForm's end, which reads:\n{handled[Math.Max(0, handled.Length - 400)..]}");
         Ui.WaitFor(() => window.EditorArea.FormLayout.View == PaneView.Editor, "the new handler's code to be shown");
+
+        // A handler the code has already, typed for another event, is hooked by its name.
+        Ui.Press(window, "shift F7");
+        pane = Drawn(window);
+        window.ShowToolWindow(ToolWindowIds.Structure);
+        Ui.Click(pane.Frame, new Point(count.X + (count.Width / 2), count.Y + (count.Height / 2)));
+        properties = window.FormProperties ?? throw new Xunit.Sdk.XunitException("The Structure window shows no properties under its outline");
+        properties.ShowsEvents = true;
+        Ui.WaitFor(() => properties.Rows.Any(r => r.Name == "MouseLeave"), () => $"Count's events to be listed again, not \"{properties.Said}\"");
+        Type(window, properties, "MouseLeave", "OnCount");
+        Ui.WaitFor(() => File.ReadAllText(designer).Contains("Count.MouseLeave += OnCount;", StringComparison.Ordinal), () => $"MouseLeave to be hooked to OnCount, where the status bar says {window.Status}");
         window.Close();
     }
 

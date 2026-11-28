@@ -219,14 +219,11 @@ public sealed class FormProperties : DockPanel
 
     private void DesignChanged(object? sender, EventArgs e) => Fill();
 
-    /// <summary>A row opened: an event's handler hooked and gone to; a property's value typed; a value of parts opened.</summary>
+    /// <summary>A row opened: an event's handler or a property's value typed (an event's Enter on nothing hooks its default
+    /// handler and goes to it); a value of parts opened.</summary>
     private void Open(FormPropertyRow row)
     {
-        if (row.Event is { } raised)
-        {
-            HookRequested?.Invoke(this, (raised.Name, null));
-        }
-        else if (row.Property is { ReadOnly: false })
+        if (row.Event is not null || row.Property is { ReadOnly: false })
         {
             typing = row.Name;
             Refreshed?.Invoke();
