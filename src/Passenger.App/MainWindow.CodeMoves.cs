@@ -83,7 +83,7 @@ public partial class MainWindow
         }
         editor.ApplyPlan(move.Beside is { } beside
             ? TextEditing.SwapLines(csharp.Text, editor.Selections, move.Moving, beside)
-            : TextEditing.MoveLines(csharp.Text, editor.Selections, move.Moving, move.Before, move.Indent!));
+            : TextEditing.MoveLines(csharp.Text, editor.Selections, move.Moving, move.Before, move.Indent!, move.Strings));
     }
 
     /// <summary>Move Element: in C#, by its parse; elsewhere the element of the innermost list in brackets around the caret
@@ -149,7 +149,7 @@ public partial class MainWindow
 
     private void Unwrap(CodeEditor editor, ParsedText csharp, Unwrapping unwrapping)
     {
-        editor.ApplyPlan(TextEditing.Unwrapped(csharp.Text, editor.Selections, unwrapping.Whole, unwrapping.Kept));
+        editor.ApplyPlan(TextEditing.Unwrapped(csharp.Text, editor.Selections, unwrapping.Whole, unwrapping.Kept, unwrapping.Strings));
         status.Text = $"Unwrapped {unwrapping.Name}";
     }
 

@@ -521,11 +521,11 @@ public sealed class EditingBehaviourTests
     /// syntax.</summary>
     /// <summary>Move Statement moves a statement past the one beside it, its comment with it, and into and out of an if's
     /// block; Move Element moves a C# argument, a JSON array's element and a XAML attribute; Unwrap takes out the if, or the
-    /// loop chosen around it; each one step of Undo, on the keymap's keys; and overwrite holds in each editor (#2308, #2388).</summary>
+    /// loop chosen around it, a verbatim string's lines kept as they are; each one step of Undo; and overwrite holds (#2308).</summary>
     private void Statements_and_elements_move_by_the_syntax_and_unwrap_takes_a_body_out_each_one_step_of_undo()
     {
         const string Source = "class Shop\n{\n    void Sell(int a, int b)\n    {\n        // first\n        A();\n\n        B(a, b);\n        if (a > b)\n        {\n            C();\n        }\n    }\n\n" +
-            "    void Count(int[] all)\n    {\n        foreach (int each in all)\n        {\n            if (each > 0)\n            {\n                D();\n            }\n        }\n    }\n}\n";
+            "    void Count(int[] all)\n    {\n        foreach (int each in all)\n        {\n            if (each > 0)\n            {\n                D(@\"\n                    raw\");\n            }\n        }\n    }\n}\n";
         (Passenger.App.MainWindow window, Passenger.Editor.CodeEditor editor) = OpenCSharp(Source);
         try
         {
@@ -572,13 +572,18 @@ public sealed class EditingBehaviourTests
             Ui.Run(window, Passenger.Editor.EditorActions.Undo);
             Assert.Equal(Source, editor.Document.Snapshot.ToString());
 
-            editor.Selections = SelectionSet.Single(Source.IndexOf("D();", StringComparison.Ordinal));
+            editor.Selections = SelectionSet.Single(Source.IndexOf("D(@", StringComparison.Ordinal));
+            Ui.Run(window, Passenger.App.AppActions.MoveStatementDown);
+            Assert.Equal(Source.Replace("            {\n                D(@\"\n                    raw\");\n            }\n", "            {\n            }\n            D(@\"\n                    raw\");\n",
+                StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+            Ui.Run(window, Passenger.Editor.EditorActions.Undo);
+            editor.Selections = SelectionSet.Single(Source.IndexOf("D(@", StringComparison.Ordinal));
             Ui.Run(window, Passenger.App.AppActions.Unwrap);
             Assert.Equal(["Unwrap 'if'", "Unwrap 'foreach'"], window.Assist.Offered);
             Ui.Press(window, "DOWN");
             Ui.Press(window, "ENTER");
-            Assert.Equal(Source.Replace("        foreach (int each in all)\n        {\n            if (each > 0)\n            {\n                D();\n            }\n        }\n",
-                "        if (each > 0)\n        {\n            D();\n        }\n", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
+            Assert.Equal(Source.Replace("        foreach (int each in all)\n        {\n            if (each > 0)\n            {\n                D(@\"\n                    raw\");\n            }\n        }\n",
+                "        if (each > 0)\n        {\n            D(@\"\n                    raw\");\n        }\n", StringComparison.Ordinal), editor.Document.Snapshot.ToString());
             Ui.Run(window, Passenger.Editor.EditorActions.Undo);
             Assert.Equal(Source, editor.Document.Snapshot.ToString());
 

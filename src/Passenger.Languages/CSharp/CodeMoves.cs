@@ -6,12 +6,13 @@ using Passenger.Text;
 namespace Passenger.Languages.CSharp;
 
 /// <summary>Where Move Statement takes lines (<see cref="CodeMoves.StatementMoveOf"/>): past the lines beside them, or, with
-/// none beside, before another line, each moved to an indentation.</summary>
-public sealed record StatementMove((int First, int Last) Moving, (int First, int Last)? Beside, int Before, string? Indent);
+/// none beside, before another line, each moved to an indentation but those beginning inside a string (<see cref="StringLines"/>).</summary>
+public sealed record StatementMove((int First, int Last) Moving, (int First, int Last)? Beside, int Before, string? Indent, IReadOnlySet<int> Strings);
 
 /// <summary>A statement Unwrap may take out (<see cref="CodeMoves.UnwrapChoices"/>): its lines, the lines of the part the
-/// caret is in that take its place (none for an empty one), what it is called and its first line's code.</summary>
-public sealed record Unwrapping((int First, int Last) Whole, (int First, int Last)? Kept, string Name, string Header);
+/// caret is in that take its place (none for an empty one), what it is called, its first line's code, and its lines beginning
+/// inside a string, which keep their indentation (<see cref="StringLines"/>).</summary>
+public sealed record Unwrapping((int First, int Last) Whole, (int First, int Last)? Kept, string Name, string Header, IReadOnlySet<int> Strings);
 
 /// <summary>Edits by a C# file's structure, from its one parse: the statements or members a selection covers moved past the
 /// one beside them in their block, type, namespace or file, statements into and out of blocks (Move Statement); an element of a list moved past the one
@@ -58,9 +59,9 @@ public static class CodeMoves
         {
             if (statements && Entered(siblings[beside], up) is { } block && Inside(text, block) is not null)
             {
-                return Into(text, moving, block, up, Deeper(text, siblings[from], list));
+                return Into(text, moving, block, up, Deeper(text, siblings[from], list), Strings(text, siblings[from..(to + 1)]));
             }
-            return Lines(text, siblings[beside], siblings[beside]) is { } other ? new StatementMove(moving, other, 0, null) : null;
+            return Lines(text, siblings[beside], siblings[beside]) is { } other ? new StatementMove(moving, other, 0, null, new HashSet<int>()) : null;
         }
         if (list is not BlockSyntax ending)
         {
@@ -68,23 +69,26 @@ public static class CodeMoves
         }
         if (Branch(ending, up) is { } next && Inside(text, next) is not null && Inside(text, ending) is not null)
         {
-            return Into(text, moving, next, up, IndentAt(text, siblings[from].SpanStart));
+            return Into(text, moving, next, up, IndentAt(text, siblings[from].SpanStart), Strings(text, siblings[from..(to + 1)]));
         }
         if (Holder(ending) is not { Parent: BlockSyntax or SwitchSectionSyntax } holder || Lines(text, holder, holder) is not { } around)
         {
             return null;
         }
-        return new StatementMove(moving, null, up ? around.First : around.Last + 1, IndentAt(text, holder.SpanStart));
+        return new StatementMove(moving, null, up ? around.First : around.Last + 1, IndentAt(text, holder.SpanStart), Strings(text, siblings[from..(to + 1)]));
     }
+
+    /// <summary>The lines beginning inside the strings of some statements or members.</summary>
+    private static HashSet<int> Strings(TextSnapshot text, IEnumerable<SyntaxNode> units) => [.. units.SelectMany(u => StringLines.Of(u, text))];
 
     /// <summary>Statements put into a block: at its start going down, before its first statement's indentation, or at its end
     /// going up; an empty one's taking <paramref name="deeper"/>.</summary>
-    private static StatementMove Into(TextSnapshot text, (int First, int Last) moving, BlockSyntax block, bool up, string deeper)
+    private static StatementMove Into(TextSnapshot text, (int First, int Last) moving, BlockSyntax block, bool up, string deeper, IReadOnlySet<int> strings)
     {
         int open = text.GetLineFromOffset(block.OpenBraceToken.SpanStart);
         int close = text.GetLineFromOffset(block.CloseBraceToken.SpanStart);
         SyntaxNode? beside = up ? block.Statements.LastOrDefault() : block.Statements.FirstOrDefault();
-        return new StatementMove(moving, null, up ? close : open + 1, beside is null ? deeper : IndentAt(text, beside.SpanStart));
+        return new StatementMove(moving, null, up ? close : open + 1, beside is null ? deeper : IndentAt(text, beside.SpanStart), strings);
     }
 
     /// <summary>The block a statement beside those moving holds that they go into: its first branch's going down, its last's
@@ -239,17 +243,18 @@ public static class CodeMoves
                 continue;
             }
             string header = csharp.Text.GetLineText(csharp.Text.GetLineFromOffset(whole.SpanStart)).Trim();
+            IReadOnlySet<int> strings = StringLines.Of(kept, csharp.Text);
             if (kept is BlockSyntax block && Inside(csharp.Text, block) is { } between)
             {
-                found.Add(new Unwrapping(around, between.First <= between.Last ? between : null, name, header));
+                found.Add(new Unwrapping(around, between.First <= between.Last ? between : null, name, header, strings));
             }
             else if (kept is BlockSyntax { Statements.Count: 0 })
             {
-                found.Add(new Unwrapping(around, null, name, header));
+                found.Add(new Unwrapping(around, null, name, header, strings));
             }
             else if (Lines(csharp.Text, kept is BlockSyntax statements ? statements.Statements[0] : kept, kept is BlockSyntax many ? many.Statements[^1] : kept) is { } inside)
             {
-                found.Add(new Unwrapping(around, inside, name, header));
+                found.Add(new Unwrapping(around, inside, name, header, strings));
             }
         }
         return found;
